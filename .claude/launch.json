@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "harness-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@harnesshub/api"],
+      "port": 8787
+    },
+    {
+      "name": "registry-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@harnesshub/registry-web"],
+      "port": 5177
+    },
+    {
+      "name": "registry-web-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["exec", "-w", "@harnesshub/registry-web", "--", "vite", "--host", "127.0.0.1", "--port", "5199"],
+      "port": 5199
+    }
+  ]
+}

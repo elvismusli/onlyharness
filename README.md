@@ -2,7 +2,7 @@
 
 [onlyharness.com](https://onlyharness.com) is a friendly hub for forkable AI-agent harnesses: browse workflows, try examples, read the thread, fork, star, and publish with a CLI-ready trust layer.
 
-The public product is **OnlyHarness**. Internal package names still use `@harnesshub/*` while the MVP keeps compatibility with the original Harness.Hub prototype.
+The UI ships as **OnlyHarness 98** — a deliberately playful Windows 98 / MS Paint / WordArt desktop (per `design_handoff_harness_hub_98`): every surface is a window, harnesses open as draggable windows with a taskbar, auth is a Log On dialog, and the share card is `harness_flex.exe`. Design decisions live in [docs/plans/2026-07-04-win98-redesign-design.md](docs/plans/2026-07-04-win98-redesign-design.md). Internal package names still use `@harnesshub/*`.
 
 ## What is a harness?
 
@@ -23,10 +23,11 @@ Supabase auth is enabled for signup/login, stars/forks, thread posts, and authen
 
 ## Features
 
-- HuggingFace-style discovery for agent harnesses.
+- HuggingFace-style discovery for agent harnesses, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
 - Outcome filters, global search, leaderboard, Harness Heat, stars, forks, runs, and threads.
-- Harness detail page with Overview, Try, Thread, Evals, and Files tabs.
-- Authenticated publish flow that imports markdown into a harness scaffold.
+- Harness detail opens as its own window with Overview, Try, Thread, Evals, and Files tabs plus a plain-tone trust panel.
+- Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
+- Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
 - CLI package with `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh import-md`, and `hh annotate-pr`.
 - Semantic PR review and quality gate sidecar API.
 - Docker production stack with system Caddy deployment mode for shared VPS hosts.
