@@ -1,0 +1,5 @@
+description: Agent Harness Refactorer smoke eval
+prompts:
+  - agents/eval_designer.md
+providers:
+  - echo

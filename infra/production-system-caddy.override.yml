@@ -1,0 +1,6 @@
+services:
+  web:
+    ports: !override
+      - "127.0.0.1:${ONLYHARNESS_WEB_PORT:-8097}:80"
+    volumes:
+      - ./Caddyfile.local-smoke:/etc/caddy/Caddyfile:ro

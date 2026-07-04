@@ -1,0 +1,5 @@
+description: Harness template smoke eval
+prompts:
+  - agents/operator.md
+providers:
+  - echo

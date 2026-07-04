@@ -1,0 +1,5 @@
+description: Finance Payment Safety Reviewer smoke eval
+prompts:
+  - agents/gate_writer.md
+providers:
+  - echo

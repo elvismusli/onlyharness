@@ -1,0 +1,102 @@
+schemaVersion: harness.v0.1
+name: gtm-research-sprint
+title: GTM Research Sprint
+summary: Builds target segment, account list, pain hypotheses, outreach angles
+  and proof plan.
+version: 0.1.0
+license: MIT
+maintainers:
+  - name: Harness.Hub Local
+tags:
+  - gtm
+  - sales
+  - research
+runtime:
+  primary: openai-agents-sdk
+  adapters:
+    - langgraph
+entrypoint:
+  command: npm run harness:run
+  cwd: .
+inputs:
+  - id: request
+    type: markdown
+    required: true
+outputs:
+  - id: final_result
+    type: markdown
+agents:
+  - id: segmenter
+    role: define_segment
+    title: Segmenter
+    prompt: agents/segmenter.md
+    tools: []
+    handoffs: []
+  - id: researcher
+    role: collect_accounts
+    title: Researcher
+    prompt: agents/researcher.md
+    tools:
+      - web_search
+    handoffs: []
+  - id: angle_writer
+    role: write_outreach_angles
+    title: Angle Writer
+    prompt: agents/angle_writer.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: segmenter
+  stages:
+    - id: segment
+      agent: segmenter
+    - id: accounts
+      agent: researcher
+    - id: angles
+      agent: angle_writer
+tools:
+  mcp_servers:
+    - id: web_search
+      required: false
+      package: "@modelcontextprotocol/server-web-search"
+      pinned: true
+      allowlist:
+        - api.openai.com
+  function_tools: []
+  external_apis: []
+permissions:
+  network: allowlist
+  network_allowlist:
+    - api.openai.com
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: runtime_injected
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required:
+    - external_send
+    - money_movement
+secrets:
+  required:
+    - OPENAI_API_KEY
+  optional: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o
+    .harnesshub/results.json -o .harnesshub/report.html -o
+    .harnesshub/results.junit.xml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks:
+    - schema_valid
+    - eval_passed
+    - no_high_risk_permission_delta
+examples:
+  - title: Smoke example
+    input: examples/input.md
+    output: examples/expected.md

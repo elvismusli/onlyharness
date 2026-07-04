@@ -1,0 +1,13 @@
+log:
+  level: info
+
+runner:
+  file: /data/.runner
+  capacity: 1
+  timeout: 3h
+  fetch_interval: 2s
+  fetch_interval_max: 5s
+
+container:
+  network: infra_default
+  force_pull: false

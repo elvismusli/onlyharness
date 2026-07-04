@@ -1,0 +1,5 @@
+description: Founder Decision Memo smoke eval
+prompts:
+  - agents/memo_writer.md
+providers:
+  - echo

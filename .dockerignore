@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+.env
+.env.local
+apps/registry-web/.env.local
+infra/production.env
+.playwright-cli
+output
+supabase/.temp
+.DS_Store
+coverage
+.harnesshub-smoke-diff.json

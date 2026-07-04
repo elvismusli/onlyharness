@@ -1,0 +1,5 @@
+description: Support Triage Agent smoke eval
+prompts:
+  - agents/drafter.md
+providers:
+  - echo

@@ -1,0 +1,5 @@
+description: Repo Truth Auditor smoke eval
+prompts:
+  - agents/verdict_writer.md
+providers:
+  - echo

@@ -1,0 +1,53 @@
+{
+  "name": "harness-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local MVP for a GitHub-like registry and review loop for agent harnesses.",
+  "homepage": "https://onlyharness.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elvismusli/onlyharness.git"
+  },
+  "bugs": {
+    "url": "https://github.com/elvismusli/onlyharness/issues"
+  },
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "check": "npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present",
+    "dev": "node scripts/dev.mjs",
+    "gitea:bootstrap": "tsx scripts/bootstrap-gitea.ts",
+    "gitea:proof": "tsx scripts/proof-gitea-loop.ts",
+    "gitea:smoke": "tsx scripts/gitea-smoke.ts",
+    "seed": "tsx scripts/create-seeds.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "smoke:prod-auth": "tsx scripts/smoke-production-auth.ts",
+    "start:api": "npm run dev -w @harnesshub/api",
+    "start:web": "npm run dev -w @harnesshub/registry-web",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "@vitejs/plugin-react": "^4.6.0",
+    "concurrently": "^9.2.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.1",
+    "@vitejs/plugin-react": "^4.6.0",
+    "commander": "^14.0.0",
+    "fastify": "^5.4.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "yaml": "^2.8.0",
+    "zod": "^3.25.67",
+    "zod-to-json-schema": "^3.24.6"
+  }
+}

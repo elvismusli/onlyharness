@@ -1,0 +1,5 @@
+description: Deep Market Researcher smoke eval
+prompts:
+  - agents/critic.md
+providers:
+  - echo

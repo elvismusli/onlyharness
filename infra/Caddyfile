@@ -1,0 +1,18 @@
+{
+	email admin@onlyharness.com
+}
+
+onlyharness.com, www.onlyharness.com {
+	encode zstd gzip
+
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:8787
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}

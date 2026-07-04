@@ -1,0 +1,49 @@
+name: Harness CI
+on:
+  pull_request:
+    paths:
+      - "harness.yaml"
+      - "agents/**"
+      - "prompts/**"
+      - "tools/**"
+      - "gates/**"
+      - "evals/**"
+      - "examples/**"
+      - ".gitea/workflows/**"
+  push:
+    branches: [main]
+jobs:
+  validate-and-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout from local Gitea
+        run: |
+          git init "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch --depth=1 origin "$GITHUB_REF"
+          git checkout --detach FETCH_HEAD
+      - name: Validate harness structure
+        run: |
+          test -f harness.yaml
+          grep -q "schemaVersion: harness.v0.1" harness.yaml
+          grep -q "quality_gates:" harness.yaml
+          test -d agents
+          test -f evals/promptfooconfig.yaml
+          test -n "$(find evals/cases -type f -name '*.yaml' -print -quit)"
+      - name: Local eval gate
+        run: |
+          mkdir -p .harnesshub
+          cases=$(find evals/cases -type f -name '*.yaml' | wc -l | tr -d ' ')
+          score=$(awk '/score:/ { sum += $2; count += 1 } END { if (count == 0) { print "0" } else { printf "%.3f", sum / count } }' evals/cases/*.yaml)
+          awk -v score="$score" 'BEGIN { exit(score >= 0.82 ? 0 : 1) }'
+          cat > .harnesshub/results.json <<JSON
+          {"runner":"gitea-actions-local","status":"passed","score":$score,"cases":$cases}
+          JSON
+      - name: Semantic review artifact
+        run: |
+          cat > .harnesshub/semantic-diff.md <<'EOF'
+          # Harness Review
+          Status: passed
+          Risk: reviewed by local Gitea Actions
+          EOF

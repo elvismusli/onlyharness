@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      HARNESS_API_HOST: 0.0.0.0
+      HARNESS_API_PORT: 8787
+      HARNESS_WORKSPACE_ROOT: /app
+      HARNESS_CORS_ORIGINS: https://onlyharness.com,https://www.onlyharness.com
+      GITEA_BASE_URL: ${GITEA_BASE_URL:-https://git.onlyharness.com}
+      SUPABASE_URL: ${VITE_SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+      HARNESS_WEBHOOK_TOKEN: ${HARNESS_WEBHOOK_TOKEN:?HARNESS_WEBHOOK_TOKEN is required}
+    volumes:
+      - onlyharness_data:/app/data
+    expose:
+      - "8787"
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+      args:
+        VITE_HARNESS_API_URL: ${VITE_HARNESS_API_URL:-https://onlyharness.com/api}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
+  onlyharness_data:

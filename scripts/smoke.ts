@@ -1,0 +1,69 @@
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+const root = path.resolve(import.meta.dirname, "..");
+const seedRoot = path.join(root, "seed-harnesses");
+
+function run(command: string, args: string[], options: { cwd?: string; allowFailure?: boolean } = {}) {
+  const result = spawnSync(command, args, { cwd: options.cwd ?? root, encoding: "utf8" });
+  if (!options.allowFailure && result.status !== 0) {
+    throw new Error(`Command failed: ${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
+  }
+  return result;
+}
+
+const seeds = readdirSync(seedRoot).filter((name) => existsSync(path.join(seedRoot, name, "harness.yaml")));
+if (seeds.length < 8) throw new Error(`Expected 8 seed harnesses, found ${seeds.length}`);
+
+for (const seed of seeds) {
+  const dir = path.join(seedRoot, seed);
+  run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "validate", dir, "--strict"]);
+  run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "eval", dir]);
+  run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "gate", "--dir", dir]);
+}
+
+const base = path.join(seedRoot, "deep-market-researcher");
+const head = path.join(seedRoot, "support-triage-agent");
+run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "diff", "--base-dir", base, "--head-dir", head, "--format", "json", "--out", path.join(root, ".harnesshub-smoke-diff.json")], { allowFailure: true });
+if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error("Diff output missing");
+
+const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
+  cwd: root,
+  stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, HARNESS_API_PORT: "8799", HARNESS_API_HOST: "127.0.0.1", HARNESS_WORKSPACE_ROOT: root }
+});
+
+try {
+  await waitForApi("http://127.0.0.1:8799/healthz");
+  const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as { items: unknown[] };
+  if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
+  const detail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { manifest?: { name: string } };
+  if (detail.manifest?.name !== "deep-market-researcher") throw new Error("Detail endpoint returned wrong manifest");
+  const imported = await fetch("http://127.0.0.1:8799/imports/markdown-to-harness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "smoke-imported-harness", markdown: "# Smoke Imported Harness\n\nResearch, synthesize, critique and produce a memo." })
+  }).then((response) => response.json()) as { item?: { name: string } };
+  if (imported.item?.name !== "smoke-imported-harness") throw new Error(`Import endpoint failed: ${JSON.stringify(imported)}`);
+} finally {
+  api.kill("SIGTERM");
+}
+
+const importedPath = path.join(root, "data/imports/smoke-imported-harness/harness.yaml");
+if (!existsSync(importedPath)) throw new Error("Imported harness manifest missing");
+JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, CLI validate/eval/gate/diff`);
+
+async function waitForApi(url: string) {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+  throw new Error(`API did not become ready: ${url}`);
+}

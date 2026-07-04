@@ -1,0 +1,101 @@
+schemaVersion: harness.v0.1
+name: agent-harness-refactorer
+title: Agent Harness Refactorer
+summary: Turns messy prompts or markdown workflows into staged harness repos
+  with explicit unresolved fields.
+version: 0.1.0
+license: MIT
+maintainers:
+  - name: Harness.Hub Local
+tags:
+  - import
+  - refactor
+  - harness
+runtime:
+  primary: openai-agents-sdk
+  adapters:
+    - langgraph
+entrypoint:
+  command: npm run harness:run
+  cwd: .
+inputs:
+  - id: request
+    type: markdown
+    required: true
+outputs:
+  - id: final_result
+    type: markdown
+agents:
+  - id: source_reader
+    role: read_source_workflow
+    title: Source Reader
+    prompt: agents/source_reader.md
+    tools: []
+    handoffs: []
+  - id: schema_mapper
+    role: map_to_manifest
+    title: Schema Mapper
+    prompt: agents/schema_mapper.md
+    tools: []
+    handoffs: []
+  - id: eval_designer
+    role: design_eval_cases
+    title: Eval Designer
+    prompt: agents/eval_designer.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: source_reader
+  stages:
+    - id: read
+      agent: source_reader
+    - id: map
+      agent: schema_mapper
+    - id: evals
+      agent: eval_designer
+tools:
+  mcp_servers:
+    - id: web_search
+      required: false
+      package: "@modelcontextprotocol/server-web-search"
+      pinned: true
+      allowlist:
+        - api.openai.com
+  function_tools: []
+  external_apis: []
+permissions:
+  network: allowlist
+  network_allowlist:
+    - api.openai.com
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: runtime_injected
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required:
+    - external_send
+    - money_movement
+secrets:
+  required:
+    - OPENAI_API_KEY
+  optional: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o
+    .harnesshub/results.json -o .harnesshub/report.html -o
+    .harnesshub/results.junit.xml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks:
+    - schema_valid
+    - eval_passed
+    - no_high_risk_permission_delta
+examples:
+  - title: Smoke example
+    input: examples/input.md
+    output: examples/expected.md

@@ -1,0 +1,73 @@
+schemaVersion: harness.v0.1
+name: harness-template
+title: Harness Template
+summary: Template repository for creating eval-gated agent harnesses in Harness.Hub.
+version: 0.1.0
+license: MIT
+maintainers:
+  - name: Harness.Hub Local
+tags:
+  - template
+runtime:
+  primary: openai-agents-sdk
+  adapters: []
+entrypoint:
+  command: npm run harness:run
+  cwd: .
+inputs:
+  - id: request
+    type: markdown
+    required: true
+outputs:
+  - id: final_result
+    type: markdown
+agents:
+  - id: operator
+    role: run_workflow
+    title: Operator
+    prompt: agents/operator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: operator
+  stages:
+    - id: run
+      agent: operator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: allowlist
+  network_allowlist:
+    - api.openai.com
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: runtime_injected
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required:
+    - external_send
+    - money_movement
+secrets:
+  required:
+    - OPENAI_API_KEY
+  optional: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o .harnesshub/results.json -o .harnesshub/report.html -o .harnesshub/results.junit.xml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks:
+    - schema_valid
+    - eval_passed
+    - no_high_risk_permission_delta
+examples:
+  - title: Template smoke
+    input: examples/input.md
+    output: examples/expected.md

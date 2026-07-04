@@ -1,0 +1,5 @@
+description: GTM Research Sprint smoke eval
+prompts:
+  - agents/angle_writer.md
+providers:
+  - echo

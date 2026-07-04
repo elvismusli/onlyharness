@@ -1,0 +1,5 @@
+description: Product Strategy Critic smoke eval
+prompts:
+  - agents/recommender.md
+providers:
+  - echo

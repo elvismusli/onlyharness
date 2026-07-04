@@ -1,0 +1,6 @@
+services:
+  web:
+    ports: !override
+      - "127.0.0.1:8088:80"
+    volumes:
+      - ./Caddyfile.local-smoke:/etc/caddy/Caddyfile:ro

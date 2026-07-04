@@ -1,0 +1,132 @@
+# OnlyHarness
+
+[onlyharness.com](https://onlyharness.com) is a friendly hub for forkable AI-agent harnesses: browse workflows, try examples, read the thread, fork, star, and publish with a CLI-ready trust layer.
+
+The public product is **OnlyHarness**. Internal package names still use `@harnesshub/*` while the MVP keeps compatibility with the original Harness.Hub prototype.
+
+## What is a harness?
+
+A harness is a versioned agent workflow package:
+
+- `harness.yaml` manifest with runtime, tools, permissions, quality gates, and risk profile.
+- Prompt, examples, eval cases, and expected outputs.
+- CLI commands for validate, eval, gate, diff, import, and PR annotation.
+- Social layer: stars, forks, threads, runs, heat, tags, outcomes, and maintainer review.
+
+## Live MVP
+
+- App: [https://onlyharness.com](https://onlyharness.com)
+- API health: [https://onlyharness.com/api/healthz](https://onlyharness.com/api/healthz)
+- Registry API: [https://onlyharness.com/api/registry](https://onlyharness.com/api/registry)
+
+Supabase auth is enabled for signup/login, stars/forks, thread posts, and authenticated publish.
+
+## Features
+
+- HuggingFace-style discovery for agent harnesses.
+- Outcome filters, global search, leaderboard, Harness Heat, stars, forks, runs, and threads.
+- Harness detail page with Overview, Try, Thread, Evals, and Files tabs.
+- Authenticated publish flow that imports markdown into a harness scaffold.
+- CLI package with `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh import-md`, and `hh annotate-pr`.
+- Semantic PR review and quality gate sidecar API.
+- Docker production stack with system Caddy deployment mode for shared VPS hosts.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Web["React/Vite UI"] --> API["Fastify Harness API"]
+  API --> Seeds["Seed harnesses"]
+  API --> Imports["Imported harnesses"]
+  Web --> Supabase["Supabase Auth + RLS tables"]
+  API --> SupabaseAuth["Supabase token verification"]
+  Caddy["System Caddy / onlyharness.com"] --> Web
+  CLI["hh CLI"] --> Schema["Schema, eval, gate, diff"]
+```
+
+## Run locally
+
+```bash
+npm install
+npm run seed
+npm run check
+npm run smoke
+npm run dev
+```
+
+Open:
+
+- UI: `http://127.0.0.1:5177`
+- API: `http://127.0.0.1:8787/healthz`
+- Local Gitea forge: `http://127.0.0.1:3000`
+
+Create local env from the examples:
+
+```bash
+cp .env.example .env.local
+cp .env.example apps/registry-web/.env.local
+```
+
+## Production deploy
+
+The current VPS uses a shared system Caddy on ports `80/443`. OnlyHarness runs behind it on `127.0.0.1:8097`.
+
+```bash
+SSH_TARGET=hetzner-root DEPLOY_MODE=system-caddy scripts/deploy-production.sh
+```
+
+Deployment artifacts:
+
+- `infra/production-compose.yml`
+- `infra/production-system-caddy.override.yml`
+- `infra/Caddyfile.local-smoke`
+- `scripts/deploy-production.sh`
+- `scripts/smoke-production-compose.sh`
+- `scripts/smoke-production-auth.ts`
+
+Production smoke:
+
+```bash
+scripts/smoke-production-compose.sh
+
+set -a
+. infra/production.env
+set +a
+SMOKE_API_URL=https://onlyharness.com/api npm run smoke:prod-auth
+```
+
+## Verification
+
+Current verification gates:
+
+```bash
+npm run build
+npm run check
+npm run smoke
+scripts/smoke-production-compose.sh
+```
+
+The production auth smoke creates a QA Supabase user, obtains an access token, and publishes a harness through the public API.
+
+## Repository Layout
+
+```text
+apps/
+  harness-api/       Fastify API and registry endpoints
+  registry-web/      React/Vite OnlyHarness UI
+packages/
+  cli/               hh CLI
+  schema/            harness.yaml schema, validation, risk checks
+  semantic-diff/     harness semantic diff and PR review markdown
+seed-harnesses/      curated MVP harness examples
+supabase/            auth/social/thread schema migrations
+infra/               Docker, Caddy, Gitea, and production compose
+scripts/             seed, smoke, deploy, Gitea proof scripts
+```
+
+## Security Notes
+
+- Real `.env.local`, app env, and `infra/production.env` files are gitignored.
+- Publish requires a valid Supabase bearer token in production.
+- Internal webhook/eval endpoints require `HARNESS_WEBHOOK_TOKEN` when configured.
+- Supabase tables use RLS policies for profiles, user actions, and thread posts.

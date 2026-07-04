@@ -1,0 +1,65 @@
+services:
+  gitea:
+    image: docker.gitea.com/gitea:1.26.4
+    environment:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD: gitea
+      GITEA__actions__ENABLED: "true"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__security__SECRET_KEY: harnesshub-local-secret-key-change-before-prod
+      GITEA__security__INTERNAL_TOKEN: harnesshub-local-internal-token-change-before-prod
+      GITEA__oauth2__JWT_SECRET: harnesshub-local-jwt-secret-change-before-prod
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__server__ROOT_URL: http://localhost:3000/
+    volumes:
+      - gitea_data:/data
+      - ./gitea/custom:/data/gitea/custom
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: gitea
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD: gitea
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  harness-api:
+    build:
+      context: ..
+      dockerfile: ./infra/harness-api.Dockerfile
+    environment:
+      HARNESS_API_PORT: 8787
+      HARNESS_API_HOST: 0.0.0.0
+      HARNESS_WORKSPACE_ROOT: /app
+      GITEA_BASE_URL: http://gitea:3000
+    ports:
+      - "8787:8787"
+    depends_on:
+      - gitea
+
+  act-runner:
+    image: gitea/act_runner:latest
+    environment:
+      CONFIG_FILE: /data/config.yaml
+      GITEA_INSTANCE_URL: http://gitea:3000
+      GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN:-local-dev-token}
+    volumes:
+      - act_runner_data:/data
+      - ./act-runner/config.yaml:/data/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - gitea
+
+volumes:
+  gitea_data:
+  pg_data:
+  act_runner_data:
