@@ -14,12 +14,155 @@ import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff
 
 type OutputFormat = "json" | "markdown" | "text";
 
+const registryUrl = (process.env.HH_REGISTRY_URL ?? "https://onlyharness.com/api").replace(/\/$/, "");
+
+type SearchItem = {
+  owner: string;
+  name: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  stars: number;
+  forks: number;
+  threads: number;
+  evalScore: number;
+  heat: number;
+};
+
+type ArchiveFile = { path: string; truncated: boolean; content: string };
+
 const program = new Command();
 
 program
   .name("hh")
-  .description("Harness.Hub local MVP CLI")
+  .description("OnlyHarness CLI — find, pull, run, eval and publish agent harnesses (onlyharness.com)")
   .version("0.1.0");
+
+program.command("search")
+  .description("search the OnlyHarness registry")
+  .argument("<query...>", "search terms")
+  .option("--json", "print JSON", false)
+  .option("--limit <n>", "max results", "10")
+  .action(async (queryParts: string[], options) => {
+    const query = queryParts.join(" ");
+    const data = await fetchJson(`${registryUrl}/registry?q=${encodeURIComponent(query)}&sort=trending`) as { items?: SearchItem[] };
+    const items = (data.items ?? []).slice(0, Number(options.limit) || 10);
+    if (options.json) return writeStdout(items);
+    if (!items.length) return writeStdout("No harnesses found on this frontier. Try another word, partner.\n");
+    writeStdout(items.map((item) => [
+      `${item.owner}/${item.name} — ${item.title}`,
+      `  ${item.summary}`,
+      `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · heat ${item.heat} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
+      `  hh pull ${item.owner}/${item.name}`
+    ].join("\n")).join("\n\n") + "\n");
+  });
+
+program.command("pull")
+  .description("download a harness from the registry into a local directory")
+  .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
+  .option("--out <dir>", "output directory (default ./<name>)")
+  .option("--force", "write into a non-empty directory", false)
+  .action(async (harness: string, options) => {
+    const [owner, name] = harness.split("/");
+    if (!owner || !name) throw new Error("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher");
+    const data = await fetchJson(`${registryUrl}/repos/${owner}/${name}/archive`) as { files?: ArchiveFile[] };
+    const out = path.resolve(options.out ?? name);
+    if (existsSync(out) && readdirSync(out).length > 0 && !options.force) {
+      throw new Error(`${out} exists and is not empty; pass --force to write anyway`);
+    }
+    let written = 0;
+    let skipped = 0;
+    for (const file of data.files ?? []) {
+      const target = path.resolve(out, file.path);
+      if (target !== out && !target.startsWith(out + path.sep)) continue;
+      if (file.truncated) {
+        skipped += 1;
+        continue;
+      }
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, file.content);
+      written += 1;
+    }
+    if (!written) throw new Error(`No files received for ${owner}/${name}`);
+    writeStdout([
+      `Pulled ${owner}/${name} -> ${out} (${written} files${skipped ? `, ${skipped} skipped as too large` : ""})`,
+      `Next: hh run ${out} · hh eval ${out} && hh gate --dir ${out}`
+    ].join("\n") + "\n");
+  });
+
+program.command("run")
+  .description("run the bundled example locally (sample mode: no LLM calls, no credentials)")
+  .argument("[dir]", "harness directory", ".")
+  .option("--input <file>", "input file", "examples/input.md")
+  .action((dir, options) => {
+    const root = path.resolve(dir);
+    const validation = validateHarnessDir(root);
+    if (!validation.manifest) {
+      writeStdout("Not a harness directory: harness.yaml is missing or invalid. Try hh pull first.\n");
+      process.exit(1);
+    }
+    const inputPath = path.resolve(root, options.input);
+    const expectedPath = path.join(root, "examples/expected.md");
+    const result = runLocalEval(root);
+    writeStdout([
+      `Running ${validation.manifest.title} — local sample mode (no LLM calls, no credentials)`,
+      `Input: ${existsSync(inputPath) ? inputPath : "none bundled"}`,
+      `Expected output: ${existsSync(expectedPath) ? expectedPath : "none bundled"}`,
+      `Eval: ${result.status} · score ${result.score} (gate needs ≥ ${validation.manifest.quality_gates.min_score})`,
+      `Real runtime entrypoint: ${validation.manifest.entrypoint?.command ?? "not declared"}`
+    ].join("\n") + "\n");
+    process.exit(result.status === "passed" ? 0 : 1);
+  });
+
+program.command("publish")
+  .description("publish a markdown workflow to the registry (needs an OnlyHarness token)")
+  .argument("<file>", "source markdown file")
+  .option("--name <name>", "harness slug")
+  .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .action(async (file: string, options) => {
+    const token = options.token ?? process.env.HH_TOKEN;
+    const markdown = readFileSync(path.resolve(file), "utf8");
+    const name = options.name ?? slugify(path.basename(file, path.extname(file)));
+    const response = await fetch(`${registryUrl}/imports/markdown-to-harness`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ name, markdown })
+    });
+    const body = await response.json() as { item?: { title?: string }; error?: string };
+    if (!response.ok) {
+      const hint = response.status === 401
+        ? "\nLog on at onlyharness.com, then pass your access token via --token or the HH_TOKEN env variable."
+        : "";
+      throw new Error(`Publish failed (${response.status}): ${body.error ?? JSON.stringify(body)}${hint}`);
+    }
+    writeStdout(`Published ${body.item?.title ?? name} — live on https://onlyharness.com\n`);
+  });
+
+program.command("doctor")
+  .description("check registry connectivity and local setup")
+  .action(async () => {
+    let registryOk = false;
+    let indexed: number | string = "-";
+    try {
+      const health = await fetchJson(`${registryUrl}/healthz`) as { ok?: boolean };
+      registryOk = Boolean(health.ok);
+      const registry = await fetchJson(`${registryUrl}/registry`) as { items?: unknown[] };
+      indexed = (registry.items ?? []).length;
+    } catch {
+      registryOk = false;
+    }
+    writeStdout([
+      "OnlyHarness doctor",
+      `  registry .......... ${registryUrl} ${registryOk ? "[OK]" : "[UNREACHABLE]"}`,
+      `  harnesses indexed . ${indexed}`,
+      `  node .............. ${process.version}`,
+      `  token ............. ${process.env.HH_TOKEN ? "HH_TOKEN set" : "not set (only needed for hh publish)"}`
+    ].join("\n") + "\n");
+    process.exit(registryOk ? 0 : 1);
+  });
 
 program.command("validate")
   .argument("[dir]", "harness directory", ".")
@@ -170,9 +313,15 @@ program.command("pack")
   });
 
 program.parseAsync(process.argv).catch((error) => {
-  console.error(error);
+  console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });
+
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Registry request failed: ${url} -> ${response.status}`);
+  return response.json();
+}
 
 function validationText(result: ReturnType<typeof validateHarnessDir>): string {
   return [

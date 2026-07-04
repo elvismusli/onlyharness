@@ -63,8 +63,11 @@ app.get("/registry", async (request) => {
   const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; outcome?: string; sort?: string };
   let items = scanRegistry();
   if (query.q) {
-    const q = query.q.toLowerCase();
-    items = items.filter((item) => `${item.name} ${item.title} ${item.summary} ${item.outcome} ${item.tags.join(" ")}`.toLowerCase().includes(q));
+    const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
+    items = items.filter((item) => {
+      const haystack = `${item.name} ${item.title} ${item.summary} ${item.outcome} ${item.tags.join(" ")}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
   }
   if (query.risk && query.risk !== "all") items = items.filter((item) => item.riskTier === query.risk);
   if (query.eval && query.eval !== "all") items = items.filter((item) => item.evalStatus === query.eval);
@@ -101,6 +104,23 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     readme: readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root)
   };
+});
+
+const MAX_ARCHIVE_FILE_BYTES = 256 * 1024;
+
+app.get("/repos/:owner/:repo/archive", async (request, reply) => {
+  const { owner, repo } = request.params as { owner: string; repo: string };
+  const root = resolveHarnessPath(owner, repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const files = listHarnessFiles(root).map((file) => {
+    const full = path.join(root, file);
+    const size = statSafe(full) ? statSync(full).size : 0;
+    if (size > MAX_ARCHIVE_FILE_BYTES) {
+      return { path: file, truncated: true, content: "" };
+    }
+    return { path: file, truncated: false, content: readMaybe(full) };
+  });
+  return { owner, repo, files };
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {

@@ -28,7 +28,8 @@ Supabase auth is enabled for signup/login, stars/forks, thread posts, and authen
 - Harness detail opens as its own window with Overview, Try, Thread, Evals, and Files tabs plus a plain-tone trust panel.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
-- CLI package with `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh import-md`, and `hh annotate-pr`.
+- CLI package with `hh search`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
+- Agent-friendly discovery: [`/llms.txt`](https://onlyharness.com/llms.txt) documents the HTTP API (`/api/registry?q=`, `/api/repos/:owner/:name/archive`) so an AI agent can find and pull a harness without a browser.
 - Semantic PR review and quality gate sidecar API.
 - Docker production stack with system Caddy deployment mode for shared VPS hosts.
 

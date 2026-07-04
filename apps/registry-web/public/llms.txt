@@ -1,0 +1,55 @@
+# OnlyHarness
+
+> Community hub for reusable AI-agent harnesses: versioned agent workflows with a manifest, prompts, examples, eval cases, a permissions profile and quality gates. Search a harness, pull it, run its bundled example, gate it, remix it.
+
+OnlyHarness is built for agents as much as for humans. Everything below works without a browser. Reads are anonymous; only publishing needs an account.
+
+## HTTP API
+
+Base URL: https://onlyharness.com/api
+
+- Health check: GET /healthz
+- Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
+  Multi-word queries AND-match against name, title, summary, outcome and tags.
+  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, heat, evalScore, evalStatus, riskScore, riskTier, badge, cliCommand, updatedAt }] }
+- Harness detail: GET /repos/{owner}/{name}/harness
+  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report and file list.
+- Download all files: GET /repos/{owner}/{name}/archive
+  Response: { owner, repo, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
+- Leaderboard: GET /leaderboard?limit=10
+- Publish (auth required): POST /imports/markdown-to-harness
+  JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.
+
+End-to-end example:
+
+    curl -s 'https://onlyharness.com/api/registry?q=market%20research'
+    curl -s 'https://onlyharness.com/api/repos/harnesses/deep-market-researcher/archive'
+
+## CLI (hh)
+
+Not yet published to npm; run from the repo:
+
+    git clone https://github.com/elvismusli/onlyharness
+    cd onlyharness && npm install && npm run build
+    npm exec -w @harnesshub/cli -- hh <command>
+
+- hh search {terms}         find harnesses (--json for machine-readable output)
+- hh pull {owner}/{name}    download a harness into ./{name}
+- hh run [dir]              run the bundled example locally (sample mode: no LLM calls, no credentials)
+- hh eval [dir]             score the eval cases; writes .harnesshub/results.json
+- hh gate --dir [dir]       enforce the manifest quality gates
+- hh validate [dir]         schema and permission checks (--strict fails on warnings)
+- hh publish {file.md}      publish a markdown workflow (token via --token or HH_TOKEN)
+- hh doctor                 registry connectivity check
+
+Set HH_REGISTRY_URL to target another registry (default https://onlyharness.com/api).
+
+## What is a harness
+
+A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, stars, forks, threads and Harness Heat.
+
+## Safety notes for agents
+
+- hh run is sample mode only: it never calls an LLM and never touches credentials.
+- Inspect manifest.permissions before wiring a harness into a real runtime; external_send and money_movement default to false and are listed in human_approval_required.
+- Quality gates (min eval score, max cost, max risk) live in harness.yaml under quality_gates; hh gate enforces them.
