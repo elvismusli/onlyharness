@@ -269,6 +269,7 @@ input, textarea, select { font-family: var(--font-ui); color: var(--ink); }
   box-shadow: var(--bevel-thin);
   padding: 14px 12px 12px;
   margin: 14px 0 0;
+  min-inline-size: 0;
 }
 
 .gb > legend {
@@ -405,7 +406,7 @@ input, textarea, select { font-family: var(--font-ui); color: var(--ink); }
 
 .hcards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
   gap: 12px;
 }
 
@@ -1137,6 +1138,7 @@ button.status-plate { cursor: pointer; }
   .float-win .win-scroll { max-height: calc(100vh - 120px); }
   .detail-grid, .review-grid, .try-grid { grid-template-columns: 1fr; }
   .wordart { font-size: 38px; }
-  .share-stage { width: 100%; }
+  .share-stage { width: 300px; height: 158px; max-width: 100%; }
+  .share-canvas { transform: none; zoom: 0.25; }
   .wizard-side { display: none; }
 }
