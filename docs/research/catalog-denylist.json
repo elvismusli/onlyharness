@@ -1,0 +1,16 @@
+{
+  "updated_at": "2026-07-06",
+  "policy": "Leaked prompt and system-prompt dump repositories are excluded from the OnlyHarness catalog and directory shelf. They must not be vendored, listed as installable harnesses, or counted as link-only discovery entries.",
+  "repos": [
+    {
+      "repo": "x1xhlol/system-prompts-and-models-of-ai-tools",
+      "url": "https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools",
+      "reason": "Leaked system-prompt dump"
+    },
+    {
+      "repo": "asgeirtj/system_prompts_leaks",
+      "url": "https://github.com/asgeirtj/system_prompts_leaks",
+      "reason": "Leaked system-prompt dump"
+    }
+  ]
+}

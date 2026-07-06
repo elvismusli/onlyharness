@@ -1,16 +1,16 @@
 schemaVersion: harness.v0.2
 name: verified-agent-catalog-2026-07
 title: Verified Agent Catalog July 2026
-summary: Link-only directory of 255 verified agent harnesses, skills, workflows and MCP resources.
+summary: Link-only directory of 253 verified agent harnesses, skills, workflows and MCP resources.
 version: 0.1.0
 license: UNSPECIFIED
 content:
   type: directory
   directory:
     url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
-    item_count: 255
+    item_count: 253
     category: catalog
-    notes: Verified by GitHub API on 2026-07-05; entries remain link-only until licensing is reviewed.
+    notes: Verified by GitHub API on 2026-07-05; leaked prompt dumps are excluded; entries remain link-only until licensing is reviewed.
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
   upstream_license: UNSPECIFIED

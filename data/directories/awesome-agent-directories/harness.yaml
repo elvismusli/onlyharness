@@ -8,9 +8,9 @@ content:
   type: directory
   directory:
     url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
-    item_count: 24
+    item_count: 22
     category: catalog
-    notes: Section 2 of the verified catalog; use as discovery only, not vendored content.
+    notes: Section 2 of the verified catalog after leaked-prompt exclusions; use as discovery only, not vendored content.
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
   upstream_license: UNSPECIFIED

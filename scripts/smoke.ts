@@ -80,7 +80,7 @@ try {
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
-  if (directoryItem?.contentType !== "directory" || directoryItem.directory?.itemCount !== 255 || !directoryItem.directory.url) {
+  if (directoryItem?.contentType !== "directory" || directoryItem.directory?.itemCount !== 253 || !directoryItem.directory.url) {
     throw new Error(`Directory shelf item missing from registry payload: ${JSON.stringify(directoryItem)}`);
   }
   const directoryArchive = await fetch("http://127.0.0.1:8799/repos/directories/verified-agent-catalog-2026-07/archive").then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; url?: string; files?: unknown[] } }));
