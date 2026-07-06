@@ -86,6 +86,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
 - Team `hh setup @org`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org bundles/publishing/sync are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
+- Verified-install confirms come only from privacy-safe `events` rows with `kind=install`, `client=claude-code`, and a non-anonymous subject.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
 - Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.

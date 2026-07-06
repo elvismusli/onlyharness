@@ -35,6 +35,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
     .map(([key]) => key.replaceAll("_", " "));
   const targets = compatibilityTargets(item, detail);
   const version = manifest?.version ?? "current";
+  const installConfirms = detail?.social?.installConfirms ?? item.installConfirms ?? 0;
   const installLoop = [
     `npx onlyharness pull ${item.owner}/${item.name}`,
     `npx onlyharness run ${item.name} --json`,
@@ -51,6 +52,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
         <div className="tagrow">
           {item.tags.map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
           {(detail?.standard ?? item.standard) === "conformant" && <span className="tag98 safe">✓ OnlyHarness Standard</span>}
+          {installConfirms > 0 && <span className="tag98 safe">Claude Code: {installConfirms} confirms</span>}
           {item.badge.includes("Wild") && <span className="tag98 warn">🏆 {item.badge}</span>}
         </div>
       </div>
@@ -116,6 +118,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                   <h4>2. Works in my setup?</h4>
                   <InfoLine label="Runtime" value={manifest?.runtime.primary ?? item.runtime} />
                   <InfoLine label="Adapters" value={manifest?.runtime.adapters?.length ? manifest.runtime.adapters.join(", ") : "none declared"} />
+                  <InfoLine label="Claude Code confirms" value={installConfirms ? `${installConfirms} real install${installConfirms === 1 ? "" : "s"}` : "no confirms yet"} />
                   <InfoLine label="Context" value={fmtContextCost(detail?.contextCost ?? item.contextCost)} />
                   <div className="tagrow" style={{ marginTop: 6 }}>
                     {targets.map((target) => <span key={target.name} className={`tag98 ${target.status === "planned" ? "warn" : "safe"}`}>{target.name}: {target.status}</span>)}

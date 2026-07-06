@@ -53,6 +53,7 @@ export type RegistryItem = {
   stars: number;
   threads: number;
   runs: number;
+  installConfirms: number;
   heat: number;
   heatDelta: number;
   freshness: string;
@@ -151,6 +152,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     stars: social.stars,
     threads: social.threads,
     runs: social.runs,
+    installConfirms: social.installConfirms,
     heat: social.heat,
     heatDelta: social.heatDelta,
     freshness: social.freshness,
@@ -175,6 +177,7 @@ export function socialFromItem(item: RegistryItem) {
     forks: item.forks,
     threads: item.threads,
     runs: item.runs,
+    installConfirms: item.installConfirms,
     heat: item.heat,
     heatDelta: item.heatDelta,
     freshness: item.freshness,

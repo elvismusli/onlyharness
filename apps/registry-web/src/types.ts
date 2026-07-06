@@ -24,6 +24,7 @@ export type RegistryItem = {
   stars: number;
   threads: number;
   runs: number;
+  installConfirms: number;
   heat: number;
   heatDelta: number;
   freshness: string;
@@ -68,7 +69,7 @@ export type HarnessDetail = {
   repo: string;
   root: string;
   forgeUrl: string;
-  social?: Pick<RegistryItem, "stars" | "forks" | "threads" | "runs" | "heat" | "heatDelta" | "freshness" | "badge" | "cliCommand">;
+  social?: Pick<RegistryItem, "stars" | "forks" | "threads" | "runs" | "installConfirms" | "heat" | "heatDelta" | "freshness" | "badge" | "cliCommand">;
   thread?: ThreadItem[];
   example?: { input: string; expected: string };
   files?: string[];

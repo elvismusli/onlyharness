@@ -228,6 +228,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         <div className="tagrow">
           {item.tags.slice(0, 3).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
           {item.standard === "conformant" && <span className="tag98 safe">✓ Standard</span>}
+          {item.installConfirms > 0 && <span className="tag98 safe">Claude Code: {item.installConfirms}</span>}
         </div>
         <div className="compat-chiprow">
           <span className="tag98 safe">CLI</span>

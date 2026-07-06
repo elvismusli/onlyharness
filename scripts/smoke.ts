@@ -67,14 +67,14 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+    items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
   if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/entitlements/check"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   for (const item of registry.items) {
-    if (item.stars < 0 || item.forks < 0 || item.threads < 0 || item.runs < 0) {
+    if (item.stars < 0 || item.forks < 0 || item.threads < 0 || item.runs < 0 || item.installConfirms < 0) {
       throw new Error(`Registry returned a negative social counter: ${JSON.stringify(item)}`);
     }
     if (item.stars >= 380 || item.forks >= 42 || item.runs >= 720) {
@@ -184,6 +184,19 @@ try {
     body: JSON.stringify({ kind: "copy", owner: "harnesses", repo: "deep-market-researcher", target: "cli", client: "smoke", prompt: "must-not-store" })
   });
   if (eventResponse.status !== 202) throw new Error(`Events endpoint failed: ${eventResponse.status}`);
+  const confirmEvent = await fetch("http://127.0.0.1:8799/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-installer-token" },
+    body: JSON.stringify({ kind: "install", owner: "harnesses", repo: "deep-market-researcher", target: "plugin", client: "claude-code" })
+  });
+  if (confirmEvent.status !== 202) throw new Error(`Claude Code confirm event failed: ${confirmEvent.status}`);
+  const confirmedRegistry = await fetch("http://127.0.0.1:8799/registry?q=deep-market-researcher").then((response) => response.json()) as {
+    items?: Array<{ name?: string; installConfirms?: number; badge?: string }>;
+  };
+  const confirmedItem = confirmedRegistry.items?.find((item) => item.name === "deep-market-researcher");
+  if (confirmedItem?.installConfirms !== 1 || !confirmedItem.badge?.includes("works in Claude Code: 1 confirms")) {
+    throw new Error(`Claude Code install confirm did not reach registry badge: ${JSON.stringify(confirmedItem)}`);
+  }
   const imported = await fetch("http://127.0.0.1:8799/imports/markdown-to-harness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -320,7 +333,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check, Claude Code install confirms, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

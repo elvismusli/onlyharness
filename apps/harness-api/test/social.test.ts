@@ -13,13 +13,14 @@ test("socialFromCounters returns honest zeros when no row exists", () => {
   assert.equal(social.forks, 0);
   assert.equal(social.threads, 0);
   assert.equal(social.runs, 0);
+  assert.equal(social.installConfirms, 0);
   assert.equal(social.heatDelta, 0);
 });
 
 test("heat grows from real signals and has no fake floor", () => {
   const now = new Date().toISOString();
-  const cold = heatFor({ stars: 0, forks: 0, threads: 0, runs: 0 }, 0, "LOW", now);
-  const warm = heatFor({ stars: 50, forks: 10, threads: 5, runs: 400 }, 0.9, "LOW", now);
+  const cold = heatFor({ stars: 0, forks: 0, threads: 0, runs: 0, installConfirms: 0 }, 0, "LOW", now);
+  const warm = heatFor({ stars: 50, forks: 10, threads: 5, runs: 400, installConfirms: 2 }, 0.9, "LOW", now);
 
   assert.equal(cold, 0);
   assert.ok(warm > cold);
@@ -27,4 +28,8 @@ test("heat grows from real signals and has no fake floor", () => {
 
 test("badge is new for a harness with no real signals", () => {
   assert.equal(badgeFor("LOW", 0.9, 4.8, 0), "new");
+});
+
+test("badge reports Claude Code install confirmations from real telemetry", () => {
+  assert.equal(badgeFor("LOW", 0.9, 5.1, 2, 2), "works in Claude Code: 2 confirms");
 });

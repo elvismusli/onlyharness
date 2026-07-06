@@ -17,7 +17,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, outcome and tags.
-  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
+  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, installConfirms, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Harness detail: GET /repos/{owner}/{name}/harness
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
@@ -41,6 +41,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   First version clones or scans a repo, imports markdown skills/runbooks/prompts through the org publish endpoint, and prints a report. It does not install webhooks.
 - Events: POST /events
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
+  `kind=install&client=claude-code` with an authenticated subject contributes to the "works in Claude Code: N confirms" badge.
 - Leaderboard: GET /leaderboard?limit=10
 - Publish (auth required): POST /imports/markdown-to-harness
   JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.
