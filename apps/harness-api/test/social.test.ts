@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, mergeThreadPostRows, mergeUserActionRows, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
+import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, mergeThreadPostRows, mergeUserActionRows, mergeVerificationRunRows, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
 
 test("socialFromCounters returns honest zeros when no row exists", () => {
   const social = socialFromCounters(undefined, {
@@ -64,6 +64,23 @@ test("raw Supabase thread rows replace stale aggregate threads without double co
   assert.deepEqual(counters.get("openai/codex"), { stars: 2, forks: 0, threads: 2, runs: 0, installConfirms: 0 });
   assert.equal(counters.get("stale/empty")?.threads, 0);
   assert.deepEqual(counters.get("new/repo"), { stars: 0, forks: 0, threads: 1, runs: 0, installConfirms: 0 });
+});
+
+test("passed gate events count as real runs without counting sample or eval previews", () => {
+  const counters = new Map([
+    ["openai/codex", { stars: 0, forks: 0, threads: 0, runs: 9, installConfirms: 0 }]
+  ]);
+
+  mergeVerificationRunRows(counters, [
+    { owner: "openai", repo: "codex", kind: "eval", target: "passed", id: 1 },
+    { owner: "openai", repo: "codex", kind: "gate", target: "failed", id: 2 },
+    { owner: "openai", repo: "codex", kind: "gate", target: "passed", id: 3 },
+    { owner: "openai", repo: "codex", kind: "gate", target: "passed", id: 3 },
+    { owner: "new", repo: "repo", kind: "gate", target: "passed", id: 4 }
+  ]);
+
+  assert.deepEqual(counters.get("openai/codex"), { stars: 0, forks: 0, threads: 0, runs: 1, installConfirms: 0 });
+  assert.deepEqual(counters.get("new/repo"), { stars: 0, forks: 0, threads: 0, runs: 1, installConfirms: 0 });
 });
 
 test("badge is new for a harness with no real signals", () => {

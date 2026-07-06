@@ -834,6 +834,13 @@ try {
     if (tamperedReceiptResponse.status !== 400) throw new Error(`Tampered gate receipt should be rejected, got ${tamperedReceiptResponse.status}`);
     const verifiedDetail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { verification?: { lastVerifiedAt?: string } };
     if (!verifiedDetail.verification?.lastVerifiedAt) throw new Error(`Verification event did not reach detail payload: ${JSON.stringify(verifiedDetail.verification)}`);
+    const verifiedRegistry = await fetch("http://127.0.0.1:8799/registry?q=deep-market-researcher").then((response) => response.json()) as {
+      items?: Array<{ name?: string; runs?: number; signalCount?: number }>;
+    };
+    const verifiedRegistryItem = verifiedRegistry.items?.find((item) => item.name === "deep-market-researcher");
+    if (!verifiedRegistryItem || !verifiedRegistryItem.runs || verifiedRegistryItem.runs < 1 || (verifiedRegistryItem.signalCount ?? 0) < verifiedRegistryItem.runs) {
+      throw new Error(`Passed gate event did not reach registry runs: ${JSON.stringify(verifiedRegistryItem)}`);
+    }
     run("node", [cliBin, "doctor", "--harness", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "pin", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "outdated", pulled, "--json"], { env: cliEnv });

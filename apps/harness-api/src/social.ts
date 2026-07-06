@@ -23,10 +23,12 @@ export async function fetchCountersMap(): Promise<Map<string, Counters>> {
     await mergeSupabase(counters, mergeSupabaseAggregateCounters);
     await mergeSupabase(counters, mergeSupabaseUserActions);
     await mergeSupabase(counters, mergeSupabaseThreadPosts);
+    await mergeSupabase(counters, mergeSupabaseVerificationRuns);
     await mergeSupabase(counters, mergeSupabaseInstallConfirms);
   }
 
   mergeLocalInstallConfirms(counters);
+  mergeLocalVerificationRuns(counters);
   return counters;
 }
 
@@ -112,6 +114,28 @@ export function mergeThreadPostRows(counters: Map<string, Counters>, rows: Threa
   }
 }
 
+export function mergeVerificationRunRows(counters: Map<string, Counters>, rows: EventRunRow[], options: { reset?: boolean } = { reset: true }): void {
+  const reset = options.reset ?? true;
+  if (reset) {
+    for (const [key, current] of counters) counters.set(key, { ...current, runs: 0 });
+  }
+
+  const runsByHarness = new Map<string, Set<string>>();
+  rows.forEach((row, index) => {
+    if (row.kind !== "gate" || row.target !== "passed" || !row.owner || !row.repo) return;
+    const key = `${row.owner}/${row.repo}`;
+    const id = row.id ?? row.created_at ?? row.at ?? `${row.subject ?? "anonymous"}:${index}`;
+    const runs = runsByHarness.get(key) ?? new Set<string>();
+    runs.add(String(id));
+    runsByHarness.set(key, runs);
+  });
+
+  for (const [key, runs] of runsByHarness) {
+    const current = counters.get(key) ?? emptyCounters();
+    counters.set(key, { ...current, runs: (reset ? 0 : current.runs) + runs.size });
+  }
+}
+
 async function mergeSupabase(counters: Map<string, Counters>, merger: (counters: Map<string, Counters>) => Promise<void>): Promise<void> {
   try {
     await merger(counters);
@@ -169,6 +193,23 @@ async function mergeSupabaseThreadPosts(counters: Map<string, Counters>): Promis
   mergeThreadPostRows(counters, await response.json() as ThreadPostCounterRow[]);
 }
 
+async function mergeSupabaseVerificationRuns(counters: Map<string, Counters>): Promise<void> {
+  if (!supabaseUrl || !supabaseRestKey) return;
+  const params = new URLSearchParams({
+    select: "owner,repo,id,kind,target",
+    kind: "eq.gate",
+    target: "eq.passed",
+    owner: "not.is.null",
+    repo: "not.is.null",
+    limit: "10000"
+  });
+  const response = await fetch(`${supabaseUrl}/rest/v1/events?${params.toString()}`, {
+    headers: restHeaders()
+  });
+  if (!response.ok) return;
+  mergeVerificationRunRows(counters, await response.json() as EventRunRow[]);
+}
+
 async function mergeSupabaseInstallConfirms(counters: Map<string, Counters>): Promise<void> {
   if (!supabaseUrl || !supabaseRestKey) return;
   const params = new URLSearchParams({
@@ -199,6 +240,21 @@ function mergeLocalInstallConfirms(counters: Map<string, Counters>): void {
     }
   }
   mergeInstallConfirmRows(counters, rows);
+}
+
+function mergeLocalVerificationRuns(counters: Map<string, Counters>): void {
+  if (!existsSync(localEventsPath)) return;
+  const rows: EventRunRow[] = [];
+  for (const line of readFileSync(localEventsPath, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as EventRunRow;
+      if (row.kind === "gate" && row.target === "passed") rows.push(row);
+    } catch {
+      // Ignore corrupt local telemetry lines.
+    }
+  }
+  mergeVerificationRunRows(counters, rows, { reset: false });
 }
 
 function mergeInstallConfirmRows(counters: Map<string, Counters>, rows: EventConfirmRow[]): void {
@@ -252,4 +308,15 @@ export type ThreadPostCounterRow = {
   owner?: string | null;
   repo?: string | null;
   id?: string | null;
+};
+
+export type EventRunRow = {
+  owner?: string | null;
+  repo?: string | null;
+  id?: number | string | null;
+  kind?: string | null;
+  target?: string | null;
+  subject?: string | null;
+  created_at?: string | null;
+  at?: string | null;
 };
