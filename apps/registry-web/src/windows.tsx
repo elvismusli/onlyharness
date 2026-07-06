@@ -463,7 +463,7 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
         </button>
       ))}
       <div style={{ fontSize: 11, color: "#404040", marginTop: 6 }}>
-        Heat blends eval, risk, freshness, stars, fork/remix records, thread replies, verified run telemetry and Claude Code install confirms. Community signals are not safety guarantees.
+        Heat blends eval, risk, freshness, stars, fork/remix records, thread replies and Claude Code install confirms. Community signals are not safety guarantees.
       </div>
     </div>
   );

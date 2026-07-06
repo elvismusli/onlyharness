@@ -242,7 +242,7 @@ function App() {
     }
   }
 
-  function recordHarnessEvent(kind: "copy" | "install", item: RegistryItem, target: string) {
+  function recordHarnessEvent(kind: "view" | "copy", item: RegistryItem, target: string) {
     void fetch(`${apiUrl}/events`, {
       method: "POST",
       headers: {
@@ -395,14 +395,14 @@ function App() {
     const selected = item ?? topItem;
     if (selected?.contentType === "directory" && selected.directory?.url) {
       window.open(selected.directory.url, "_blank", "noopener,noreferrer");
-      recordHarnessEvent("copy", selected, "directory-open");
+      recordHarnessEvent("view", selected, "directory-open");
       flashMsg(`Opened directory: ${selected.title}`);
       return;
     }
     if (selected) {
       const key = keyFor(selected);
       setKnownItems((current) => (current[key] ? current : { ...current, [key]: selected }));
-      recordHarnessEvent("install", selected, "install-center");
+      recordHarnessEvent("view", selected, "install-center");
       openWin("install", key);
       return;
     }
