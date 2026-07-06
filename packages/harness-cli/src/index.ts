@@ -690,7 +690,7 @@ program.command("sync")
   });
 
 program.command("run")
-  .description("run the bundled example locally (sample mode: no LLM calls, no credentials)")
+  .description("preview the bundled example locally (sample mode: no LLM calls, no credentials, no gate claim)")
   .argument("[dir]", "harness directory", ".")
   .option("--input <file>", "input file", "examples/input.md")
   .option("--json", "print JSON", false)

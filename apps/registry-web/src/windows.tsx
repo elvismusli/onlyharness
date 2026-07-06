@@ -27,7 +27,7 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
         <div className="wizard-main">
           <p style={{ margin: 0, fontSize: 12.5 }}>
             Paste a rough markdown workflow. The wizard turns it into a harness repo:
-            manifest, agent prompt, example and an eval stub — ready to <b>run, eval and gate</b>.
+            manifest, agent prompt, example and an unverified eval scaffold — ready to <b>run, then verify with eval and gate</b>.
           </p>
           <div>
             <label htmlFor="wiz-name">Harness name</label>
@@ -46,7 +46,7 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
             <ul className="check-list">
               <li>harness.yaml with conservative permissions</li>
               <li>Agent prompt plus example input/output</li>
-              <li>Eval case ready for hh eval &amp;&amp; hh gate</li>
+              <li>Unverified eval case ready for hh eval &amp;&amp; hh gate</li>
               <li>A registry card on the Explore frontier</li>
             </ul>
           </div>
