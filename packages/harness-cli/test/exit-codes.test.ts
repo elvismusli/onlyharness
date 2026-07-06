@@ -20,6 +20,7 @@ let sawSetupBundleToken = false;
 let sawSetupArchiveToken = false;
 let sawOrgPublishToken = false;
 let sawOrgPullToken = false;
+let sawHarnessDirPublishToken = false;
 let orgPublishedNames: string[] = [];
 let verificationEvents: Array<{ kind?: string; owner?: string; repo?: string; version?: string; target?: string; client?: string; path?: string }> = [];
 
@@ -133,6 +134,42 @@ before(async () => {
         response.end(JSON.stringify({
           item: { owner: "@acme", name, title: titleizeTest(name) },
           snapshotVersion: "0.1.0"
+        }));
+      });
+      return;
+    }
+
+    if (request.url === "/imports/harness-dir" && request.method === "POST") {
+      if (request.headers.authorization !== "Bearer publish-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid publish token" }));
+        return;
+      }
+      sawHarnessDirPublishToken = true;
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { name?: string; files?: Array<{ path?: string; content?: string; truncated?: boolean }> };
+        const paths = (body.files ?? []).map((file) => file.path);
+        if (!paths.includes("harness.yaml") || !paths.includes(".harnesshub/results.json")) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "missing required publish files", paths }));
+          return;
+        }
+        if (paths.some((item) => !item || item.includes("..") || item === ".harnesshub/report.html")) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "unsafe publish files", paths }));
+          return;
+        }
+        const name = body.name ?? "verified-harness";
+        response.end(JSON.stringify({
+          item: { owner: "local", name, title: titleizeTest(name) },
+          snapshotVersion: "0.1.0",
+          verified: true,
+          gate: { score: 0.9, risk: 10, cost: 0.03, failures: [] }
         }));
       });
       return;
@@ -621,6 +658,53 @@ test("publish --org sends HH_ORG_TOKEN to the org import endpoint", async () => 
     const denied = await runCli(["publish", source, "--name", "team-workflow", "--org", "acme", "--org-token", "bad-token", "--json"], { HH_REGISTRY_URL: registryUrl });
     assert.equal(denied.status, 2);
     assert.doesNotMatch(denied.stderr, /bad-token/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publish sends a verified harness directory with eval results", async () => {
+  sawHarnessDirPublishToken = false;
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-dir-publish-"));
+  const source = path.join(root, "verified");
+  try {
+    await cp(seedHarness, source, { recursive: true });
+    await rm(path.join(source, ".harnesshub"), { recursive: true, force: true });
+
+    const evalResult = await runCli(["eval", source, "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(evalResult.status, 0, evalResult.stderr);
+    const result = await runCli(["publish", source, "--name", "verified-dir", "--token", "publish-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawHarnessDirPublishToken, true);
+    assert.doesNotMatch(result.stdout, /publish-token/);
+    const body = JSON.parse(result.stdout) as { owner?: string; name?: string; verified?: boolean; snapshotVersion?: string; gate?: { failures?: string[] } };
+    assert.equal(body.owner, "local");
+    assert.equal(body.name, "verified-dir");
+    assert.equal(body.verified, true);
+    assert.equal(body.snapshotVersion, "0.1.0");
+    assert.deepEqual(body.gate?.failures, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publish rejects a harness directory before upload when eval results are missing", async () => {
+  sawHarnessDirPublishToken = false;
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-dir-publish-missing-"));
+  const source = path.join(root, "missing-results");
+  try {
+    await cp(seedHarness, source, { recursive: true });
+    await rm(path.join(source, ".harnesshub"), { recursive: true, force: true });
+
+    const result = await runCli(["publish", source, "--name", "missing-results", "--token", "publish-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 3);
+    assert.equal(sawHarnessDirPublishToken, false);
+    assert.doesNotMatch(result.stderr, /publish-token/);
+    const body = JSON.parse(result.stderr) as { error?: string; next?: string };
+    assert.match(body.error ?? "", /eval\/gate must pass/);
+    assert.match(body.next ?? "", /hh eval/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

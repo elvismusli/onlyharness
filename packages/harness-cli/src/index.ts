@@ -20,6 +20,8 @@ import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff
 type OutputFormat = "json" | "markdown" | "text";
 
 const registryUrl = (process.env.HH_REGISTRY_URL ?? "https://onlyharness.com/api").replace(/\/$/, "");
+const MAX_PUBLISH_FILES = 120;
+const MAX_PUBLISH_FILE_BYTES = 256 * 1024;
 
 type SearchItem = {
   owner: string;
@@ -248,6 +250,25 @@ type OrgImportResult = {
   name: string;
   owner: string;
   snapshotVersion?: string;
+  verified?: boolean;
+  gate?: PublishGateResult;
+};
+type PublishGateResult = {
+  score: number;
+  risk: number;
+  cost: number;
+  failures: string[];
+};
+type PublishFilePayload = {
+  path: string;
+  content: string;
+  truncated: false;
+};
+type PublishEvalResult = {
+  status?: string;
+  verified?: boolean;
+  score?: number;
+  cost_usd?: number;
 };
 type SyncCandidate = {
   path: string;
@@ -660,8 +681,8 @@ program.command("run")
   });
 
 program.command("publish")
-  .description("publish a markdown workflow to the registry (needs an OnlyHarness token)")
-  .argument("<file>", "source markdown file")
+  .description("publish markdown or a verified harness directory to the registry")
+  .argument("<file-or-dir>", "source markdown file or harness directory")
   .option("--name <name>", "harness slug")
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
   .option("--org <slug>", "publish into an organization namespace")
@@ -672,8 +693,35 @@ program.command("publish")
     if (options.org && !orgSlug) fail("Invalid org slug.", EXIT.VALIDATION, "hh publish workflow.md --org acme --org-token <token>", options.json);
     const token = orgSlug ? options.orgToken ?? process.env.HH_ORG_TOKEN : options.token ?? process.env.HH_TOKEN;
     if (orgSlug && !token) fail("Org token required.", EXIT.AUTH, "Set HH_ORG_TOKEN or pass --org-token <token>", options.json);
-    const markdown = readFileSync(path.resolve(file), "utf8");
-    const name = options.name ?? slugify(path.basename(file, path.extname(file)));
+    const sourcePath = path.resolve(file);
+    let sourceStats;
+    try {
+      sourceStats = statSync(sourcePath);
+    } catch {
+      fail(`Publish source not found: ${sourcePath}`, EXIT.NOT_FOUND, "hh publish workflow.md --name my-workflow", options.json);
+    }
+    if (sourceStats.isDirectory()) {
+      if (orgSlug) fail("Verified directory publish for orgs is not live yet.", EXIT.VALIDATION, "Use hh sync <repo> --org <slug> for org-private markdown imports.", options.json);
+      const name = options.name ? slugify(options.name) : undefined;
+      if (options.name && !name) fail("Invalid harness slug.", EXIT.VALIDATION, "Use --name my-harness", options.json);
+      const result = await publishHarnessDir({ token, name, root: sourcePath, json: options.json });
+      if (options.json) {
+        writeStdout({
+          title: result.title,
+          name: result.name,
+          owner: result.owner,
+          url: "https://onlyharness.com",
+          snapshotVersion: result.snapshotVersion,
+          verified: result.verified,
+          gate: result.gate
+        });
+        return;
+      }
+      writeStdout(`Published verified ${result.title} — ${result.owner}/${result.name}${result.snapshotVersion ? `@${result.snapshotVersion}` : ""}\n`);
+      return;
+    }
+    const markdown = readFileSync(sourcePath, "utf8");
+    const name = options.name ?? slugify(path.basename(sourcePath, path.extname(sourcePath)));
     const result = orgSlug
       ? await publishOrgMarkdown({ org: orgSlug, token, name, markdown, json: options.json, command: "Publish" })
       : await publishPublicMarkdown({ token, name, markdown, json: options.json });
@@ -1803,6 +1851,47 @@ async function publishPublicMarkdown(input: { token?: string; name: string; mark
   };
 }
 
+async function publishHarnessDir(input: { token?: string; name?: string; root: string; json: boolean }): Promise<OrgImportResult> {
+  const payload = buildHarnessDirPublishPayload(input.root, input.name, input.json);
+  const publishUrl = `${registryUrl}/imports/harness-dir`;
+  const response = await fetchRegistryResponse(publishUrl, input.json, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(input.token ? { Authorization: `Bearer ${input.token}` } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+  const body = await response.json().catch(() => ({})) as {
+    item?: { title?: string; name?: string; owner?: string };
+    snapshotVersion?: string;
+    verified?: boolean;
+    gate?: PublishGateResult;
+    error?: string;
+    failures?: string[];
+  };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.json
+      );
+    }
+    const detail = body.failures?.length ? `${body.error ?? "publish rejected"}: ${body.failures.join("; ")}` : body.error ?? JSON.stringify(body);
+    fail(`Publish failed (${response.status}): ${detail}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION, "hh eval <dir> && hh gate --dir <dir>", input.json);
+  }
+  return {
+    title: body.item?.title ?? input.name ?? path.basename(input.root),
+    name: body.item?.name ?? input.name ?? path.basename(input.root),
+    owner: body.item?.owner ?? "local",
+    snapshotVersion: body.snapshotVersion,
+    verified: body.verified === true,
+    gate: body.gate
+  };
+}
+
 async function publishOrgMarkdown(input: { org: string; token: string; name: string; markdown: string; json: boolean; command: "Publish" | "Sync" }): Promise<OrgImportResult> {
   const publishUrl = `${registryUrl}/orgs/${input.org}/imports/markdown-to-harness`;
   const response = await fetchRegistryResponse(publishUrl, input.json, {
@@ -1834,6 +1923,88 @@ async function publishOrgMarkdown(input: { org: string; token: string; name: str
     owner: `@${input.org}`,
     snapshotVersion: body.snapshotVersion
   };
+}
+
+function buildHarnessDirPublishPayload(root: string, name: string | undefined, json: boolean): { name?: string; files: PublishFilePayload[] } {
+  const validation = validateHarnessDir(root);
+  if (!validation.manifest) {
+    fail("Publish failed: harness.yaml is missing or invalid.", EXIT.VALIDATION, `hh validate ${root} --strict`, json);
+  }
+  if (validation.manifest.content.type === "directory") {
+    fail("Publish failed: directory entries are link-only and cannot be published as verified harness dirs.", EXIT.VALIDATION, "Publish a runnable harness directory.", json);
+  }
+  const resultPath = path.join(root, ".harnesshub/results.json");
+  const result = readJsonFile<PublishEvalResult>(resultPath);
+  const gate = verifiedPublishGate(validation, result);
+  if (gate.failures.length) {
+    fail(`Publish failed: eval/gate must pass before verified publish: ${gate.failures.join("; ")}`, EXIT.VALIDATION, `hh eval ${root} && hh gate --dir ${root}`, json);
+  }
+  const files = collectPublishFiles(root, json);
+  return name ? { name, files } : { files };
+}
+
+function verifiedPublishGate(validation: ReturnType<typeof validateHarnessDir>, result: PublishEvalResult | undefined): PublishGateResult {
+  const manifest = validation.manifest;
+  const score = Number(result?.score ?? 0);
+  const cost = Number(result?.cost_usd ?? 0);
+  const failures: string[] = [];
+  if (!manifest) failures.push("manifest unavailable");
+  if (!result) failures.push("missing .harnesshub/results.json; run hh eval");
+  if (result?.status !== "passed" || result.verified !== true) failures.push(`eval status ${result?.status ?? "missing"} is not verified passed`);
+  if (manifest && score < manifest.quality_gates.min_score) failures.push(`score ${score} below ${manifest.quality_gates.min_score}`);
+  if (manifest && cost > manifest.quality_gates.max_cost_usd_per_run) failures.push(`cost ${cost} above ${manifest.quality_gates.max_cost_usd_per_run}`);
+  if (manifest && validation.risk.score > manifest.quality_gates.max_risk_score) failures.push(`risk ${validation.risk.score} above ${manifest.quality_gates.max_risk_score}`);
+  failures.push(...validation.risk.blocking);
+  return { score, cost, risk: validation.risk.score, failures };
+}
+
+function collectPublishFiles(root: string, json: boolean): PublishFilePayload[] {
+  const files: PublishFilePayload[] = [];
+  const visit = (dir: string, depth: number) => {
+    if (depth > 10) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relative = path.relative(root, full).split(path.sep).join("/");
+      if (entry.isDirectory()) {
+        if (isIgnoredPublishEntry(entry.name)) continue;
+        visit(full, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || !isPublishFilePath(relative)) continue;
+      const content = readFileSync(full, "utf8");
+      const bytes = Buffer.byteLength(content, "utf8");
+      if (bytes > MAX_PUBLISH_FILE_BYTES) {
+        fail(`Publish failed: file too large: ${relative}`, EXIT.VALIDATION, "Keep publishable harness files under 256KB each.", json);
+      }
+      files.push({ path: relative, content, truncated: false });
+    }
+  };
+  visit(root, 0);
+  files.sort((left, right) => left.path.localeCompare(right.path));
+  if (!files.some((file) => file.path === "harness.yaml")) {
+    fail("Publish failed: harness.yaml is required.", EXIT.VALIDATION, `hh validate ${root} --strict`, json);
+  }
+  if (!files.some((file) => file.path === ".harnesshub/results.json")) {
+    fail("Publish failed: .harnesshub/results.json is required.", EXIT.VALIDATION, `hh eval ${root} && hh gate --dir ${root}`, json);
+  }
+  if (files.length > MAX_PUBLISH_FILES) {
+    fail(`Publish failed: too many files (${files.length} > ${MAX_PUBLISH_FILES}).`, EXIT.VALIDATION, "Trim examples/runbooks or split the harness.", json);
+  }
+  return files;
+}
+
+function isIgnoredPublishEntry(name: string): boolean {
+  return [".git", "node_modules", "dist", "build", "coverage", ".next"].includes(name);
+}
+
+function isPublishFilePath(file: string): boolean {
+  if (!file || file.startsWith("/") || file.includes("\0")) return false;
+  const normalized = path.posix.normalize(file);
+  if (normalized !== file || normalized.startsWith("../") || normalized === "..") return false;
+  if (/(^|\/)(node_modules|\.git)(\/|$)/.test(file)) return false;
+  if (file === "harness.yaml" || file === "README.md" || file === "AGENTS.md" || file === "LICENSE" || file === "LICENSE.md") return true;
+  if (file === ".harnesshub/results.json") return true;
+  return /^(agents|skills|prompts|tools|gates|evals|examples|runbooks|\.gitea\/workflows)\//.test(file);
 }
 
 function materializeSyncSource(source: string, json: boolean): { root: string; cloned: boolean; cleanup: () => void } {

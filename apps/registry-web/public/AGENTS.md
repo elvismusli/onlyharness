@@ -85,6 +85,7 @@ Core endpoints:
 | GET | `/orgs/{slug}/workspace` | Network Neighborhood payload: org-private cards, sanitized audit rows, permission/risk summary |
 | POST | `/orgs/{slug}/imports/markdown-to-harness` | Publish org-private markdown harness; requires org token with publish scope |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
+| POST | `/imports/harness-dir` | Publish a verified public harness directory after eval/gate; Bearer token required |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -33,6 +33,15 @@ const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected
 type ImportRequest = {
   name?: string;
   markdown: string;
+};
+
+type HarnessDirPublishRequest = {
+  name?: string;
+  files?: Array<{
+    path?: string;
+    content?: string;
+    truncated?: boolean;
+  }>;
 };
 
 type ImportOptions = {
@@ -695,6 +704,19 @@ app.post("/imports/markdown-to-harness", async (request, reply) => {
   return result;
 });
 
+app.post("/imports/harness-dir", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as HarnessDirPublishRequest : {};
+  const result = await importVerifiedHarnessDir(body, user);
+  if ("error" in result) {
+    const payload: { error: string; failures?: string[] } = { error: result.error ?? "Publish failed" };
+    if ("failures" in result && result.failures) payload.failures = result.failures;
+    return reply.code(result.status ?? 500).send(payload);
+  }
+  return result;
+});
+
 app.post("/events", async (request, reply) => {
   const authorization = headerValue(request.headers.authorization);
   const auth = authorization ? await userFromAuthorization(authorization) : {};
@@ -1091,6 +1113,77 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
   return { item, output: cli.stdout, snapshotVersion: snapshot?.version };
 }
 
+async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: AuthUser) {
+  const files = Array.isArray(body.files) ? body.files : [];
+  if (!files.length) return { status: 400, error: "files are required" };
+  if (files.length > 120) return { status: 400, error: "too many files" };
+  if (!files.some((file) => file.path === "harness.yaml")) return { status: 400, error: "harness.yaml is required" };
+
+  const requestedName = body.name ? slugify(body.name) : undefined;
+  if (body.name && !requestedName) return { status: 400, error: "name is not publishable" };
+  const temp = path.join(registry.workspaceRoot, "data", `.publish-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  try {
+    for (const file of files) {
+      const safe = safePublishFile(file);
+      if (!safe.ok) return { status: safe.status, error: safe.error };
+      const target = path.join(temp, safe.path);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, safe.content);
+    }
+
+    if (requestedName) rewriteManifestName(temp, requestedName);
+
+    const basics = registry.registryDetailBasics(temp);
+    const manifest = basics.inspection.manifest;
+    if (!manifest) return { status: 400, error: "harness.yaml is invalid" };
+    if (manifest.content.type === "directory") return { status: 400, error: "directory entries are link-only and cannot be published as verified harness dirs" };
+    if (!safePublicHarnessName(manifest.name)) return { status: 400, error: "manifest name is not publishable" };
+    if (!basics.inspection.valid) {
+      return {
+        status: 422,
+        error: "Harness validation failed",
+        failures: basics.inspection.issues.map((issue) => `${issue.severity}: ${issue.path} ${issue.message}`)
+      };
+    }
+    if (basics.security.verdict !== "pass") {
+      return {
+        status: 422,
+        error: "Security scan must pass before verified publish",
+        failures: basics.security.findings.map((finding) => `${finding.severity}: ${finding.rule} ${finding.file}`)
+      };
+    }
+    const gate = gateFailures(basics);
+    if (gate.failures.length) {
+      return { status: 422, error: "Eval/gate must pass before verified publish", failures: gate.failures };
+    }
+
+    const name = manifest.name;
+    const target = path.join(registry.importRoot, name);
+    rmSync(target, { recursive: true, force: true });
+    mkdirSync(path.dirname(target), { recursive: true });
+    renameSync(temp, target);
+    const item = registry.registryItemFromDir("local", target, new Map());
+    const snapshot = registry.writeArchiveSnapshot("local", name, target);
+    await upsertHarnessCreator("local", name, user.id);
+    await recordEvent({ kind: "applied", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "verified_publish", client: "api" });
+    await recordEvent({ kind: "gate", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "passed", client: "api" });
+    appendState({ type: "verified_publish", name, target, userId: user.id, at: new Date().toISOString() });
+    return {
+      item,
+      snapshotVersion: snapshot?.version,
+      verified: true,
+      gate: {
+        score: gate.score,
+        risk: gate.risk,
+        cost: gate.cost,
+        failures: []
+      }
+    };
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 function applyOrgManifest(root: string, orgSlug: string) {
   const manifestPath = path.join(root, "harness.yaml");
   const manifest = YAML.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
@@ -1098,6 +1191,54 @@ function applyOrgManifest(root: string, orgSlug: string) {
   manifest.visibility = "org";
   manifest.org = orgSlug;
   writeFileSync(manifestPath, YAML.stringify(manifest));
+}
+
+function rewriteManifestName(root: string, name: string) {
+  const manifestPath = path.join(root, "harness.yaml");
+  const manifest = YAML.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+  manifest.name = name;
+  writeFileSync(manifestPath, YAML.stringify(manifest));
+}
+
+function safePublishFile(file: NonNullable<HarnessDirPublishRequest["files"]>[number]):
+  | { ok: true; path: string; content: string }
+  | { ok: false; status: number; error: string } {
+  if (file.truncated) return { ok: false, status: 400, error: "truncated files cannot be published" };
+  if (typeof file.path !== "string" || typeof file.content !== "string") return { ok: false, status: 400, error: "each file needs path and content" };
+  const normalized = file.path.split("\\").join("/");
+  if (!safePublishPath(normalized)) return { ok: false, status: 400, error: `unsafe publish path: ${file.path}` };
+  if (Buffer.byteLength(file.content, "utf8") > registry.MAX_ARCHIVE_FILE_BYTES) return { ok: false, status: 400, error: `file too large: ${normalized}` };
+  return { ok: true, path: normalized, content: file.content };
+}
+
+function safePublishPath(file: string): boolean {
+  if (!file || file.startsWith("/") || file.includes("\0")) return false;
+  const normalized = path.posix.normalize(file);
+  if (normalized !== file || normalized.startsWith("../") || normalized === "..") return false;
+  if (/(^|\/)(node_modules|\.git)(\/|$)/.test(file)) return false;
+  if (file === "harness.yaml" || file === "README.md" || file === "AGENTS.md" || file === "LICENSE" || file === "LICENSE.md") return true;
+  if (file === ".harnesshub/results.json") return true;
+  return /^(agents|skills|prompts|tools|gates|evals|examples|runbooks|\.gitea\/workflows)\//.test(file);
+}
+
+function safePublicHarnessName(name: string): boolean {
+  return /^[a-z0-9][a-z0-9-]{1,80}$/.test(name);
+}
+
+function gateFailures(basics: ReturnType<typeof registry.registryDetailBasics>) {
+  const manifest = basics.inspection.manifest;
+  const evalResult = basics.evalResult as { status?: string; verified?: boolean; score?: number; cost_usd?: number } | undefined;
+  const score = Number(evalResult?.score ?? 0);
+  const cost = Number(evalResult?.cost_usd ?? 0);
+  const failures: string[] = [];
+  if (!manifest) failures.push("manifest unavailable");
+  if (!evalResult) failures.push("missing .harnesshub/results.json; run hh eval");
+  if (evalResult?.status !== "passed" || evalResult.verified !== true) failures.push(`eval status ${evalResult?.status ?? "missing"} is not verified passed`);
+  if (manifest && score < manifest.quality_gates.min_score) failures.push(`score ${score} below ${manifest.quality_gates.min_score}`);
+  if (manifest && cost > manifest.quality_gates.max_cost_usd_per_run) failures.push(`cost ${cost} above ${manifest.quality_gates.max_cost_usd_per_run}`);
+  if (manifest && basics.inspection.risk.score > manifest.quality_gates.max_risk_score) failures.push(`risk ${basics.inspection.risk.score} above ${manifest.quality_gates.max_risk_score}`);
+  failures.push(...basics.inspection.risk.blocking);
+  return { score, cost, risk: basics.inspection.risk.score, failures };
 }
 
 function orgWorkspacePermissionsSummary(items: registry.RegistryItem[]): OrgWorkspacePermissionsSummary {
