@@ -1,0 +1,16 @@
+{
+  "name": "onlyharness",
+  "metadata": {
+    "description": "OnlyHarness tools for finding, pulling, evaluating and publishing AI-agent harnesses."
+  },
+  "owner": {
+    "name": "OnlyHarness"
+  },
+  "plugins": [
+    {
+      "name": "onlyharness",
+      "source": "./plugins/onlyharness",
+      "description": "Find, pull, run, eval and publish AI-agent harnesses from onlyharness.com"
+    }
+  ]
+}

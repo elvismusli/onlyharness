@@ -79,6 +79,13 @@ npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 ```
 
+## For agents
+
+- Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), and [`/api/openapi.json`](https://onlyharness.com/api/openapi.json).
+- MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `search_docs`, and `publish_markdown_to_harness`.
+- Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install onlyharness@onlyharness`.
+- Local validation: `claude plugin validate . && claude plugin validate plugins/onlyharness`.
+
 Create local env from the examples:
 
 ```bash

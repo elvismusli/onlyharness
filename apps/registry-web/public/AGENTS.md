@@ -60,6 +60,7 @@ Core endpoints:
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
 Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `search_docs`, `publish_markdown_to_harness`.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
+Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install onlyharness@onlyharness`.
 
 ## Conventions
 
