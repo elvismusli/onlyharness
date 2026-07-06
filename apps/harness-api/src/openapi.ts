@@ -415,10 +415,11 @@ export const openapi = {
           pricing: { type: "object" },
           provider: { type: "string", enum: ["manual"] },
           checkout_url: { type: "string" },
+          payments_enabled: { type: "boolean" },
           x402: { type: "object" },
           next: { type: "string" }
         },
-        required: ["error", "code", "owner", "repo", "version", "pricing", "provider", "checkout_url", "x402", "next"]
+        required: ["error", "code", "owner", "repo", "version", "pricing", "provider", "checkout_url", "payments_enabled", "x402", "next"]
       },
       CheckoutSession: {
         type: "object",

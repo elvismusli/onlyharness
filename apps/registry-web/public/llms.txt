@@ -20,9 +20,9 @@ OpenAPI: https://onlyharness.com/api/openapi.json
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
-  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement.
+  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement.
 - Checkout: POST /billing/checkout
-  Auth required. Body { owner, repo, version?, ref? }. Creates a pending manual checkout session for paid harnesses.
+  Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
 - Payment webhook: POST /webhooks/payments
   Internal only. Requires x-harness-token matching HARNESS_WEBHOOK_TOKEN; marks a manual purchase paid and grants entitlement idempotently.
 - Storefront profile: PUT /me/storefront and GET /me/storefront

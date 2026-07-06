@@ -24,6 +24,7 @@ export type PaymentRequiredBody = {
   pricing: HarnessManifest["pricing"];
   provider: "manual";
   checkout_url: string;
+  payments_enabled: boolean;
   x402: {
     enabled: boolean;
     requirements: unknown[];
@@ -72,11 +73,11 @@ const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const checkoutBaseUrl = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://onlyharness.com/checkout";
 const localPaymentStorePath = process.env.HARNESS_LOCAL_PAYMENTS_PATH ? path.resolve(process.env.HARNESS_LOCAL_PAYMENTS_PATH) : undefined;
-const x402Enabled = process.env.X402_ENABLED === "true";
 
 export async function requireArchivePaymentAccess(input: PaymentAccessInput): Promise<PaymentAccessResult> {
   if (input.manifest.pricing.model === "free") return { allowed: true };
   if (await hasEntitlement(input)) return { allowed: true };
+  const enabled = paymentsEnabled();
 
   return {
     allowed: false,
@@ -90,11 +91,14 @@ export async function requireArchivePaymentAccess(input: PaymentAccessInput): Pr
       pricing: input.manifest.pricing,
       provider: "manual",
       checkout_url: checkoutUrl(input),
+      payments_enabled: enabled,
       x402: {
-        enabled: x402Enabled,
-        requirements: x402Enabled ? [x402Requirement(input)] : []
+        enabled: enabled && x402Enabled(),
+        requirements: enabled && x402Enabled() ? [x402Requirement(input)] : []
       },
-      next: "Complete checkout or get a manual entitlement, then retry hh pull with HH_TOKEN."
+      next: enabled
+        ? "Complete checkout or get a manual entitlement, then retry hh pull with HH_TOKEN."
+        : "Payments are disabled in this environment; no checkout can be created."
     }
   };
 }
@@ -136,6 +140,7 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
   if (input.manifest.pricing.model === "free") return { status: 400, error: "Free harnesses do not need checkout" };
   const amount = input.manifest.pricing.amount_usd ?? 0;
   if (!Number.isFinite(amount) || amount <= 0) return { status: 400, error: "Paid harness is missing a positive amount_usd" };
+  if (!paymentsEnabled()) return { status: 503, error: "Payments are disabled in this environment" };
   const purchase = {
     id: crypto.randomUUID(),
     subject_type: "user",
@@ -395,6 +400,14 @@ function x402Requirement(input: PaymentAccessInput) {
     resource: `/repos/${input.owner}/${input.repo}/archive?version=${encodeURIComponent(input.version)}`,
     description: `${input.owner}/${input.repo}@${input.version}`
   };
+}
+
+function paymentsEnabled(): boolean {
+  return process.env.PAYMENTS_ENABLED === "true";
+}
+
+function x402Enabled(): boolean {
+  return process.env.X402_ENABLED === "true";
 }
 
 function supabaseRestHeaders() {

@@ -55,6 +55,7 @@ type PaymentRequiredBody = {
   error?: string;
   code?: string;
   checkout_url?: string;
+  payments_enabled?: boolean;
   next?: string;
   pricing?: {
     model?: string;
@@ -151,7 +152,7 @@ program.command("pull")
       fail(
         `Payment required for ${owner}/${name}${price ? ` (${price})` : ""}`,
         EXIT.PAYMENT,
-        body.checkout_url ? `Open ${body.checkout_url}, then retry with HH_TOKEN` : body.next,
+        paymentNext(body),
         options.json
       );
     }
@@ -608,6 +609,11 @@ function priceLabel(body: PaymentRequiredBody): string {
   return body.pricing?.model ?? "";
 }
 
+function paymentNext(body: PaymentRequiredBody): string | undefined {
+  if (body.payments_enabled === false) return body.next;
+  return body.checkout_url ? `Open ${body.checkout_url}, then retry with HH_TOKEN` : body.next;
+}
+
 function contextCostLabel(cost: Pick<ContextCost, "approxTokens" | "files"> | undefined): string {
   if (!cost) return "unknown";
   const tokens = cost.approxTokens >= 1000 ? `${(cost.approxTokens / 1000).toFixed(1)}k` : String(cost.approxTokens);
@@ -672,7 +678,7 @@ async function fetchArchive(registryBase: string, owner: string, name: string, v
     fail(
       `Payment required for ${owner}/${name}@${version}${priceLabel(body) ? ` (${priceLabel(body)})` : ""}`,
       EXIT.PAYMENT,
-      body.checkout_url ? `Open ${body.checkout_url}, then retry with HH_TOKEN` : body.next,
+      paymentNext(body),
       json
     );
   }

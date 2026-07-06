@@ -46,6 +46,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_API_PORT: "8799",
     HARNESS_API_HOST: "127.0.0.1",
     HARNESS_WORKSPACE_ROOT: root,
+    PAYMENTS_ENABLED: "true",
     HARNESS_STATE_PATH: path.join(smokeDataRoot, "harness-state.json"),
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
     HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
@@ -101,8 +102,8 @@ try {
     throw new Error(`Storefront profile read failed: ${JSON.stringify(meProfile)}`);
   }
   const paidRequired = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive");
-  const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string };
-  if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || !paidRequiredBody.checkout_url) {
+  const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string; payments_enabled?: boolean };
+  if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || paidRequiredBody.payments_enabled !== true || !paidRequiredBody.checkout_url) {
     throw new Error(`Paid archive did not require payment: ${paidRequired.status} ${JSON.stringify(paidRequiredBody)}`);
   }
   const unpaidBuyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {

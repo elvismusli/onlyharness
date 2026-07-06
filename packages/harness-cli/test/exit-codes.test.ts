@@ -45,6 +45,19 @@ before(async () => {
       return;
     }
 
+    if (request.url?.startsWith("/repos/harnesses/payments-disabled/archive")) {
+      response.statusCode = 402;
+      response.end(JSON.stringify({
+        error: "Payment required",
+        code: "PAYMENT_REQUIRED",
+        checkout_url: "https://onlyharness.com/checkout?owner=harnesses&repo=payments-disabled",
+        payments_enabled: false,
+        next: "Payments are disabled in this environment.",
+        pricing: { model: "one_time", amount_usd: 9, currency: "USD" }
+      }));
+      return;
+    }
+
     if (request.url?.startsWith("/repos/harnesses/token-required/archive")) {
       sawPullToken = request.headers.authorization === "Bearer paid-token";
       response.end(JSON.stringify({
@@ -135,6 +148,14 @@ test("pull of a paid harness exits 5 and returns JSON payment guidance", async (
   assert.match(body.error ?? "", /Payment required/);
   assert.equal(body.code, 5);
   assert.match(body.next ?? "", /checkout/);
+});
+
+test("pull of a paid harness with disabled payments returns honest next step", async () => {
+  const result = await runCli(["pull", "harnesses/payments-disabled", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 5);
+  const body = JSON.parse(result.stderr) as { next?: string };
+  assert.equal(body.next, "Payments are disabled in this environment.");
 });
 
 test("pull sends HH_TOKEN as a bearer token", async () => {
