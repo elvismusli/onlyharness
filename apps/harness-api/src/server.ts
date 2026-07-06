@@ -943,12 +943,12 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
       archiveUrl: null,
       contentType: "directory",
       directory,
-      payment: { required: false },
+      access: detail.access,
+      payment: detail.access.payment,
       next: ["Open the upstream directory", "Review source state and licensing before importing entries"]
     };
   }
   const version = detail.manifest?.version ?? "current";
-  const pricing = detail.manifest?.pricing;
   const localCommand = `node packages/harness-cli/dist/hh.mjs install ${owner}/${name}`;
   return {
     command: localCommand,
@@ -956,9 +956,8 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
     npmStatus: "pending_publish",
     archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
     contextCost: detail.contextCost,
-    payment: pricing && pricing.model !== "free"
-      ? { required: true, pricing, tokenEnv: "HH_TOKEN", paymentExitCode: 5 }
-      : { required: false },
+    access: detail.access,
+    payment: detail.access.payment,
     next: ["npm run build -w onlyharness", `node packages/harness-cli/dist/hh.mjs run ${name} --json`, `node packages/harness-cli/dist/hh.mjs eval ${name} --json`, `node packages/harness-cli/dist/hh.mjs gate --dir ${name} --json`]
   };
 };
@@ -967,16 +966,19 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return { status: 404, error: "Harness not found" };
   const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
-  const orgGate = gateOrgVisibility(owner, inspection.manifest, authorization, "detail");
+  const manifest = inspection.manifest;
+  if (!manifest) return { status: 500, error: "Harness manifest unavailable" };
+  const orgGate = gateOrgVisibility(owner, manifest, authorization, "detail");
   if (!orgGate.ok) return { status: orgGate.status, error: orgGate.error };
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
   const lastVerifiedAt = await fetchLastVerificationAt(owner, repo);
+  const access = await mcpAccessSummary(owner, repo, manifest, manifest.version, authorization);
   return {
     owner,
     name: repo,
     social: item ? registry.socialFromItem(item) : undefined,
-    manifest: inspection.manifest,
+    manifest,
     valid: inspection.valid,
     issues: inspection.issues,
     risk: inspection.risk,
@@ -985,8 +987,69 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
     standard,
     evalResult,
     verification: { lastVerifiedAt },
+    access,
     example: registry.readExample(root),
     files: registry.listHarnessFiles(root)
+  };
+}
+
+async function mcpAccessSummary(owner: string, repo: string, manifest: HarnessManifest, version: string, authorization: string | undefined) {
+  if (manifest.content.type === "directory") {
+    const directory = manifest.content.directory;
+    return {
+      canPull: false,
+      status: "directory_link_only",
+      payment: { required: false },
+      next: directory?.url
+        ? `Open ${directory.url} and review upstream source/licensing before importing entries.`
+        : "Open the upstream directory and review source/licensing before importing entries."
+    };
+  }
+
+  const auth = authorization ? await userFromAuthorization(authorization) : {};
+  const access = await requireArchivePaymentAccess({
+    owner,
+    repo,
+    version,
+    manifest,
+    authorization,
+    userId: auth.user?.id
+  });
+  if (access.allowed) {
+    return {
+      canPull: true,
+      status: manifest.pricing.model === "free" ? "free" : "entitled",
+      payment: { required: false }
+    };
+  }
+  if (access.status === 402) {
+    return {
+      canPull: false,
+      status: "payment_required",
+      code: access.body.code,
+      payment: {
+        required: true,
+        provider: access.body.provider,
+        pricing: access.body.pricing,
+        checkout_url: access.body.checkout_url,
+        payments_enabled: access.body.payments_enabled,
+        x402: {
+          enabled: access.body.x402.enabled,
+          requirements: access.body.x402.requirements
+        },
+        tokenEnv: "HH_TOKEN",
+        paymentExitCode: 5,
+        next: access.body.next
+      }
+    };
+  }
+  return {
+    canPull: false,
+    status: "hosted_unavailable",
+    code: access.body.code,
+    payment: { required: false },
+    pricing: access.body.pricing,
+    next: access.body.next
   };
 }
 

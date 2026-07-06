@@ -89,8 +89,8 @@ Official MCP Registry name: `com.onlyharness/registry`. The public `server.json`
 Tools:
 
 - search_harnesses: search registry items by task/job/tag, including contextCost estimates.
-- harness_detail: inspect manifest, trust signals, contextCost, examples and files.
-- pull_instructions: return CLI and archive commands plus contextCost for a harness.
+- harness_detail: inspect manifest, trust signals, contextCost, examples, files and read-only access/payment summary.
+- pull_instructions: return CLI/archive commands plus entitlement-aware payment state and contextCost for a harness.
 - pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.

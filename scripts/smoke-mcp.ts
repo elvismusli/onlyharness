@@ -30,6 +30,8 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_ORG_AUDIT_PATH: path.join(smokeDataRoot, "org-audit.jsonl"),
     ORGS_ENABLED: "true",
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
+    PAYMENTS_ENABLED: "true",
+    HARNESS_MANUAL_ENTITLEMENTS: "mcp-paid-token=local/mcp-smoke-paid-harness",
     DOCS_URL: path.join(root, "apps/registry-web/public/llms.txt")
   }
 });
@@ -91,6 +93,24 @@ try {
     throw new Error(`MCP pull_harness returned wrong content: ${JSON.stringify(pull)}`);
   }
 
+  const paidDetail = await rpc(51, "tools/call", {
+    name: "harness_detail",
+    arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
+  });
+  const paidDetailText = paidDetail.result?.content?.[0]?.text ?? "";
+  if (!paidDetailText.includes("\"status\": \"payment_required\"") || !paidDetailText.includes("\"checkout_url\"") || paidDetailText.includes("\"canPull\": true")) {
+    throw new Error(`MCP paid detail did not expose payment-required access: ${JSON.stringify(paidDetail)}`);
+  }
+
+  const paidInstructions = await rpc(52, "tools/call", {
+    name: "pull_instructions",
+    arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
+  });
+  const paidInstructionsText = paidInstructions.result?.content?.[0]?.text ?? "";
+  if (!paidInstructionsText.includes("\"status\": \"payment_required\"") || !paidInstructionsText.includes("\"required\": true") || !paidInstructionsText.includes("\"paymentExitCode\": 5")) {
+    throw new Error(`MCP paid instructions did not expose payment-required access: ${JSON.stringify(paidInstructions)}`);
+  }
+
   const paidPull = await rpc(6, "tools/call", {
     name: "pull_harness",
     arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
@@ -98,6 +118,24 @@ try {
   const paidText = paidPull.result?.content?.[0]?.text ?? "";
   if (!paidText.includes("PAYMENT_REQUIRED") || paidText.includes("\"files\"")) {
     throw new Error(`MCP paid pull did not return payment requirements: ${JSON.stringify(paidPull)}`);
+  }
+
+  const entitledDetail = await rpc(61, "tools/call", {
+    name: "harness_detail",
+    arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
+  }, { Authorization: "Bearer mcp-paid-token" });
+  const entitledDetailText = entitledDetail.result?.content?.[0]?.text ?? "";
+  if (!entitledDetailText.includes("\"status\": \"entitled\"") || !entitledDetailText.includes("\"canPull\": true") || entitledDetailText.includes("\"required\": true")) {
+    throw new Error(`MCP entitled detail did not expose entitled access: ${JSON.stringify(entitledDetail)}`);
+  }
+
+  const entitledInstructions = await rpc(62, "tools/call", {
+    name: "pull_instructions",
+    arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
+  }, { Authorization: "Bearer mcp-paid-token" });
+  const entitledInstructionsText = entitledInstructions.result?.content?.[0]?.text ?? "";
+  if (!entitledInstructionsText.includes("\"status\": \"entitled\"") || !entitledInstructionsText.includes("\"required\": false")) {
+    throw new Error(`MCP entitled instructions did not expose entitled access: ${JSON.stringify(entitledInstructions)}`);
   }
 
   const hostedPull = await rpc(7, "tools/call", {
@@ -160,7 +198,7 @@ try {
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, pull_harness, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
+  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
 } finally {
   api.kill("SIGTERM");
   rmSync(paidRoot, { recursive: true, force: true });
