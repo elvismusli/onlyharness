@@ -22,7 +22,8 @@ test("registryItemFromDir exposes link-only directory metadata", () => {
     assert.ok(item);
     assert.equal(item.owner, "directories");
     assert.equal(item.ownerLabel, "directory shelf");
-    assert.equal(item.outcome, "Directories");
+    assert.equal(item.job, "Directory discovery");
+    assert.equal(item.outcome, "Directory discovery");
     assert.equal(item.contentType, "directory");
     assert.deepEqual(item.directory, {
       url: "https://example.com/agents",
@@ -49,6 +50,7 @@ test("registryItemFromDir exposes install as the primary runnable harness comman
     assert.ok(item);
     assert.equal(item.contentType, "harness");
     assert.equal(item.cliCommand, "hh install harnesses/agent-runner");
+    assert.equal(item.job, "Harness building");
     assert.equal(item.signalCount, 0);
     assert.equal(item.heatQualified, false);
     assert.equal(item.freshness, "collecting signals");

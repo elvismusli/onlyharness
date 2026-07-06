@@ -30,11 +30,11 @@ export type ExploreActions = {
   refresh: () => void;
 };
 
-export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, setQuery, sort, setSort, starred, forked, session, totals, leader, flash, active, actions }: {
+export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, setQuery, sort, setSort, starred, forked, session, totals, leader, flash, active, actions }: {
   items: RegistryItem[];
-  outcomes: Array<{ label: string; count: number }>;
-  outcome: string;
-  setOutcome: (value: string) => void;
+  jobs: Array<{ label: string; count: number }>;
+  jobFilter: string;
+  setJobFilter: (value: string) => void;
   query: string;
   setQuery: (value: string) => void;
   sort: string;
@@ -94,7 +94,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
       items: [
         { icon: "💬", label: top ? `Thread: ${top.title}` : "Threads", onClick: () => top && actions.openHarness(top, "Thread") },
         { icon: "🏆", label: "Wild West leaderboard", onClick: actions.openLeaderboard },
-        { icon: "★", label: "My starred harnesses", onClick: () => setOutcome("starred") }
+        { icon: "★", label: "My starred harnesses", onClick: () => setJobFilter("starred") }
       ]
     },
     {
@@ -153,9 +153,9 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
             {items.length === 0 ? (
               <div className="empty-state">
                 <span className="tumbleweed">🌵</span>
-                {outcome === "starred" && !session
+                {jobFilter === "starred" && !session
                   ? "Log on to see the harnesses you starred."
-                  : outcome === "starred"
+                  : jobFilter === "starred"
                     ? "You haven't starred anything yet. Go warm something up."
                     : "No harnesses found on this frontier. Try another word, partner."}
               </div>
@@ -176,10 +176,10 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
             )}
           </GroupBox>
 
-          <GroupBox legend="Browse by outcome">
+          <GroupBox legend="Browse by job">
             <div className="outcome-row">
-              {outcomes.map((entry) => (
-                <Btn key={entry.label} pressed={outcome === entry.label} onClick={() => setOutcome(outcome === entry.label ? "all" : entry.label)}>
+              {jobs.map((entry) => (
+                <Btn key={entry.label} pressed={jobFilter === entry.label} onClick={() => setJobFilter(jobFilter === entry.label ? "all" : entry.label)}>
                   {entry.label === "starred" ? "★ My stars" : entry.label} ({entry.count})
                 </Btn>
               ))}

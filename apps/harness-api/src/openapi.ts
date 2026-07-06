@@ -29,7 +29,8 @@ export const openapi = {
           queryParam("risk", "Risk tier filter"),
           queryParam("eval", "Eval status filter"),
           queryParam("runtime", "Runtime filter"),
-          queryParam("outcome", "Outcome filter"),
+          queryParam("job", "Job-to-be-done filter"),
+          queryParam("outcome", "Legacy alias for job filter"),
           queryParam("sort", "Sort: trending, stars, forks, threads, new")
         ],
         responses: {
@@ -731,6 +732,7 @@ export const openapi = {
           title: { type: "string" },
           summary: { type: "string" },
           tags: { type: "array", items: { type: "string" } },
+          job: { type: "string" },
           outcome: { type: "string" },
           runtime: { type: "string" },
           contentType: { type: "string", enum: ["harness", "directory"] },

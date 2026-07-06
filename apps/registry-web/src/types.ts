@@ -5,6 +5,7 @@ export type RegistryItem = {
   title: string;
   summary: string;
   tags: string[];
+  job: string;
   outcome: string;
   runtime: string;
   forgeUrl: string;

@@ -31,7 +31,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "search_harnesses",
     {
       title: "Search harnesses",
-      description: "Search the OnlyHarness registry by task, outcome, title, summary or tag.",
+      description: "Search the OnlyHarness registry by task, job, title, summary or tag.",
       inputSchema: {
         query: z.string().default("").describe("Search terms such as market research, support triage or finance safety."),
         limit: z.number().int().min(1).max(20).default(10)

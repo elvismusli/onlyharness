@@ -34,6 +34,7 @@ export type RegistryItem = {
   title: string;
   summary: string;
   tags: string[];
+  job: string;
   outcome: string;
   runtime: string;
   repoPath: string;
@@ -84,6 +85,7 @@ export type RegistryQuery = {
   risk?: string;
   eval?: string;
   runtime?: string;
+  job?: string;
   outcome?: string;
   sort?: string;
 };
@@ -101,14 +103,15 @@ export function searchRegistry(query: RegistryQuery, counters: Map<string, Count
   if (query.q) {
     const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
     items = items.filter((item) => {
-      const haystack = `${item.name} ${item.title} ${item.summary} ${item.outcome} ${item.tags.join(" ")} ${item.directory?.category ?? ""} ${item.directory?.notes ?? ""}`.toLowerCase();
+      const haystack = `${item.name} ${item.title} ${item.summary} ${item.job} ${item.outcome} ${item.tags.join(" ")} ${item.directory?.category ?? ""} ${item.directory?.notes ?? ""}`.toLowerCase();
       return terms.every((term) => haystack.includes(term));
     });
   }
   if (query.risk && query.risk !== "all") items = items.filter((item) => item.riskTier === query.risk);
   if (query.eval && query.eval !== "all") items = items.filter((item) => item.evalStatus === query.eval);
   if (query.runtime && query.runtime !== "all") items = items.filter((item) => item.runtime === query.runtime);
-  if (query.outcome && query.outcome !== "all") items = items.filter((item) => item.outcome === query.outcome);
+  const jobFilter = query.job && query.job !== "all" ? query.job : query.outcome && query.outcome !== "all" ? query.outcome : undefined;
+  if (jobFilter) items = items.filter((item) => item.job === jobFilter || item.outcome === jobFilter);
   return sortRegistry(items, query.sort ?? "trending");
 }
 
@@ -133,6 +136,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
   if (security.verdict === "fail") return undefined;
   const contentType = validation.manifest.content.type;
   const directory = directoryInfo(validation.manifest);
+  const job = contentType === "directory" ? "Directory discovery" : inferJob(validation.manifest.tags);
   const social = socialFromCounters(counters.get(`${owner}/${validation.manifest.name}`), {
     riskTier: validation.risk.tier,
     evalScore: evalResult?.score ?? 0,
@@ -145,7 +149,8 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     title: validation.manifest.title,
     summary: validation.manifest.summary,
     tags: validation.manifest.tags,
-    outcome: contentType === "directory" ? "Directories" : inferOutcome(validation.manifest.tags),
+    job,
+    outcome: job,
     runtime: validation.manifest.runtime.primary,
     repoPath,
     forgeUrl: directory?.url ?? (owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` : `file://${repoPath}`),
@@ -366,14 +371,15 @@ export function readMaybe(file: string): string {
   return existsSync(file) ? readFileSync(file, "utf8") : "";
 }
 
-function inferOutcome(tags: string[]): string {
+function inferJob(tags: string[]): string {
   const set = new Set(tags.map((tag) => tag.toLowerCase()));
-  if (set.has("finance") || set.has("payments") || set.has("safety")) return "Finance safety";
-  if (set.has("support") || set.has("triage")) return "Support";
-  if (set.has("research") || set.has("validation") || set.has("gtm")) return "Research";
-  if (set.has("founder") || set.has("decision") || set.has("product") || set.has("strategy")) return "Strategy";
-  if (set.has("repo") || set.has("audit") || set.has("runtime")) return "Engineering";
-  return "Builder tools";
+  if (set.has("finance") || set.has("payments") || set.has("safety")) return "Payment safety";
+  if (set.has("support") || set.has("triage")) return "Support triage";
+  if (set.has("gtm") || set.has("sales")) return "GTM research";
+  if (set.has("research") || set.has("validation")) return "Market research";
+  if (set.has("founder") || set.has("decision") || set.has("product") || set.has("strategy")) return "Product strategy";
+  if (set.has("repo") || set.has("audit") || set.has("runtime")) return "Repo audit";
+  return "Harness building";
 }
 
 function directoryInfo(manifest: HarnessManifest): RegistryItem["directory"] | undefined {

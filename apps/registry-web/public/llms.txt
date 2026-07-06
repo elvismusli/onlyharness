@@ -15,9 +15,9 @@ OpenAPI: https://onlyharness.com/api/openapi.json
 MCP Registry metadata: https://onlyharness.com/server.json
 
 - Health check: GET /healthz
-- Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
-  Multi-word queries AND-match against name, title, summary, outcome and tags.
-  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
+- Search the registry: GET /registry?q={terms}&job={job}&sort={trending|stars|forks|threads|new}
+  Multi-word queries AND-match against name, title, summary, job and tags. `outcome` remains a legacy alias for the job filter.
+  Response: { items: [{ owner, name, title, summary, tags, job, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Harness detail: GET /repos/{owner}/{name}/harness
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
@@ -82,7 +82,7 @@ Official MCP Registry name: `com.onlyharness/registry`. The public `server.json`
 
 Tools:
 
-- search_harnesses: search registry items by task/outcome/tag, including contextCost estimates.
+- search_harnesses: search registry items by task/job/tag, including contextCost estimates.
 - harness_detail: inspect manifest, trust signals, contextCost, examples and files.
 - pull_instructions: return CLI and archive commands plus contextCost for a harness.
 - pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.

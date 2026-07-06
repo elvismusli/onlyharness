@@ -27,6 +27,8 @@ type SearchItem = {
   title: string;
   summary: string;
   tags: string[];
+  job?: string;
+  outcome?: string;
   stars: number;
   forks: number;
   threads: number;
@@ -415,14 +417,14 @@ program.command("search")
     writeStdout(items.map((item) => [
       `${item.owner}/${item.name} — ${item.title}`,
       `  ${item.summary}`,
-      `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · ${heatLabel(item)} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
+      `  job ${item.job ?? item.outcome ?? "unknown"} · ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · ${heatLabel(item)} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
       `  ${item.cliCommand ?? (item.contentType === "directory" && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`)}`
     ].join("\n")).join("\n\n") + "\n");
   });
 
 program.command("suggest")
   .description("select a trusted harness for a task and optionally install it")
-  .argument("<query...>", "task or outcome, e.g. market research")
+  .argument("<query...>", "task or job, e.g. market research")
   .option("--json", "print JSON", false)
   .option("--limit <n>", "candidate count", "5")
   .option("--pick <n>", "1-based candidate to inspect/apply", "1")

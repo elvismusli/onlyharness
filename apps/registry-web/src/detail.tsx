@@ -97,7 +97,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                 </div>
                 <h4 style={{ marginTop: 10 }}>Works best for</h4>
                 <div className="tagrow" style={{ margin: 0 }}>
-                  <span className="tag98">{item.outcome}</span>
+                  <span className="tag98">{item.job ?? item.outcome}</span>
                   {item.tags.slice(0, 4).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
                 </div>
               </div>

@@ -78,7 +78,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+    items: Array<{ owner?: string; name: string; job?: string; outcome?: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const initialLeaderboard = await fetch("http://127.0.0.1:8799/leaderboard?limit=10").then((response) => response.json()) as {
     items?: Array<{ name?: string; heatQualified?: boolean }>;
@@ -89,8 +89,20 @@ try {
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
-  if (directoryItem?.contentType !== "directory" || directoryItem.directory?.itemCount !== 253 || !directoryItem.directory.url) {
+  if (directoryItem?.contentType !== "directory" || directoryItem.job !== "Directory discovery" || directoryItem.directory?.itemCount !== 253 || !directoryItem.directory.url) {
     throw new Error(`Directory shelf item missing from registry payload: ${JSON.stringify(directoryItem)}`);
+  }
+  const jobFiltered = await fetch("http://127.0.0.1:8799/registry?job=Payment%20safety").then((response) => response.json()) as {
+    items?: Array<{ name?: string; job?: string }>;
+  };
+  if (!jobFiltered.items?.some((item) => item.name === "finance-payment-safety-reviewer" && item.job === "Payment safety")) {
+    throw new Error(`Job filter did not return payment safety harness: ${JSON.stringify(jobFiltered)}`);
+  }
+  const legacyOutcomeFiltered = await fetch("http://127.0.0.1:8799/registry?outcome=Payment%20safety").then((response) => response.json()) as {
+    items?: Array<{ name?: string; job?: string }>;
+  };
+  if (!legacyOutcomeFiltered.items?.some((item) => item.name === "finance-payment-safety-reviewer" && item.job === "Payment safety")) {
+    throw new Error(`Legacy outcome filter should alias job filter: ${JSON.stringify(legacyOutcomeFiltered)}`);
   }
   const directoryArchive = await fetch("http://127.0.0.1:8799/repos/directories/verified-agent-catalog-2026-07/archive").then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; url?: string; files?: unknown[] } }));
   if (directoryArchive.status !== 409 || directoryArchive.body.code !== "DIRECTORY_LINK_ONLY" || directoryArchive.body.files) {

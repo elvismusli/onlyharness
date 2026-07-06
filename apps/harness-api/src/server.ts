@@ -170,7 +170,7 @@ app.get("/healthz", async () => ({ ok: true, workspaceRoot: registry.workspaceRo
 app.get("/openapi.json", async () => openapi);
 
 app.get("/registry", async (request) => {
-  const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; outcome?: string; sort?: string };
+  const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; job?: string; outcome?: string; sort?: string };
   const counters = await fetchCountersMap();
   return { items: registry.searchRegistry(query, counters) };
 });

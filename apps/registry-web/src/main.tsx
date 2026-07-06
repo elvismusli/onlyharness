@@ -16,7 +16,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : undefined;
 
-const OUTCOMES = ["Research", "Support", "Finance safety", "Strategy", "Engineering", "Builder tools", "Directories"];
+const JOB_FILTERS = ["Market research", "GTM research", "Support triage", "Payment safety", "Product strategy", "Repo audit", "Harness building", "Directory discovery"];
 
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
@@ -40,7 +40,7 @@ function App() {
   const [knownItems, setKnownItems] = useState<Record<string, RegistryItem>>({});
   const [storefronts, setStorefronts] = useState<Record<string, StorefrontPage>>({});
   const [query, setQuery] = useState("");
-  const [outcome, setOutcome] = useState("all");
+  const [jobFilter, setJobFilter] = useState("all");
   const [sort, setSort] = useState("trending");
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -200,13 +200,13 @@ function App() {
   /* ---------- derived ---------- */
 
   const items = useMemo(() => {
-    if (outcome === "all") return allItems;
-    if (outcome === "starred") return allItems.filter((item) => starred[keyFor(item)]);
-    return allItems.filter((item) => item.outcome === outcome);
-  }, [allItems, outcome, starred]);
+    if (jobFilter === "all") return allItems;
+    if (jobFilter === "starred") return allItems.filter((item) => starred[keyFor(item)]);
+    return allItems.filter((item) => item.job === jobFilter || item.outcome === jobFilter);
+  }, [allItems, jobFilter, starred]);
 
-  const outcomes = useMemo(() => {
-    const counts = OUTCOMES.map((label) => ({ label, count: allItems.filter((item) => item.outcome === label).length }));
+  const jobs = useMemo(() => {
+    const counts = JOB_FILTERS.map((label) => ({ label, count: allItems.filter((item) => item.job === label || item.outcome === label).length }));
     return [...counts, { label: "starred", count: allItems.filter((item) => starred[keyFor(item)]).length }];
   }, [allItems, starred]);
 
@@ -491,7 +491,7 @@ function App() {
       }
       closeWin("publish");
       setQuery("");
-      setOutcome("all");
+      setJobFilter("all");
       setRefreshTick((tick) => tick + 1);
       showDialog({ title: "Harness published", icon: "📦", body: `${result.item.title} is live on the frontier. Give it a star before someone else does.` });
     } catch {
@@ -741,7 +741,7 @@ function App() {
     <div className="desktop">
       <DesktopIcons
         onMyHarnesses={() => {
-          setOutcome("starred");
+          setJobFilter("starred");
           if (!session?.user) {
             setAuthStatus("");
             setLogon({ open: true, note: "Log on to see the harnesses you starred." });
@@ -757,9 +757,9 @@ function App() {
       <div onPointerDownCapture={() => setFocusedId("")}>
         <ExploreWindow
           items={items}
-          outcomes={outcomes}
-          outcome={outcome}
-          setOutcome={setOutcome}
+          jobs={jobs}
+          jobFilter={jobFilter}
+          setJobFilter={setJobFilter}
           query={query}
           setQuery={setQuery}
           sort={sort}
