@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
+import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, mergeThreadPostRows, mergeUserActionRows, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
 
 test("socialFromCounters returns honest zeros when no row exists", () => {
   const social = socialFromCounters(undefined, {
@@ -27,6 +27,43 @@ test("heat grows from real signals and has no fake floor", () => {
 
   assert.equal(cold, 0);
   assert.ok(warm > cold);
+});
+
+test("raw Supabase star rows replace stale aggregate stars without double counting", () => {
+  const counters = new Map([
+    ["openai/codex", { stars: 9, forks: 2, threads: 4, runs: 0, installConfirms: 1 }],
+    ["stale/empty", { stars: 3, forks: 1, threads: 0, runs: 0, installConfirms: 0 }]
+  ]);
+
+  mergeUserActionRows(counters, [
+    { owner: "openai", repo: "codex", action: "star", id: 1 },
+    { owner: "openai", repo: "codex", action: "star", id: 1 },
+    { owner: "openai", repo: "codex", action: "star", id: 2 },
+    { owner: "openai", repo: "codex", action: "fork", id: 3 },
+    { owner: "new", repo: "repo", action: "star", id: 4 }
+  ]);
+
+  assert.deepEqual(counters.get("openai/codex"), { stars: 2, forks: 2, threads: 4, runs: 0, installConfirms: 1 });
+  assert.equal(counters.get("stale/empty")?.stars, 0);
+  assert.deepEqual(counters.get("new/repo"), { stars: 1, forks: 0, threads: 0, runs: 0, installConfirms: 0 });
+});
+
+test("raw Supabase thread rows replace stale aggregate threads without double counting", () => {
+  const counters = new Map([
+    ["openai/codex", { stars: 2, forks: 0, threads: 9, runs: 0, installConfirms: 0 }],
+    ["stale/empty", { stars: 0, forks: 0, threads: 2, runs: 0, installConfirms: 0 }]
+  ]);
+
+  mergeThreadPostRows(counters, [
+    { owner: "openai", repo: "codex", id: "post-1" },
+    { owner: "openai", repo: "codex", id: "post-1" },
+    { owner: "openai", repo: "codex", id: "post-2" },
+    { owner: "new", repo: "repo", id: "post-3" }
+  ]);
+
+  assert.deepEqual(counters.get("openai/codex"), { stars: 2, forks: 0, threads: 2, runs: 0, installConfirms: 0 });
+  assert.equal(counters.get("stale/empty")?.threads, 0);
+  assert.deepEqual(counters.get("new/repo"), { stars: 0, forks: 0, threads: 1, runs: 0, installConfirms: 0 });
 });
 
 test("badge is new for a harness with no real signals", () => {

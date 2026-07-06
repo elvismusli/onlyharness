@@ -20,25 +20,10 @@ export async function fetchCountersMap(): Promise<Map<string, Counters>> {
   const counters = new Map<string, Counters>();
 
   if (supabaseUrl && supabaseRestKey) {
-    try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/harness_counters?select=owner,repo,stars,forks,threads`, {
-        headers: restHeaders()
-      });
-      if (response.ok) {
-        for (const row of await response.json() as Array<Omit<Counters, "installConfirms" | "runs"> & { owner: string; repo: string }>) {
-          counters.set(`${row.owner}/${row.repo}`, {
-            stars: Number(row.stars) || 0,
-            forks: Number(row.forks) || 0,
-            threads: Number(row.threads) || 0,
-            runs: 0,
-            installConfirms: 0
-          });
-        }
-      }
-      await mergeSupabaseInstallConfirms(counters);
-    } catch {
-      // Fall through to local events below.
-    }
+    await mergeSupabase(counters, mergeSupabaseAggregateCounters);
+    await mergeSupabase(counters, mergeSupabaseUserActions);
+    await mergeSupabase(counters, mergeSupabaseThreadPosts);
+    await mergeSupabase(counters, mergeSupabaseInstallConfirms);
   }
 
   mergeLocalInstallConfirms(counters);
@@ -89,6 +74,99 @@ export function socialFromCounters(
     freshness: heatQualified ? daysOld < 2 ? "warm" : daysOld < 9 ? "cooling" : "needs release" : "collecting signals",
     badge: badgeFor(context.riskTier, context.evalScore, heat, totalSignals, realCounters.installConfirms)
   };
+}
+
+export function mergeUserActionRows(counters: Map<string, Counters>, rows: UserActionRow[]): void {
+  for (const [key, current] of counters) counters.set(key, { ...current, stars: 0 });
+
+  const actionsByHarness = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (row.action !== "star" || !row.owner || !row.repo || row.id === undefined || row.id === null) continue;
+    const key = `${row.owner}/${row.repo}`;
+    const actions = actionsByHarness.get(key) ?? new Set<string>();
+    actions.add(String(row.id));
+    actionsByHarness.set(key, actions);
+  }
+
+  for (const [key, actions] of actionsByHarness) {
+    const current = counters.get(key) ?? emptyCounters();
+    counters.set(key, { ...current, stars: actions.size });
+  }
+}
+
+export function mergeThreadPostRows(counters: Map<string, Counters>, rows: ThreadPostCounterRow[]): void {
+  for (const [key, current] of counters) counters.set(key, { ...current, threads: 0 });
+
+  const postsByHarness = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!row.owner || !row.repo || !row.id) continue;
+    const key = `${row.owner}/${row.repo}`;
+    const posts = postsByHarness.get(key) ?? new Set<string>();
+    posts.add(row.id);
+    postsByHarness.set(key, posts);
+  }
+
+  for (const [key, posts] of postsByHarness) {
+    const current = counters.get(key) ?? emptyCounters();
+    counters.set(key, { ...current, threads: posts.size });
+  }
+}
+
+async function mergeSupabase(counters: Map<string, Counters>, merger: (counters: Map<string, Counters>) => Promise<void>): Promise<void> {
+  try {
+    await merger(counters);
+  } catch {
+    // Keep the registry usable when one Supabase-backed signal is temporarily unavailable.
+  }
+}
+
+async function mergeSupabaseAggregateCounters(counters: Map<string, Counters>): Promise<void> {
+  if (!supabaseUrl || !supabaseRestKey) return;
+  const response = await fetch(`${supabaseUrl}/rest/v1/harness_counters?select=owner,repo,stars,forks,threads`, {
+    headers: restHeaders()
+  });
+  if (!response.ok) return;
+  for (const row of await response.json() as AggregateCounterRow[]) {
+    if (!row.owner || !row.repo) continue;
+    counters.set(`${row.owner}/${row.repo}`, {
+      stars: Number(row.stars) || 0,
+      forks: Number(row.forks) || 0,
+      threads: Number(row.threads) || 0,
+      runs: 0,
+      installConfirms: 0
+    });
+  }
+}
+
+async function mergeSupabaseUserActions(counters: Map<string, Counters>): Promise<void> {
+  if (!supabaseUrl || !supabaseRestKey) return;
+  const params = new URLSearchParams({
+    select: "owner,repo,id,action",
+    action: "eq.star",
+    owner: "not.is.null",
+    repo: "not.is.null",
+    limit: "10000"
+  });
+  const response = await fetch(`${supabaseUrl}/rest/v1/user_harness_actions?${params.toString()}`, {
+    headers: restHeaders()
+  });
+  if (!response.ok) return;
+  mergeUserActionRows(counters, await response.json() as UserActionRow[]);
+}
+
+async function mergeSupabaseThreadPosts(counters: Map<string, Counters>): Promise<void> {
+  if (!supabaseUrl || !supabaseRestKey) return;
+  const params = new URLSearchParams({
+    select: "owner,repo,id",
+    owner: "not.is.null",
+    repo: "not.is.null",
+    limit: "10000"
+  });
+  const response = await fetch(`${supabaseUrl}/rest/v1/harness_thread_posts?${params.toString()}`, {
+    headers: restHeaders()
+  });
+  if (!response.ok) return;
+  mergeThreadPostRows(counters, await response.json() as ThreadPostCounterRow[]);
 }
 
 async function mergeSupabaseInstallConfirms(counters: Map<string, Counters>): Promise<void> {
@@ -150,3 +228,28 @@ function restHeaders() {
     authorization: `Bearer ${supabaseRestKey ?? ""}`
   };
 }
+
+function emptyCounters(): Counters {
+  return { stars: 0, forks: 0, threads: 0, runs: 0, installConfirms: 0 };
+}
+
+type AggregateCounterRow = {
+  owner?: string | null;
+  repo?: string | null;
+  stars?: number | string | null;
+  forks?: number | string | null;
+  threads?: number | string | null;
+};
+
+export type UserActionRow = {
+  owner?: string | null;
+  repo?: string | null;
+  id?: number | string | null;
+  action?: string | null;
+};
+
+export type ThreadPostCounterRow = {
+  owner?: string | null;
+  repo?: string | null;
+  id?: string | null;
+};
