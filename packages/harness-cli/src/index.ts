@@ -494,6 +494,7 @@ program.command("suggest")
           options.json
         );
       }
+      assertSuggestionApplyAllowed(suggestion, detail, options.json);
       applied = await pullHarnessArchive({
         owner: suggestion.owner,
         name: suggestion.name,
@@ -1713,6 +1714,27 @@ function suggestionText(query: string, pick: number, suggestion: SuggestionRepor
     lines.push(`Applied: ${applied.owner}/${applied.name}@${applied.version} -> ${applied.out} (${applied.files} files${applied.skipped ? `, ${applied.skipped} skipped` : ""})`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function assertSuggestionApplyAllowed(suggestion: SuggestionReport, detail: SuggestDetail, json: boolean): void {
+  const securityVerdict = detail.security?.verdict;
+  if (securityVerdict !== "pass") {
+    fail(
+      `Refusing to apply ${suggestion.ref}: security scan is ${securityVerdict ?? "missing"}.`,
+      EXIT.VALIDATION,
+      `Inspect ${suggestion.ref} with harness_detail or GET /repos/${suggestion.owner}/${suggestion.name}/security-report before installing.`,
+      json
+    );
+  }
+  const blocking = detail.risk?.blocking ?? [];
+  if (blocking.length) {
+    fail(
+      `Refusing to apply ${suggestion.ref}: risk report has ${blocking.length} blocking finding(s).`,
+      EXIT.VALIDATION,
+      `Resolve blocking risk findings before running hh suggest ${suggestion.name} --apply.`,
+      json
+    );
+  }
 }
 
 function boundedPositiveInt(value: string | undefined, fallback: number, max: number): number {

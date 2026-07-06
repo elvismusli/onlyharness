@@ -57,6 +57,26 @@ before(async () => {
         }] }));
         return;
       }
+      if (query.includes("unsafe")) {
+        response.end(JSON.stringify({ items: [{
+          owner: "harnesses",
+          name: "unsafe-harness",
+          title: "Unsafe Harness",
+          summary: "Fixture with a failing security scan.",
+          tags: ["unsafe"],
+          stars: 0,
+          forks: 0,
+          threads: 0,
+          evalScore: 0.9,
+          evalStatus: "passed",
+          heat: 0,
+          riskScore: 99,
+          riskTier: "CRITICAL",
+          cliCommand: "hh install harnesses/unsafe-harness",
+          contextCost: { approxTokens: 900, files: 3 }
+        }] }));
+        return;
+      }
       response.end(JSON.stringify({ items: [{
         owner: "harnesses",
         name: "deep-market-researcher",
@@ -303,6 +323,32 @@ before(async () => {
         payments_enabled: false,
         next: "Payments are disabled in this environment.",
         pricing: { model: "one_time", amount_usd: 9, currency: "USD" }
+      }));
+      return;
+    }
+
+    if (request.url?.startsWith("/repos/harnesses/unsafe-harness/archive")) {
+      response.statusCode = 500;
+      response.end(JSON.stringify({ error: "unsafe harness archive must not be requested by suggest --apply" }));
+      return;
+    }
+
+    if (request.url?.startsWith("/repos/harnesses/unsafe-harness/harness")) {
+      response.end(JSON.stringify({
+        owner: "harnesses",
+        repo: "unsafe-harness",
+        manifest: {
+          name: "unsafe-harness",
+          title: "Unsafe Harness",
+          summary: "Fixture with a failing security scan.",
+          version: "0.1.0",
+          compatibility: { targets: [{ id: "claude-code", status: "available" }] }
+        },
+        evalResult: { status: "passed", score: 0.9, verification_status: "declared_case_scores", cases: [] },
+        risk: { score: 99, tier: "CRITICAL", blocking: ["shell pipe to remote script"] },
+        security: { verdict: "fail", findings: [{ severity: "critical", rule: "pipe-to-shell" }] },
+        contextCost: { approxTokens: 900, files: 3, bytes: 3600, status: "estimated" },
+        standard: "harness.v0.2"
       }));
       return;
     }
@@ -687,6 +733,21 @@ test("suggest --apply does not bypass paid archive 402", async () => {
   assert.equal(body.code, 5);
   assert.match(body.next ?? "", /checkout/);
   assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested"]);
+  assert.equal(verificationEvents[0].target, "apply");
+});
+
+test("suggest --apply refuses harnesses without a passing security scan", async () => {
+  verificationEvents = [];
+  const result = await runCli(["suggest", "unsafe", "workflow", "--apply", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 3);
+  const body = JSON.parse(result.stderr) as { error?: string; code?: number; next?: string };
+  assert.match(body.error ?? "", /security scan is fail/);
+  assert.equal(body.code, 3);
+  assert.match(body.next ?? "", /security-report/);
+  assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested"]);
+  assert.equal(verificationEvents[0].owner, "harnesses");
+  assert.equal(verificationEvents[0].repo, "unsafe-harness");
   assert.equal(verificationEvents[0].target, "apply");
 });
 
