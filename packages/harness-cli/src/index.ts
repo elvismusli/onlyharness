@@ -270,6 +270,12 @@ type PublishEvalResult = {
   score?: number;
   cost_usd?: number;
 };
+type MaterializedPublishSource = {
+  path: string;
+  cloned: boolean;
+  autoEval: boolean;
+  cleanup: () => void;
+};
 type SyncCandidate = {
   path: string;
   name: string;
@@ -682,8 +688,9 @@ program.command("run")
 
 program.command("publish")
   .description("publish markdown or a verified harness directory to the registry")
-  .argument("<file-or-dir>", "source markdown file or harness directory")
+  .argument("<file-or-dir>", "source markdown file, harness directory, local repo, or git URL")
   .option("--name <name>", "harness slug")
+  .option("--path <path>", "harness directory inside a git repo")
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
   .option("--org <slug>", "publish into an organization namespace")
   .option("--org-token <token>", "org publish token (defaults to HH_ORG_TOKEN)")
@@ -693,44 +700,45 @@ program.command("publish")
     if (options.org && !orgSlug) fail("Invalid org slug.", EXIT.VALIDATION, "hh publish workflow.md --org acme --org-token <token>", options.json);
     const token = orgSlug ? options.orgToken ?? process.env.HH_ORG_TOKEN : options.token ?? process.env.HH_TOKEN;
     if (orgSlug && !token) fail("Org token required.", EXIT.AUTH, "Set HH_ORG_TOKEN or pass --org-token <token>", options.json);
-    const sourcePath = path.resolve(file);
-    let sourceStats;
+    const source = materializePublishSource(file, options.path, options.json);
     try {
-      sourceStats = statSync(sourcePath);
-    } catch {
-      fail(`Publish source not found: ${sourcePath}`, EXIT.NOT_FOUND, "hh publish workflow.md --name my-workflow", options.json);
-    }
-    if (sourceStats.isDirectory()) {
-      if (orgSlug) fail("Verified directory publish for orgs is not live yet.", EXIT.VALIDATION, "Use hh sync <repo> --org <slug> for org-private markdown imports.", options.json);
-      const name = options.name ? slugify(options.name) : undefined;
-      if (options.name && !name) fail("Invalid harness slug.", EXIT.VALIDATION, "Use --name my-harness", options.json);
-      const result = await publishHarnessDir({ token, name, root: sourcePath, json: options.json });
-      if (options.json) {
-        writeStdout({
-          title: result.title,
-          name: result.name,
-          owner: result.owner,
-          url: "https://onlyharness.com",
-          snapshotVersion: result.snapshotVersion,
-          verified: result.verified,
-          gate: result.gate
-        });
+      const sourceStats = statSync(source.path);
+      if (sourceStats.isDirectory()) {
+        if (orgSlug) fail("Verified directory publish for orgs is not live yet.", EXIT.VALIDATION, "Use hh sync <repo> --org <slug> for org-private markdown imports.", options.json);
+        const name = options.name ? slugify(options.name) : undefined;
+        if (options.name && !name) fail("Invalid harness slug.", EXIT.VALIDATION, "Use --name my-harness", options.json);
+        const result = await publishHarnessDir({ token, name, root: source.path, json: options.json, autoEval: source.autoEval });
+        if (options.json) {
+          writeStdout({
+            title: result.title,
+            name: result.name,
+            owner: result.owner,
+            url: "https://onlyharness.com",
+            snapshotVersion: result.snapshotVersion,
+            verified: result.verified,
+            gate: result.gate,
+            source: source.cloned ? "git" : "local"
+          });
+          return;
+        }
+        writeStdout(`Published verified ${result.title} — ${result.owner}/${result.name}${result.snapshotVersion ? `@${result.snapshotVersion}` : ""}\n`);
         return;
       }
-      writeStdout(`Published verified ${result.title} — ${result.owner}/${result.name}${result.snapshotVersion ? `@${result.snapshotVersion}` : ""}\n`);
-      return;
+      if (options.path) fail("--path can only be used with a git repo or directory source.", EXIT.VALIDATION, "hh publish <git-url> --path harnesses/my-harness", options.json);
+      const markdown = readFileSync(source.path, "utf8");
+      const name = options.name ?? slugify(path.basename(source.path, path.extname(source.path)));
+      const result = orgSlug
+        ? await publishOrgMarkdown({ org: orgSlug, token, name, markdown, json: options.json, command: "Publish" })
+        : await publishPublicMarkdown({ token, name, markdown, json: options.json });
+      const title = result.title;
+      if (options.json) {
+        writeStdout({ title, name: result.name, owner: result.owner, url: orgSlug ? `https://onlyharness.com/@${orgSlug}/${result.name}` : "https://onlyharness.com" });
+        return;
+      }
+      writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://onlyharness.com\n`);
+    } finally {
+      source.cleanup();
     }
-    const markdown = readFileSync(sourcePath, "utf8");
-    const name = options.name ?? slugify(path.basename(sourcePath, path.extname(sourcePath)));
-    const result = orgSlug
-      ? await publishOrgMarkdown({ org: orgSlug, token, name, markdown, json: options.json, command: "Publish" })
-      : await publishPublicMarkdown({ token, name, markdown, json: options.json });
-    const title = result.title;
-    if (options.json) {
-      writeStdout({ title, name: result.name, owner: result.owner, url: orgSlug ? `https://onlyharness.com/@${orgSlug}/${result.name}` : "https://onlyharness.com" });
-      return;
-    }
-    writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://onlyharness.com\n`);
   });
 
 program.command("adapt")
@@ -1851,8 +1859,8 @@ async function publishPublicMarkdown(input: { token?: string; name: string; mark
   };
 }
 
-async function publishHarnessDir(input: { token?: string; name?: string; root: string; json: boolean }): Promise<OrgImportResult> {
-  const payload = buildHarnessDirPublishPayload(input.root, input.name, input.json);
+async function publishHarnessDir(input: { token?: string; name?: string; root: string; json: boolean; autoEval?: boolean }): Promise<OrgImportResult> {
+  const payload = buildHarnessDirPublishPayload(input.root, input.name, input.json, input.autoEval === true);
   const publishUrl = `${registryUrl}/imports/harness-dir`;
   const response = await fetchRegistryResponse(publishUrl, input.json, {
     method: "POST",
@@ -1925,7 +1933,7 @@ async function publishOrgMarkdown(input: { org: string; token: string; name: str
   };
 }
 
-function buildHarnessDirPublishPayload(root: string, name: string | undefined, json: boolean): { name?: string; files: PublishFilePayload[] } {
+function buildHarnessDirPublishPayload(root: string, name: string | undefined, json: boolean, autoEval = false): { name?: string; files: PublishFilePayload[] } {
   const validation = validateHarnessDir(root);
   if (!validation.manifest) {
     fail("Publish failed: harness.yaml is missing or invalid.", EXIT.VALIDATION, `hh validate ${root} --strict`, json);
@@ -1933,6 +1941,7 @@ function buildHarnessDirPublishPayload(root: string, name: string | undefined, j
   if (validation.manifest.content.type === "directory") {
     fail("Publish failed: directory entries are link-only and cannot be published as verified harness dirs.", EXIT.VALIDATION, "Publish a runnable harness directory.", json);
   }
+  if (autoEval) writePublishEvalArtifacts(root);
   const resultPath = path.join(root, ".harnesshub/results.json");
   const result = readJsonFile<PublishEvalResult>(resultPath);
   const gate = verifiedPublishGate(validation, result);
@@ -1941,6 +1950,14 @@ function buildHarnessDirPublishPayload(root: string, name: string | undefined, j
   }
   const files = collectPublishFiles(root, json);
   return name ? { name, files } : { files };
+}
+
+function writePublishEvalArtifacts(root: string) {
+  const result = runLocalEval(root);
+  mkdirSync(path.join(root, ".harnesshub"), { recursive: true });
+  writeFileSync(path.join(root, ".harnesshub/results.json"), JSON.stringify(result, null, 2));
+  writeFileSync(path.join(root, ".harnesshub/report.html"), htmlReport(result));
+  writeFileSync(path.join(root, ".harnesshub/results.junit.xml"), junitReport(result));
 }
 
 function verifiedPublishGate(validation: ReturnType<typeof validateHarnessDir>, result: PublishEvalResult | undefined): PublishGateResult {
@@ -2005,6 +2022,103 @@ function isPublishFilePath(file: string): boolean {
   if (file === "harness.yaml" || file === "README.md" || file === "AGENTS.md" || file === "LICENSE" || file === "LICENSE.md") return true;
   if (file === ".harnesshub/results.json") return true;
   return /^(agents|skills|prompts|tools|gates|evals|examples|runbooks|\.gitea\/workflows)\//.test(file);
+}
+
+function materializePublishSource(source: string, subdir: string | undefined, json: boolean): MaterializedPublishSource {
+  const localPath = path.resolve(source);
+  if (existsSync(localPath)) {
+    const stats = statSync(localPath);
+    if (stats.isDirectory()) {
+      return {
+        path: resolvePublishHarnessRoot(localPath, subdir, json),
+        cloned: false,
+        autoEval: false,
+        cleanup: () => undefined
+      };
+    }
+    if (subdir) fail("--path can only be used with a git repo or directory source.", EXIT.VALIDATION, "hh publish <git-url> --path harnesses/my-harness", json);
+    return { path: localPath, cloned: false, autoEval: false, cleanup: () => undefined };
+  }
+  if (!looksLikeGitSource(source)) {
+    fail(`Publish source not found: ${localPath}`, EXIT.NOT_FOUND, "hh publish workflow.md --name my-workflow", json);
+  }
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "hh-publish-"));
+  const clone = spawnSync("git", ["clone", "--depth", "1", source, tmp], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024
+  });
+  if (clone.status !== 0) {
+    rmSync(tmp, { recursive: true, force: true });
+    fail(`Publish clone failed: ${clone.stderr || clone.stdout || "git clone exited with an error"}`, EXIT.GENERAL, undefined, json);
+  }
+  return {
+    path: resolvePublishHarnessRoot(tmp, subdir, json),
+    cloned: true,
+    autoEval: true,
+    cleanup: () => rmSync(tmp, { recursive: true, force: true })
+  };
+}
+
+function looksLikeGitSource(source: string): boolean {
+  return /^(git@|ssh:\/\/|https?:\/\/|file:\/\/)/.test(source) || source.endsWith(".git");
+}
+
+function resolvePublishHarnessRoot(repoRoot: string, subdir: string | undefined, json: boolean): string {
+  if (subdir) {
+    const normalized = normalizeRepoSubpath(subdir);
+    if (!normalized) fail("Unsafe publish --path.", EXIT.VALIDATION, "Use a relative path like harnesses/my-harness", json);
+    const candidate = path.resolve(repoRoot, normalized);
+    if (!isPathInside(repoRoot, candidate) || !existsSync(path.join(candidate, "harness.yaml"))) {
+      fail(`Publish harness not found at --path ${normalized}.`, EXIT.NOT_FOUND, "Point --path at a directory containing harness.yaml", json);
+    }
+    return candidate;
+  }
+  if (existsSync(path.join(repoRoot, "harness.yaml"))) return repoRoot;
+  const candidates = findPublishHarnessDirs(repoRoot);
+  if (candidates.length === 1) return path.join(repoRoot, candidates[0]);
+  if (!candidates.length) {
+    fail("Publish source does not contain harness.yaml.", EXIT.NOT_FOUND, "Run from a harness directory or pass --path for a repo subdirectory.", json);
+  }
+  fail(
+    `Publish source contains multiple harnesses: ${candidates.slice(0, 8).join(", ")}`,
+    EXIT.VALIDATION,
+    "Pass --path <harness-dir> to choose one.",
+    json
+  );
+}
+
+function normalizeRepoSubpath(value: string): string | undefined {
+  const normalized = value.split("\\").join("/");
+  if (!normalized || normalized.startsWith("/") || normalized.includes("\0")) return undefined;
+  const clean = path.posix.normalize(normalized);
+  if (clean === "." || clean === ".." || clean.startsWith("../")) return undefined;
+  return clean;
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function findPublishHarnessDirs(root: string): string[] {
+  const candidates: string[] = [];
+  const visit = (dir: string, depth: number) => {
+    if (depth > 8 || candidates.length > 20) return;
+    if (existsSync(path.join(dir, "harness.yaml"))) {
+      candidates.push(path.relative(root, dir).split(path.sep).join("/"));
+      return;
+    }
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || isIgnoredRepoEntry(entry.name)) continue;
+      visit(path.join(dir, entry.name), depth + 1);
+    }
+  };
+  visit(root, 0);
+  return candidates.sort();
+}
+
+function isIgnoredRepoEntry(name: string): boolean {
+  return [".git", "node_modules", "dist", "build", "coverage", ".next", ".harnesshub"].includes(name);
 }
 
 function materializeSyncSource(source: string, json: boolean): { root: string; cloned: boolean; cleanup: () => void } {

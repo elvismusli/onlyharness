@@ -67,7 +67,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
 - Publish (auth required): POST /imports/markdown-to-harness
   JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.
 - Verified publish (auth required): POST /imports/harness-dir
-  Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`. The server accepts only bounded harness files plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
+  Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts only bounded harness files plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
 
 End-to-end example:
 

@@ -11,9 +11,11 @@ const paidRoot = path.join(root, "data/imports/smoke-paid-harness");
 const escrowRoot = path.join(root, "data/imports/smoke-escrow-harness");
 const hostedRoot = path.join(root, "data/imports/smoke-hosted-harness");
 const verifiedPublishRoot = path.join(root, "data/imports/smoke-verified-publish");
+const gitPublishRoot = path.join(root, "data/imports/smoke-git-publish");
 const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
 const verifiedPublishSource = path.join(smokeDataRoot, "verified-publish-source");
+const gitPublishRepo = path.join(smokeDataRoot, "git-publish-repo");
 
 function run(command: string, args: string[], options: { cwd?: string; allowFailure?: boolean; env?: NodeJS.ProcessEnv } = {}) {
   const result = spawnSync(command, args, { cwd: options.cwd ?? root, encoding: "utf8", env: options.env ?? process.env });
@@ -45,6 +47,7 @@ createPaidHarness(paidRoot);
 createEscrowHarness(escrowRoot);
 createHostedHarness(hostedRoot);
 rmSync(verifiedPublishRoot, { recursive: true, force: true });
+rmSync(gitPublishRoot, { recursive: true, force: true });
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
 createOrgStore(orgsPath, "smoke-org-token");
@@ -513,6 +516,20 @@ try {
   const verifiedArchive = await fetch(`http://127.0.0.1:8799/repos/local/smoke-verified-publish/archive?version=${verifiedPublishBody.snapshotVersion}`).then((response) => response.json()) as { snapshot?: boolean; files?: Array<{ path?: string }> };
   if (!verifiedArchive.snapshot || !verifiedArchive.files?.some((file) => file.path === "harness.yaml")) throw new Error(`Verified publish archive unavailable: ${JSON.stringify(verifiedArchive)}`);
   if (verifiedArchive.files?.some((file) => file.path === ".harnesshub/results.json")) throw new Error("Verified publish archive leaked local eval results");
+  const gitPublishSource = path.join(gitPublishRepo, "harnesses/support-triage-agent");
+  mkdirSync(path.dirname(gitPublishSource), { recursive: true });
+  cpSync(path.join(seedRoot, "support-triage-agent"), gitPublishSource, { recursive: true });
+  rmSync(path.join(gitPublishSource, ".harnesshub"), { recursive: true, force: true });
+  run("git", ["init"], { cwd: gitPublishRepo });
+  run("git", ["add", "."], { cwd: gitPublishRepo });
+  run("git", ["-c", "user.email=smoke@example.test", "-c", "user.name=Smoke Maintainer", "commit", "-m", "seed harness"], { cwd: gitPublishRepo });
+  const gitPublish = run("node", [cliBin, "publish", `file://${gitPublishRepo}`, "--path", "harnesses/support-triage-agent", "--name", "smoke-git-publish", "--token", "local:smoke-publisher", "--json"], { env: cliEnv });
+  const gitPublishBody = JSON.parse(gitPublish.stdout) as { owner?: string; name?: string; snapshotVersion?: string; verified?: boolean; source?: string };
+  if (gitPublishBody.owner !== "local" || gitPublishBody.name !== "smoke-git-publish" || gitPublishBody.verified !== true || gitPublishBody.source !== "git" || !gitPublishBody.snapshotVersion) {
+    throw new Error(`Git publish returned wrong payload: ${gitPublish.stdout}`);
+  }
+  const gitPublishDetail = await fetch("http://127.0.0.1:8799/repos/local/smoke-git-publish/harness").then((response) => response.json()) as { verification?: { lastVerifiedAt?: string } };
+  if (!gitPublishDetail.verification?.lastVerifiedAt) throw new Error(`Git publish did not set detail verification: ${JSON.stringify(gitPublishDetail)}`);
   const storefront = await fetch(`http://127.0.0.1:8799/storefront/${profile.handle}`).then((response) => response.json()) as {
     profile?: { handle?: string };
     referralCode?: string;
@@ -700,6 +717,7 @@ try {
   rmSync(paidRoot, { recursive: true, force: true });
   rmSync(escrowRoot, { recursive: true, force: true });
   rmSync(verifiedPublishRoot, { recursive: true, force: true });
+  rmSync(gitPublishRoot, { recursive: true, force: true });
   rmSync(smokeDataRoot, { recursive: true, force: true });
 }
 
@@ -708,7 +726,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import/verified-directory-publish, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import/verified-directory-publish/git-publish, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

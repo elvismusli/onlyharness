@@ -1,6 +1,6 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -157,6 +157,13 @@ before(async () => {
         if (!paths.includes("harness.yaml") || !paths.includes(".harnesshub/results.json")) {
           response.statusCode = 400;
           response.end(JSON.stringify({ error: "missing required publish files", paths }));
+          return;
+        }
+        const evalFile = body.files?.find((file) => file.path === ".harnesshub/results.json");
+        const evalResult = JSON.parse(evalFile?.content ?? "{}") as { status?: string; verified?: boolean };
+        if (evalResult.status !== "passed" || evalResult.verified !== true) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "eval result is not verified passed", evalResult }));
           return;
         }
         if (paths.some((item) => !item || item.includes("..") || item === ".harnesshub/report.html")) {
@@ -705,6 +712,35 @@ test("publish rejects a harness directory before upload when eval results are mi
     const body = JSON.parse(result.stderr) as { error?: string; next?: string };
     assert.match(body.error ?? "", /eval\/gate must pass/);
     assert.match(body.next ?? "", /hh eval/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publish clones a git repo subdir and verifies before upload", async () => {
+  sawHarnessDirPublishToken = false;
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-git-publish-"));
+  const repo = path.join(root, "repo");
+  const source = path.join(repo, "harnesses/verified");
+  try {
+    await mkdir(path.dirname(source), { recursive: true });
+    await cp(seedHarness, source, { recursive: true });
+    await rm(path.join(source, ".harnesshub"), { recursive: true, force: true });
+    runGit(["init"], repo);
+    runGit(["add", "."], repo);
+    runGit(["-c", "user.email=maintainer@example.test", "-c", "user.name=Maintainer", "commit", "-m", "seed harness"], repo);
+
+    const result = await runCli(["publish", `file://${repo}`, "--path", "harnesses/verified", "--name", "git-verified-dir", "--token", "publish-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawHarnessDirPublishToken, true);
+    assert.doesNotMatch(result.stdout, /publish-token/);
+    const body = JSON.parse(result.stdout) as { owner?: string; name?: string; verified?: boolean; source?: string; gate?: { failures?: string[] } };
+    assert.equal(body.owner, "local");
+    assert.equal(body.name, "git-verified-dir");
+    assert.equal(body.verified, true);
+    assert.equal(body.source, "git");
+    assert.deepEqual(body.gate?.failures, []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1295,6 +1331,11 @@ function runCli(args: string[], env: NodeJS.ProcessEnv = {}): Promise<{ status: 
 
 function titleizeTest(value: string): string {
   return value.split("-").filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
+}
+
+function runGit(args: string[], cwd: string) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  assert.equal(result.status, 0, `git ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
 }
 
 function x402PaymentRequiredBody(priceUsd: number, amount: number) {
