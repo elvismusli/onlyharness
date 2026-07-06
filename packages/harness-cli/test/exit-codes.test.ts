@@ -31,8 +31,45 @@ before(async () => {
       return;
     }
 
-    if (request.url === "/registry") {
-      response.end(JSON.stringify({ items: [{ owner: "harnesses", name: "deep-market-researcher" }] }));
+    if (request.url?.startsWith("/registry")) {
+      const url = new URL(request.url, "http://127.0.0.1");
+      const query = url.searchParams.get("q") ?? "";
+      if (query.includes("paid")) {
+        response.end(JSON.stringify({ items: [{
+          owner: "harnesses",
+          name: "paid-harness",
+          title: "Paid Harness",
+          summary: "Paid fixture for payment gating.",
+          tags: ["paid"],
+          stars: 1,
+          forks: 0,
+          threads: 0,
+          evalScore: 0.9,
+          evalStatus: "passed",
+          heat: 1,
+          riskScore: 10,
+          riskTier: "LOW",
+          cliCommand: "hh pull harnesses/paid-harness"
+        }] }));
+        return;
+      }
+      response.end(JSON.stringify({ items: [{
+        owner: "harnesses",
+        name: "deep-market-researcher",
+        title: "Deep Market Researcher",
+        summary: "Multi-stage research pipeline.",
+        tags: ["research", "strategy"],
+        stars: 42,
+        forks: 7,
+        threads: 3,
+        evalScore: 0.9,
+        evalStatus: "passed",
+        heat: 12,
+        riskScore: 18,
+        riskTier: "LOW",
+        cliCommand: "hh pull harnesses/deep-market-researcher",
+        contextCost: { approxTokens: 1800, files: 6 }
+      }] }));
       return;
     }
 
@@ -133,6 +170,27 @@ before(async () => {
       return;
     }
 
+    if (request.url?.startsWith("/repos/harnesses/paid-harness/harness")) {
+      response.end(JSON.stringify({
+        owner: "harnesses",
+        repo: "paid-harness",
+        manifest: {
+          name: "paid-harness",
+          title: "Paid Harness",
+          summary: "Paid fixture for payment gating.",
+          version: "0.1.0",
+          pricing: { model: "one_time", amount_usd: 9, currency: "USD" },
+          compatibility: { targets: [{ id: "claude-code", status: "available" }] }
+        },
+        evalResult: { status: "passed", score: 0.9, verification_status: "declared_case_scores", cases: [] },
+        risk: { score: 10, tier: "LOW", blocking: [] },
+        security: { verdict: "pass", findings: [] },
+        contextCost: { approxTokens: 700, files: 2, bytes: 4000, status: "estimated" },
+        standard: "harness.v0.2"
+      }));
+      return;
+    }
+
     if (request.url?.startsWith("/repos/harnesses/x402-no-wallet/archive")) {
       response.statusCode = 402;
       response.setHeader("PAYMENT-REQUIRED", x402PaymentRequiredHeader(9_000_000));
@@ -210,7 +268,25 @@ before(async () => {
       response.end(JSON.stringify({
         owner: "harnesses",
         repo: "deep-market-researcher",
-        manifest: { name: "deep-market-researcher", version: "0.2.0" }
+        manifest: {
+          name: "deep-market-researcher",
+          title: "Deep Market Researcher",
+          summary: "Multi-stage research pipeline.",
+          version: "0.2.0",
+          pricing: { model: "free", currency: "USD" },
+          compatibility: {
+            targets: [
+              { id: "claude-code", status: "available" },
+              { id: "onlyharness", status: "available" }
+            ]
+          }
+        },
+        evalResult: { status: "passed", score: 0.9, verification_status: "declared_case_scores", cases: [] },
+        risk: { score: 18, tier: "LOW", blocking: [] },
+        security: { verdict: "pass", findings: [] },
+        contextCost: { approxTokens: 1800, files: 6, bytes: 12000, status: "estimated" },
+        standard: "harness.v0.2",
+        verification: { lastVerifiedAt: "2026-07-06T10:00:00.000Z" }
       }));
       return;
     }
@@ -329,6 +405,88 @@ test("pull sends HH_TOKEN as a bearer token", async () => {
   } finally {
     await rm(out, { recursive: true, force: true });
   }
+});
+
+test("suggest prints a trust summary and records a privacy-safe suggested event", async () => {
+  verificationEvents = [];
+  const result = await runCli(["suggest", "market", "research", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 0, result.stderr);
+  const body = JSON.parse(result.stdout) as {
+    suggestion?: {
+      owner?: string;
+      name?: string;
+      trust?: { eval?: string; risk?: string; security?: string; context?: string; lastVerifiedAt?: string; payment?: string; compatibility?: string[] };
+    };
+    candidates?: unknown[];
+  };
+  assert.equal(body.suggestion?.owner, "harnesses");
+  assert.equal(body.suggestion?.name, "deep-market-researcher");
+  assert.match(body.suggestion?.trust?.eval ?? "", /passed 0\.9/);
+  assert.match(body.suggestion?.trust?.risk ?? "", /LOW/);
+  assert.equal(body.suggestion?.trust?.security, "pass (0 findings)");
+  assert.equal(body.suggestion?.trust?.context, "~1.8k/6 files");
+  assert.equal(body.suggestion?.trust?.payment, "free");
+  assert.ok(body.suggestion?.trust?.compatibility?.includes("claude-code:available"));
+  assert.equal(body.suggestion?.trust?.lastVerifiedAt, "2026-07-06T10:00:00.000Z");
+  assert.equal(body.candidates?.length, 1);
+  assert.equal(verificationEvents.length, 1);
+  assert.deepEqual(verificationEvents[0], {
+    kind: "suggested",
+    owner: "harnesses",
+    repo: "deep-market-researcher",
+    version: "0.2.0",
+    target: "inspect",
+    client: "hh"
+  });
+});
+
+test("suggest --apply installs the selected harness and records applied after writing files", async () => {
+  verificationEvents = [];
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-suggest-apply-"));
+  try {
+    const result = await runCli(["suggest", "market", "research", "--apply", "--out", out, "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as { applied?: { owner?: string; name?: string; version?: string; out?: string; files?: number } };
+    assert.equal(body.applied?.owner, "harnesses");
+    assert.equal(body.applied?.name, "deep-market-researcher");
+    assert.equal(body.applied?.version, "0.2.0");
+    assert.equal(body.applied?.out, out);
+    assert.ok((body.applied?.files ?? 0) > 0);
+    await readFile(path.join(out, "harness.yaml"), "utf8");
+    const source = JSON.parse(await readFile(path.join(out, ".harnesshub/source.json"), "utf8")) as { owner?: string; name?: string; version?: string; registry?: string; files?: string[] };
+    assert.equal(source.owner, "harnesses");
+    assert.equal(source.name, "deep-market-researcher");
+    assert.equal(source.version, "0.2.0");
+    assert.equal(source.registry, registryUrl);
+    assert.ok(source.files?.includes("README.md"));
+    assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "applied"]);
+    for (const event of verificationEvents) {
+      assert.equal(event.owner, "harnesses");
+      assert.equal(event.repo, "deep-market-researcher");
+      assert.equal(event.version, "0.2.0");
+      assert.equal(event.client, "hh");
+      assert.equal(event.path, undefined);
+    }
+    assert.equal(verificationEvents[0].target, "apply");
+    assert.equal(verificationEvents[1].target, "scoped-install");
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("suggest --apply does not bypass paid archive 402", async () => {
+  verificationEvents = [];
+  const result = await runCli(["suggest", "paid", "workflow", "--apply", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 5);
+  const body = JSON.parse(result.stderr) as { error?: string; code?: number; next?: string };
+  assert.match(body.error ?? "", /Payment required/);
+  assert.equal(body.code, 5);
+  assert.match(body.next ?? "", /checkout/);
+  assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested"]);
+  assert.equal(verificationEvents[0].target, "apply");
 });
 
 test("setup installs an org bundle with org-token auth and idempotent retry", async () => {

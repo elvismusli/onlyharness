@@ -29,13 +29,17 @@ type SearchItem = {
   forks: number;
   threads: number;
   evalScore: number;
+  evalStatus?: string;
   heat: number;
+  riskScore?: number;
+  riskTier?: string;
   cliCommand?: string;
   contentType?: "harness" | "directory";
   directory?: {
     url?: string;
     itemCount?: number;
   };
+  pricing?: PricingInfo;
   contextCost?: {
     approxTokens: number;
     files: number;
@@ -44,6 +48,81 @@ type SearchItem = {
 
 type ArchiveFile = { path: string; truncated: boolean; content: string };
 type ArchivePayload = { version?: string; files?: ArchiveFile[] };
+type PricingInfo = {
+  model?: string;
+  amount_usd?: number;
+  currency?: string;
+};
+type SuggestDetail = {
+  owner?: string;
+  repo?: string;
+  valid?: boolean;
+  manifest?: {
+    name?: string;
+    title?: string;
+    summary?: string;
+    version?: string;
+    tags?: string[];
+    pricing?: PricingInfo;
+    compatibility?: {
+      targets?: Array<{ id?: string; name?: string; status?: string; notes?: string }>;
+    };
+  };
+  evalResult?: {
+    status?: string;
+    score?: number;
+    cost_usd?: number;
+    cases?: unknown[];
+    verification_status?: string;
+  };
+  risk?: {
+    score?: number;
+    tier?: string;
+    reasons?: string[];
+    blocking?: string[];
+  };
+  security?: {
+    verdict?: string;
+    findings?: unknown[];
+    scannedAt?: string;
+    scanner?: string;
+  };
+  contextCost?: Partial<ContextCost>;
+  standard?: string;
+  verification?: {
+    lastVerifiedAt?: string;
+  };
+  files?: string[];
+};
+type SuggestionReport = {
+  owner: string;
+  name: string;
+  ref: string;
+  title: string;
+  summary: string;
+  version?: string;
+  contentType: "harness" | "directory";
+  command: string;
+  openUrl?: string;
+  trust: {
+    eval: string;
+    risk: string;
+    security: string;
+    context: string;
+    standard: string;
+    payment: string;
+    compatibility: string[];
+    lastVerifiedAt?: string;
+  };
+};
+type PullHarnessResult = {
+  owner: string;
+  name: string;
+  version: string;
+  out: string;
+  files: number;
+  skipped: number;
+};
 type SourceMetadata = {
   owner: string;
   name: string;
@@ -286,6 +365,93 @@ program.command("search")
     ].join("\n")).join("\n\n") + "\n");
   });
 
+program.command("suggest")
+  .description("select a trusted harness for a task and optionally install it")
+  .argument("<query...>", "task or outcome, e.g. market research")
+  .option("--json", "print JSON", false)
+  .option("--limit <n>", "candidate count", "5")
+  .option("--pick <n>", "1-based candidate to inspect/apply", "1")
+  .option("--apply", "install the selected harness into --out or ./<name>", false)
+  .option("--out <dir>", "output directory when --apply is used")
+  .option("--force", "write into a non-empty output directory when --apply is used", false)
+  .option("--token <token>", "access token (defaults to HH_TOKEN/HH_ORG_TOKEN)")
+  .option("--pay", "pay x402-enabled 402 archive responses when --apply is used", false)
+  .action(async (queryParts: string[], options) => {
+    const query = queryParts.join(" ").trim();
+    if (!query) fail("Expected a search query.", EXIT.VALIDATION, "hh suggest market research", options.json);
+    const limit = boundedPositiveInt(options.limit, 5, 25);
+    const pick = positiveInt(options.pick, 1);
+    const data = await fetchJson(`${registryUrl}/registry?q=${encodeURIComponent(query)}&sort=trending`, { json: options.json }) as { items?: SearchItem[] };
+    const candidates = (data.items ?? []).slice(0, limit);
+    if (!candidates.length) fail(`No harnesses found for "${query}".`, EXIT.NOT_FOUND, `hh search ${query}`, options.json);
+    if (pick > candidates.length) {
+      fail(`Candidate ${pick} is not available; only ${candidates.length} result(s) returned.`, EXIT.VALIDATION, `hh suggest ${query} --pick 1`, options.json);
+    }
+    const item = candidates[pick - 1];
+    const detail = await fetchHarnessDetail(registryUrl, item.owner, item.name, options.json, options.token);
+    const suggestion = buildSuggestionReport(item, detail);
+    await recordCliRegistryEvent({
+      registry: registryUrl,
+      kind: "suggested",
+      owner: suggestion.owner,
+      repo: suggestion.name,
+      version: suggestion.version,
+      target: options.apply ? "apply" : "inspect",
+      client: "hh"
+    });
+
+    let applied: PullHarnessResult | undefined;
+    if (options.apply) {
+      if (suggestion.contentType === "directory") {
+        fail(
+          `Directory ${suggestion.ref} is link-only and cannot be applied as a runnable harness.`,
+          EXIT.VALIDATION,
+          suggestion.openUrl ? `open ${suggestion.openUrl}` : `hh search ${query}`,
+          options.json
+        );
+      }
+      applied = await pullHarnessArchive({
+        owner: suggestion.owner,
+        name: suggestion.name,
+        out: options.out,
+        force: options.force,
+        token: options.token,
+        pay: options.pay,
+        json: options.json
+      });
+      await recordCliRegistryEvent({
+        registry: registryUrl,
+        kind: "applied",
+        owner: applied.owner,
+        repo: applied.name,
+        version: applied.version,
+        target: "scoped-install",
+        client: "hh"
+      });
+    }
+
+    if (options.json) {
+      writeStdout({
+        query,
+        selected: pick,
+        suggestion,
+        candidates: candidates.map((candidate, index) => ({
+          rank: index + 1,
+          owner: candidate.owner,
+          name: candidate.name,
+          title: candidate.title,
+          evalScore: candidate.evalScore,
+          riskTier: candidate.riskTier,
+          contextCost: candidate.contextCost,
+          command: candidate.cliCommand ?? candidateCommand(candidate)
+        })),
+        applied
+      });
+      return;
+    }
+    writeStdout(suggestionText(query, pick, suggestion, applied));
+  });
+
 program.command("pull")
   .description("download a harness from the registry into a local directory")
   .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
@@ -299,66 +465,22 @@ program.command("pull")
     if (!owner || !name) {
       fail("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher", EXIT.VALIDATION, "hh pull harnesses/deep-market-researcher", options.json);
     }
-    const archiveUrl = `${registryUrl}/repos/${owner}/${name}/archive`;
-    const token = options.token ?? (owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
-    const archiveInit = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
-    let response = await fetchRegistryResponse(archiveUrl, options.json, archiveInit);
-    if (response.status === 404) {
-      fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, options.json);
-    }
-    if (response.status === 401 || response.status === 403) {
-      const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as { error?: string };
-      fail(
-        `Pull failed (${response.status}): ${body.error ?? "authorization required"}`,
-        EXIT.AUTH,
-        owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
-        options.json
-      );
-    }
-    if (response.status === 402) {
-      const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as PaymentRequiredBody;
-      if (options.pay) {
-        response = await retryWithX402Payment({ url: archiveUrl, init: archiveInit, response, body, json: options.json });
-      } else {
-        const price = priceLabel(body);
-        fail(
-          `Payment required for ${owner}/${name}${price ? ` (${price})` : ""}`,
-          EXIT.PAYMENT,
-          paymentNext(body),
-          options.json
-        );
-      }
-    }
-    if (response.status === 409) {
-      const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as DirectoryLinkOnlyBody;
-      if (body.code === "DIRECTORY_LINK_ONLY") {
-        fail(
-          `Directory ${owner}/${name} is link-only and cannot be pulled as a runnable harness.`,
-          EXIT.VALIDATION,
-          body.next ?? (body.url ? `open ${body.url}` : `hh search ${name}`),
-          options.json
-        );
-      }
-    }
-    if (!response.ok) {
-      fail(`Registry request failed: ${archiveUrl} -> ${response.status}`, EXIT.GENERAL, undefined, options.json);
-    }
-    const data = await readResponseJson(response, archiveUrl, options.json) as ArchivePayload;
-    const out = path.resolve(options.out ?? name);
-    if (existsSync(out) && readdirSync(out).length > 0 && !options.force) {
-      fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh pull ${harness} --force`, options.json);
-    }
-    const { written, skipped, paths } = writeArchiveFiles(out, data.files ?? []);
-    if (!written) fail(`No files received for ${owner}/${name}`, EXIT.GENERAL, `hh search ${name.replaceAll("-", " ")}`, options.json);
-    const version = data.version ?? readHarnessVersion(out) ?? "unknown";
-    writeSourceMetadata(out, { owner, name, version, registry: registryUrl, pulledAt: new Date().toISOString(), files: paths });
+    const result = await pullHarnessArchive({
+      owner,
+      name,
+      out: options.out,
+      force: options.force,
+      token: options.token,
+      pay: options.pay,
+      json: options.json
+    });
     if (options.json) {
-      writeStdout({ owner, name, version, out, files: written, skipped });
+      writeStdout(result);
       return;
     }
     writeStdout([
-      `Pulled ${owner}/${name}@${version} -> ${out} (${written} files${skipped ? `, ${skipped} skipped as too large` : ""})`,
-      `Next: hh run ${out} · hh eval ${out} && hh gate --dir ${out}`
+      `Pulled ${result.owner}/${result.name}@${result.version} -> ${result.out} (${result.files} files${result.skipped ? `, ${result.skipped} skipped as too large` : ""})`,
+      `Next: hh run ${result.out} · hh eval ${result.out} && hh gate --dir ${result.out}`
     ].join("\n") + "\n");
   });
 
@@ -1042,8 +1164,8 @@ function mergeHeaders(base: HeadersInit | undefined, extra: Record<string, strin
   return headers;
 }
 
-function contextCostLabel(cost: Pick<ContextCost, "approxTokens" | "files"> | undefined): string {
-  if (!cost) return "unknown";
+function contextCostLabel(cost: { approxTokens?: number; files?: number } | undefined): string {
+  if (!cost || typeof cost.approxTokens !== "number" || typeof cost.files !== "number") return "unknown";
   const tokens = cost.approxTokens >= 1000 ? `${(cost.approxTokens / 1000).toFixed(1)}k` : String(cost.approxTokens);
   return `~${tokens}/${cost.files} files`;
 }
@@ -1123,6 +1245,191 @@ async function fetchArchive(registryBase: string, owner: string, name: string, v
   }
   if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
   return readResponseJson(response, url, json) as Promise<ArchivePayload>;
+}
+
+async function fetchHarnessDetail(registryBase: string, owner: string, name: string, json = false, tokenOverride?: string): Promise<SuggestDetail> {
+  const url = `${registryBase.replace(/\/$/, "")}/repos/${owner}/${name}/harness`;
+  const token = tokenOverride ?? (owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
+  const response = await fetchRegistryResponse(url, json, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+  if (response.status === 404) fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, json);
+  if (response.status === 401 || response.status === 403) {
+    const body = await readResponseJson(response, url, json).catch(() => ({})) as { error?: string };
+    fail(
+      `Detail failed (${response.status}): ${body.error ?? "authorization required"}`,
+      EXIT.AUTH,
+      owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Set HH_TOKEN or use a public harness.",
+      json
+    );
+  }
+  if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
+  return readResponseJson(response, url, json) as Promise<SuggestDetail>;
+}
+
+async function pullHarnessArchive(input: {
+  owner: string;
+  name: string;
+  out?: string;
+  force: boolean;
+  token?: string;
+  pay: boolean;
+  json: boolean;
+}): Promise<PullHarnessResult> {
+  const archiveUrl = `${registryUrl}/repos/${input.owner}/${input.name}/archive`;
+  const token = input.token ?? (input.owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
+  const archiveInit = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  let response = await fetchRegistryResponse(archiveUrl, input.json, archiveInit);
+  if (response.status === 404) {
+    fail(`Harness ${input.owner}/${input.name} not found.`, EXIT.NOT_FOUND, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
+  }
+  if (response.status === 401 || response.status === 403) {
+    const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as { error?: string };
+    fail(
+      `Pull failed (${response.status}): ${body.error ?? "authorization required"}`,
+      EXIT.AUTH,
+      input.owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+      input.json
+    );
+  }
+  if (response.status === 402) {
+    const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as PaymentRequiredBody;
+    if (input.pay) {
+      response = await retryWithX402Payment({ url: archiveUrl, init: archiveInit, response, body, json: input.json });
+    } else {
+      const price = priceLabel(body);
+      fail(
+        `Payment required for ${input.owner}/${input.name}${price ? ` (${price})` : ""}`,
+        EXIT.PAYMENT,
+        paymentNext(body),
+        input.json
+      );
+    }
+  }
+  if (response.status === 409) {
+    const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as DirectoryLinkOnlyBody;
+    if (body.code === "DIRECTORY_LINK_ONLY") {
+      fail(
+        `Directory ${input.owner}/${input.name} is link-only and cannot be pulled as a runnable harness.`,
+        EXIT.VALIDATION,
+        body.next ?? (body.url ? `open ${body.url}` : `hh search ${input.name}`),
+        input.json
+      );
+    }
+  }
+  if (!response.ok) {
+    fail(`Registry request failed: ${archiveUrl} -> ${response.status}`, EXIT.GENERAL, undefined, input.json);
+  }
+  const data = await readResponseJson(response, archiveUrl, input.json) as ArchivePayload;
+  const out = path.resolve(input.out ?? input.name);
+  if (existsSync(out) && readdirSync(out).length > 0 && !input.force) {
+    fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh pull ${input.owner}/${input.name} --force`, input.json);
+  }
+  const { written, skipped, paths } = writeArchiveFiles(out, data.files ?? []);
+  if (!written) fail(`No files received for ${input.owner}/${input.name}`, EXIT.GENERAL, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
+  const version = data.version ?? readHarnessVersion(out) ?? "unknown";
+  writeSourceMetadata(out, { owner: input.owner, name: input.name, version, registry: registryUrl, pulledAt: new Date().toISOString(), files: paths });
+  return { owner: input.owner, name: input.name, version, out, files: written, skipped };
+}
+
+function buildSuggestionReport(item: SearchItem, detail: SuggestDetail): SuggestionReport {
+  const title = detail.manifest?.title ?? item.title ?? item.name;
+  const summary = detail.manifest?.summary ?? item.summary ?? "";
+  const version = detail.manifest?.version;
+  const contentType = item.contentType === "directory" ? "directory" : "harness";
+  return {
+    owner: item.owner,
+    name: item.name,
+    ref: `${item.owner}/${item.name}`,
+    title,
+    summary,
+    version,
+    contentType,
+    command: item.cliCommand ?? candidateCommand(item),
+    ...(item.directory?.url ? { openUrl: item.directory.url } : {}),
+    trust: {
+      eval: evalTrustLabel(item, detail),
+      risk: riskTrustLabel(item, detail),
+      security: securityTrustLabel(detail),
+      context: contextCostLabel(detail.contextCost ?? item.contextCost),
+      standard: detail.standard ?? "unknown",
+      payment: pricingTrustLabel(detail.manifest?.pricing ?? item.pricing),
+      compatibility: compatibilityLabels(detail),
+      ...(detail.verification?.lastVerifiedAt ? { lastVerifiedAt: detail.verification.lastVerifiedAt } : {})
+    }
+  };
+}
+
+function candidateCommand(item: SearchItem): string {
+  if (item.contentType === "directory" && item.directory?.url) return `open ${item.directory.url}`;
+  return `hh pull ${item.owner}/${item.name}`;
+}
+
+function evalTrustLabel(item: SearchItem, detail: SuggestDetail): string {
+  const status = detail.evalResult?.status ?? item.evalStatus ?? "unknown";
+  const score = typeof detail.evalResult?.score === "number" ? detail.evalResult.score : item.evalScore;
+  const verification = detail.evalResult?.verification_status ? ` (${detail.evalResult.verification_status})` : "";
+  return `${status} ${score ?? "unknown"}${verification}`.trim();
+}
+
+function riskTrustLabel(item: SearchItem, detail: SuggestDetail): string {
+  const score = typeof detail.risk?.score === "number" ? detail.risk.score : item.riskScore;
+  const tier = detail.risk?.tier ?? item.riskTier ?? "UNKNOWN";
+  const blocking = detail.risk?.blocking?.length ? `, ${detail.risk.blocking.length} blocking` : "";
+  return `${score ?? "unknown"} ${tier}${blocking}`;
+}
+
+function securityTrustLabel(detail: SuggestDetail): string {
+  const verdict = detail.security?.verdict ?? "unknown";
+  const findings = detail.security?.findings?.length ?? 0;
+  return `${verdict} (${findings} findings)`;
+}
+
+function pricingTrustLabel(pricing: PricingInfo | undefined): string {
+  if (!pricing || !pricing.model || pricing.model === "free") return "free";
+  if (typeof pricing.amount_usd === "number") return `${pricing.model} ${pricing.amount_usd} ${pricing.currency ?? "USD"}`;
+  return pricing.model;
+}
+
+function compatibilityLabels(detail: SuggestDetail): string[] {
+  return (detail.manifest?.compatibility?.targets ?? [])
+    .map((target) => `${target.id ?? target.name ?? "target"}:${target.status ?? "unknown"}`)
+    .slice(0, 5);
+}
+
+function suggestionText(query: string, pick: number, suggestion: SuggestionReport, applied: PullHarnessResult | undefined): string {
+  const lines = [
+    `Suggestion for "${query}" (#${pick})`,
+    `${suggestion.ref} - ${suggestion.title}`,
+    suggestion.summary,
+    "",
+    "Trust:",
+    `  eval: ${suggestion.trust.eval}`,
+    `  risk: ${suggestion.trust.risk}`,
+    `  security: ${suggestion.trust.security}`,
+    `  context: ${suggestion.trust.context}`,
+    `  standard: ${suggestion.trust.standard}`,
+    `  payment: ${suggestion.trust.payment}`,
+    `  compatibility: ${suggestion.trust.compatibility.length ? suggestion.trust.compatibility.join(", ") : "unknown"}`,
+    `  last verified: ${suggestion.trust.lastVerifiedAt ?? "unknown"}`,
+    "",
+    suggestion.contentType === "directory" && suggestion.openUrl
+      ? `Next: open ${suggestion.openUrl}`
+      : `Next: ${suggestion.command}${applied ? ` && hh run ${applied.out}` : " --out <dir>"}`
+  ];
+  if (applied) {
+    lines.push(`Applied: ${applied.owner}/${applied.name}@${applied.version} -> ${applied.out} (${applied.files} files${applied.skipped ? `, ${applied.skipped} skipped` : ""})`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function boundedPositiveInt(value: string | undefined, fallback: number, max: number): number {
+  const parsed = positiveInt(value, fallback);
+  return Math.min(parsed, max);
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return parsed;
 }
 
 async function setupOrgBundle(input: { org: string; out?: string; token?: string; force: boolean; dryRun: boolean; json: boolean }) {
@@ -1476,23 +1783,43 @@ async function recordCliVerificationEvent(root: string, kind: "eval" | "gate"): 
   const owner = source?.owner;
   const repo = source?.name ?? validation.manifest?.name;
   if (!owner || !repo) return;
-  const eventUrl = `${(source?.registry ?? registryUrl).replace(/\/$/, "")}/events`;
   const version = source?.version ?? validation.manifest?.version;
+  await recordCliRegistryEvent({
+    registry: source?.registry ?? registryUrl,
+    kind,
+    owner,
+    repo,
+    version,
+    target: "passed",
+    client: "hh"
+  });
+}
+
+async function recordCliRegistryEvent(input: {
+  registry: string;
+  kind: "suggested" | "applied" | "eval" | "gate";
+  owner: string;
+  repo: string;
+  version?: string;
+  target: string;
+  client: "hh";
+}): Promise<void> {
+  const eventUrl = `${input.registry.replace(/\/$/, "")}/events`;
   try {
     await fetch(eventUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        kind,
-        owner,
-        repo,
-        version,
-        target: "passed",
-        client: "hh"
+        kind: input.kind,
+        owner: input.owner,
+        repo: input.repo,
+        version: input.version,
+        target: input.target,
+        client: input.client
       })
     });
   } catch {
-    // Verification telemetry is best-effort and must never change local eval/gate results.
+    // CLI telemetry is best-effort and must never change local command results.
   }
 }
 

@@ -385,9 +385,11 @@ try {
   run("node", [cliBin, "validate", extractedSkill, "--strict", "--json"], { env: cliEnv });
   run("node", [cliBin, "doctor", "--json"], { env: cliEnv });
   run("node", [cliBin, "search", "research", "--json"], { env: cliEnv });
+  run("node", [cliBin, "suggest", "deep", "market", "researcher", "--json"], { env: cliEnv });
   run("node", [cliBin, "benchmark", path.join(root, "benchmarks/research-discovery.yaml"), "--json"], { env: cliEnv });
   const pullTmp = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-"));
   try {
+    run("node", [cliBin, "suggest", "deep", "market", "researcher", "--apply", "--out", path.join(pullTmp, "suggested"), "--json"], { env: cliEnv });
     const pulled = path.join(pullTmp, "dmr");
     run("node", [cliBin, "pull", "harnesses/deep-market-researcher", "--out", pulled], { env: cliEnv });
     run("node", [cliBin, "run", pulled, "--json"], { env: cliEnv });
@@ -414,7 +416,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest, local CLI doctor/search/suggest/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

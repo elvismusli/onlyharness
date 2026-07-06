@@ -4,6 +4,8 @@
 
 ```bash
 npx onlyharness search market research
+npx onlyharness suggest market research --json
+npx onlyharness suggest market research --apply --out deep-market-researcher --json
 npx onlyharness pull harnesses/deep-market-researcher
 npx onlyharness run deep-market-researcher
 npx onlyharness eval deep-market-researcher
@@ -49,6 +51,8 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 ## Agent Contract
 
 - `hh search <terms> --json` prints machine-readable registry results.
+- `hh suggest <terms> --json` searches, fetches detail, and prints a trust summary for the selected harness.
+- `hh suggest <terms> --apply --out <dir>` installs through the same archive path as `hh pull`, preserves paid 402/directory 409 behavior, and records `applied` only after files are written.
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
 - `hh pull owner/name --pay` uses `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuses to sign above `HH_MAX_PAY_USD`.
