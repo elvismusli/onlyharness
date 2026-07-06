@@ -46,9 +46,11 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_API_PORT: "8799",
     HARNESS_API_HOST: "127.0.0.1",
     HARNESS_WORKSPACE_ROOT: root,
+    HARNESS_STATE_PATH: path.join(smokeDataRoot, "harness-state.json"),
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
     HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
     HARNESS_LOCAL_PAYMENTS_PATH: path.join(smokeDataRoot, "payments.json"),
+    HARNESS_LOCAL_STOREFRONT_PATH: path.join(smokeDataRoot, "storefront.json"),
     HARNESS_WEBHOOK_TOKEN: "smoke-webhook-token",
     HARNESS_MANUAL_ENTITLEMENTS: "smoke-paid-token=local/smoke-paid-harness"
   }
@@ -84,6 +86,20 @@ try {
   if (detail.contextCost?.status !== "estimated" || !detail.contextCost.approxTokens || !detail.contextCost.files) {
     throw new Error(`Detail endpoint returned invalid context-cost estimate: ${JSON.stringify(detail.contextCost)}`);
   }
+  const profile = await fetch("http://127.0.0.1:8799/me/storefront", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-creator-token" },
+    body: JSON.stringify({ handle: "@Smoke-Creator", display_name: "Smoke Creator", bio: "Local smoke storefront" })
+  }).then((response) => response.json()) as { user_id?: string; handle?: string; referral_code?: string };
+  if (profile.user_id !== "local-dev" || profile.handle !== "smoke-creator" || profile.referral_code !== "ref_smoke_creator") {
+    throw new Error(`Storefront profile upsert failed: ${JSON.stringify(profile)}`);
+  }
+  const meProfile = await fetch("http://127.0.0.1:8799/me/storefront", {
+    headers: { Authorization: "Bearer smoke-creator-token" }
+  }).then((response) => response.json()) as { handle?: string; referral_code?: string };
+  if (meProfile.handle !== profile.handle || meProfile.referral_code !== profile.referral_code) {
+    throw new Error(`Storefront profile read failed: ${JSON.stringify(meProfile)}`);
+  }
   const paidRequired = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive");
   const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string };
   if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || !paidRequiredBody.checkout_url) {
@@ -96,10 +112,17 @@ try {
   const checkout = await fetch("http://127.0.0.1:8799/billing/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
-    body: JSON.stringify({ owner: "local", repo: "smoke-paid-harness", version: "0.1.0", ref: "SMOKE" })
+    body: JSON.stringify({ owner: "local", repo: "smoke-paid-harness", version: "0.1.0", ref: profile.referral_code })
   }).then((response) => response.json()) as { provider_ref?: string; checkout_url?: string; status?: string };
-  if (!checkout.provider_ref || checkout.status !== "pending" || !checkout.checkout_url?.includes("ref=SMOKE")) {
+  if (!checkout.provider_ref || checkout.status !== "pending" || !checkout.checkout_url?.includes(`ref=${profile.referral_code}`)) {
     throw new Error(`Checkout session failed: ${JSON.stringify(checkout)}`);
+  }
+  const paymentState = JSON.parse(readFileSync(path.join(smokeDataRoot, "payments.json"), "utf8")) as {
+    purchases?: Array<{ provider_ref?: string; referral_code?: string; creator_user_id?: string | null }>;
+  };
+  const purchase = paymentState.purchases?.find((row) => row.provider_ref === checkout.provider_ref);
+  if (!purchase || purchase.referral_code !== profile.referral_code || purchase.creator_user_id !== "local-dev") {
+    throw new Error(`Checkout did not preserve creator attribution: ${JSON.stringify(purchase)}`);
   }
   const unauthenticatedWebhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
     method: "POST",
@@ -148,6 +171,17 @@ try {
   if (imported.snapshotVersion !== "0.1.0") throw new Error(`Import did not create a version snapshot: ${JSON.stringify(imported)}`);
   const importedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-imported-harness/archive?version=0.1.0").then((response) => response.json()) as { snapshot?: boolean; files?: unknown[] };
   if (!importedArchive.snapshot || !importedArchive.files?.length) throw new Error(`Imported version snapshot unavailable: ${JSON.stringify(importedArchive)}`);
+  const storefront = await fetch(`http://127.0.0.1:8799/storefront/${profile.handle}`).then((response) => response.json()) as {
+    profile?: { handle?: string };
+    referralCode?: string;
+    items?: Array<{ owner?: string; name?: string }>;
+  };
+  if (storefront.profile?.handle !== profile.handle || storefront.referralCode !== profile.referral_code) {
+    throw new Error(`Public storefront returned wrong profile: ${JSON.stringify(storefront)}`);
+  }
+  if (!storefront.items?.some((item) => item.owner === "local" && item.name === "smoke-imported-harness")) {
+    throw new Error(`Public storefront did not include imported harness: ${JSON.stringify(storefront)}`);
+  }
 
   const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
   run("node", [cliBin, "doctor", "--json"], { env: cliEnv });
@@ -176,7 +210,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, archive versions, paid 402/checkout/webhook/entitlement, events, CLI validate/eval/gate/diff/update, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, CLI validate/eval/gate/diff/update, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

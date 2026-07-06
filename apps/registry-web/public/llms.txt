@@ -25,6 +25,10 @@ OpenAPI: https://onlyharness.com/api/openapi.json
   Auth required. Body { owner, repo, version?, ref? }. Creates a pending manual checkout session for paid harnesses.
 - Payment webhook: POST /webhooks/payments
   Internal only. Requires x-harness-token matching HARNESS_WEBHOOK_TOKEN; marks a manual purchase paid and grants entitlement idempotently.
+- Storefront profile: PUT /me/storefront and GET /me/storefront
+  Auth required. Body { handle, display_name?, bio? }. Creates a safe public creator handle and referral_code; email is not exposed.
+- Public storefront: GET /storefront/{handle}
+  Returns { profile, referralCode, items }. Use referralCode as checkout ref for creator attribution.
 - Events: POST /events
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
 - Leaderboard: GET /leaderboard?limit=10

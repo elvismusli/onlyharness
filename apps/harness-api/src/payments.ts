@@ -43,6 +43,7 @@ export type CheckoutInput = {
   manifest: HarnessManifest;
   userId: string;
   referralCode?: string;
+  creatorUserId?: string;
 };
 
 export type CheckoutSession = {
@@ -147,6 +148,7 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
     provider: "manual",
     provider_ref: `manual_${crypto.randomUUID()}`,
     referral_code: input.referralCode,
+    creator_user_id: input.creatorUserId ?? null,
     status: "pending",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -428,6 +430,7 @@ type StoredPurchase = {
   provider: "manual";
   provider_ref: string;
   referral_code?: string;
+  creator_user_id?: string | null;
   status: "pending" | "paid";
   created_at: string;
   updated_at: string;

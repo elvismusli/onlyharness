@@ -157,6 +157,65 @@ export const openapi = {
         }
       }
     },
+    "/me/storefront": {
+      get: {
+        summary: "Return the authenticated user's creator storefront profile",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Storefront profile",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/StorefrontProfile" } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      },
+      put: {
+        summary: "Create or update the authenticated user's creator handle",
+        description: "Creates a safe public handle/profile and a creator referral code. Email is never exposed.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  handle: { type: "string" },
+                  display_name: { type: "string" },
+                  bio: { type: "string" }
+                },
+                required: ["handle"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Updated storefront profile",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/StorefrontProfile" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/storefront/{handle}": {
+      get: {
+        summary: "Public creator storefront by handle",
+        description: "Returns only safe profile fields, creator referral code and currently published harnesses.",
+        parameters: [pathParam("handle")],
+        responses: {
+          "200": {
+            description: "Creator storefront",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/StorefrontPage" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/webhooks/payments": {
       post: {
         summary: "Settle a manual payment webhook",
@@ -388,6 +447,34 @@ export const openapi = {
           purchase_id: { type: "string" }
         },
         required: ["ok", "status", "owner", "repo", "version", "subject_id"]
+      },
+      StorefrontProfile: {
+        type: "object",
+        properties: {
+          user_id: { type: "string" },
+          handle: { type: "string" },
+          display_name: { type: "string" },
+          bio: { type: "string" },
+          referral_code: { type: "string" }
+        },
+        required: ["user_id", "handle", "display_name", "bio", "referral_code"]
+      },
+      StorefrontPage: {
+        type: "object",
+        properties: {
+          profile: {
+            type: "object",
+            properties: {
+              handle: { type: "string" },
+              display_name: { type: "string" },
+              bio: { type: "string" }
+            },
+            required: ["handle", "display_name", "bio"]
+          },
+          referralCode: { type: "string" },
+          items: { type: "array", items: { $ref: "#/components/schemas/RegistryItem" } }
+        },
+        required: ["profile", "referralCode", "items"]
       },
       SecurityReport: {
         type: "object",

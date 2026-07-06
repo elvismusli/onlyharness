@@ -11,9 +11,10 @@ import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
 import { createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
+import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
 
-const statePath = path.join(registry.workspaceRoot, "data/harness-state.json");
+const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey;
@@ -31,6 +32,13 @@ type CheckoutRequest = {
   repo?: string;
   version?: string;
   ref?: string;
+};
+
+type StorefrontRequest = {
+  handle?: string;
+  display_name?: string;
+  displayName?: string;
+  bio?: string;
 };
 
 type ThreadItem = {
@@ -123,17 +131,62 @@ app.post("/billing/checkout", async (request, reply) => {
   if (!archive) return reply.code(404).send({ error: "Harness version not found" });
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
   if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const attribution = await resolveCheckoutAttribution({
+    owner,
+    repo,
+    referralCode: body.ref
+  });
+  if (!attribution.ok) return reply.code(attribution.status).send({ error: attribution.error });
   const session = await createCheckoutSession({
     owner,
     repo,
     version: archive.version,
     manifest,
     userId: user.id,
-    referralCode: body.ref
+    referralCode: attribution.value.referralCode,
+    creatorUserId: attribution.value.creatorUserId
   });
   if ("error" in session) return reply.code(session.status).send({ error: session.error });
   await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(user.id), target: "billing", client: "api" });
   return reply.code(201).send(session);
+});
+
+app.get("/me/storefront", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const result = await fetchMyStorefront(user.id);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  return result.value;
+});
+
+app.put("/me/storefront", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as StorefrontRequest : {};
+  const result = await upsertStorefrontProfile({
+    userId: user.id,
+    handle: body.handle,
+    displayName: body.display_name ?? body.displayName,
+    bio: body.bio
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  return result.value;
+});
+
+app.get("/storefront/:handle", async (request, reply) => {
+  const { handle } = request.params as { handle: string };
+  const result = await fetchStorefrontByHandle(handle);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  const counters = await fetchCountersMap();
+  const registryItems = new Map(registry.scanRegistry(counters).map((item) => [`${item.owner}/${item.name}`, item]));
+  const items = result.value.harnesses
+    .map((ref) => registryItems.get(`${ref.owner}/${ref.repo}`))
+    .filter(Boolean);
+  return {
+    profile: result.value.profile,
+    referralCode: result.value.referralCode,
+    items
+  };
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
@@ -356,6 +409,7 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
   }
   const item = registry.registryItemFromDir("local", target, new Map());
   const snapshot = registry.writeArchiveSnapshot("local", name, target);
+  await upsertHarnessCreator("local", name, user.id);
   await recordEvent({ kind: "applied", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
   appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
   return { item, output: cli.stdout, snapshotVersion: snapshot?.version };
