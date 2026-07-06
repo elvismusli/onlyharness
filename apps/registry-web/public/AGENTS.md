@@ -29,6 +29,7 @@ Useful targeted checks:
 npm run typecheck -w @harnesshub/api
 npm run typecheck -w @harnesshub/registry-web
 npm run typecheck -w onlyharness
+npm run check:mcp-registry
 npm test -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 ```
@@ -43,6 +44,9 @@ npx onlyharness pull harnesses/deep-market-researcher
 npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json
+npx onlyharness pin deep-market-researcher --json
+npx onlyharness outdated deep-market-researcher --json
+npx onlyharness update deep-market-researcher --diff --json
 ```
 
 HTTP API base: `https://onlyharness.com/api`
@@ -54,12 +58,14 @@ Core endpoints:
 | GET | `/healthz` | API health |
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
-| GET | `/repos/{owner}/{name}/archive` | Pull all harness files |
+| GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
+| POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
-Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `search_docs`, `publish_markdown_to_harness`.
+Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
+MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
 Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install onlyharness@onlyharness`.
 
 ## Conventions
@@ -69,7 +75,9 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Keep docs, `/llms.txt`, API behavior, and CLI behavior synchronized.
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
+- Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
+- Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.
 
 ## UI Rules

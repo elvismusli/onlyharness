@@ -408,7 +408,7 @@ Verify: `curl -s http://127.0.0.1:8787/openapi.json | python3 -m json.tool | hea
 
 ```json
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.onlyharness/registry",
   "description": "Search, inspect, pull and publish reusable AI-agent harnesses from onlyharness.com",
   "repository": { "url": "https://github.com/elvismusli/onlyharness", "source": "github" },
@@ -417,7 +417,7 @@ Verify: `curl -s http://127.0.0.1:8787/openapi.json | python3 -m json.tool | hea
 }
 ```
 
-(Check the current schema URL/shape against github.com/modelcontextprotocol/registry docs at implementation time — API is v0.1-frozen but the schema date stamp may have moved.)
+Also publish the same metadata at `apps/registry-web/public/server.json` so `https://onlyharness.com/server.json` is discoverable. Keep it remote-only until there is a real MCP package; the `onlyharness` npm CLI is not a stdio MCP server. Check the current schema URL/shape against modelcontextprotocol.io registry docs at implementation time — the registry is preview and the schema date stamp can move.
 
 ### Task D3: Publish to registry.modelcontextprotocol.io — **USER ACTION (DNS)**
 
@@ -426,7 +426,7 @@ brew install mcp-publisher   # or the documented install path
 mcp-publisher login dns --domain onlyharness.com   # prints a TXT record
 # USER: add the TXT record in the onlyharness.com DNS panel, wait for propagation
 mcp-publisher publish
-curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=onlyharness"   # verify listed
+curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=onlyharness"   # verify listed
 ```
 
 Commit `server.json` + a README badge/line. Registry is in preview — if publish fails, park the task and keep server.json in-repo (subregistries also crawl GitHub).

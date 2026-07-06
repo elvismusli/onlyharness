@@ -29,6 +29,7 @@ Useful targeted checks:
 npm run typecheck -w @harnesshub/api
 npm run typecheck -w @harnesshub/registry-web
 npm run typecheck -w onlyharness
+npm run check:mcp-registry
 npm test -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 ```
@@ -64,6 +65,7 @@ Core endpoints:
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
 Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
+MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
 Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install onlyharness@onlyharness`.
 
 ## Conventions

@@ -12,6 +12,8 @@ Base URL: https://onlyharness.com/api
 
 OpenAPI: https://onlyharness.com/api/openapi.json
 
+MCP Registry metadata: https://onlyharness.com/server.json
+
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, outcome and tags.
@@ -45,6 +47,8 @@ End-to-end example:
 Endpoint: https://onlyharness.com/mcp
 
 Transport: Streamable HTTP. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+
+Official MCP Registry name: `com.onlyharness/registry`. The public `server.json` is remote-only and points at the same Streamable HTTP endpoint. Registry publish still requires domain ownership proof for `onlyharness.com`.
 
 Tools:
 
