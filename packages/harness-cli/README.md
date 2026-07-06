@@ -13,6 +13,7 @@ npx onlyharness audit-setup
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme
 HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name team-workflow
+HH_ORG_TOKEN=<org-token> npx onlyharness sync git@github.com:acme/skills.git --org acme
 ```
 
 Global install after npm publish:
@@ -34,7 +35,7 @@ HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 
 Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`.
 
-Team setup, org-private pull, and org publishing use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name` and `hh publish workflow.md --org acme` use the same org token path.
+Team setup, org-private pull, org publishing, and repo sync use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name`, `hh publish workflow.md --org acme`, and `hh sync <git-url-or-local-path> --org acme` use the same org token path.
 
 ## Publishing
 
@@ -58,6 +59,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh extract <skill-dir|SKILL.md>` creates a private `harness.v0.2` scaffold from local skill markdown, infers candidate `depends_on`, and redacts obvious token-shaped secrets.
 - `hh setup @org` installs a token-gated team bundle with pinned harnesses and config snippets; repeated runs of the same bundle are idempotent.
 - `hh publish --org <slug>` uses `HH_ORG_TOKEN` and publishes a private org harness.
+- `hh sync <git-url-or-local-path> --org <slug>` clones or scans a repo, imports markdown skills/runbooks/prompts into the org namespace, and prints an import report. The first version has no webhooks.
 - `hh pin`, `hh outdated`, and `hh update --diff` use `.harnesshub/source.json` / `.harnesshub/pin.json` for safe version-aware updates.
 - Use `--json` where available, or `--format json` for risk/diff; failures print `{ "error", "code", "next" }` to stderr.
 

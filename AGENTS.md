@@ -48,6 +48,7 @@ npx onlyharness audit-setup --json
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness --json
 npx onlyharness setup @acme --json
 npx onlyharness publish workflow.md --org acme --name team-workflow --json
+npx onlyharness sync git@github.com:acme/skills.git --org acme --json
 npx onlyharness pin deep-market-researcher --json
 npx onlyharness outdated deep-market-researcher --json
 npx onlyharness update deep-market-researcher --diff --json
@@ -83,7 +84,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
 - Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
-- Team `hh setup @org`, `hh pull @org/name`, and `hh publish --org` use `HH_ORG_TOKEN`; org bundles/publishing are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.
+- Team `hh setup @org`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org bundles/publishing/sync are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
 - Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.

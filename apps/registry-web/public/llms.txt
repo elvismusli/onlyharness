@@ -37,6 +37,8 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, bundle: { version, harnesses, configs } }. Use `HH_ORG_TOKEN=... hh setup @slug` instead of hand-writing files.
 - Org publish: POST /orgs/{slug}/imports/markdown-to-harness
   Requires ORGS_ENABLED=true and an org token with publish scope. Use `HH_ORG_TOKEN=... hh publish workflow.md --org slug --name team-workflow`. The generated harness is `visibility: org` and archive/detail require an org token.
+- Org repo sync: `HH_ORG_TOKEN=... hh sync <git-url-or-local-path> --org slug`
+  First version clones or scans a repo, imports markdown skills/runbooks/prompts through the org publish endpoint, and prints a report. It does not install webhooks.
 - Events: POST /events
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
 - Leaderboard: GET /leaderboard?limit=10

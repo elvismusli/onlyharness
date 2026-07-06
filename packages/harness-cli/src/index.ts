@@ -133,6 +133,30 @@ type OrgSetupMetadata = {
   organization?: { slug?: string };
   bundleVersion?: string;
 };
+type OrgImportResult = {
+  title: string;
+  name: string;
+  owner: string;
+  snapshotVersion?: string;
+};
+type SyncCandidate = {
+  path: string;
+  name: string;
+  bytes: number;
+  markdown: string;
+};
+type SyncSkipped = {
+  path: string;
+  reason: string;
+};
+type SyncReport = {
+  org: string;
+  source: string;
+  cloned: boolean;
+  dryRun: boolean;
+  imported: Array<{ path: string; name: string; owner: string; title: string; snapshotVersion?: string }>;
+  skipped: SyncSkipped[];
+};
 
 export const EXIT = {
   OK: 0,
@@ -266,6 +290,35 @@ program.command("setup")
     writeStdout(options.json ? result : `Installed ${result.organization.slug}@${result.bundleVersion} -> ${result.out}\n`);
   });
 
+program.command("sync")
+  .description("sync markdown skills and workflows from a git repo into an org namespace")
+  .argument("<git-url>", "git URL or local repository path")
+  .requiredOption("--org <slug>", "organization slug")
+  .option("--org-token <token>", "org publish token (defaults to HH_ORG_TOKEN)")
+  .option("--max-files <n>", "maximum markdown files to import", "50")
+  .option("--dry-run", "scan and summarize without importing", false)
+  .option("--json", "print JSON", false)
+  .action(async (source: string, options) => {
+    const orgSlug = cleanSetupOrg(options.org);
+    if (!orgSlug) fail("Invalid org slug.", EXIT.VALIDATION, "hh sync <git-url> --org acme --org-token <token>", options.json);
+    const token = options.orgToken ?? process.env.HH_ORG_TOKEN;
+    if (!token) fail("Org token required.", EXIT.AUTH, "Set HH_ORG_TOKEN or pass --org-token <token>", options.json);
+    const maxFiles = Number(options.maxFiles);
+    const report = await syncOrgRepo({
+      source,
+      org: orgSlug,
+      token,
+      maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? Math.floor(maxFiles) : 50,
+      dryRun: options.dryRun,
+      json: options.json
+    });
+    if (options.json) {
+      writeStdout(report);
+      return;
+    }
+    writeStdout(syncReportText(report));
+  });
+
 program.command("run")
   .description("run the bundled example locally (sample mode: no LLM calls, no credentials)")
   .argument("[dir]", "harness directory", ".")
@@ -321,33 +374,12 @@ program.command("publish")
     if (orgSlug && !token) fail("Org token required.", EXIT.AUTH, "Set HH_ORG_TOKEN or pass --org-token <token>", options.json);
     const markdown = readFileSync(path.resolve(file), "utf8");
     const name = options.name ?? slugify(path.basename(file, path.extname(file)));
-    const publishUrl = orgSlug ? `${registryUrl}/orgs/${orgSlug}/imports/markdown-to-harness` : `${registryUrl}/imports/markdown-to-harness`;
-    const response = await fetch(publishUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({ name, markdown })
-    });
-    const body = await response.json().catch(() => ({})) as { item?: { title?: string; name?: string }; error?: string };
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        fail(
-          `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
-          EXIT.AUTH,
-          orgSlug ? "Check HH_ORG_TOKEN and org publish scope." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
-          options.json
-        );
-      }
-      if (response.status === 404) {
-        fail(`Publish failed (404): ${body.error ?? "org or endpoint not found"}`, EXIT.NOT_FOUND, orgSlug ? "Ask an org admin to enable org publishing." : undefined, options.json);
-      }
-      fail(`Publish failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, EXIT.GENERAL, undefined, options.json);
-    }
-    const title = body.item?.title ?? name;
+    const result = orgSlug
+      ? await publishOrgMarkdown({ org: orgSlug, token, name, markdown, json: options.json, command: "Publish" })
+      : await publishPublicMarkdown({ token, name, markdown, json: options.json });
+    const title = result.title;
     if (options.json) {
-      writeStdout({ title, name: body.item?.name ?? name, owner: orgSlug ? `@${orgSlug}` : "local", url: orgSlug ? `https://onlyharness.com/@${orgSlug}/${body.item?.name ?? name}` : "https://onlyharness.com" });
+      writeStdout({ title, name: result.name, owner: result.owner, url: orgSlug ? `https://onlyharness.com/@${orgSlug}/${result.name}` : "https://onlyharness.com" });
       return;
     }
     writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://onlyharness.com\n`);
@@ -897,6 +929,230 @@ async function setupOrgBundle(input: { org: string; out?: string; token?: string
   };
   if (!input.dryRun) writeJsonFile(path.join(out, ".harnesshub/setup.json"), setup);
   return setup;
+}
+
+async function syncOrgRepo(input: { source: string; org: string; token: string; maxFiles: number; dryRun: boolean; json: boolean }): Promise<SyncReport> {
+  const source = materializeSyncSource(input.source, input.json);
+  try {
+    const scan = findSyncCandidates(source.root, input.maxFiles);
+    const report: SyncReport = {
+      org: input.org,
+      source: input.source,
+      cloned: source.cloned,
+      dryRun: input.dryRun,
+      imported: [],
+      skipped: scan.skipped
+    };
+    if (input.dryRun) {
+      report.imported = scan.candidates.map((candidate) => ({
+        path: candidate.path,
+        name: candidate.name,
+        owner: `@${input.org}`,
+        title: titleize(candidate.name)
+      }));
+      return report;
+    }
+    for (const candidate of scan.candidates) {
+      const result = await publishOrgMarkdown({
+        org: input.org,
+        token: input.token,
+        name: candidate.name,
+        markdown: candidate.markdown,
+        json: input.json,
+        command: "Sync"
+      });
+      report.imported.push({
+        path: candidate.path,
+        name: result.name,
+        owner: result.owner,
+        title: result.title,
+        snapshotVersion: result.snapshotVersion
+      });
+    }
+    return report;
+  } finally {
+    source.cleanup();
+  }
+}
+
+async function publishPublicMarkdown(input: { token?: string; name: string; markdown: string; json: boolean }): Promise<OrgImportResult> {
+  const publishUrl = `${registryUrl}/imports/markdown-to-harness`;
+  const response = await fetchRegistryResponse(publishUrl, input.json, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(input.token ? { Authorization: `Bearer ${input.token}` } : {})
+    },
+    body: JSON.stringify({ name: input.name, markdown: input.markdown })
+  });
+  const body = await response.json().catch(() => ({})) as { item?: { title?: string; name?: string }; snapshotVersion?: string; error?: string };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.json
+      );
+    }
+    fail(`Publish failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.GENERAL, undefined, input.json);
+  }
+  return {
+    title: body.item?.title ?? input.name,
+    name: body.item?.name ?? input.name,
+    owner: "local",
+    snapshotVersion: body.snapshotVersion
+  };
+}
+
+async function publishOrgMarkdown(input: { org: string; token: string; name: string; markdown: string; json: boolean; command: "Publish" | "Sync" }): Promise<OrgImportResult> {
+  const publishUrl = `${registryUrl}/orgs/${input.org}/imports/markdown-to-harness`;
+  const response = await fetchRegistryResponse(publishUrl, input.json, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${input.token}`
+    },
+    body: JSON.stringify({ name: input.name, markdown: input.markdown })
+  });
+  const body = await response.json().catch(() => ({})) as { item?: { title?: string; name?: string }; snapshotVersion?: string; error?: string };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `${input.command} failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Check HH_ORG_TOKEN and org publish scope.",
+        input.json
+      );
+    }
+    if (response.status === 404) {
+      fail(`${input.command} failed (404): ${body.error ?? "org or endpoint not found"}`, EXIT.NOT_FOUND, "Ask an org admin to enable org publishing.", input.json);
+    }
+    fail(`${input.command} failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, EXIT.GENERAL, undefined, input.json);
+  }
+  return {
+    title: body.item?.title ?? input.name,
+    name: body.item?.name ?? input.name,
+    owner: `@${input.org}`,
+    snapshotVersion: body.snapshotVersion
+  };
+}
+
+function materializeSyncSource(source: string, json: boolean): { root: string; cloned: boolean; cleanup: () => void } {
+  const localPath = path.resolve(source);
+  if (existsSync(localPath)) {
+    if (!statSync(localPath).isDirectory()) fail("Sync source must be a git URL or local directory.", EXIT.VALIDATION, "hh sync <git-url> --org acme", json);
+    return { root: localPath, cloned: false, cleanup: () => undefined };
+  }
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "hh-sync-"));
+  const clone = spawnSync("git", ["clone", "--depth", "1", source, tmp], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024
+  });
+  if (clone.status !== 0) {
+    rmSync(tmp, { recursive: true, force: true });
+    fail(`Sync clone failed: ${clone.stderr || clone.stdout || "git clone exited with an error"}`, EXIT.GENERAL, undefined, json);
+  }
+  return { root: tmp, cloned: true, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+}
+
+function findSyncCandidates(root: string, maxFiles: number): { candidates: SyncCandidate[]; skipped: SyncSkipped[] } {
+  const markdown = collectSyncMarkdown(root)
+    .filter((file) => isSyncMarkdownCandidate(file))
+    .sort(syncCandidateSort);
+  const skipped: SyncSkipped[] = [];
+  const seenNames = new Set<string>();
+  const candidates: SyncCandidate[] = [];
+  for (const relative of markdown) {
+    const full = path.join(root, relative);
+    const bytes = statSync(full).size;
+    if (bytes < 20) {
+      skipped.push({ path: relative, reason: "too_small" });
+      continue;
+    }
+    if (bytes > 128 * 1024) {
+      skipped.push({ path: relative, reason: "too_large" });
+      continue;
+    }
+    if (candidates.length >= maxFiles) {
+      skipped.push({ path: relative, reason: "max_files" });
+      continue;
+    }
+    const name = uniqueSyncName(syncNameForMarkdown(relative), seenNames);
+    candidates.push({
+      path: relative,
+      name,
+      bytes,
+      markdown: readFileSync(full, "utf8")
+    });
+  }
+  return { candidates, skipped };
+}
+
+function collectSyncMarkdown(root: string): string[] {
+  const files: string[] = [];
+  const visit = (dir: string, depth: number) => {
+    if (depth > 10) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (isIgnoredSyncEntry(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full, depth + 1);
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) files.push(path.relative(root, full).split(path.sep).join("/"));
+    }
+  };
+  visit(root, 0);
+  return files;
+}
+
+function isIgnoredSyncEntry(name: string): boolean {
+  return [".git", "node_modules", "dist", "build", "coverage", ".next", ".harnesshub"].includes(name);
+}
+
+function isSyncMarkdownCandidate(relative: string): boolean {
+  const lower = relative.toLowerCase();
+  if (/(^|\/)skill\.md$/.test(lower)) return true;
+  if (/^(\.claude\/skills|skills|prompts|runbooks|plugin-marketplace|marketplace|plugins)\//.test(lower)) return true;
+  if (!relative.includes("/") && !["readme.md", "license.md", "contributing.md", "changelog.md", "code_of_conduct.md", "security.md"].includes(lower)) return true;
+  return false;
+}
+
+function syncCandidateSort(left: string, right: string): number {
+  const leftSkill = /(^|\/)skill\.md$/i.test(left) ? 0 : 1;
+  const rightSkill = /(^|\/)skill\.md$/i.test(right) ? 0 : 1;
+  if (leftSkill !== rightSkill) return leftSkill - rightSkill;
+  return left.localeCompare(right);
+}
+
+function syncNameForMarkdown(relative: string): string {
+  const parts = relative.split("/");
+  if (parts.at(-1)?.toLowerCase() === "skill.md" && parts.length >= 2) return slugify(parts.at(-2) ?? "skill");
+  return slugify(relative.replace(/\.md$/i, "").replace(/\//g, "-"));
+}
+
+function uniqueSyncName(base: string, seen: Set<string>): string {
+  const stem = cleanRegistrySegment(base) ?? "synced-workflow";
+  let name = stem;
+  let suffix = 2;
+  while (seen.has(name)) {
+    name = `${stem.slice(0, 72)}-${suffix}`;
+    suffix += 1;
+  }
+  seen.add(name);
+  return name;
+}
+
+function syncReportText(report: SyncReport): string {
+  const lines = [
+    `${report.dryRun ? "Would sync" : "Synced"} ${report.imported.length} markdown files to @${report.org}`,
+    `Source: ${report.source}${report.cloned ? " (cloned)" : ""}`
+  ];
+  for (const item of report.imported) lines.push(`- ${item.path} -> ${item.owner}/${item.name}`);
+  if (report.skipped.length) {
+    lines.push("Skipped:");
+    for (const item of report.skipped.slice(0, 20)) lines.push(`- ${item.path}: ${item.reason}`);
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 function cleanSetupOrg(value: string): string | undefined {

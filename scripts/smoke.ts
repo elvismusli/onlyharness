@@ -253,6 +253,21 @@ try {
     headers: { Authorization: "Bearer smoke-org-token" }
   }).then((response) => response.json()) as { owner?: string; repo?: string; files?: unknown[] };
   if (orgArchive.owner !== "@acme" || orgArchive.repo !== "acme-private-workflow" || !orgArchive.files?.length) throw new Error(`Org archive did not return files with token: ${JSON.stringify(orgArchive)}`);
+  const syncRepo = path.join(smokeDataRoot, "sync-repo");
+  mkdirSync(path.join(syncRepo, ".claude/skills/smoke-sync"), { recursive: true });
+  writeFileSync(path.join(syncRepo, ".claude/skills/smoke-sync/SKILL.md"), "---\ndescription: Use for smoke testing org git sync import.\n---\n# Smoke Sync Skill\n\nRun the synced smoke workflow and report private setup status.\n");
+  const syncResult = run("node", [cliBin, "sync", syncRepo, "--org", "acme", "--org-token", "smoke-org-token", "--json"], { env: cliEnv });
+  const syncBody = JSON.parse(syncResult.stdout) as { imported?: Array<{ name?: string; owner?: string }>; skipped?: unknown[] };
+  if (!syncBody.imported?.some((item) => item.owner === "@acme" && item.name === "smoke-sync")) {
+    throw new Error(`Org sync did not import smoke skill: ${syncResult.stdout}`);
+  }
+  if (syncResult.stdout.includes("smoke-org-token")) throw new Error("Org sync leaked raw token in stdout");
+  const syncDetail = await fetch("http://127.0.0.1:8799/repos/@acme/smoke-sync/harness", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { manifest?: { visibility?: string; org?: string; name?: string } };
+  if (syncDetail.manifest?.visibility !== "org" || syncDetail.manifest.org !== "acme" || syncDetail.manifest.name !== "smoke-sync") {
+    throw new Error(`Org sync detail did not preserve org manifest: ${JSON.stringify(syncDetail)}`);
+  }
   const orgEntitlementNoToken = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=@acme/acme-private-workflow");
   if (orgEntitlementNoToken.status !== 401) throw new Error(`Org entitlement check without token should be 401, got ${orgEntitlementNoToken.status}`);
   const orgEntitlement = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=@acme/acme-private-workflow", {
@@ -305,7 +320,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check, events, org setup/publish/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

@@ -18,6 +18,7 @@ let sawSetupBundleToken = false;
 let sawSetupArchiveToken = false;
 let sawOrgPublishToken = false;
 let sawOrgPullToken = false;
+let orgPublishedNames: string[] = [];
 
 before(async () => {
   server = createServer((request, response) => {
@@ -66,10 +67,20 @@ before(async () => {
         return;
       }
       sawOrgPublishToken = true;
-      response.end(JSON.stringify({
-        item: { owner: "@acme", name: "team-workflow", title: "Team Workflow" },
-        snapshotVersion: "0.1.0"
-      }));
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { name?: string };
+        const name = body.name ?? "team-workflow";
+        orgPublishedNames.push(name);
+        response.end(JSON.stringify({
+          item: { owner: "@acme", name, title: titleizeTest(name) },
+          snapshotVersion: "0.1.0"
+        }));
+      });
       return;
     }
 
@@ -269,6 +280,7 @@ test("setup installs an org bundle with org-token auth and idempotent retry", as
 
 test("publish --org sends HH_ORG_TOKEN to the org import endpoint", async () => {
   sawOrgPublishToken = false;
+  orgPublishedNames = [];
   const root = await mkdtemp(path.join(os.tmpdir(), "hh-org-publish-"));
   const source = path.join(root, "team.md");
   try {
@@ -288,6 +300,35 @@ test("publish --org sends HH_ORG_TOKEN to the org import endpoint", async () => 
     assert.doesNotMatch(denied.stderr, /bad-token/);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("sync imports local repo markdown candidates into an org namespace", async () => {
+  sawOrgPublishToken = false;
+  orgPublishedNames = [];
+  const repo = await mkdtemp(path.join(os.tmpdir(), "hh-sync-repo-"));
+  try {
+    await mkdir(path.join(repo, ".claude/skills/research"), { recursive: true });
+    await mkdir(path.join(repo, "runbooks"), { recursive: true });
+    await mkdir(path.join(repo, "docs"), { recursive: true });
+    await writeFile(path.join(repo, ".claude/skills/research/SKILL.md"), "---\ndescription: Use for team research synthesis.\n---\n# Research Skill\n\nRun the team research workflow.\n");
+    await writeFile(path.join(repo, "runbooks/team-review.md"), "# Team Review\n\nReview a candidate workflow before publishing it to the team catalog.\n");
+    await writeFile(path.join(repo, "README.md"), "# Ignore generic repo readme\n");
+    await writeFile(path.join(repo, "docs/ignored.md"), "# Ignore general docs\n");
+
+    const result = await runCli(["sync", repo, "--org", "acme", "--org-token", "org-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawOrgPublishToken, true);
+    assert.doesNotMatch(result.stdout, /org-token/);
+    const body = JSON.parse(result.stdout) as { org?: string; imported?: Array<{ path?: string; name?: string }>; skipped?: Array<{ path?: string }> };
+    assert.equal(body.org, "acme");
+    assert.deepEqual(orgPublishedNames.sort(), ["research", "runbooks-team-review"]);
+    assert.ok(body.imported?.some((item) => item.path === ".claude/skills/research/SKILL.md" && item.name === "research"));
+    assert.ok(body.imported?.some((item) => item.path === "runbooks/team-review.md" && item.name === "runbooks-team-review"));
+    assert.ok(!body.imported?.some((item) => item.path === "README.md" || item.path === "docs/ignored.md"));
+  } finally {
+    await rm(repo, { recursive: true, force: true });
   }
 });
 
@@ -680,6 +721,10 @@ function runCli(args: string[], env: NodeJS.ProcessEnv = {}): Promise<{ status: 
       resolve({ status, stdout, stderr });
     });
   });
+}
+
+function titleizeTest(value: string): string {
+  return value.split("-").filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 }
 
 function updatedHarnessYaml(): string {

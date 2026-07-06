@@ -92,6 +92,7 @@ node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name my-private-harness
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
 ```
 
 ## For agents
@@ -100,6 +101,7 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.
 - MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, and `publish_markdown_to_harness`.
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`.
+- Team git sync: `hh sync <git-url-or-local-path> --org acme` clones/scans markdown skills and runbooks, then imports them through the org publish endpoint. First version has no webhooks.
 - Org-private pulls use the same token path: `HH_ORG_TOKEN=<org-token> hh pull @acme/private-harness`.
 - Bot gates can call `GET /api/entitlements/check?subject=user:<id>&harness=owner/name` with an org token that has `entitlements:read`; this returns a decision only, never archive files.
 - Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install onlyharness@onlyharness`.
