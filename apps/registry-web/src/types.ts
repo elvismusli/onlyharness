@@ -73,6 +73,14 @@ export type CheckoutSession = {
   next: string;
 };
 
+export type CheckoutLinkState = {
+  owner: string;
+  repo: string;
+  version: string;
+  providerRef?: string;
+  ref?: string;
+};
+
 export type ContextCost = {
   approxTokens: number;
   files: number;
@@ -209,7 +217,7 @@ export type OrgWorkspace = {
 export const DETAIL_TABS = ["Overview", "Install", "Trust", "Try sample", "Thread", "Files", "Versions"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
-export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share" | "storefront" | "profile" | "network";
+export type WinKind = "harness" | "publish" | "install" | "checkout" | "cli" | "review" | "leaderboard" | "share" | "storefront" | "profile" | "network";
 
 /* stacking order = position in the wins array (last = top); z-index derives from it */
 export type FloatWin = {

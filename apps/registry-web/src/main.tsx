@@ -6,8 +6,8 @@ import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu,
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
 import { clockLabel, keyFor, relativeTime } from "./format";
-import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
-import { CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
+import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
 
@@ -22,6 +22,7 @@ const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
   publish: 640,
   install: 760,
+  checkout: 760,
   cli: 620,
   review: 860,
   leaderboard: 460,
@@ -40,6 +41,7 @@ function App() {
   const [details, setDetails] = useState<Record<string, HarnessDetail>>({});
   const [knownItems, setKnownItems] = useState<Record<string, RegistryItem>>({});
   const [storefronts, setStorefronts] = useState<Record<string, StorefrontPage>>({});
+  const [checkoutLinks, setCheckoutLinks] = useState<Record<string, CheckoutLinkState>>({});
   const [query, setQuery] = useState("");
   const [jobFilter, setJobFilter] = useState("all");
   const [sort, setSort] = useState("trending");
@@ -193,6 +195,22 @@ function App() {
         setRefCode((current) => current === ref ? current : ref);
         localStorage.setItem("onlyharness.ref", ref);
       }
+      const checkout = parseCheckoutLocation();
+      if (checkout) {
+        const checkoutKey = keyForCheckout(checkout);
+        const harnessKey = `${checkout.owner}/${checkout.repo}`;
+        const item = knownItems[harnessKey] ?? allItems.find((entry) => entry.owner === checkout.owner && entry.name === checkout.repo);
+        setCheckoutLinks((current) => ({ ...current, [checkoutKey]: checkout }));
+        if (item) {
+          setKnownItems((current) => (current[harnessKey] ? current : { ...current, [harnessKey]: item }));
+          loadDetail(item);
+        }
+        const canonical = `checkout:${checkoutKey}`;
+        if (handledHash.current === canonical && wins.some((win) => win.id === `checkout:${checkoutKey}` && !win.minimized)) return;
+        handledHash.current = canonical;
+        openWin("checkout", checkoutKey);
+        return;
+      }
       const storefront = parseStorefrontHash(window.location.hash);
       if (storefront) {
         const canonical = `#/@${storefront.handle}`;
@@ -213,8 +231,12 @@ function App() {
     }
 
     window.addEventListener("hashchange", openFromHash);
+    window.addEventListener("popstate", openFromHash);
     openFromHash();
-    return () => window.removeEventListener("hashchange", openFromHash);
+    return () => {
+      window.removeEventListener("hashchange", openFromHash);
+      window.removeEventListener("popstate", openFromHash);
+    };
   }, [allItems, knownItems, wins]);
 
   /* ---------- derived ---------- */
@@ -305,7 +327,7 @@ function App() {
   }
 
   function openWin(kind: WinKind, hkey?: string) {
-    const id = kind === "harness" ? `harness:${hkey}` : kind === "storefront" ? `storefront:${hkey}` : kind;
+    const id = kind === "harness" ? `harness:${hkey}` : kind === "storefront" ? `storefront:${hkey}` : kind === "checkout" ? `checkout:${hkey}` : kind;
     openCount.current += 1;
     const step = openCount.current % 5;
     setWins((current) => {
@@ -690,11 +712,13 @@ function App() {
   /* ---------- taskbar ---------- */
 
   function winMeta(win: FloatWin): { icon: string; title: string } {
-    const item = win.hkey ? knownItems[win.hkey] : undefined;
+    const checkout = win.kind === "checkout" && win.hkey ? checkoutLinks[win.hkey] : undefined;
+    const item = checkout ? knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? knownItems[win.hkey] : undefined;
     switch (win.kind) {
       case "harness": return { icon: "📦", title: item?.title ?? "Harness" };
       case "publish": return { icon: "📄", title: "New Harness Wizard" };
       case "install": return { icon: "💿", title: item ? `Install Center — ${item.title}` : "Install Center" };
+      case "checkout": return { icon: "💳", title: checkout ? `Manual Checkout — ${checkout.owner}/${checkout.repo}` : "Manual Checkout" };
       case "cli": return { icon: "🖥️", title: "MS-DOS Prompt — hh.exe" };
       case "review": return { icon: "🔧", title: "Maintainer Review Preview" };
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
@@ -757,7 +781,8 @@ function App() {
   /* ---------- window bodies ---------- */
 
   function renderWinBody(win: FloatWin) {
-    const item = win.hkey ? knownItems[win.hkey] : topItem;
+    const checkout = win.kind === "checkout" && win.hkey ? checkoutLinks[win.hkey] : undefined;
+    const item = checkout ? knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? knownItems[win.hkey] : topItem;
     switch (win.kind) {
       case "harness": {
         if (!item) return <div className="win-body plate">This harness rode off into the sunset.</div>;
@@ -825,6 +850,19 @@ function App() {
               void copyText(text, "Install commands copied", "install");
             }}
             copied={copiedTag === "install"}
+          />
+        );
+      case "checkout":
+        return (
+          <CheckoutBody
+            checkout={checkout}
+            item={item}
+            detail={item ? details[keyFor(item)] : undefined}
+            apiUrl={apiUrl}
+            refCode={checkout?.ref ?? refCode}
+            onOpenInstall={() => openInstall(item)}
+            onCopy={(text) => copyText(text, "Checkout retry command copied", "checkout")}
+            copied={copiedTag === "checkout"}
           />
         );
       case "cli":
@@ -1029,6 +1067,29 @@ function parseStorefrontHash(hash: string): { handle: string } | undefined {
   const match = hash.match(/^#\/@([^/?#]+)(?:\?.*)?$/);
   if (!match) return undefined;
   return { handle: decodeURIComponent(match[1]).replace(/^@/, "").toLowerCase() };
+}
+
+function parseCheckoutLocation(): CheckoutLinkState | undefined {
+  if (window.location.pathname.replace(/\/+$/, "") !== "/checkout") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  const owner = params.get("owner")?.trim();
+  const repo = params.get("repo")?.trim();
+  if (!owner || !repo) return undefined;
+  return {
+    owner,
+    repo,
+    version: params.get("version")?.trim() || "latest",
+    providerRef: params.get("provider_ref")?.trim() || undefined,
+    ref: params.get("ref")?.trim() || undefined
+  };
+}
+
+function keyForCheckout(checkout: CheckoutLinkState): string {
+  return [
+    encodeURIComponent(checkout.owner),
+    encodeURIComponent(checkout.repo),
+    encodeURIComponent(checkout.providerRef || checkout.version || "latest")
+  ].join("/");
 }
 
 function setHarnessHash(item: RegistryItem) {

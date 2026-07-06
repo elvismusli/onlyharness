@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "./compat";
 import { fmtContextCost, fmtK, heatPct, isoWeek } from "./format";
-import type { CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "./types";
+import type { CheckoutLinkState, CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 /* ---------- New Harness Wizard (publish) ---------- */
@@ -211,6 +211,95 @@ export function InstallBody({ item, detail, apiUrl, accessToken, refCode, onLogo
             <InfoLine label="Standard" value={item?.standard ?? "select a harness"} />
           </div>
           <div className="plate" style={{ fontSize: 11 }}>{isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Adapter files are local instructions. Run eval and gate before real use."}</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+export function CheckoutBody({ checkout, item, detail, apiUrl, refCode, onOpenInstall, onCopy, copied }: {
+  checkout?: CheckoutLinkState;
+  item?: RegistryItem;
+  detail?: HarnessDetail;
+  apiUrl: string;
+  refCode?: string;
+  onOpenInstall: () => void;
+  onCopy: (text: string) => void;
+  copied: boolean;
+}) {
+  const target = checkout ? `${checkout.owner}/${checkout.repo}` : "";
+  const version = checkout?.version ?? detail?.manifest?.version ?? "latest";
+  const hasProviderRef = Boolean(checkout?.providerRef);
+  const retryCommand = target
+    ? `HH_TOKEN=<token> ${LOCAL_HH} install ${target}${version && version !== "latest" ? ` --version ${version}` : ""} --json`
+    : `HH_TOKEN=<token> ${LOCAL_HH} install owner/repo --json`;
+  const receiptCommand = checkout?.providerRef
+    ? `curl -H "Authorization: Bearer <HH_TOKEN>" "${apiUrl.replace(/\/$/, "")}/billing/receipt?provider_ref=${encodeURIComponent(checkout.providerRef)}"`
+    : "";
+
+  if (!checkout) {
+    return (
+      <div className="win-body">
+        <div className="detail-head">
+          <div className="owner-line">Manual Checkout</div>
+          <h2>Checkout link unavailable</h2>
+          <div className="promise">Open a checkout URL with owner, repo and provider_ref query parameters.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="win-body">
+      <div className="detail-head">
+        <div className="owner-line">Manual Checkout</div>
+        <h2>{hasProviderRef ? "Manual checkout pending" : "Manual checkout required"}</h2>
+        <div className="promise">
+          {hasProviderRef
+            ? `${item?.title ?? target} is waiting for manual provider confirmation. This page does not unlock files.`
+            : `${item?.title ?? target} needs a checkout session before manual payment. This page does not unlock files.`}
+        </div>
+        <div className="tagrow">
+          <span className="tag98 warn">{hasProviderRef ? "pending" : "needs checkout"}</span>
+          <span className="tag98">manual provider</span>
+          {refCode && <span className="tag98 safe">ref {refCode}</span>}
+        </div>
+      </div>
+
+      <div className="detail-grid">
+        <section>
+          <div className="trust-box">
+            <h4>Payment handoff</h4>
+            <div className="checkout-grid">
+              <InfoLine label="Harness" value={target} />
+              <InfoLine label="Version" value={version} />
+              <InfoLine label="Status" value={hasProviderRef ? "pending" : "not created"} />
+              <InfoLine label="Provider ref" value={checkout.providerRef ?? "missing"} />
+            </div>
+            <div className="plate" style={{ marginTop: 8 }}>
+              {hasProviderRef
+                ? "Manual checkout is operator-settled. Entitlement appears only after the payment webhook marks this provider ref paid."
+                : "Open Install Center, log on, and create a manual checkout session before sending payment."}
+            </div>
+            <div className="checkout-actions">
+              <Btn strong onClick={onOpenInstall} disabled={!item}>💿 Open Install Center</Btn>
+              <Btn onClick={() => onCopy(retryCommand)}>{copied ? "✓ Copied" : "📋 Copy retry command"}</Btn>
+            </div>
+          </div>
+        </section>
+
+        <aside className="trust-panel">
+          <div className="trust-box">
+            <h4>Retry after entitlement</h4>
+            <pre className="pre98" style={{ maxHeight: 120 }}>{retryCommand}</pre>
+          </div>
+          {receiptCommand && (
+            <div className="trust-box">
+              <h4>Read-only receipt check</h4>
+              <pre className="pre98" style={{ maxHeight: 120 }}>{receiptCommand}</pre>
+            </div>
+          )}
+          <div className="plate" style={{ fontSize: 11 }}>Receipt reads status only. It never settles payment or grants access.</div>
         </aside>
       </div>
     </div>

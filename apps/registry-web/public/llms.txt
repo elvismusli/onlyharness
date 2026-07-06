@@ -34,6 +34,7 @@ OAuth protected-resource metadata: https://onlyharness.com/.well-known/oauth-pro
   Org visibility is enforced, but real forge PR diffing is not connected yet. The endpoint returns 501 PR_SEMANTIC_DIFF_NOT_AVAILABLE with a local-demo preview and next steps; use detail.prReview only as a maintainer-review shape preview.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses. Only PAYMENT_PROVIDER unset/manual is supported; other provider config fails closed before purchase creation.
+  Checkout URLs land on /checkout. If provider_ref is absent, the web UI only prompts the buyer to log on and create a manual checkout session. If provider_ref is present, it shows pending manual handoff state. The page never grants entitlement.
 - Receipt: GET /billing/receipt?provider_ref={ref}
   Auth required. Returns the caller's own pending/paid purchase status, amount, harness ref and entitlement flag. Read-only only: this endpoint must not settle payments or grant access.
 - Gate receipt verification: POST /receipts
