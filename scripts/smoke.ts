@@ -8,6 +8,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const seedRoot = path.join(root, "seed-harnesses");
 const maliciousRoot = path.join(root, "data/imports/smoke-malicious-harness");
 const paidRoot = path.join(root, "data/imports/smoke-paid-harness");
+const escrowRoot = path.join(root, "data/imports/smoke-escrow-harness");
 const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
 
@@ -38,6 +39,7 @@ if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error
 
 createMaliciousHarness(maliciousRoot);
 createPaidHarness(paidRoot);
+createEscrowHarness(escrowRoot);
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
 createOrgStore(orgsPath, "smoke-org-token");
@@ -76,7 +78,7 @@ try {
     items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
@@ -249,6 +251,122 @@ try {
     headers: { Authorization: "Bearer smoke-paid-token" }
   }).then((response) => response.json()) as { version?: string; files?: unknown[] };
   if (paidArchive.version !== "0.1.0" || !paidArchive.files?.length) throw new Error(`Paid archive entitlement failed: ${JSON.stringify(paidArchive)}`);
+  const escrowCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
+  }).then((response) => response.json()) as { provider_ref?: string; status?: string };
+  if (!escrowCheckout.provider_ref || escrowCheckout.status !== "pending") throw new Error(`Escrow checkout failed: ${JSON.stringify(escrowCheckout)}`);
+  const escrowWebhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_ref: escrowCheckout.provider_ref, status: "paid" })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string; escrow_expires_at?: string };
+  if (!escrowWebhook.ok || escrowWebhook.status !== "reserved" || !escrowWebhook.escrow_expires_at) throw new Error(`Escrow webhook should reserve: ${JSON.stringify(escrowWebhook)}`);
+  const escrowReservedReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(escrowCheckout.provider_ref)}`, {
+    headers: { Authorization: "Bearer smoke-buyer-token" }
+  }).then((response) => response.json()) as { status?: string; entitlement?: { granted?: boolean; kind?: string }; escrow?: { expires_at?: string } };
+  if (escrowReservedReceipt.status !== "reserved" || escrowReservedReceipt.entitlement?.granted !== true || escrowReservedReceipt.entitlement.kind !== "escrow_reserved" || !escrowReservedReceipt.escrow?.expires_at) {
+    throw new Error(`Escrow reserved receipt invalid: ${JSON.stringify(escrowReservedReceipt)}`);
+  }
+  const escrowEntitlementBeforeCapture = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-escrow-harness&version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { entitled?: boolean; status?: string };
+  if (escrowEntitlementBeforeCapture.entitled !== false || escrowEntitlementBeforeCapture.status !== "payment_required") {
+    throw new Error(`Escrow reserved entitlement must not unlock community gates before capture: ${JSON.stringify(escrowEntitlementBeforeCapture)}`);
+  }
+  const escrowReservedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-escrow-harness/archive?version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-buyer-token" }
+  }).then((response) => response.json()) as { version?: string; files?: unknown[] };
+  if (escrowReservedArchive.version !== "0.1.0" || !escrowReservedArchive.files?.length) throw new Error(`Escrow reserve should allow archive pull: ${JSON.stringify(escrowReservedArchive)}`);
+  const escrowReceiptPath = path.join(smokeDataRoot, "escrow-pass-receipt.json");
+  run("node", [cliBin, "gate", "--dir", escrowRoot, "--receipt", escrowReceiptPath, "--json"], {
+    env: { ...process.env, ONLYHARNESS_KEY_PATH: path.join(smokeDataRoot, "escrow-key.pem") }
+  });
+  const escrowCapture = await fetch("http://127.0.0.1:8799/billing/escrow/receipt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ provider_ref: escrowCheckout.provider_ref, receipt: JSON.parse(readFileSync(escrowReceiptPath, "utf8")) })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string; reason?: string; receipt_hash?: string };
+  if (!escrowCapture.ok || escrowCapture.status !== "captured" || escrowCapture.reason !== "receipt_passed" || !escrowCapture.receipt_hash) {
+    throw new Error(`Escrow capture failed: ${JSON.stringify(escrowCapture)}`);
+  }
+  const escrowCapturedReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(escrowCheckout.provider_ref)}`, {
+    headers: { Authorization: "Bearer smoke-buyer-token" }
+  }).then((response) => response.json()) as { status?: string; entitlement?: { granted?: boolean; kind?: string }; escrow?: { receipt_hash?: string } };
+  if (escrowCapturedReceipt.status !== "captured" || escrowCapturedReceipt.entitlement?.kind !== "one_time" || escrowCapturedReceipt.escrow?.receipt_hash !== escrowCapture.receipt_hash) {
+    throw new Error(`Escrow captured receipt invalid: ${JSON.stringify(escrowCapturedReceipt)}`);
+  }
+  const escrowEntitlementAfterCapture = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-escrow-harness&version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { entitled?: boolean; status?: string };
+  if (escrowEntitlementAfterCapture.entitled !== true || escrowEntitlementAfterCapture.status !== "entitled") {
+    throw new Error(`Escrow capture should unlock settled entitlement: ${JSON.stringify(escrowEntitlementAfterCapture)}`);
+  }
+  const escrowFailCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
+  }).then((response) => response.json()) as { provider_ref?: string };
+  if (!escrowFailCheckout.provider_ref) throw new Error(`Escrow fail checkout failed: ${JSON.stringify(escrowFailCheckout)}`);
+  await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_ref: escrowFailCheckout.provider_ref, status: "paid" })
+  });
+  const originalEscrowResults = readFileSync(path.join(escrowRoot, ".harnesshub/results.json"), "utf8");
+  writeFileSync(path.join(escrowRoot, ".harnesshub/results.json"), JSON.stringify({
+    runner: "harnesshub-local-eval",
+    status: "failed",
+    score: 0.4,
+    verified: true,
+    verification_status: "declared_case_scores",
+    cost_usd: 0.03,
+    duration_ms: 250,
+    cases: [{ id: "smoke", title: "Smoke", score: 0.4, passed: false, verification_status: "declared_score" }]
+  }, null, 2));
+  const escrowFailReceiptPath = path.join(smokeDataRoot, "escrow-fail-receipt.json");
+  run("node", [cliBin, "gate", "--dir", escrowRoot, "--receipt", escrowFailReceiptPath, "--json"], {
+    allowFailure: true,
+    env: { ...process.env, ONLYHARNESS_KEY_PATH: path.join(smokeDataRoot, "escrow-key.pem") }
+  });
+  writeFileSync(path.join(escrowRoot, ".harnesshub/results.json"), originalEscrowResults);
+  const escrowRefund = await fetch("http://127.0.0.1:8799/billing/escrow/receipt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ provider_ref: escrowFailCheckout.provider_ref, receipt: JSON.parse(readFileSync(escrowFailReceiptPath, "utf8")) })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string; reason?: string };
+  if (!escrowRefund.ok || escrowRefund.status !== "refunded" || escrowRefund.reason !== "receipt_failed") {
+    throw new Error(`Escrow fail receipt should refund: ${JSON.stringify(escrowRefund)}`);
+  }
+  const escrowTimeoutCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
+  }).then((response) => response.json()) as { provider_ref?: string };
+  if (!escrowTimeoutCheckout.provider_ref) throw new Error(`Escrow timeout checkout failed: ${JSON.stringify(escrowTimeoutCheckout)}`);
+  await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_ref: escrowTimeoutCheckout.provider_ref, status: "paid" })
+  });
+  const paymentStatePath = path.join(smokeDataRoot, "payments.json");
+  const timeoutState = JSON.parse(readFileSync(paymentStatePath, "utf8")) as { purchases?: Array<{ id?: string; provider_ref?: string; escrow_expires_at?: string }>; entitlements?: Array<{ purchase_id?: string; expires_at?: string }> };
+  const timeoutPurchase = timeoutState.purchases?.find((row) => row.provider_ref === escrowTimeoutCheckout.provider_ref);
+  if (!timeoutPurchase?.id) throw new Error(`Escrow timeout purchase missing from state: ${JSON.stringify(timeoutState)}`);
+  timeoutPurchase.escrow_expires_at = "2026-07-05T00:00:00.000Z";
+  for (const entitlement of timeoutState.entitlements ?? []) {
+    if (entitlement.purchase_id === timeoutPurchase.id) entitlement.expires_at = timeoutPurchase.escrow_expires_at;
+  }
+  writeFileSync(paymentStatePath, `${JSON.stringify(timeoutState, null, 2)}\n`);
+  const escrowTimeout = await fetch("http://127.0.0.1:8799/billing/escrow/timeout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ provider_ref: escrowTimeoutCheckout.provider_ref })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string; reason?: string };
+  if (!escrowTimeout.ok || escrowTimeout.status !== "refunded" || escrowTimeout.reason !== "timeout") {
+    throw new Error(`Escrow timeout should refund: ${JSON.stringify(escrowTimeout)}`);
+  }
   const missingVersion = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=9.9.9", {
     headers: { Authorization: "Bearer smoke-paid-token" }
   });
@@ -467,6 +585,7 @@ try {
   api.kill("SIGTERM");
   rmSync(maliciousRoot, { recursive: true, force: true });
   rmSync(paidRoot, { recursive: true, force: true });
+  rmSync(escrowRoot, { recursive: true, force: true });
   rmSync(smokeDataRoot, { recursive: true, force: true });
 }
 
@@ -475,7 +594,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -615,6 +734,84 @@ examples:
   writeFileSync(path.join(target, "README.md"), "# Smoke Paid Harness\n");
   writeFileSync(path.join(target, "agents/operator.md"), "Return a short smoke result.\n");
   writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: paid smoke\nprompts: []\nproviders: []\n");
+  writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
+  writeFileSync(path.join(target, "examples/input.md"), "input\n");
+  writeFileSync(path.join(target, "examples/expected.md"), "expected\n");
+  writeFileSync(path.join(target, ".harnesshub/results.json"), JSON.stringify({
+    runner: "harnesshub-local-eval",
+    status: "passed",
+    score: 0.9,
+    verified: true,
+    verification_status: "declared_case_scores",
+    cost_usd: 0.03,
+    duration_ms: 250,
+    cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
+  }, null, 2));
+}
+
+function createEscrowHarness(target: string) {
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(path.join(target, "agents"), { recursive: true });
+  mkdirSync(path.join(target, "evals/cases"), { recursive: true });
+  mkdirSync(path.join(target, "examples"), { recursive: true });
+  mkdirSync(path.join(target, ".harnesshub"), { recursive: true });
+  writeFileSync(path.join(target, "harness.yaml"), `schemaVersion: harness.v0.2
+name: smoke-escrow-harness
+title: Smoke Escrow Harness
+summary: Local gate escrow fixture used to verify reserved capture and refund flows.
+version: 0.1.0
+license: MIT
+pricing:
+  model: gate_escrow
+  amount_usd: 15
+  currency: USD
+tags: [smoke, escrow]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: operator
+    role: operator
+    prompt: agents/operator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: operator
+  stages:
+    - id: run
+      agent: operator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks: [schema_valid, eval_passed]
+examples:
+  - title: Smoke
+    input: examples/input.md
+    output: examples/expected.md
+`);
+  writeFileSync(path.join(target, "README.md"), "# Smoke Escrow Harness\n");
+  writeFileSync(path.join(target, "agents/operator.md"), "Return a short escrow smoke result.\n");
+  writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: escrow smoke\nprompts: []\nproviders: []\n");
   writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
   writeFileSync(path.join(target, "examples/input.md"), "input\n");
   writeFileSync(path.join(target, "examples/expected.md"), "expected\n");

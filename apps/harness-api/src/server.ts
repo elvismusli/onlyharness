@@ -14,7 +14,7 @@ import { createCommunityInviteCode, verifyCommunityInviteCode } from "./communit
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
-import { checkEntitlement, createCheckoutSession, readPurchaseReceipt, requireArchivePaymentAccess, settlePaymentWebhook, settleX402Purchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
+import { checkEntitlement, createCheckoutSession, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { verifyGateReceipt } from "./receipts.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
@@ -47,6 +47,15 @@ type CheckoutRequest = {
 };
 
 type ReceiptQuery = {
+  provider_ref?: string;
+};
+
+type EscrowReceiptRequest = {
+  provider_ref?: string;
+  receipt?: unknown;
+};
+
+type EscrowTimeoutRequest = {
   provider_ref?: string;
 };
 
@@ -241,6 +250,33 @@ app.get("/billing/receipt", async (request, reply) => {
   });
   if ("error" in receipt) return reply.code(receipt.status).send({ error: receipt.error });
   return receipt;
+});
+
+app.post("/billing/escrow/receipt", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as EscrowReceiptRequest : {};
+  const result = await settleEscrowReceipt({
+    providerRef: body.provider_ref ?? "",
+    userId: user.id,
+    receipt: body.receipt
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, escrow_expires_at: result.escrow_expires_at });
+  await recordEscrowSettlementEvent(result, result.reason === "receipt_passed" ? "receipt:passed" : "receipt:failed");
+  return result;
+});
+
+app.post("/billing/escrow/timeout", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as EscrowTimeoutRequest : {};
+  const result = await timeoutEscrowPurchase({
+    providerRef: body.provider_ref ?? "",
+    userId: user.id
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, escrow_expires_at: result.escrow_expires_at });
+  await recordEscrowSettlementEvent(result, "timeout");
+  return result;
 });
 
 app.get("/entitlements/check", async (request, reply) => {
@@ -605,7 +641,7 @@ app.post("/webhooks/payments", async (request, reply) => {
     status: typeof body.status === "string" ? body.status : "paid"
   });
   if (!result.ok) return reply.code(result.status).send({ error: result.error });
-  await recordEvent({ kind: "purchase", owner: result.owner, repo: result.repo, version: result.version, subject: eventSubject(result.subject_id), target: "webhook", client: "api" });
+  await recordPaymentTransitionEvent(result.status, result.owner, result.repo, result.version, eventSubject(result.subject_id), "webhook", "api");
   return result;
 });
 
@@ -829,7 +865,7 @@ async function archiveForClient(owner: string, repo: string, version: string | u
       ? await settleX402ArchivePayment({ owner, repo, version: archive.version, manifest, paymentRequired: payment.body, paymentSignature })
       : undefined;
     if (x402?.ok) {
-      await recordEvent({ kind: "purchase", owner, repo, version: archive.version, subject: `wallet:${x402.payer}`, target: "x402", client });
+      await recordPaymentTransitionEvent(x402.status, owner, repo, archive.version, `wallet:${x402.payer}`, "x402", client);
       await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: `wallet:${x402.payer}`, target: "archive", client });
       return { status: 200, headers: x402.headers, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
     }
@@ -864,7 +900,7 @@ async function settleX402ArchivePayment(input: {
   manifest: HarnessManifest;
   paymentRequired: PaymentRequiredBody;
   paymentSignature: string;
-}): Promise<{ ok: true; payer: string; headers: Record<string, string> } | { ok: false }> {
+}): Promise<{ ok: true; payer: string; status: string; headers: Record<string, string> } | { ok: false }> {
   const facilitatorUrl = process.env.X402_FACILITATOR_URL?.trim();
   const requirement = input.paymentRequired.x402.requirements[0];
   if (!facilitatorUrl || !input.paymentRequired.x402.paymentRequired || !requirement) return { ok: false };
@@ -911,10 +947,12 @@ async function settleX402ArchivePayment(input: {
       payer,
       error: persisted.error
     });
+    return { ok: false };
   }
   return {
     ok: true,
     payer,
+    status: persisted.status,
     headers: {
       "PAYMENT-RESPONSE": encodePaymentResponseHeader(settle)
     }
@@ -1143,6 +1181,37 @@ function supabaseRestHeaders() {
 
 function eventSubject(userId: string | undefined): string {
   return userId ? `user:${userId}` : "anonymous";
+}
+
+async function recordPaymentTransitionEvent(
+  status: string,
+  owner: string,
+  repo: string,
+  version: string,
+  subject: string,
+  target: string,
+  client: string
+) {
+  if (status === "reserved" || status === "already_reserved") {
+    await recordEvent({ kind: "escrow_reserved", owner, repo, version, subject, target, client });
+    return;
+  }
+  if (status === "captured" || status === "already_captured") {
+    await recordEvent({ kind: "escrow_captured", owner, repo, version, subject, target, client });
+    return;
+  }
+  if (status === "refunded" || status === "already_refunded") {
+    await recordEvent({ kind: "escrow_refunded", owner, repo, version, subject, target, client });
+    return;
+  }
+  await recordEvent({ kind: "purchase", owner, repo, version, subject, target, client });
+}
+
+async function recordEscrowSettlementEvent(
+  result: { status: string; owner: string; repo: string; version: string; subject_id: string },
+  target: string
+) {
+  await recordPaymentTransitionEvent(result.status, result.owner, result.repo, result.version, eventSubject(result.subject_id), target, "api");
 }
 
 function x402FacilitatorConfig(url: string) {

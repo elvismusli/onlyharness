@@ -167,6 +167,69 @@ export const openapi = {
         }
       }
     },
+    "/billing/escrow/receipt": {
+      post: {
+        summary: "Settle a gate escrow purchase from a signed receipt",
+        description: "Auth required. Verifies a signed hh gate --receipt payload for the caller's reserved gate_escrow purchase. Passing receipts capture escrow; failing receipts refund escrow. Plain POST /receipts remains read-only.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  provider_ref: { type: "string" },
+                  receipt: { $ref: "#/components/schemas/GateReceipt" }
+                },
+                required: ["provider_ref", "receipt"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Escrow settled",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/EscrowSettlement" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/billing/escrow/timeout": {
+      post: {
+        summary: "Refund an expired gate escrow reservation",
+        description: "Auth required. Refunds the caller's reserved gate_escrow purchase only after the 72h receipt window expires.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  provider_ref: { type: "string" }
+                },
+                required: ["provider_ref"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Escrow timeout settled",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/EscrowSettlement" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
     "/entitlements/check": {
       get: {
         summary: "Check whether a subject can access a harness",
@@ -482,7 +545,7 @@ export const openapi = {
               schema: {
                 type: "object",
                 properties: {
-                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied", "eval", "gate"] },
+                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] },
                   owner: { type: "string" },
                   repo: { type: "string" },
                   version: { type: "string" },
@@ -772,10 +835,11 @@ export const openapi = {
           purchase_id: { type: "string" },
           provider: { type: "string", enum: ["manual", "x402"] },
           provider_ref: { type: "string" },
-          status: { type: "string", enum: ["pending", "paid"] },
+          status: { type: "string", enum: ["pending", "paid", "reserved", "captured", "refunded", "failed"] },
           owner: { type: "string" },
           repo: { type: "string" },
           version: { type: "string" },
+          pricing_model: { type: "string", enum: ["free", "one_time", "subscription", "per_call", "gate_escrow"] },
           amount_usd: { type: "number" },
           currency: { type: "string" },
           subject: {
@@ -792,13 +856,38 @@ export const openapi = {
             type: "object",
             properties: {
               granted: { type: "boolean" },
-              kind: { type: "string", enum: ["one_time"] },
+              kind: { type: "string", enum: ["one_time", "subscription", "escrow_reserved"] },
               expires_at: { type: ["string", "null"], format: "date-time" }
             },
             required: ["granted"]
+          },
+          escrow: {
+            type: "object",
+            properties: {
+              expires_at: { type: ["string", "null"], format: "date-time" },
+              receipt_hash: { type: ["string", "null"], pattern: "^[a-fA-F0-9]{64}$" },
+              captured_at: { type: ["string", "null"], format: "date-time" },
+              refunded_at: { type: ["string", "null"], format: "date-time" }
+            }
           }
         },
         required: ["receipt_id", "purchase_id", "provider", "provider_ref", "status", "owner", "repo", "version", "amount_usd", "currency", "subject", "created_at", "updated_at", "entitlement"]
+      },
+      EscrowSettlement: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean", enum: [true] },
+          status: { type: "string", enum: ["captured", "refunded", "already_captured", "already_refunded"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          subject_id: { type: "string" },
+          purchase_id: { type: "string" },
+          receipt_hash: { type: "string", pattern: "^[a-fA-F0-9]{64}$" },
+          escrow_expires_at: { type: ["string", "null"], format: "date-time" },
+          reason: { type: "string", enum: ["receipt_passed", "receipt_failed", "timeout"] }
+        },
+        required: ["ok", "status", "owner", "repo", "version", "subject_id", "purchase_id", "reason"]
       },
       GateReceipt: {
         type: "object",
@@ -849,7 +938,7 @@ export const openapi = {
         type: "object",
         properties: {
           ok: { type: "boolean" },
-          status: { type: "string", enum: ["paid", "already_paid"] },
+          status: { type: "string", enum: ["paid", "already_paid", "reserved", "already_reserved", "already_captured", "already_refunded"] },
           owner: { type: "string" },
           repo: { type: "string" },
           version: { type: "string" },

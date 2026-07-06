@@ -65,6 +65,29 @@ test("sanitizeEvent accepts suggested and applied CLI events without local paths
   });
 });
 
+test("sanitizeEvent accepts escrow transition events without receipt bodies", () => {
+  const event = sanitizeEvent({
+    kind: "escrow_captured",
+    owner: "local",
+    repo: "escrow-harness",
+    version: "0.1.0",
+    subject: "user:local-dev",
+    target: "receipt:passed",
+    client: "api",
+    receipt: { signature: "must-not-store" }
+  } as Parameters<typeof sanitizeEvent>[0] & { receipt: { signature: string } });
+
+  assert.deepEqual(event, {
+    kind: "escrow_captured",
+    owner: "local",
+    repo: "escrow-harness",
+    version: "0.1.0",
+    subject: "user:local-dev",
+    target: "receipt:passed",
+    client: "api"
+  });
+});
+
 test("sanitizeEvent rejects unknown verification event kinds", () => {
   assert.equal(sanitizeEvent({ kind: "verify", owner: "harnesses", repo: "demo" }), undefined);
 });

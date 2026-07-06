@@ -30,6 +30,10 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Auth required. Returns the caller's own pending/paid purchase status, amount, harness ref and entitlement flag. Read-only only: this endpoint must not settle payments or grant access.
 - Gate receipt verification: POST /receipts
   Body is the JSON written by `hh gate --receipt`. Verifies the ed25519 signature over harness ref, version, resultsHash, verdict and timestamp. Side-effect-free: does not store prompts, local paths, payments or entitlements.
+- Gate escrow settle: POST /billing/escrow/receipt
+  Auth required. Body { provider_ref, receipt }. For `pricing.model=gate_escrow`, captures a reserved purchase when the signed receipt verdict is passed, refunds when it is failed. POST /receipts remains read-only.
+- Gate escrow timeout: POST /billing/escrow/timeout
+  Auth required. Body { provider_ref }. Refunds only after the 72h receipt window expires.
 - Entitlement check: GET /entitlements/check?subject=user:{id}&harness={owner}/{name}&version={optional semver}
   Bot-facing read-only decision. Requires ORGS_ENABLED=true and Authorization: Bearer {org token with entitlements:read}. Response includes { entitled, status } and never returns archive files.
 - Community invite code: POST /community/invite-code

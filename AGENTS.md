@@ -70,6 +70,8 @@ Core endpoints:
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
 | GET | `/billing/receipt?provider_ref={ref}` | Authenticated buyer receipt; read-only, never grants entitlement by itself |
+| POST | `/billing/escrow/receipt` | Authenticated buyer settles a reserved `gate_escrow` purchase with a signed gate receipt |
+| POST | `/billing/escrow/timeout` | Authenticated buyer refunds an expired reserved `gate_escrow` purchase |
 | POST | `/receipts` | Verify a signed `hh gate --receipt` payload; side-effect-free, no payment or entitlement mutation |
 | GET | `/entitlements/check?subject={type:id}&harness={owner/name}` | Bot-facing entitlement check; requires org token with `entitlements:read` scope |
 | POST | `/community/invite-code` | Authenticated buyer gets a short-lived signed community gate code after entitlement is verified |
@@ -96,6 +98,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Paid `hh install`/`hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps. `hh install --pay` and `hh pull --pay` may sign x402 with `HH_WALLET_KEY`/`EVM_PRIVATE_KEY`, but must enforce `HH_MAX_PAY_USD` before signing; API archive delivery requires facilitator verify/settle via `X402_FACILITATOR_URL` before wallet entitlement is written.
 - `/billing/receipt` is read-only buyer evidence keyed by `provider_ref`; it must never create purchases, settle providers, or grant entitlements.
 - `hh gate --receipt` signs `{harness, version, resultsHash, verdict, at}` with the local install key at `~/.onlyharness/key` by default. `/receipts` only verifies that signature and must not store prompts, local paths, payments, or entitlements.
+- `pricing.model: gate_escrow` must reserve first, not mark paid: provider confirmation creates `reserved` + expiring `escrow_reserved`; `/billing/escrow/receipt` captures only a valid passing receipt and refunds a valid failing receipt; `/billing/escrow/timeout` refunds after expiry.
 - Payout tooling may create only draft/manual payout ledgers (`payout_runs`, `payout_items`); it must not call payout providers or mark ledger items paid.
 - `hh suggest` is the agent-first autopilot path: search, detail trust summary, optional `--apply --out <dir>`. `--apply` must use the same archive semantics as `hh pull`, including paid 402 and directory 409.
 - `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed.
