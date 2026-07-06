@@ -21,6 +21,7 @@ let sawSetupArchiveToken = false;
 let sawOrgPublishToken = false;
 let sawOrgPullToken = false;
 let sawHarnessDirPublishToken = false;
+let sawClaudeInstallToken = false;
 let orgPublishedNames: string[] = [];
 let verificationEvents: Array<{ kind?: string; owner?: string; repo?: string; version?: string; target?: string; client?: string; path?: string }> = [];
 
@@ -82,7 +83,11 @@ before(async () => {
         raw += chunk;
       });
       request.on("end", () => {
-        verificationEvents.push(JSON.parse(raw || "{}"));
+        const event = JSON.parse(raw || "{}") as { kind?: string; client?: string };
+        if (event.kind === "install" && event.client === "claude-code") {
+          sawClaudeInstallToken = request.headers.authorization === "Bearer install-token";
+        }
+        verificationEvents.push(event);
         response.statusCode = 202;
         response.end(JSON.stringify({ ok: true }));
       });
@@ -523,6 +528,42 @@ test("install pulls a harness, writes adapter files, and records a privacy-safe 
       target: "codex",
       client: "hh"
     }]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("install --target claude-code records an authenticated Claude Code confirm event", async () => {
+  verificationEvents = [];
+  sawClaudeInstallToken = false;
+  const parent = await mkdtemp(path.join(os.tmpdir(), "hh-claude-install-"));
+  const out = path.join(parent, "dmr");
+  const adapterOut = path.join(parent, "claude-adapter");
+  try {
+    const result = await runCli([
+      "install",
+      "harnesses/deep-market-researcher",
+      "--out",
+      out,
+      "--target",
+      "claude-code",
+      "--adapter-out",
+      adapterOut,
+      "--json"
+    ], { HH_REGISTRY_URL: registryUrl, HH_TOKEN: "install-token" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawClaudeInstallToken, true);
+    assert.doesNotMatch(result.stdout, /install-token/);
+    assert.ok(verificationEvents.some((event) => (
+      event.kind === "install"
+      && event.owner === "harnesses"
+      && event.repo === "deep-market-researcher"
+      && event.version === "0.2.0"
+      && event.target === "claude-code"
+      && event.client === "claude-code"
+    )));
+    await readFile(path.join(adapterOut, "SKILL.md"), "utf8");
   } finally {
     await rm(parent, { recursive: true, force: true });
   }

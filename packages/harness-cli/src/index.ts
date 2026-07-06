@@ -1581,7 +1581,10 @@ async function installHarness(input: {
     repo: pulled.name,
     version: pulled.version,
     target: input.target,
-    client: "hh"
+    client: input.target === "claude-code" ? "claude-code" : "hh",
+    token: input.target === "claude-code"
+      ? input.token ?? (pulled.owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN)
+      : undefined
   });
   return {
     ...pulled,
@@ -2394,13 +2397,17 @@ async function recordCliRegistryEvent(input: {
   repo: string;
   version?: string;
   target: string;
-  client: "hh";
+  client: "hh" | "claude-code";
+  token?: string;
 }): Promise<void> {
   const eventUrl = `${input.registry.replace(/\/$/, "")}/events`;
   try {
     await fetch(eventUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(input.token ? { Authorization: `Bearer ${input.token}` } : {})
+      },
       body: JSON.stringify({
         kind: input.kind,
         owner: input.owner,

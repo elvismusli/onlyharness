@@ -473,12 +473,13 @@ try {
     body: JSON.stringify({ kind: "copy", owner: "harnesses", repo: "deep-market-researcher", target: "cli", client: "smoke", prompt: "must-not-store" })
   });
   if (eventResponse.status !== 202) throw new Error(`Events endpoint failed: ${eventResponse.status}`);
-  const confirmEvent = await fetch("http://127.0.0.1:8799/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-installer-token" },
-    body: JSON.stringify({ kind: "install", owner: "harnesses", repo: "deep-market-researcher", target: "plugin", client: "claude-code" })
+  const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
+  const confirmInstallOut = path.join(smokeDataRoot, "claude-confirm-install");
+  const confirmAdapterOut = path.join(smokeDataRoot, "claude-confirm-adapter");
+  run("node", [cliBin, "install", "harnesses/deep-market-researcher", "--target", "claude-code", "--out", confirmInstallOut, "--adapter-out", confirmAdapterOut, "--json"], {
+    env: { ...cliEnv, HH_TOKEN: "local:smoke-cli-installer" }
   });
-  if (confirmEvent.status !== 202) throw new Error(`Claude Code confirm event failed: ${confirmEvent.status}`);
+  if (!existsSync(path.join(confirmAdapterOut, "SKILL.md"))) throw new Error("Claude Code install did not write the adapter skill");
   const confirmedRegistry = await fetch("http://127.0.0.1:8799/registry?q=deep-market-researcher").then((response) => response.json()) as {
     items?: Array<{ name?: string; installConfirms?: number; signalCount?: number; heatQualified?: boolean; badge?: string }>;
   };
@@ -501,7 +502,6 @@ try {
   if (imported.snapshotVersion !== "0.1.0") throw new Error(`Import did not create a version snapshot: ${JSON.stringify(imported)}`);
   const importedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-imported-harness/archive?version=0.1.0").then((response) => response.json()) as { snapshot?: boolean; files?: unknown[] };
   if (!importedArchive.snapshot || !importedArchive.files?.length) throw new Error(`Imported version snapshot unavailable: ${JSON.stringify(importedArchive)}`);
-  const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
   cpSync(path.join(seedRoot, "support-triage-agent"), verifiedPublishSource, { recursive: true });
   rmSync(path.join(verifiedPublishSource, ".harnesshub"), { recursive: true, force: true });
   run("node", [cliBin, "eval", verifiedPublishSource, "--json"], { env: cliEnv });
