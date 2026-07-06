@@ -14,8 +14,10 @@
     "@fastify/cors": "^11.0.1",
     "@harnesshub/schema": "0.1.0",
     "@harnesshub/semantic-diff": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "fastify": "^5.4.0",
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.0.10",

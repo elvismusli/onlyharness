@@ -25,6 +25,7 @@
     "gitea:smoke": "tsx scripts/gitea-smoke.ts",
     "seed": "tsx scripts/create-seeds.ts",
     "smoke": "tsx scripts/smoke.ts",
+    "smoke:mcp": "tsx scripts/smoke-mcp.ts",
     "smoke:prod-auth": "tsx scripts/smoke-production-auth.ts",
     "start:api": "npm run dev -w @harnesshub/api",
     "start:web": "npm run dev -w @harnesshub/registry-web",

@@ -10,6 +10,10 @@ onlyharness.com, www.onlyharness.com {
 		reverse_proxy api:8787
 	}
 
+	handle /mcp* {
+		reverse_proxy api:8787
+	}
+
 	handle {
 		root * /srv/web
 		try_files {path} /index.html

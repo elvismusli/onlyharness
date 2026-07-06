@@ -5,6 +5,8 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { buildMcpServer, type PublishMarkdownHandler } from "./mcp.js";
 import { fetchCountersMap } from "./social.js";
 import * as registry from "./registry.js";
 
@@ -14,6 +16,7 @@ const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey;
 const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
+const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected-resource";
 
 type ImportRequest = {
   name?: string;
@@ -29,6 +32,14 @@ type ThreadItem = {
   body: string;
   likes: number;
   at: string;
+};
+
+type AuthUser = { id: string; email?: string };
+
+type AuthResult = {
+  user?: AuthUser;
+  status?: number;
+  error?: string;
 };
 
 const app = Fastify({ logger: true });
@@ -108,29 +119,41 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
   return samplePrReview(root);
 });
 
+app.post("/mcp", async (request, reply) => {
+  const server = buildMcpServer({ publishMarkdown: publishMarkdownFromMcp });
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+
+  reply.raw.on("close", () => {
+    void transport.close();
+    void server.close();
+  });
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(request.raw, reply.raw, request.body);
+  } catch (error) {
+    request.log.error({ error }, "MCP request failed");
+    if (!reply.raw.headersSent) {
+      reply.raw.writeHead(500, { "content-type": "application/json" });
+      reply.raw.end(JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal server error" },
+        id: null
+      }));
+    }
+  }
+});
+
+app.get("/mcp", async (_request, reply) => mcpMethodNotAllowed(reply));
+app.delete("/mcp", async (_request, reply) => mcpMethodNotAllowed(reply));
+
 app.post("/imports/markdown-to-harness", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
   const body = request.body as ImportRequest;
-  if (!body?.markdown || body.markdown.length < 20) {
-    return reply.code(400).send({ error: "markdown must be at least 20 characters" });
-  }
-  const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
-  const target = path.join(registry.importRoot, name);
-  mkdirSync(path.dirname(target), { recursive: true });
-  const tempSource = path.join(registry.workspaceRoot, "data", `${name}.source.md`);
-  writeFileSync(tempSource, body.markdown);
-  const cliCommand = importCliCommand(tempSource, target, name);
-  const cli = spawnSync(cliCommand.command, cliCommand.args, {
-    cwd: registry.workspaceRoot,
-    encoding: "utf8"
-  });
-  if (cli.status !== 0) {
-    return reply.code(500).send({ error: cli.stderr || cli.stdout || "import failed" });
-  }
-  const item = registry.registryItemFromDir("local", target, new Map());
-  appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
-  return { item, output: cli.stdout };
+  const result = importMarkdownToHarness(body, user);
+  if ("error" in result) return reply.code(result.status ?? 500).send({ error: result.error });
+  return result;
 });
 
 app.post("/webhooks/gitea", async (request, reply) => {
@@ -163,12 +186,20 @@ function isAllowedOrigin(origin: string): boolean {
   }
 }
 
-async function requireUser(request: FastifyRequest, reply: FastifyReply): Promise<{ id: string; email?: string } | undefined> {
-  if (!supabaseUrl || !supabaseAnonKey) return { id: "local-dev" };
-  const authorization = request.headers.authorization;
+async function requireUser(request: FastifyRequest, reply: FastifyReply): Promise<AuthUser | undefined> {
+  const result = await userFromAuthorization(headerValue(request.headers.authorization));
+  if (result.user) return result.user;
+  if (result.status === 401) {
+    reply.header("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl}"`);
+  }
+  reply.code(result.status ?? 401).send({ error: result.error ?? "Sign in required" });
+  return undefined;
+}
+
+async function userFromAuthorization(authorization: string | undefined): Promise<AuthResult> {
+  if (!supabaseUrl || !supabaseAnonKey) return { user: { id: "local-dev" } };
   if (!authorization?.startsWith("Bearer ")) {
-    reply.code(401).send({ error: "Sign in required" });
-    return undefined;
+    return { status: 401, error: "Sign in required" };
   }
   try {
     const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
@@ -178,19 +209,55 @@ async function requireUser(request: FastifyRequest, reply: FastifyReply): Promis
       }
     });
     if (!response.ok) {
-      reply.code(401).send({ error: "Invalid or expired session" });
-      return undefined;
+      return { status: 401, error: "Invalid or expired session" };
     }
     const user = await response.json() as { id?: string; email?: string };
     if (!user.id) {
-      reply.code(401).send({ error: "Invalid session user" });
-      return undefined;
+      return { status: 401, error: "Invalid session user" };
     }
-    return { id: user.id, email: user.email };
+    return { user: { id: user.id, email: user.email } };
   } catch {
-    reply.code(503).send({ error: "Auth provider unavailable" });
-    return undefined;
+    return { status: 503, error: "Auth provider unavailable" };
   }
+}
+
+const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorization) => {
+  const auth = await userFromAuthorization(authorization);
+  if (!auth.user) {
+    return {
+      error: auth.error ?? "Authorization required",
+      status: auth.status ?? 401,
+      resource_metadata: resourceMetadataUrl
+    };
+  }
+  const result = importMarkdownToHarness(body, auth.user);
+  return "error" in result ? result : result;
+};
+
+function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
+  if (!body?.markdown || body.markdown.length < 20) {
+    return { status: 400, error: "markdown must be at least 20 characters" };
+  }
+  const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
+  const target = path.join(registry.importRoot, name);
+  mkdirSync(path.dirname(target), { recursive: true });
+  const tempSource = path.join(registry.workspaceRoot, "data", `${name}.source.md`);
+  writeFileSync(tempSource, body.markdown);
+  const cliCommand = importCliCommand(tempSource, target, name);
+  const cli = spawnSync(cliCommand.command, cliCommand.args, {
+    cwd: registry.workspaceRoot,
+    encoding: "utf8"
+  });
+  if (cli.status !== 0) {
+    return { status: 500, error: cli.stderr || cli.stdout || "import failed" };
+  }
+  const item = registry.registryItemFromDir("local", target, new Map());
+  appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
+  return { item, output: cli.stdout };
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function requireInternalToken(request: FastifyRequest, reply: FastifyReply): boolean {
@@ -200,6 +267,14 @@ function requireInternalToken(request: FastifyRequest, reply: FastifyReply): boo
   if (token === webhookToken) return true;
   reply.code(401).send({ error: "Invalid internal token" });
   return false;
+}
+
+function mcpMethodNotAllowed(reply: FastifyReply) {
+  return reply.code(405).send({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "Method not allowed." },
+    id: null
+  });
 }
 
 function safeHeaders(headers: FastifyRequest["headers"]) {

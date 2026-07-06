@@ -58,6 +58,7 @@ Core endpoints:
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
 
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
+Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `search_docs`, `publish_markdown_to_harness`.
 OpenAPI will be available at `https://onlyharness.com/api/openapi.json`.
 
 ## Conventions

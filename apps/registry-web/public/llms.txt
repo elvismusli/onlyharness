@@ -27,6 +27,27 @@ End-to-end example:
     curl -s 'https://onlyharness.com/api/registry?q=market%20research'
     curl -s 'https://onlyharness.com/api/repos/harnesses/deep-market-researcher/archive'
 
+## MCP
+
+Endpoint: https://onlyharness.com/mcp
+
+Transport: Streamable HTTP. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+
+Tools:
+
+- search_harnesses: search registry items by task/outcome/tag.
+- harness_detail: inspect manifest, trust signals, examples and files.
+- pull_instructions: return CLI and archive commands for a harness.
+- search_docs: search this llms.txt and agent guidance.
+- publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
+
+Initialize example:
+
+    curl -s -X POST https://onlyharness.com/mcp \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' \
+      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+
 ## CLI (hh)
 
 After npm publish, agents can run the CLI without cloning the repo:
