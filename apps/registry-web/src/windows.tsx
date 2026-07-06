@@ -70,6 +70,7 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
 
 const INSTALL_TABS = ["CLI", "MCP", "Plugin", "Planned"] as const;
 type InstallTab = (typeof INSTALL_TABS)[number];
+const LOCAL_HH = "node packages/harness-cli/dist/hh.mjs";
 
 export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: "cli" | "archive" | "mcp" | "plugin") => void; copied: boolean }) {
   const [tab, setTab] = useState<InstallTab>("CLI");
@@ -80,29 +81,31 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
     ? `open ${directoryUrl}\n# Link-only directory. Review upstream source and licensing before importing entries.`
     : item
     ? [
-        `npx onlyharness install ${target} --target claude-code --json`,
-        `npx onlyharness run ${item.name} --json`,
-        `npx onlyharness eval ${item.name} --json`,
-        `npx onlyharness gate --dir ${item.name} --json`
+        "# npm package pending; build the local CLI first:",
+        "npm run build -w onlyharness",
+        `${LOCAL_HH} install ${target} --target claude-code --json`,
+        `${LOCAL_HH} run ${item.name} --json`,
+        `${LOCAL_HH} eval ${item.name} --json`,
+        `${LOCAL_HH} gate --dir ${item.name} --json`
       ].join("\n")
     : "Select a harness to generate install commands.";
   const archive = item && isDirectory ? directoryUrl ?? "" : item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
   const mcpConfig = item && isDirectory
     ? `# Directory entries are link-only.\nopen ${directoryUrl}`
     : item
-    ? `npx onlyharness install ${target} --json\nnpx onlyharness mcp-config ${item.name} --target claude-desktop --out mcp.json\nclaude mcp add onlyharness https://onlyharness.com/mcp\n# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
+    ? `# npm package pending; build the local CLI first.\nnpm run build -w onlyharness\n${LOCAL_HH} install ${target} --json\n${LOCAL_HH} mcp-config ${item.name} --target claude-desktop --out mcp.json\nclaude mcp add onlyharness https://onlyharness.com/mcp\n# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
     : "Select a harness to generate MCP setup.";
   const pluginGuide = item && isDirectory
     ? `# Plugin install is not needed for link-only directories.\nopen ${directoryUrl}`
     : item
-    ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin exposes the OnlyHarness skill and MCP wiring guide.\n# Use: npx onlyharness suggest "${item.name.replaceAll("-", " ")}" --apply --out ${item.name} --json`
+    ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin exposes the OnlyHarness skill and MCP wiring guide.\n# Use: ${LOCAL_HH} suggest "${item.name.replaceAll("-", " ")}" --apply --out ${item.name} --json`
     : "Select a harness to generate plugin setup.";
   const targets: CompatibilityTarget[] = isDirectory ? [
     { name: "Open link", status: "available", detail: directoryUrl },
     { name: "License review", status: "planned", detail: "required before vendoring upstream content" },
     { name: "Harness import", status: "planned", detail: "convert selected entries only after source review" }
   ] : [
-    { name: "CLI", status: "available", detail: "npx onlyharness install/run/eval/gate" },
+    { name: "CLI", status: "available", detail: "local hh bundle; npm publish pending" },
     { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
     { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
     { name: "Claude Code adapter", status: "available", detail: "hh adapt --target claude-code" },

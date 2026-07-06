@@ -3329,13 +3329,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install -g onlyharness
-      - run: hh validate --strict --json > .harnesshub/validation.json
-      - run: hh risk --format markdown --out .harnesshub/risk.md
-      - run: hh diff origin/main...HEAD --format markdown --out .harnesshub/semantic-diff.md
-      - run: hh eval --ci
-      - run: hh gate --results .harnesshub/results.json
-      - run: hh annotate-pr --provider gitea
+      - name: OnlyHarness checks pending npm publish
+        run: |
+          echo "OnlyHarness npm package is not published yet; this scaffold CI is advisory."
+          echo "From the harness-hub repo, run:"
+          echo "  npm run build -w onlyharness"
+          echo "  node packages/harness-cli/dist/hh.mjs validate --strict --json"
+          echo "  node packages/harness-cli/dist/hh.mjs risk --format markdown"
+          echo "  node packages/harness-cli/dist/hh.mjs diff origin/main...HEAD --format markdown"
+          echo "  node packages/harness-cli/dist/hh.mjs eval --ci"
+          echo "  node packages/harness-cli/dist/hh.mjs gate --results .harnesshub/results.json"
 `;
 }
 

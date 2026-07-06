@@ -1210,6 +1210,10 @@ test("extract creates a valid harness with inferred depends_on and redacted sour
     assert.match(copiedNotes, /token=REDACTED/);
     const readme = await readFile(path.join(out, "README.md"), "utf8");
     assert.doesNotMatch(readme, new RegExp(sourceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const workflow = await readFile(path.join(out, ".gitea/workflows/harness-ci.yml"), "utf8");
+    assert.match(workflow, /npm package is not published yet/);
+    assert.match(workflow, /scaffold CI is advisory/);
+    assert.doesNotMatch(workflow, /npm install -g onlyharness/);
 
     const validate = await runCli(["validate", out, "--strict", "--json"]);
     assert.equal(validate.status, 0, validate.stderr);

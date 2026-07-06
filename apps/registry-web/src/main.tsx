@@ -904,22 +904,24 @@ function refFromLocation(): string | undefined {
 
 function remixRecipe(item: RegistryItem): string {
   const remixName = `my-${item.name}`;
+  const hh = "node packages/harness-cli/dist/hh.mjs";
   if (item.contentType === "directory") {
     const url = item.directory?.url ?? item.forgeUrl;
     return [
       `open ${url}`,
       "# Link-only directory: inspect upstream source and license before vendoring.",
       "# Convert the selected workflow into remix.md, then publish with HH_TOKEN:",
-      `npx onlyharness publish remix.md --name ${remixName} --json`
+      "npm run build -w onlyharness",
+      `${hh} publish remix.md --name ${remixName} --json`
     ].join("\n");
   }
   return [
-    `npx onlyharness install ${item.owner}/${item.name} --out ${remixName}`,
-    `cd ${remixName}`,
+    "npm run build -w onlyharness",
+    `${hh} install ${item.owner}/${item.name} --out ${remixName}`,
     "# Rename harness.yaml name/title and edit agents/evals before publishing.",
-    "npx onlyharness eval . --json",
-    "npx onlyharness gate --dir . --json",
-    "# Current publish path accepts reviewed markdown; set HH_TOKEN first.",
-    `npx onlyharness publish README.md --name ${remixName} --json`
+    `${hh} eval ${remixName} --json`,
+    `${hh} gate --dir ${remixName} --json`,
+    "# Current publish path requires a verified directory; set HH_TOKEN first.",
+    `${hh} publish ${remixName} --name ${remixName} --json`
   ].join("\n");
 }

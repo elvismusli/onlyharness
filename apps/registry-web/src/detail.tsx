@@ -3,6 +3,7 @@ import { DETAIL_TABS, type CompatibilityTarget, type DetailTab, type HarnessDeta
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 const THREAD_KINDS = ["question", "recipe", "result", "proposal", "bug/risk"];
+const LOCAL_HH = "node packages/harness-cli/dist/hh.mjs";
 
 export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread, draft, setDraft, kind, setKind, onPost, tryState, onRunSample, onStar, onFork, onCopyCli, onInstall, onShare, copied }: {
   item: RegistryItem;
@@ -48,10 +49,12 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
         "# Do not treat this as a runnable harness."
       ].join("\n")
     : [
-        `npx onlyharness install ${item.owner}/${item.name}`,
-        `npx onlyharness run ${item.name} --json`,
-        `npx onlyharness eval ${item.name} --json`,
-        `npx onlyharness gate --dir ${item.name} --json`
+        "# npm package pending; build the local CLI first:",
+        "npm run build -w onlyharness",
+        `${LOCAL_HH} install ${item.owner}/${item.name}`,
+        `${LOCAL_HH} run ${item.name} --json`,
+        `${LOCAL_HH} eval ${item.name} --json`,
+        `${LOCAL_HH} gate --dir ${item.name} --json`
       ].join("\n");
 
   return (
