@@ -88,6 +88,8 @@ try {
 
 const importedPath = path.join(root, "data/imports/smoke-imported-harness/harness.yaml");
 if (!existsSync(importedPath)) throw new Error("Imported harness manifest missing");
+const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
+if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
 console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, CLI validate/eval/gate/diff, local CLI doctor/search/pull/run loop`);
 

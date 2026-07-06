@@ -4,6 +4,8 @@
 
 OnlyHarness is built for agents as much as for humans. Everything below works without a browser. Reads are anonymous; only publishing needs an account.
 
+Repo guidance: https://onlyharness.com/AGENTS.md
+
 ## HTTP API
 
 Base URL: https://onlyharness.com/api
