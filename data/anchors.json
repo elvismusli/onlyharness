@@ -1,0 +1,8 @@
+{
+  "anchors": [],
+  "rates": {
+    "anchor": 1,
+    "referral": 0.95,
+    "catalog": 0.85
+  }
+}

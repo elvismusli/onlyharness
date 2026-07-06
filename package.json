@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present",
+    "check": "npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present && npm run test:scripts",
     "dev": "node scripts/dev.mjs",
     "gitea:bootstrap": "tsx scripts/bootstrap-gitea.ts",
     "gitea:proof": "tsx scripts/proof-gitea-loop.ts",
@@ -27,6 +27,8 @@
     "smoke": "tsx scripts/smoke.ts",
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
     "smoke:prod-auth": "tsx scripts/smoke-production-auth.ts",
+    "payout:report": "tsx scripts/payout-report.ts",
+    "test:scripts": "tsx --test scripts/*.test.ts",
     "start:api": "npm run dev -w @harnesshub/api",
     "start:web": "npm run dev -w @harnesshub/registry-web",
     "typecheck": "npm run typecheck --workspaces --if-present"

@@ -29,6 +29,11 @@ export type PaymentRequiredBody = {
   next: string;
 };
 
+export type EntitlementRow = {
+  version?: string | null;
+  expires_at?: string | null;
+};
+
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const checkoutBaseUrl = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://onlyharness.com/checkout";
@@ -78,6 +83,41 @@ function hasManualEntitlement(input: PaymentAccessInput): boolean {
 
 async function hasSupabaseEntitlement(input: PaymentAccessInput): Promise<boolean> {
   if (!supabaseUrl || !supabaseRestKey || !input.userId || !isUuid(input.userId)) return false;
+  const canonical = await fetchCanonicalEntitlements(input);
+  if (canonical !== undefined) return entitlementRowsAllow(canonical, input.version);
+  const legacy = await fetchLegacyEntitlements(input);
+  return entitlementRowsAllow(legacy ?? [], input.version);
+}
+
+export function entitlementRowsAllow(rows: EntitlementRow[], version: string, now = Date.now()): boolean {
+  return rows.some((row) => {
+    if (row.version && row.version !== version) return false;
+    if (row.expires_at && Date.parse(row.expires_at) <= now) return false;
+    return true;
+  });
+}
+
+async function fetchCanonicalEntitlements(input: PaymentAccessInput): Promise<EntitlementRow[] | undefined> {
+  const params = new URLSearchParams({
+    select: "version,expires_at",
+    subject_type: "eq.user",
+    subject_id: `eq.${input.userId}`,
+    owner: `eq.${input.owner}`,
+    repo: `eq.${input.repo}`,
+    limit: "20"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/entitlements?${params.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return undefined;
+    return await response.json() as EntitlementRow[];
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchLegacyEntitlements(input: PaymentAccessInput): Promise<EntitlementRow[] | undefined> {
   const params = new URLSearchParams({
     select: "version,expires_at",
     user_id: `eq.${input.userId}`,
@@ -87,21 +127,12 @@ async function hasSupabaseEntitlement(input: PaymentAccessInput): Promise<boolea
   });
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/harness_entitlements?${params.toString()}`, {
-      headers: {
-        apikey: supabaseRestKey,
-        authorization: `Bearer ${supabaseRestKey}`
-      }
+      headers: supabaseRestHeaders()
     });
-    if (!response.ok) return false;
-    const rows = await response.json() as Array<{ version?: string | null; expires_at?: string | null }>;
-    const now = Date.now();
-    return rows.some((row) => {
-      if (row.version && row.version !== input.version) return false;
-      if (row.expires_at && Date.parse(row.expires_at) <= now) return false;
-      return true;
-    });
+    if (!response.ok) return undefined;
+    return await response.json() as EntitlementRow[];
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -126,6 +157,13 @@ function x402Requirement(input: PaymentAccessInput) {
     maxAmountRequired: String(Math.round((input.manifest.pricing.amount_usd ?? 0) * 1_000_000)),
     resource: `/repos/${input.owner}/${input.repo}/archive?version=${encodeURIComponent(input.version)}`,
     description: `${input.owner}/${input.repo}@${input.version}`
+  };
+}
+
+function supabaseRestHeaders() {
+  return {
+    apikey: supabaseRestKey ?? "",
+    authorization: `Bearer ${supabaseRestKey}`
   };
 }
 

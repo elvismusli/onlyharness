@@ -62,6 +62,17 @@ Open:
 - API: `http://127.0.0.1:8787/healthz`
 - Local Gitea forge: `http://127.0.0.1:3000`
 
+## Operator Reports
+
+Payout reporting is dry-run only. It reads settled `purchases` plus `payout_accounts`, applies the current manual rates, and prints blocked rows instead of moving money.
+
+```bash
+npm run payout:report -- --month 2026-07
+npm run payout:report -- --month 2026-07 --json
+```
+
+Use `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, or local JSON fixtures via `--purchases` and `--payout-accounts`. Rows without `creator_user_id` are marked `MISSING_CREATOR_ID` and get no payout amount.
+
 ## CLI
 
 After the npm package is published:
