@@ -774,10 +774,21 @@ function App() {
           />
         );
       case "install":
-        return <InstallBody item={item} onCopy={(text, target) => {
-          if (item) recordHarnessEvent("copy", item, target);
-          void copyText(text, "Install commands copied", "install");
-        }} copied={copiedTag === "install"} />;
+        return (
+          <InstallBody
+            item={item}
+            detail={item ? details[keyFor(item)] : undefined}
+            apiUrl={apiUrl}
+            accessToken={session?.access_token}
+            refCode={refCode}
+            onLogon={() => { setAuthStatus(""); setLogon({ open: true, note: "Log on to create a checkout session." }); }}
+            onCopy={(text, target) => {
+              if (item) recordHarnessEvent("copy", item, target);
+              void copyText(text, "Install commands copied", "install");
+            }}
+            copied={copiedTag === "install"}
+          />
+        );
       case "cli":
         return <CliBody item={item} onCopy={(text) => {
           if (item) recordHarnessEvent("copy", item, "cli");

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "./compat";
 import { fmtContextCost, fmtK, heatPct, isoWeek } from "./format";
-import type { CompatibilityTarget, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "./types";
+import type { CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 /* ---------- New Harness Wizard (publish) ---------- */
@@ -73,14 +73,69 @@ const INSTALL_TABS = ["Claude Code", "Codex", "Cursor", "MCP", "CLI", "GitHub"] 
 type InstallTab = (typeof INSTALL_TABS)[number];
 const LOCAL_HH = "node packages/harness-cli/dist/hh.mjs";
 
-export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: string) => void; copied: boolean }) {
+export function InstallBody({ item, detail, apiUrl, accessToken, refCode, onLogon, onCopy, copied }: {
+  item?: RegistryItem;
+  detail?: HarnessDetail;
+  apiUrl: string;
+  accessToken?: string;
+  refCode?: string;
+  onLogon: () => void;
+  onCopy: (text: string, target: string) => void;
+  copied: boolean;
+}) {
   const [tab, setTab] = useState<InstallTab>("Claude Code");
+  const [checkout, setCheckout] = useState<CheckoutSession | undefined>();
+  const [checkoutStatus, setCheckoutStatus] = useState("");
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const target = item ? `${item.owner}/${item.name}` : "";
   const isDirectory = item?.contentType === "directory";
   const directoryUrl = item?.directory?.url ?? item?.forgeUrl;
   const shownSetup = installSetup(tab, item);
   const archive = item && isDirectory ? directoryUrl ?? "" : item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
   const targets: CompatibilityTarget[] = compatibilityTargetsFor(item);
+  const pricing = detail?.manifest?.pricing;
+  const paymentState = paymentSummary(item, detail);
+  const installTarget = installTargetForTab(tab);
+  const retryCommand = item ? `HH_TOKEN=<token> ${LOCAL_HH} install ${target} --target ${installTarget} --json` : "";
+
+  useEffect(() => {
+    setCheckout(undefined);
+    setCheckoutStatus("");
+    setCheckoutBusy(false);
+  }, [target]);
+
+  async function createCheckout() {
+    if (!item || !pricing || isDirectory || pricing.model === "free") return;
+    if (!accessToken) {
+      onLogon();
+      return;
+    }
+    setCheckoutBusy(true);
+    setCheckoutStatus("");
+    try {
+      const response = await fetch(`${apiUrl}/billing/checkout`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          owner: item.owner,
+          repo: item.name,
+          version: detail?.manifest?.version,
+          ...(refCode ? { ref: refCode } : {})
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Checkout failed (${response.status})`);
+      setCheckout(data as CheckoutSession);
+      setCheckoutStatus("Checkout session created.");
+    } catch (error) {
+      setCheckoutStatus(error instanceof Error ? error.message : "Checkout failed");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
 
   return (
     <div className="win-body">
@@ -101,6 +156,36 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
               <Btn disabled={!item} onClick={() => onCopy(archive, "archive")}>{isDirectory ? "🌐 Copy directory URL" : "📦 Copy archive curl"}</Btn>
             </div>
           </div>
+
+          {!isDirectory && (
+            <div className="trust-box" style={{ marginTop: 8 }}>
+              <h4>Payment</h4>
+              <div className="checkout-grid">
+                <InfoLine label="State" value={paymentState.state} />
+                <InfoLine label="Price" value={paymentState.price} />
+                <InfoLine label="Provider" value={paymentState.provider} />
+              </div>
+              {paymentState.canCheckout ? (
+                <div className="checkout-actions">
+                  <Btn strong disabled={checkoutBusy} onClick={createCheckout}>
+                    {checkoutBusy ? "⌛ Creating..." : accessToken ? "💳 Create manual checkout" : "🔑 Log on for checkout"}
+                  </Btn>
+                  {checkout && <Btn onClick={() => onCopy(retryCommand, "paid-install")}>📋 Copy paid install</Btn>}
+                </div>
+              ) : (
+                <div className="plate" style={{ marginTop: 8 }}>{paymentState.next}</div>
+              )}
+              {checkout && (
+                <div className="checkout-session">
+                  <InfoLine label="Status" value={checkout.status} />
+                  <InfoLine label="Provider ref" value={checkout.provider_ref} />
+                  <a href={checkout.checkout_url} target="_blank" rel="noreferrer">{checkout.checkout_url}</a>
+                  <div className="plate">{checkout.next}</div>
+                </div>
+              )}
+              {checkoutStatus && <div className="checkout-status">{checkoutStatus}</div>}
+            </div>
+          )}
 
           <div className="trust-box" style={{ marginTop: 8 }}>
             <h4>Compatibility targets</h4>
@@ -615,7 +700,7 @@ function installSetup(tab: InstallTab, item?: RegistryItem): string {
       `${LOCAL_HH} publish git@github.com:acme/harnesses.git --path harnesses/${item.name} --name ${item.name} --json`
     ].join("\n");
   }
-  const installTarget = tab === "Claude Code" ? "claude-code" : tab === "Codex" ? "codex" : tab === "Cursor" ? "cursor" : "cli";
+  const installTarget = installTargetForTab(tab);
   return [
     ...build,
     `${LOCAL_HH} install ${target} --target ${installTarget} --json`,
@@ -623,4 +708,31 @@ function installSetup(tab: InstallTab, item?: RegistryItem): string {
     `${LOCAL_HH} eval ${item.name} --json`,
     `${LOCAL_HH} gate --dir ${item.name} --json`
   ].join("\n");
+}
+
+function installTargetForTab(tab: InstallTab): "claude-code" | "codex" | "cursor" | "cli" {
+  if (tab === "Claude Code") return "claude-code";
+  if (tab === "Codex") return "codex";
+  if (tab === "Cursor") return "cursor";
+  return "cli";
+}
+
+function paymentSummary(item: RegistryItem | undefined, detail: HarnessDetail | undefined): { state: string; price: string; provider: string; canCheckout: boolean; next: string } {
+  if (!item) return { state: "select a harness", price: "n/a", provider: "manual", canCheckout: false, next: "Select a harness first." };
+  const pricing = detail?.manifest?.pricing;
+  if (!pricing) return { state: "loading", price: "loading", provider: "manual", canCheckout: false, next: "Loading payment metadata." };
+  if (pricing.model === "per_call") {
+    return { state: "hosted unavailable", price: formatPrice(pricing), provider: "none", canCheckout: false, next: "Hosted execution is not live yet; checkout is disabled for per-call pricing." };
+  }
+  if (!pricing.model || pricing.model === "free") {
+    return { state: "free", price: "free", provider: "none", canCheckout: false, next: "No checkout required." };
+  }
+  return { state: pricing.model, price: formatPrice(pricing), provider: "manual", canCheckout: true, next: "Create a manual checkout session, then retry install with HH_TOKEN after entitlement." };
+}
+
+function formatPrice(pricing: HarnessPricing): string {
+  if (pricing.model === "free") return "free";
+  const amount = pricing.amount_usd;
+  if (typeof amount !== "number" || !Number.isFinite(amount)) return pricing.model ?? "unknown";
+  return `${pricing.currency ?? "USD"} ${amount.toFixed(2)}${pricing.model ? ` · ${pricing.model}` : ""}`;
 }

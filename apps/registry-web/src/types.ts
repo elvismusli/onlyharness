@@ -56,9 +56,21 @@ export type CompatibilityTarget = {
 };
 
 export type HarnessPricing = {
-  model?: "free" | "one_time" | "subscription" | "gate_escrow";
+  model?: "free" | "one_time" | "subscription" | "per_call" | "gate_escrow";
   amount_usd?: number;
   currency?: string;
+};
+
+export type CheckoutSession = {
+  provider: "manual";
+  provider_ref: string;
+  checkout_url: string;
+  status: "pending";
+  owner: string;
+  repo: string;
+  version: string;
+  pricing: HarnessPricing;
+  next: string;
 };
 
 export type ContextCost = {

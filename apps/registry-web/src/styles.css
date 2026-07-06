@@ -604,6 +604,39 @@ button.status-plate { cursor: pointer; }
 
 .trust-box h4 { margin: 0 0 6px; font-size: 12px; }
 
+.checkout-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.checkout-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.checkout-session {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.checkout-session a {
+  box-shadow: var(--bevel-sunken);
+  background: #fff;
+  padding: 4px 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.checkout-status {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
 .network-connect {
   display: grid;
   grid-template-columns: minmax(120px, 180px) minmax(180px, 1fr) auto;
