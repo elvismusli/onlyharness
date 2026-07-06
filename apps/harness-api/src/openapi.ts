@@ -272,6 +272,24 @@ export const openapi = {
         }
       }
     },
+    "/orgs/{slug}/workspace": {
+      get: {
+        summary: "Read organization Network Neighborhood workspace",
+        description: "Requires ORGS_ENABLED=true and a Bearer org token with read, setup or publish scope. Returns org-private registry cards, sanitized audit rows and aggregated permission risk.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Organization workspace",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/OrgWorkspaceResponse" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/orgs/{slug}/imports/markdown-to-harness": {
       post: {
         summary: "Publish markdown into an organization namespace",
@@ -601,6 +619,69 @@ export const openapi = {
           bundle: { $ref: "#/components/schemas/OrgBundle" }
         },
         required: ["organization", "bundle"]
+      },
+      OrgWorkspaceResponse: {
+        type: "object",
+        properties: {
+          organization: {
+            type: "object",
+            properties: {
+              slug: { type: "string" },
+              name: { type: "string" },
+              plan: { type: "string", enum: ["free", "team", "enterprise"] }
+            },
+            required: ["slug", "name", "plan"]
+          },
+          items: { type: "array", items: { $ref: "#/components/schemas/RegistryItem" } },
+          permissions: { $ref: "#/components/schemas/OrgPermissionSummary" },
+          audit: { type: "array", items: { $ref: "#/components/schemas/OrgAuditEntry" } }
+        },
+        required: ["organization", "items", "permissions", "audit"]
+      },
+      OrgPermissionSummary: {
+        type: "object",
+        properties: {
+          totalHarnesses: { type: "integer", minimum: 0 },
+          riskTiers: {
+            type: "object",
+            properties: {
+              LOW: { type: "integer", minimum: 0 },
+              MEDIUM: { type: "integer", minimum: 0 },
+              HIGH: { type: "integer", minimum: 0 },
+              CRITICAL: { type: "integer", minimum: 0 }
+            },
+            required: ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+          },
+          maxRiskScore: { type: "integer", minimum: 0, maximum: 100 },
+          maxRiskTier: { type: "string", enum: ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+          permissionCounts: {
+            type: "object",
+            properties: {
+              unrestrictedNetwork: { type: "integer", minimum: 0 },
+              shell: { type: "integer", minimum: 0 },
+              browser: { type: "integer", minimum: 0 },
+              credentials: { type: "integer", minimum: 0 },
+              externalSend: { type: "integer", minimum: 0 },
+              moneyMovement: { type: "integer", minimum: 0 },
+              userData: { type: "integer", minimum: 0 }
+            },
+            required: ["unrestrictedNetwork", "shell", "browser", "credentials", "externalSend", "moneyMovement", "userData"]
+          },
+          riskMarkdown: { type: "string" }
+        },
+        required: ["totalHarnesses", "riskTiers", "maxRiskScore", "maxRiskTier", "permissionCounts", "riskMarkdown"]
+      },
+      OrgAuditEntry: {
+        type: "object",
+        properties: {
+          slug: { type: "string" },
+          action: { type: "string" },
+          token_name: { type: ["string", "null"] },
+          subject: { type: ["string", "null"] },
+          target: { type: ["string", "null"] },
+          at: { type: "string", format: "date-time" }
+        },
+        required: ["slug", "action", "token_name", "subject", "target", "at"]
       },
       OrgBundle: {
         type: "object",

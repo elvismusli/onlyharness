@@ -4,13 +4,13 @@ import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
-import type { HarnessManifest } from "@harnesshub/schema";
+import { riskMarkdown, type HarnessManifest, type RiskReport } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
-import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgBundle } from "./orgs.js";
+import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, type EntitlementSubject } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
@@ -53,6 +53,23 @@ type StorefrontRequest = {
   display_name?: string;
   displayName?: string;
   bio?: string;
+};
+
+type OrgWorkspacePermissionsSummary = {
+  totalHarnesses: number;
+  riskTiers: Record<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL", number>;
+  maxRiskScore: number;
+  maxRiskTier: RiskReport["tier"] | "NONE";
+  permissionCounts: {
+    unrestrictedNetwork: number;
+    shell: number;
+    browser: number;
+    credentials: number;
+    externalSend: number;
+    moneyMovement: number;
+    userData: number;
+  };
+  riskMarkdown: string;
 };
 
 type ThreadItem = {
@@ -273,6 +290,31 @@ app.get("/orgs/:slug/bundle", async (request, reply) => {
       plan: result.org.plan
     },
     bundle: result.bundle
+  };
+});
+
+app.get("/orgs/:slug/workspace", async (request, reply) => {
+  if (!orgsEnabled) return reply.code(404).send({ error: "Org workspace is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = orgTokenFromRequest(request);
+  const auth = authorizeOrgToken(slug, token, ["read", "setup", "publish"]);
+  if (!auth.ok) {
+    appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "workspace" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const counters = await fetchCountersMap();
+  const owner = `@${auth.org.slug}`;
+  const items = registry.sortRegistry(registry.scanHarnessRoot(owner, registry.orgImportRoot(auth.org.slug), counters), "new");
+  appendOrgAudit({ slug: auth.org.slug, action: "workspace_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "network_neighborhood" });
+  return {
+    organization: {
+      slug: auth.org.slug,
+      name: auth.org.name,
+      plan: auth.org.plan
+    },
+    items,
+    permissions: orgWorkspacePermissionsSummary(items),
+    audit: readOrgAudit(auth.org.slug, 80)
   };
 });
 
@@ -627,6 +669,51 @@ function applyOrgManifest(root: string, orgSlug: string) {
   manifest.visibility = "org";
   manifest.org = orgSlug;
   writeFileSync(manifestPath, YAML.stringify(manifest));
+}
+
+function orgWorkspacePermissionsSummary(items: registry.RegistryItem[]): OrgWorkspacePermissionsSummary {
+  const summary: OrgWorkspacePermissionsSummary = {
+    totalHarnesses: items.length,
+    riskTiers: { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 },
+    maxRiskScore: 0,
+    maxRiskTier: "NONE",
+    permissionCounts: {
+      unrestrictedNetwork: 0,
+      shell: 0,
+      browser: 0,
+      credentials: 0,
+      externalSend: 0,
+      moneyMovement: 0,
+      userData: 0
+    },
+    riskMarkdown: "# Harness Risk\n\nNo org harnesses indexed."
+  };
+  let highestRisk: RiskReport | undefined;
+  for (const item of items) {
+    if (item.riskTier === "LOW" || item.riskTier === "MEDIUM" || item.riskTier === "HIGH" || item.riskTier === "CRITICAL") {
+      summary.riskTiers[item.riskTier] += 1;
+    }
+    const root = registry.resolveHarnessPath(item.owner, item.name);
+    if (!root) continue;
+    const { inspection } = registry.registryDetailBasics(root);
+    const report = inspection.risk;
+    if (!highestRisk || report.score > highestRisk.score) highestRisk = report;
+    const permissions = inspection.manifest?.permissions;
+    if (!permissions) continue;
+    if (permissions.network === "unrestricted") summary.permissionCounts.unrestrictedNetwork += 1;
+    if (permissions.shell) summary.permissionCounts.shell += 1;
+    if (permissions.browser) summary.permissionCounts.browser += 1;
+    if (permissions.credentials !== "false") summary.permissionCounts.credentials += 1;
+    if (permissions.external_send) summary.permissionCounts.externalSend += 1;
+    if (permissions.money_movement) summary.permissionCounts.moneyMovement += 1;
+    if (permissions.user_data) summary.permissionCounts.userData += 1;
+  }
+  if (highestRisk) {
+    summary.maxRiskScore = highestRisk.score;
+    summary.maxRiskTier = highestRisk.tier;
+    summary.riskMarkdown = riskMarkdown(highestRisk);
+  }
+  return summary;
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

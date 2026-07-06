@@ -46,6 +46,15 @@ export type OrgAuthResult =
   | { ok: true; org: OrgRecord; tokenName: string }
   | { ok: false; status: number; error: string; slug?: string; tokenName?: string; auditAction: string };
 
+export type OrgAuditEntry = {
+  slug: string;
+  action: string;
+  token_name: string | null;
+  subject: string | null;
+  target: string | null;
+  at: string;
+};
+
 const orgsPath = path.resolve(process.env.HARNESS_ORGS_PATH ?? path.join(workspaceRoot, "data/orgs.json"));
 const orgAuditPath = path.resolve(process.env.HARNESS_ORG_AUDIT_PATH ?? path.join(workspaceRoot, "data/org-audit.jsonl"));
 
@@ -119,6 +128,31 @@ export function appendOrgAudit(input: { slug: string; action: string; tokenName?
     target: input.target ?? null,
     at: new Date().toISOString()
   })}\n`);
+}
+
+export function readOrgAudit(slugValue: string | undefined, limit = 50): OrgAuditEntry[] {
+  const slug = cleanOrgSlug(slugValue);
+  if (!slug || !existsSync(orgAuditPath)) return [];
+  const rows = readFileSync(orgAuditPath, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        const parsed = JSON.parse(line) as Partial<OrgAuditEntry>;
+        if (parsed.slug !== slug) return [];
+        return [{
+          slug,
+          action: typeof parsed.action === "string" ? parsed.action : "unknown",
+          token_name: typeof parsed.token_name === "string" ? parsed.token_name : null,
+          subject: typeof parsed.subject === "string" ? parsed.subject : null,
+          target: typeof parsed.target === "string" ? parsed.target : null,
+          at: typeof parsed.at === "string" ? parsed.at : ""
+        }];
+      } catch {
+        return [];
+      }
+    });
+  return rows.slice(-Math.max(1, Math.min(limit, 200))).reverse();
 }
 
 function readOrgStore(): OrgStore {

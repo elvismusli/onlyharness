@@ -35,7 +35,7 @@ HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 
 Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`.
 
-Team setup, org-private pull, org publishing, and repo sync use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name`, `hh publish workflow.md --org acme`, and `hh sync <git-url-or-local-path> --org acme` use the same org token path.
+Team setup, org-private pull, org publishing, repo sync, and Network Neighborhood use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name`, `hh publish workflow.md --org acme`, and `hh sync <git-url-or-local-path> --org acme` use the same org token path; the web/API workspace is `GET /orgs/{slug}/workspace`.
 
 ## Publishing
 

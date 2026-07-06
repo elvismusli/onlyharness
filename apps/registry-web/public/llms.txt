@@ -35,6 +35,8 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Returns { profile, referralCode, items }. Use referralCode as checkout ref for creator attribution.
 - Org setup bundle: GET /orgs/{slug}/bundle
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, bundle: { version, harnesses, configs } }. Use `HH_ORG_TOKEN=... hh setup @slug` instead of hand-writing files.
+- Org workspace: GET /orgs/{slug}/workspace
+  Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, items, permissions, audit }. The audit rows are sanitized and permissions include riskMarkdown for the highest-risk org harness.
 - Org publish: POST /orgs/{slug}/imports/markdown-to-harness
   Requires ORGS_ENABLED=true and an org token with publish scope. Use `HH_ORG_TOKEN=... hh publish workflow.md --org slug --name team-workflow`. The generated harness is `visibility: org` and archive/detail require an org token.
 - Org repo sync: `HH_ORG_TOKEN=... hh sync <git-url-or-local-path> --org slug`

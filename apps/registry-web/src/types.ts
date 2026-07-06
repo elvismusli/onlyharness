@@ -110,10 +110,45 @@ export type StorefrontPage = {
   items: RegistryItem[];
 };
 
+export type OrgAuditEntry = {
+  slug: string;
+  action: string;
+  token_name: string | null;
+  subject: string | null;
+  target: string | null;
+  at: string;
+};
+
+export type OrgWorkspace = {
+  organization: {
+    slug: string;
+    name: string;
+    plan: "free" | "team" | "enterprise";
+  };
+  items: RegistryItem[];
+  permissions: {
+    totalHarnesses: number;
+    riskTiers: Record<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL", number>;
+    maxRiskScore: number;
+    maxRiskTier: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    permissionCounts: {
+      unrestrictedNetwork: number;
+      shell: number;
+      browser: number;
+      credentials: number;
+      externalSend: number;
+      moneyMovement: number;
+      userData: number;
+    };
+    riskMarkdown: string;
+  };
+  audit: OrgAuditEntry[];
+};
+
 export const DETAIL_TABS = ["Overview", "Install", "Trust", "Try sample", "Thread", "Files", "Versions"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
-export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share" | "storefront";
+export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share" | "storefront" | "network";
 
 /* stacking order = position in the wins array (last = top); z-index derives from it */
 export type FloatWin = {

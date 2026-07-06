@@ -6,12 +6,16 @@ import { Btn, Dialog, TitleBar } from "./win98";
 const PALETTE = ["#000000", "#808080", "#800000", "#808000", "#008000", "#008080", "#000080", "#800080", "#ffffff", "#c0c0c0", "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff"];
 const BAR_COLORS = ["#ff0000", "#0000ff", "#00a000", "#ffff00"];
 
-export function DesktopIcons({ onMyHarnesses, onBin }: { onMyHarnesses: () => void; onBin: () => void }) {
+export function DesktopIcons({ onMyHarnesses, onNetwork, onBin }: { onMyHarnesses: () => void; onNetwork: () => void; onBin: () => void }) {
   return (
     <div className="desk-icons">
       <button className="desk-icon" onClick={onMyHarnesses}>
         <span className="glyph">🗂️</span>
         <span className="label">My Harnesses</span>
+      </button>
+      <button className="desk-icon" onClick={onNetwork}>
+        <span className="glyph">🌐</span>
+        <span className="label">Network Neighborhood</span>
       </button>
       <button className="desk-icon" onClick={onBin}>
         <span className="glyph">🗑️</span>

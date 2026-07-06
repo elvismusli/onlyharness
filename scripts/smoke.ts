@@ -70,7 +70,7 @@ try {
     items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/entitlements/check"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/entitlements/check"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   for (const item of registry.items) {
@@ -281,6 +281,25 @@ try {
   if (syncDetail.manifest?.visibility !== "org" || syncDetail.manifest.org !== "acme" || syncDetail.manifest.name !== "smoke-sync") {
     throw new Error(`Org sync detail did not preserve org manifest: ${JSON.stringify(syncDetail)}`);
   }
+  const orgWorkspaceNoToken = await fetch("http://127.0.0.1:8799/orgs/acme/workspace");
+  if (orgWorkspaceNoToken.status !== 401) throw new Error(`Org workspace without token should be 401, got ${orgWorkspaceNoToken.status}`);
+  const orgWorkspace = await fetch("http://127.0.0.1:8799/orgs/acme/workspace", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as {
+    organization?: { slug?: string };
+    items?: Array<{ owner?: string; name?: string }>;
+    permissions?: { totalHarnesses?: number; riskMarkdown?: string };
+    audit?: Array<{ action?: string; token_name?: string | null }>;
+  };
+  if (orgWorkspace.organization?.slug !== "acme" || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "acme-private-workflow") || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "smoke-sync")) {
+    throw new Error(`Org workspace did not return org-private catalog: ${JSON.stringify(orgWorkspace)}`);
+  }
+  if (!orgWorkspace.permissions?.totalHarnesses || !orgWorkspace.permissions.riskMarkdown?.includes("# Harness Risk")) {
+    throw new Error(`Org workspace permissions summary incomplete: ${JSON.stringify(orgWorkspace.permissions)}`);
+  }
+  const workspaceAudit = JSON.stringify(orgWorkspace.audit ?? []);
+  if (!workspaceAudit.includes("workspace_read")) throw new Error(`Org workspace audit rows missing workspace_read: ${workspaceAudit}`);
+  if (workspaceAudit.includes("smoke-org-token")) throw new Error("Org workspace audit leaked a raw token");
   const orgEntitlementNoToken = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=@acme/acme-private-workflow");
   if (orgEntitlementNoToken.status !== 401) throw new Error(`Org entitlement check without token should be 401, got ${orgEntitlementNoToken.status}`);
   const orgEntitlement = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=@acme/acme-private-workflow", {

@@ -6,8 +6,8 @@ import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu,
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
 import { clockLabel, keyFor, relativeTime } from "./format";
-import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, RegistryItem, StorefrontPage, ThreadItem, WinKind } from "./types";
-import { CliBody, InstallBody, LeaderboardBody, PublishBody, ReviewBody, ShareBody, StorefrontBody } from "./windows";
+import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, ThreadItem, WinKind } from "./types";
+import { CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
 
@@ -26,7 +26,8 @@ const WIN_WIDTHS: Record<WinKind, number> = {
   review: 860,
   leaderboard: 460,
   share: 660,
-  storefront: 860
+  storefront: 860,
+  network: 900
 };
 
 type ActiveDialog = DialogSpec & { onOk?: () => void };
@@ -63,6 +64,13 @@ function App() {
   const [importMarkdown, setImportMarkdown] = useState("# Customer Research Pipeline\n\nResearch target users, synthesize pains, critique assumptions, produce a decision memo with unresolved fields marked.");
   const [importStatus, setImportStatus] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+
+  /* organization workspace */
+  const [networkOrg, setNetworkOrg] = useState(() => localStorage.getItem("hh:networkOrg") ?? "acme");
+  const [networkToken, setNetworkToken] = useState("");
+  const [networkStatus, setNetworkStatus] = useState("");
+  const [networkBusy, setNetworkBusy] = useState(false);
+  const [orgWorkspace, setOrgWorkspace] = useState<OrgWorkspace | undefined>();
 
   /* window manager: `wins` keeps stable taskbar order, `stack` keeps stacking order (last = top) */
   const [wins, setWins] = useState<FloatWin[]>([]);
@@ -313,11 +321,17 @@ function App() {
   function loadDetail(item: RegistryItem) {
     const key = keyFor(item);
     if (!details[key]) {
-      fetch(`${apiUrl}/repos/${item.owner}/${item.name}/harness`)
+      fetch(`${apiUrl}/repos/${item.owner}/${item.name}/harness`, { headers: orgHeadersForOwner(item.owner) })
         .then((response) => response.json())
         .then((data) => setDetails((current) => ({ ...current, [key]: data })))
         .catch(() => undefined);
     }
+  }
+
+  function orgHeadersForOwner(owner: string): Record<string, string> {
+    const slug = owner.startsWith("@") ? owner.slice(1) : "";
+    if (!slug || slug !== networkOrg.replace(/^@/, "").trim().toLowerCase() || !networkToken) return {};
+    return { Authorization: `Bearer ${networkToken}` };
   }
 
   function loadStorefront(handle: string) {
@@ -333,6 +347,34 @@ function App() {
         });
       })
       .catch(() => undefined);
+  }
+
+  async function loadOrgWorkspace() {
+    const slug = networkOrg.replace(/^@/, "").trim().toLowerCase();
+    if (!slug) return;
+    setNetworkBusy(true);
+    setNetworkStatus("");
+    try {
+      const response = await fetch(`${apiUrl}/orgs/${encodeURIComponent(slug)}/workspace`, {
+        headers: networkToken ? { Authorization: `Bearer ${networkToken}` } : {}
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? `Request failed (${response.status})`);
+      const workspace = data as OrgWorkspace;
+      setOrgWorkspace(workspace);
+      setNetworkOrg(workspace.organization.slug);
+      localStorage.setItem("hh:networkOrg", workspace.organization.slug);
+      setKnownItems((current) => {
+        const next = { ...current };
+        for (const item of workspace.items ?? []) next[keyFor(item)] = item;
+        return next;
+      });
+      setNetworkStatus(`Loaded ${workspace.items.length} private harnesses · ${workspace.audit.length} audit rows`);
+    } catch (error) {
+      setNetworkStatus(error instanceof Error ? error.message : "Org workspace failed");
+    } finally {
+      setNetworkBusy(false);
+    }
   }
 
   function openHarness(item: RegistryItem, tab?: DetailTab) {
@@ -537,6 +579,7 @@ function App() {
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
       case "share": return { icon: "💾", title: `harness_flex.exe — ${item?.title ?? ""}` };
       case "storefront": return { icon: "🗂️", title: `@${win.hkey ?? "handle"} — My Briefcase` };
+      case "network": return { icon: "🌐", title: "Network Neighborhood" };
     }
   }
 
@@ -569,6 +612,7 @@ function App() {
   const startEntries: StartEntry[] = [
     { icon: "🧭", label: "Explore", onClick: () => { setFocusedId(""); window.scrollTo({ top: 0, behavior: "smooth" }); } },
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
+    { icon: "🌐", label: "Network Neighborhood", onClick: () => openWin("network") },
     { icon: "💿", label: "Install Center", onClick: () => openInstall(topItem) },
     ...(myHandle ? [{ icon: "🗂️", label: `@${myHandle}`, onClick: () => openStorefront(myHandle) }] : []),
     { icon: "📄", label: "New harness...", onClick: () => openWin("publish") },
@@ -667,6 +711,20 @@ function App() {
         const handle = win.hkey ?? "";
         return <StorefrontBody page={storefronts[handle]} handle={handle} referrer={refCode} onOpen={(entry) => openHarness(entry)} onCopy={(text) => copyText(text, "Ref-link copied", `storefront:${handle}`)} copied={copiedTag === `storefront:${handle}`} />;
       }
+      case "network":
+        return (
+          <NetworkBody
+            orgSlug={networkOrg}
+            setOrgSlug={setNetworkOrg}
+            orgToken={networkToken}
+            setOrgToken={setNetworkToken}
+            workspace={orgWorkspace}
+            status={networkStatus}
+            busy={networkBusy}
+            onLoad={loadOrgWorkspace}
+            onOpen={(entry) => openHarness(entry)}
+          />
+        );
     }
   }
 
@@ -684,6 +742,7 @@ function App() {
           }
           document.getElementById("trending")?.scrollIntoView({ behavior: "smooth" });
         }}
+        onNetwork={() => openWin("network")}
         onBin={binDialog}
       />
       <AwardWindow leader={leader} />

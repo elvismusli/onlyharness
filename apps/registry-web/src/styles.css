@@ -576,6 +576,13 @@ button.status-plate { cursor: pointer; }
 
 .trust-box h4 { margin: 0 0 6px; font-size: 12px; }
 
+.network-connect {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
 .info-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; }
 
 .info-line span { color: #404040; }
@@ -1199,6 +1206,7 @@ button.status-plate { cursor: pointer; }
   .float-win { left: 8px !important; right: 8px; top: 8px !important; width: auto !important; }
   .float-win .win-scroll { max-height: calc(100vh - 120px); }
   .detail-grid, .review-grid, .try-grid { grid-template-columns: 1fr; }
+  .network-connect { grid-template-columns: 1fr; }
   .wordart { font-size: 38px; }
   .share-stage { width: 300px; height: 158px; max-width: 100%; }
   .share-canvas { transform: none; zoom: 0.25; }
