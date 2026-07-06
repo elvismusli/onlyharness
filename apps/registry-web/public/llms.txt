@@ -36,6 +36,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Auth required. Body { provider_ref }. Refunds only after the 72h receipt window expires.
 - Bounties: GET /bounties, POST /bounties, POST /bounties/{id}/claim, POST /bounties/{id}/deliver, POST /bounties/{id}/accept
   Auth required except list. Local bounty state is work-state only: open -> claimed -> delivered -> paid. Delivery and acceptance require a signed passing `hh gate --receipt`; accept also requires a matching reserved/captured `gate_escrow` purchase with the same target, amount and currency. The API blocks escrow reuse and marks paid only after capture.
+- Hosted execution: not live. `hh run` is local-only; HTTP/MCP archive routes deliver files and do not execute author code server-side. Do not use `pricing.model=per_call` as a live payment path yet.
 - Entitlement check: GET /entitlements/check?subject=user:{id}&harness={owner}/{name}&version={optional semver}
   Bot-facing read-only decision. Requires ORGS_ENABLED=true and Authorization: Bearer {org token with entitlements:read}. Response includes { entitled, status } and never returns archive files.
 - Community invite code: POST /community/invite-code

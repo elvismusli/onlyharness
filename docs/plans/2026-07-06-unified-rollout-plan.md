@@ -111,7 +111,7 @@ flowchart LR
 
 ### Ф5 — M4 (недели 9+)
 
-**M4.1 receipts → M4.2 эскроу → M4.3 bounties** (пилот S2 прожит руками) → **M4.4 hosted endpoints** (build-vs-partner по спросу авторов).
+**M4.1 receipts → M4.2 эскроу → M4.3 bounties** (пилот S2 прожит руками) → **M4.4 hosted endpoints** (build-vs-partner по спросу авторов; текущее решение: не строить runner без спроса, см. [M4.4 decision](2026-07-06-m4-hosted-endpoints-decision.md)).
 
 ### Track S — свободные слоты любой фазы
 
