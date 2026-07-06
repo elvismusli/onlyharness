@@ -17,6 +17,7 @@ export type ExploreActions = {
   openHarness: (item: RegistryItem, tab?: DetailTab) => void;
   star: (item: RegistryItem) => void;
   fork: (item: RegistryItem) => void;
+  openInstall: (item?: RegistryItem) => void;
   openPublish: () => void;
   openCli: () => void;
   openReview: () => void;
@@ -57,6 +58,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
       label: <span><u>F</u>ile</span>,
       items: [
         { icon: "📄", label: "New harness...", onClick: actions.openPublish },
+        { icon: "💿", label: top ? `Install "${top.title}"...` : "Install Center...", onClick: () => actions.openInstall(top) },
         { icon: ">_", label: "Open MS-DOS Prompt", onClick: actions.openCli },
         "sep" as const,
         { icon: "🚪", label: "Exit", onClick: actions.cantClose }
@@ -80,6 +82,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
       label: <span><u>H</u>arness</span>,
       items: [
         { icon: "▶", label: top ? `Run "${top.title}"` : "Run sample", onClick: () => top && actions.openHarness(top, "Try") },
+        { icon: "💿", label: top ? `Install "${top.title}"` : "Install Center", onClick: () => actions.openInstall(top) },
         { icon: "⑂", label: top ? `Fork "${top.title}"` : "Fork", onClick: () => top && actions.fork(top) },
         "sep" as const,
         { icon: "🔧", label: "Maintainer review...", onClick: actions.openReview }
@@ -113,6 +116,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
         <div className="toolbar">
           <Btn onClick={actions.openPublish}>📄 New harness</Btn>
           <Btn onClick={() => top && actions.fork(top)}>⑂ Fork</Btn>
+          <Btn onClick={() => actions.openInstall(top)}>💿 Install</Btn>
           <Btn onClick={() => top && actions.openHarness(top, "Try")}>▶ Run</Btn>
           <Btn onClick={actions.openCli}>&gt;_ CLI</Btn>
           <div className="vsep" />
@@ -137,6 +141,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
                   🔥 Explore trending
                 </Btn>
                 <Btn big onClick={actions.openPublish}>＋ Publish a harness</Btn>
+                <Btn big onClick={() => actions.openInstall(top)}>💿 Install Center</Btn>
               </div>
               <div className="marquee">
                 <div className="marquee-inner">{ticker}{ticker}</div>

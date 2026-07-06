@@ -65,6 +65,76 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
   );
 }
 
+/* ---------- Install Center ---------- */
+
+export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string) => void; copied: boolean }) {
+  const target = item ? `${item.owner}/${item.name}` : "";
+  const commands = item
+    ? [
+        `npx onlyharness pull ${target}`,
+        `npx onlyharness run ${item.name} --json`,
+        `npx onlyharness eval ${item.name} --json`,
+        `npx onlyharness gate --dir ${item.name} --json`
+      ].join("\n")
+    : "Select a harness to generate install commands.";
+  const archive = item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
+  const targets = [
+    { name: "CLI", status: "available", detail: "npx onlyharness pull/run/eval/gate" },
+    { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
+    { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
+    { name: "Claude Code plugin", status: "available", detail: "skill + .mcp.json" },
+    { name: "Cursor adapter", status: "planned", detail: "adapter command not shipped yet" },
+    { name: "Team bundle", status: "planned", detail: "org setup waits for Teams core" }
+  ];
+
+  return (
+    <div className="win-body">
+      <div className="detail-head">
+        <div className="owner-line">Install Center</div>
+        <h2>{item?.title ?? "Pick a harness"}</h2>
+        <div className="promise">{item?.summary ?? "No harness selected."}</div>
+      </div>
+
+      <div className="detail-grid">
+        <section>
+          <div className="trust-box">
+            <h4>Recommended install loop</h4>
+            <pre className="pre98">{commands}</pre>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <Btn strong disabled={!item} onClick={() => onCopy(commands)}>{copied ? "✓ Copied" : "📋 Copy CLI loop"}</Btn>
+              <Btn disabled={!item} onClick={() => onCopy(archive)}>📦 Copy archive curl</Btn>
+            </div>
+          </div>
+
+          <div className="trust-box" style={{ marginTop: 8 }}>
+            <h4>Compatibility targets</h4>
+            <div className="file-list">
+              {targets.map((targetInfo) => (
+                <div className="file-row" key={targetInfo.name}>
+                  <span className={`tag98 ${targetInfo.status === "available" ? "safe" : "warn"}`}>
+                    {targetInfo.status}
+                  </span>
+                  <span><b>{targetInfo.name}</b> · {targetInfo.detail}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <aside className="trust-panel">
+          <div className="trust-box">
+            <h4>Trust before install</h4>
+            <InfoLine label="Eval" value={item ? `${item.evalScore ? item.evalScore.toFixed(2) : "unknown"} (${item.evalStatus})` : "select a harness"} />
+            <InfoLine label="Risk" value={item ? `${item.riskTier} (${item.riskScore})` : "select a harness"} />
+            <InfoLine label="Standard" value={item?.standard ?? "select a harness"} />
+          </div>
+          <div className="plate" style={{ fontSize: 11 }}>Cursor adapter and team bundle are not shipped yet.</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- MS-DOS Prompt (CLI) ---------- */
 
 export function CliBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string) => void; copied: boolean }) {

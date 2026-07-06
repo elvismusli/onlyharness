@@ -7,7 +7,7 @@ import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
 import { clockLabel, keyFor, relativeTime } from "./format";
 import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, RegistryItem, ThreadItem, WinKind } from "./types";
-import { CliBody, LeaderboardBody, PublishBody, ReviewBody, ShareBody } from "./windows";
+import { CliBody, InstallBody, LeaderboardBody, PublishBody, ReviewBody, ShareBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
 
@@ -21,6 +21,7 @@ const OUTCOMES = ["Research", "Support", "Finance safety", "Strategy", "Engineer
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
   publish: 640,
+  install: 760,
   cli: 620,
   review: 860,
   leaderboard: 460,
@@ -75,6 +76,7 @@ function App() {
   const [time, setTime] = useState(() => clockLabel(new Date()));
   const flashTimer = useRef(0);
   const copiedTimer = useRef(0);
+  const handledHash = useRef("");
 
   /* ---------- effects ---------- */
 
@@ -140,6 +142,24 @@ function App() {
     const timer = window.setInterval(() => setTime(clockLabel(new Date())), 20_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    function openFromHash() {
+      const parsed = parseHarnessHash(window.location.hash);
+      if (!parsed) return;
+      const key = `${parsed.owner}/${parsed.name}`;
+      const item = knownItems[key] ?? allItems.find((entry) => entry.owner === parsed.owner && entry.name === parsed.name);
+      if (!item) return;
+      const canonical = `#/h/${parsed.owner}/${parsed.name}`;
+      if (handledHash.current === canonical && wins.some((win) => win.id === `harness:${key}` && !win.minimized)) return;
+      handledHash.current = canonical;
+      openHarness(item);
+    }
+
+    window.addEventListener("hashchange", openFromHash);
+    openFromHash();
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, [allItems, knownItems, wins]);
 
   /* ---------- derived ---------- */
 
@@ -260,7 +280,19 @@ function App() {
     setKnownItems((current) => (current[key] ? current : { ...current, [key]: item }));
     if (tab) setTabs((current) => ({ ...current, [key]: tab }));
     loadDetail(item);
+    setHarnessHash(item);
     openWin("harness", key);
+  }
+
+  function openInstall(item?: RegistryItem) {
+    const selected = item ?? topItem;
+    if (selected) {
+      const key = keyFor(selected);
+      setKnownItems((current) => (current[key] ? current : { ...current, [key]: selected }));
+      openWin("install", key);
+      return;
+    }
+    openWin("install");
   }
 
   async function toggleStar(item: RegistryItem) {
@@ -431,6 +463,7 @@ function App() {
     switch (win.kind) {
       case "harness": return { icon: "📦", title: item?.title ?? "Harness" };
       case "publish": return { icon: "📄", title: "New Harness Wizard" };
+      case "install": return { icon: "💿", title: item ? `Install Center — ${item.title}` : "Install Center" };
       case "cli": return { icon: "🖥️", title: "MS-DOS Prompt — hh.exe" };
       case "review": return { icon: "🔧", title: "Maintainer Review — Demo" };
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
@@ -467,6 +500,7 @@ function App() {
   const startEntries: StartEntry[] = [
     { icon: "🧭", label: "Explore", onClick: () => { setFocusedId(""); window.scrollTo({ top: 0, behavior: "smooth" }); } },
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
+    { icon: "💿", label: "Install Center", onClick: () => openInstall(topItem) },
     { icon: "📄", label: "New harness...", onClick: () => openWin("publish") },
     { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", topItem ? keyFor(topItem) : undefined) },
     { icon: "🔧", label: "Maintainer Review", onClick: () => openReview() },
@@ -518,6 +552,7 @@ function App() {
             onStar={() => toggleStar(item)}
             onFork={() => forkHarness(item)}
             onCopyCli={() => copyText(item.cliCommand, `Copied: ${item.cliCommand}`, `cli:${key}`)}
+            onInstall={() => openInstall(item)}
             onShare={() => openWin("share", key)}
             copied={copiedTag === `cli:${key}`}
           />
@@ -537,6 +572,8 @@ function App() {
             onLogon={() => { setAuthStatus(""); setLogon({ open: true, note: "Log on to publish a harness." }); }}
           />
         );
+      case "install":
+        return <InstallBody item={item} onCopy={(text) => copyText(text, "Install commands copied", "install")} copied={copiedTag === "install"} />;
       case "cli":
         return <CliBody item={item} onCopy={(text) => copyText(text, "CLI commands copied", "cliwin")} copied={copiedTag === "cliwin"} />;
       case "review":
@@ -587,6 +624,7 @@ function App() {
           active={focusedId === ""}
           actions={{
             openHarness,
+            openInstall,
             star: toggleStar,
             fork: forkHarness,
             openPublish: () => openWin("publish"),
@@ -682,3 +720,18 @@ const container = document.getElementById("root")!;
 const root = (window as HarnessWindow).__harnessHub98Root ?? createRoot(container);
 (window as HarnessWindow).__harnessHub98Root = root;
 root.render(<App />);
+
+function parseHarnessHash(hash: string): { owner: string; name: string } | undefined {
+  const match = hash.match(/^#\/h\/([^/]+)\/([^/?#]+)$/);
+  if (!match) return undefined;
+  return {
+    owner: decodeURIComponent(match[1]),
+    name: decodeURIComponent(match[2])
+  };
+}
+
+function setHarnessHash(item: RegistryItem) {
+  const next = `#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`;
+  if (window.location.hash === next) return;
+  window.history.replaceState(null, "", next);
+}

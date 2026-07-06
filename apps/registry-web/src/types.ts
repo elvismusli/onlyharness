@@ -75,7 +75,7 @@ export type HarnessDetail = {
 export const DETAIL_TABS = ["Overview", "Try", "Thread", "Evals", "Files"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
-export type WinKind = "harness" | "publish" | "cli" | "review" | "leaderboard" | "share";
+export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share";
 
 /* stacking order = position in the wins array (last = top); z-index derives from it */
 export type FloatWin = {

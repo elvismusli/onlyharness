@@ -4,7 +4,7 @@ import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 const THREAD_KINDS = ["question", "recipe", "result", "proposal", "bug/risk"];
 
-export function DetailBody({ item, detail, tab, setTab, starred, forked, thread, draft, setDraft, kind, setKind, onPost, tryState, onRunSample, onStar, onFork, onCopyCli, onShare, copied }: {
+export function DetailBody({ item, detail, tab, setTab, starred, forked, thread, draft, setDraft, kind, setKind, onPost, tryState, onRunSample, onStar, onFork, onCopyCli, onInstall, onShare, copied }: {
   item: RegistryItem;
   detail?: HarnessDetail;
   tab: DetailTab;
@@ -22,6 +22,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
   onStar: () => void;
   onFork: () => void;
   onCopyCli: () => void;
+  onInstall: () => void;
   onShare: () => void;
   copied: boolean;
 }) {
@@ -205,6 +206,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
           </div>
 
           <div className="trust-actions">
+            <Btn strong onClick={onInstall}>💿 Install</Btn>
             <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : ">_ Copy CLI"}</Btn>
             <Btn pressed={starred} onClick={onStar}>★ {starred ? "Starred" : "Star"}</Btn>
             <Btn pressed={forked} onClick={onFork}>⑂ {forked ? "Forked" : "Fork"}</Btn>
