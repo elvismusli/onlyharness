@@ -158,10 +158,11 @@ Local development check from a repo clone:
 
 ## What is a harness
 
-A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), stars, forks, threads and Harness Heat.
+A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, forks, threads and Harness Heat.
 
 ## Safety notes for agents
 
 - hh run is sample mode only: it never calls an LLM and never touches credentials.
+- Community stats and Harness Heat are not safety guarantees. Inspect security, risk, permissions and gates before using a harness for real work.
 - Inspect manifest.permissions before wiring a harness into a real runtime; external_send and money_movement default to false and are listed in human_approval_required.
 - Quality gates (min eval score, max cost, max risk) live in harness.yaml under quality_gates; hh gate enforces them.

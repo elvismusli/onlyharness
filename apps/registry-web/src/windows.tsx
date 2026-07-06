@@ -458,7 +458,7 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
         </button>
       ))}
       <div style={{ fontSize: 11, color: "#404040", marginTop: 6 }}>
-        Heat uses stars, forks, thread replies, verified run telemetry and Claude Code install confirms. Browser previews do not count.
+        Heat uses stars, forks, thread replies, verified run telemetry and Claude Code install confirms. Community signals are not safety guarantees.
       </div>
     </div>
   );
@@ -496,7 +496,7 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
                 <div className="share-promise">{item.summary}</div>
                 <div className="share-tags">
                   {item.tags.slice(0, 2).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
-                  {item.riskTier === "LOW" && <span className="tag98 safe">✓ safety reviewed</span>}
+                  {item.riskTier === "LOW" && <span className="tag98 safe">✓ low-risk scan</span>}
                   <span className="tag98 safe">{isDirectory ? "Open link" : "CLI"}</span>
                   <span className="tag98 safe">{isDirectory ? "Source review" : "MCP"}</span>
                 </div>

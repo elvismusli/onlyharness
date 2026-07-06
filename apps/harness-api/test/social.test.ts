@@ -33,3 +33,7 @@ test("badge is new for a harness with no real signals", () => {
 test("badge reports Claude Code install confirmations from real telemetry", () => {
   assert.equal(badgeFor("LOW", 0.9, 5.1, 2, 2), "works in Claude Code: 2 confirms");
 });
+
+test("low-risk badge does not promise safety", () => {
+  assert.equal(badgeFor("LOW", 0.7, 2.1, 1), "low-risk scan");
+});

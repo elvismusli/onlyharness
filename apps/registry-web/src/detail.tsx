@@ -273,6 +273,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
             </div>
             <HeatMeter heat={heat} pct={heatPct(heat)} />
             <div style={{ fontSize: 11, marginTop: 4, color: "#404040" }}>Status: {item.freshness}</div>
+            <div style={{ fontSize: 11, marginTop: 4, color: "#404040" }}>Community signals are not safety guarantees.</div>
           </div>
 
           <div className="trust-box">

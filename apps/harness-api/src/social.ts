@@ -56,7 +56,7 @@ export function badgeFor(riskTier: string, evalScore: number, heat: number, tota
   if (totalSignals === 0) return "new";
   if (heat >= 24) return "Wild West Top 10";
   if (evalScore >= 0.9) return `eval ${evalScore.toFixed(2)}`;
-  if (riskTier === "LOW") return "safe to try";
+  if (riskTier === "LOW") return "low-risk scan";
   if (riskTier === "HIGH" || riskTier === "CRITICAL") return "needs review";
   return "community pick";
 }
