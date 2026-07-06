@@ -36,27 +36,28 @@ node packages/harness-cli/dist/hh.mjs doctor
 
 ## Agent Use
 
-Prefer the CLI for agent loops:
+Prefer the CLI for agent loops. The `onlyharness` npm package is not published yet; `npx onlyharness` is the post-publish path, not the current local path.
 
 ```bash
-npx onlyharness search market research
-npx onlyharness suggest market research --json
-npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
-npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
-npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
-npx onlyharness run deep-market-researcher --json
-npx onlyharness eval deep-market-researcher --json
-npx onlyharness gate --dir deep-market-researcher --json
-npx onlyharness gate --dir deep-market-researcher --receipt --json
-npx onlyharness audit-setup --json
-npx onlyharness benchmark benchmarks/research-discovery.yaml --json
-npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness --json
-npx onlyharness setup @acme --json
-npx onlyharness publish workflow.md --org acme --name team-workflow --json
-npx onlyharness sync git@github.com:acme/skills.git --org acme --json
-npx onlyharness pin deep-market-researcher --json
-npx onlyharness outdated deep-market-researcher --json
-npx onlyharness update deep-market-researcher --diff --json
+npm run build -w onlyharness
+node packages/harness-cli/dist/hh.mjs search market research
+node packages/harness-cli/dist/hh.mjs suggest market research --json
+node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target claude-code --json
+node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --json
+node packages/harness-cli/dist/hh.mjs run deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs eval deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs gate --dir deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs gate --dir deep-market-researcher --receipt --json
+node packages/harness-cli/dist/hh.mjs audit-setup --json
+node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
+node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness --json
+node packages/harness-cli/dist/hh.mjs setup @acme --json
+node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
+node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme --json
+node packages/harness-cli/dist/hh.mjs pin deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs outdated deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --json
 ```
 
 HTTP API base: `https://onlyharness.com/api`
