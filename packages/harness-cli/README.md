@@ -42,13 +42,18 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.
+- Use `--json` where available, or `--format json` for risk/diff; failures print `{ "error", "code", "next" }` to stderr.
 
 ## Exit Codes
 
 | Code | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | General failure or failed gate/eval |
+| 1 | General failure |
+| 2 | Auth required or invalid |
+| 3 | Validation, eval, risk, or gate failure |
+| 4 | Harness or local harness directory not found |
+| 5 | Payment required |
 
 ## Bundle
 

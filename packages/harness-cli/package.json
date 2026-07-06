@@ -31,6 +31,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && npm run bundle",
     "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/hh.mjs && node -e \"const fs=require('node:fs');const p='dist/hh.mjs';let s=fs.readFileSync(p,'utf8');s=s.replace('#!/usr/bin/env node\\n','#!/usr/bin/env node\\nimport { createRequire } from ' + JSON.stringify('node:module') + ';const require = createRequire(import.meta.url);\\n');fs.writeFileSync(p,s);\"",
+    "test": "npm run bundle && node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },

@@ -25,7 +25,7 @@ for (const seed of seeds) {
   const dir = path.join(seedRoot, seed);
   run("node", [cliBin, "validate", dir, "--strict"]);
   run("node", [cliBin, "eval", dir]);
-  run("node", [cliBin, "gate", "--dir", dir]);
+  run("node", [cliBin, "gate", "--dir", dir, "--json"]);
 }
 
 const base = path.join(seedRoot, "deep-market-researcher");
@@ -71,13 +71,13 @@ try {
   if (imported.item?.name !== "smoke-imported-harness") throw new Error(`Import endpoint failed: ${JSON.stringify(imported)}`);
 
   const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
-  run("node", [cliBin, "doctor"], { env: cliEnv });
+  run("node", [cliBin, "doctor", "--json"], { env: cliEnv });
   run("node", [cliBin, "search", "research", "--json"], { env: cliEnv });
   const pullTmp = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-"));
   try {
     const pulled = path.join(pullTmp, "dmr");
     run("node", [cliBin, "pull", "harnesses/deep-market-researcher", "--out", pulled], { env: cliEnv });
-    run("node", [cliBin, "run", pulled], { env: cliEnv });
+    run("node", [cliBin, "run", pulled, "--json"], { env: cliEnv });
   } finally {
     rmSync(pullTmp, { recursive: true, force: true });
   }

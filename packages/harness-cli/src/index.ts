@@ -31,6 +31,29 @@ type SearchItem = {
 
 type ArchiveFile = { path: string; truncated: boolean; content: string };
 
+export const EXIT = {
+  OK: 0,
+  GENERAL: 1,
+  AUTH: 2,
+  VALIDATION: 3,
+  NOT_FOUND: 4,
+  PAYMENT: 5
+} as const;
+
+type ExitCode = typeof EXIT[keyof typeof EXIT];
+
+export function failMessage(message: string, next?: string): string {
+  return next ? `${message}\nNext: ${next}` : message;
+}
+
+function fail(message: string, code: ExitCode, next?: string, json = false): never {
+  const output = json
+    ? JSON.stringify({ error: message, code, next: next ?? null }, null, 2)
+    : failMessage(message, next);
+  process.stderr.write(`${output}\n`);
+  process.exit(code);
+}
+
 const program = new Command();
 
 program
@@ -45,7 +68,7 @@ program.command("search")
   .option("--limit <n>", "max results", "10")
   .action(async (queryParts: string[], options) => {
     const query = queryParts.join(" ");
-    const data = await fetchJson(`${registryUrl}/registry?q=${encodeURIComponent(query)}&sort=trending`) as { items?: SearchItem[] };
+    const data = await fetchJson(`${registryUrl}/registry?q=${encodeURIComponent(query)}&sort=trending`, { json: options.json }) as { items?: SearchItem[] };
     const items = (data.items ?? []).slice(0, Number(options.limit) || 10);
     if (options.json) return writeStdout(items);
     if (!items.length) return writeStdout("No harnesses found on this frontier. Try another word, partner.\n");
@@ -62,13 +85,24 @@ program.command("pull")
   .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
   .option("--out <dir>", "output directory (default ./<name>)")
   .option("--force", "write into a non-empty directory", false)
+  .option("--json", "print JSON", false)
   .action(async (harness: string, options) => {
     const [owner, name] = harness.split("/");
-    if (!owner || !name) throw new Error("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher");
-    const data = await fetchJson(`${registryUrl}/repos/${owner}/${name}/archive`) as { files?: ArchiveFile[] };
+    if (!owner || !name) {
+      fail("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher", EXIT.VALIDATION, "hh pull harnesses/deep-market-researcher", options.json);
+    }
+    const archiveUrl = `${registryUrl}/repos/${owner}/${name}/archive`;
+    const response = await fetchRegistryResponse(archiveUrl, options.json);
+    if (response.status === 404) {
+      fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, options.json);
+    }
+    if (!response.ok) {
+      fail(`Registry request failed: ${archiveUrl} -> ${response.status}`, EXIT.GENERAL, undefined, options.json);
+    }
+    const data = await readResponseJson(response, archiveUrl, options.json) as { files?: ArchiveFile[] };
     const out = path.resolve(options.out ?? name);
     if (existsSync(out) && readdirSync(out).length > 0 && !options.force) {
-      throw new Error(`${out} exists and is not empty; pass --force to write anyway`);
+      fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh pull ${harness} --force`, options.json);
     }
     let written = 0;
     let skipped = 0;
@@ -83,7 +117,11 @@ program.command("pull")
       writeFileSync(target, file.content);
       written += 1;
     }
-    if (!written) throw new Error(`No files received for ${owner}/${name}`);
+    if (!written) fail(`No files received for ${owner}/${name}`, EXIT.GENERAL, `hh search ${name.replaceAll("-", " ")}`, options.json);
+    if (options.json) {
+      writeStdout({ owner, name, out, files: written, skipped });
+      return;
+    }
     writeStdout([
       `Pulled ${owner}/${name} -> ${out} (${written} files${skipped ? `, ${skipped} skipped as too large` : ""})`,
       `Next: hh run ${out} · hh eval ${out} && hh gate --dir ${out}`
@@ -94,24 +132,40 @@ program.command("run")
   .description("run the bundled example locally (sample mode: no LLM calls, no credentials)")
   .argument("[dir]", "harness directory", ".")
   .option("--input <file>", "input file", "examples/input.md")
+  .option("--json", "print JSON", false)
   .action((dir, options) => {
     const root = path.resolve(dir);
     const validation = validateHarnessDir(root);
     if (!validation.manifest) {
-      writeStdout("Not a harness directory: harness.yaml is missing or invalid. Try hh pull first.\n");
-      process.exit(1);
+      fail("Not a harness directory: harness.yaml is missing or invalid.", EXIT.NOT_FOUND, "hh pull <owner>/<name>", options.json);
     }
     const inputPath = path.resolve(root, options.input);
     const expectedPath = path.join(root, "examples/expected.md");
     const result = runLocalEval(root);
-    writeStdout([
+    const payload = {
+      title: validation.manifest.title,
+      input: existsSync(inputPath) ? inputPath : null,
+      expected: existsSync(expectedPath) ? expectedPath : null,
+      eval: {
+        status: result.status,
+        score: result.score,
+        minScore: validation.manifest.quality_gates.min_score
+      }
+    };
+    const text = [
       `Running ${validation.manifest.title} — local sample mode (no LLM calls, no credentials)`,
       `Input: ${existsSync(inputPath) ? inputPath : "none bundled"}`,
       `Expected output: ${existsSync(expectedPath) ? expectedPath : "none bundled"}`,
       `Eval: ${result.status} · score ${result.score} (gate needs ≥ ${validation.manifest.quality_gates.min_score})`,
       `Real runtime entrypoint: ${validation.manifest.entrypoint?.command ?? "not declared"}`
-    ].join("\n") + "\n");
-    process.exit(result.status === "passed" ? 0 : 1);
+    ].join("\n") + "\n";
+    if (result.status !== "passed") {
+      if (options.json) fail(`Eval ${result.status}: score ${result.score}`, EXIT.VALIDATION, `hh eval ${root} && hh gate --dir ${root}`, true);
+      writeStdout(text);
+      process.exit(EXIT.VALIDATION);
+    }
+    writeStdout(options.json ? payload : text);
+    process.exit(EXIT.OK);
   });
 
 program.command("publish")
@@ -119,6 +173,7 @@ program.command("publish")
   .argument("<file>", "source markdown file")
   .option("--name <name>", "harness slug")
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .option("--json", "print JSON", false)
   .action(async (file: string, options) => {
     const token = options.token ?? process.env.HH_TOKEN;
     const markdown = readFileSync(path.resolve(file), "utf8");
@@ -131,28 +186,53 @@ program.command("publish")
       },
       body: JSON.stringify({ name, markdown })
     });
-    const body = await response.json() as { item?: { title?: string }; error?: string };
+    const body = await response.json().catch(() => ({})) as { item?: { title?: string; name?: string }; error?: string };
     if (!response.ok) {
-      const hint = response.status === 401
-        ? "\nLog on at onlyharness.com, then pass your access token via --token or the HH_TOKEN env variable."
-        : "";
-      throw new Error(`Publish failed (${response.status}): ${body.error ?? JSON.stringify(body)}${hint}`);
+      if (response.status === 401) {
+        fail(
+          `Publish failed (401): ${body.error ?? "authorization required"}`,
+          EXIT.AUTH,
+          "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+          options.json
+        );
+      }
+      fail(`Publish failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, EXIT.GENERAL, undefined, options.json);
     }
-    writeStdout(`Published ${body.item?.title ?? name} — live on https://onlyharness.com\n`);
+    const title = body.item?.title ?? name;
+    if (options.json) {
+      writeStdout({ title, name: body.item?.name ?? name, url: "https://onlyharness.com" });
+      return;
+    }
+    writeStdout(`Published ${title} — live on https://onlyharness.com\n`);
   });
 
 program.command("doctor")
   .description("check registry connectivity and local setup")
-  .action(async () => {
+  .option("--json", "print JSON", false)
+  .action(async (options) => {
     let registryOk = false;
     let indexed: number | string = "-";
     try {
-      const health = await fetchJson(`${registryUrl}/healthz`) as { ok?: boolean };
+      const health = await fetchJson(`${registryUrl}/healthz`, { json: options.json }) as { ok?: boolean };
       registryOk = Boolean(health.ok);
-      const registry = await fetchJson(`${registryUrl}/registry`) as { items?: unknown[] };
+      const registry = await fetchJson(`${registryUrl}/registry`, { json: options.json }) as { items?: unknown[] };
       indexed = (registry.items ?? []).length;
     } catch {
       registryOk = false;
+    }
+    const payload = {
+      registry: registryUrl,
+      ok: registryOk,
+      indexed,
+      node: process.version,
+      tokenSet: Boolean(process.env.HH_TOKEN)
+    };
+    if (!registryOk) {
+      fail(`Registry unreachable: ${registryUrl}`, EXIT.GENERAL, `check HH_REGISTRY_URL (current: ${registryUrl})`, options.json);
+    }
+    if (options.json) {
+      writeStdout(payload);
+      return;
     }
     writeStdout([
       "OnlyHarness doctor",
@@ -161,7 +241,7 @@ program.command("doctor")
       `  node .............. ${process.version}`,
       `  token ............. ${process.env.HH_TOKEN ? "HH_TOKEN set" : "not set (only needed for hh publish)"}`
     ].join("\n") + "\n");
-    process.exit(registryOk ? 0 : 1);
+    process.exit(EXIT.OK);
   });
 
 program.command("validate")
@@ -172,7 +252,7 @@ program.command("validate")
     const result = validateHarnessDir(path.resolve(dir));
     writeStdout(options.json ? result : validationText(result));
     const failed = !result.valid || (options.strict && result.issues.length > 0);
-    process.exit(failed ? 1 : 0);
+    process.exit(failed ? EXIT.VALIDATION : EXIT.OK);
   });
 
 program.command("inspect")
@@ -181,7 +261,7 @@ program.command("inspect")
   .action((dir, options) => {
     const result = inspectHarness(path.resolve(dir));
     writeStdout(options.json ? result : inspectText(result));
-    process.exit(result.valid ? 0 : 1);
+    process.exit(result.valid ? EXIT.OK : EXIT.VALIDATION);
   });
 
 program.command("risk")
@@ -192,7 +272,7 @@ program.command("risk")
     const validation = validateHarnessDir(path.resolve(dir));
     const output = formatRisk(validation.risk, options.format);
     writeOutput(output, options.out);
-    process.exit(validation.risk.blocking.length ? 1 : 0);
+    process.exit(validation.risk.blocking.length ? EXIT.VALIDATION : EXIT.OK);
   });
 
 program.command("diff")
@@ -207,7 +287,7 @@ program.command("diff")
       const diff = diffHarnessDirs(baseDir, headDir);
       const output = formatDiff(diff, options.format);
       writeOutput(output, options.out);
-      process.exit(diff.status === "failed" ? 1 : 0);
+      process.exit(diff.status === "failed" ? EXIT.VALIDATION : EXIT.OK);
     } finally {
       cleanup();
     }
@@ -225,36 +305,45 @@ program.command("eval")
     writeFileSync(path.join(root, ".harnesshub/report.html"), htmlReport(result));
     writeFileSync(path.join(root, ".harnesshub/results.junit.xml"), junitReport(result));
     writeStdout(options.json ? result : evalText(result));
-    process.exit(result.status === "passed" ? 0 : 1);
+    process.exit(result.status === "passed" ? EXIT.OK : EXIT.VALIDATION);
   });
 
 program.command("gate")
   .option("--results <path>", "results JSON path", ".harnesshub/results.json")
   .option("--dir <path>", "harness directory", ".")
+  .option("--json", "print JSON", false)
   .action((options) => {
     const root = path.resolve(options.dir);
     const validation = validateHarnessDir(root);
     if (!validation.manifest) {
-      writeStdout("Gate failed: invalid harness manifest\n");
-      process.exit(1);
+      fail("Gate failed: invalid harness manifest", EXIT.VALIDATION, "hh validate --strict", options.json);
     }
-    const result = JSON.parse(readFileSync(path.resolve(root, options.results), "utf8"));
+    let result: { score?: number; cost_usd?: number };
+    try {
+      result = JSON.parse(readFileSync(path.resolve(root, options.results), "utf8"));
+    } catch {
+      fail("Gate failed: results JSON missing or invalid", EXIT.VALIDATION, `hh eval ${root}`, options.json);
+    }
+    const score = Number(result.score ?? 0);
+    const cost = Number(result.cost_usd ?? 0);
     const failures: string[] = [];
-    if (result.score < validation.manifest.quality_gates.min_score) {
-      failures.push(`score ${result.score} below ${validation.manifest.quality_gates.min_score}`);
+    if (score < validation.manifest.quality_gates.min_score) {
+      failures.push(`score ${score} below ${validation.manifest.quality_gates.min_score}`);
     }
-    if (result.cost_usd > validation.manifest.quality_gates.max_cost_usd_per_run) {
-      failures.push(`cost ${result.cost_usd} above ${validation.manifest.quality_gates.max_cost_usd_per_run}`);
+    if (cost > validation.manifest.quality_gates.max_cost_usd_per_run) {
+      failures.push(`cost ${cost} above ${validation.manifest.quality_gates.max_cost_usd_per_run}`);
     }
     if (validation.risk.score > validation.manifest.quality_gates.max_risk_score) {
       failures.push(`risk ${validation.risk.score} above ${validation.manifest.quality_gates.max_risk_score}`);
     }
     failures.push(...validation.risk.blocking);
+    const payload = { passed: failures.length === 0, score, risk: validation.risk.score, cost, failures };
     if (failures.length) {
+      if (options.json) fail(`Gate failed: ${failures.join("; ")}`, EXIT.VALIDATION, "hh eval && hh gate --dir .", true);
       writeStdout(`Gate failed:\n${failures.map((failure) => `- ${failure}`).join("\n")}\n`);
-      process.exit(1);
+      process.exit(EXIT.VALIDATION);
     }
-    writeStdout(`Gate passed: score ${result.score}, risk ${validation.risk.score}, cost $${result.cost_usd}\n`);
+    writeStdout(options.json ? payload : `Gate passed: score ${score}, risk ${validation.risk.score}, cost $${cost}\n`);
   });
 
 program.command("annotate-pr")
@@ -262,6 +351,7 @@ program.command("annotate-pr")
   .option("--repo <repo>", "owner/repo", "local/local")
   .option("--pr <number>", "PR number", "1")
   .option("--dir <path>", "harness directory", ".")
+  .option("--json", "print JSON", false)
   .action((options) => {
     const root = path.resolve(options.dir);
     const riskPath = path.join(root, ".harnesshub/risk.md");
@@ -275,52 +365,83 @@ program.command("annotate-pr")
       existsSync(resultPath) ? `\nEval result:\n\n\`\`\`json\n${readFileSync(resultPath, "utf8")}\n\`\`\`\n` : "Eval result missing."
     ];
     mkdirSync(path.join(root, ".harnesshub"), { recursive: true });
-    writeFileSync(path.join(root, ".harnesshub/pr-comment.md"), redact(parts.join("\n\n")));
-    writeStdout(`Wrote ${path.join(root, ".harnesshub/pr-comment.md")}\n`);
+    const out = path.join(root, ".harnesshub/pr-comment.md");
+    writeFileSync(out, redact(parts.join("\n\n")));
+    writeStdout(options.json ? { path: out, provider: options.provider, repo: options.repo, pr: Number(options.pr) } : `Wrote ${out}\n`);
   });
 
 program.command("import-md")
   .argument("<file>", "source markdown file")
   .option("--out <dir>", "output directory")
   .option("--name <name>", "harness slug")
+  .option("--json", "print JSON", false)
   .action((file, options) => {
     const sourcePath = path.resolve(file);
     const text = readFileSync(sourcePath, "utf8");
     const name = options.name ?? slugify(path.basename(file, path.extname(file)));
     const out = path.resolve(options.out ?? name);
     createHarnessFromMarkdown(text, out, name, sourcePath);
-    writeStdout(`Imported ${sourcePath} -> ${out}\n`);
+    writeStdout(options.json ? { name, source: sourcePath, out } : `Imported ${sourcePath} -> ${out}\n`);
   });
 
 program.command("init")
   .option("--name <name>", "harness slug", "new-harness")
   .option("--template <template>", "template name", "basic")
   .option("--out <dir>", "output directory")
+  .option("--json", "print JSON", false)
   .action((options) => {
     const out = path.resolve(options.out ?? options.name);
     createHarnessFromMarkdown(`# ${options.name}\n\nDescribe the harness workflow here.`, out, options.name, "generated");
-    writeStdout(`Created ${out}\n`);
+    writeStdout(options.json ? { name: options.name, template: options.template, out } : `Created ${out}\n`);
   });
 
 program.command("pack")
   .argument("[dir]", "harness directory", ".")
   .option("--out <path>", "output tarball path", "dist/harness.tgz")
+  .option("--json", "print JSON", false)
   .action((dir, options) => {
     const root = path.resolve(dir);
-    mkdirSync(path.dirname(path.resolve(options.out)), { recursive: true });
-    const result = spawnSync("tar", ["-czf", path.resolve(options.out), "-C", root, "."], { stdio: "inherit" });
-    process.exit(result.status ?? 1);
+    const out = path.resolve(options.out);
+    mkdirSync(path.dirname(out), { recursive: true });
+    const result = spawnSync("tar", ["-czf", out, "-C", root, "."], {
+      stdio: options.json ? "pipe" : "inherit",
+      encoding: "utf8"
+    });
+    if (result.status !== 0) {
+      fail(`Pack failed: ${result.stderr || result.stdout || "tar exited with an error"}`, EXIT.GENERAL, undefined, options.json);
+    }
+    writeStdout(options.json ? { out, files: "tar.gz" } : `Packed ${out}\n`);
   });
 
 program.parseAsync(process.argv).catch((error) => {
   console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+  process.exit((error as { exitCode?: number }).exitCode ?? EXIT.GENERAL);
 });
 
-async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Registry request failed: ${url} -> ${response.status}`);
-  return response.json();
+async function fetchJson(url: string, options: { json?: boolean } = {}): Promise<unknown> {
+  const response = await fetchRegistryResponse(url, options.json);
+  if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.GENERAL, undefined, options.json);
+  return readResponseJson(response, url, options.json);
+}
+
+async function fetchRegistryResponse(url: string, json = false): Promise<Response> {
+  try {
+    return await fetch(url);
+  } catch (error) {
+    fail(`Registry request failed: ${url}: ${errorMessage(error)}`, EXIT.GENERAL, undefined, json);
+  }
+}
+
+async function readResponseJson(response: Response, url: string, json = false): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    fail(`Registry returned invalid JSON: ${url}: ${errorMessage(error)}`, EXIT.GENERAL, undefined, json);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function validationText(result: ReturnType<typeof validateHarnessDir>): string {
