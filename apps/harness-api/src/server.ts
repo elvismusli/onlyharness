@@ -6,12 +6,14 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
 import { riskMarkdown, type HarnessManifest, type RiskReport } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
+import { decodePaymentSignatureHeader, encodePaymentResponseHeader, HTTPFacilitatorClient } from "@x402/core/http";
+import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from "@x402/core/types";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
-import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody } from "./payments.js";
+import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, settleX402Purchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
@@ -91,6 +93,12 @@ type AuthResult = {
   error?: string;
 };
 
+type ArchiveClientResponse = {
+  status: number;
+  body: unknown;
+  headers?: Record<string, string>;
+};
+
 const app = Fastify({ logger: true });
 await app.register(cors, {
   origin: (origin, callback) => {
@@ -147,8 +155,9 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
 app.get("/repos/:owner/:repo/archive", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const query = request.query as { version?: string };
-  const result = await archiveForClient(owner, repo, query.version, headerValue(request.headers.authorization), "api");
-  if (result.status === 402) {
+  const result = await archiveForClient(owner, repo, query.version, headerValue(request.headers.authorization), "api", paymentSignatureFromRequest(request));
+  for (const [key, value] of Object.entries(result.headers ?? {})) reply.header(key, value);
+  if (result.status === 402 && !result.headers?.["PAYMENT-REQUIRED"]) {
     const header = x402PaymentRequiredHeader(result.body as PaymentRequiredBody);
     if (header) reply.header("PAYMENT-REQUIRED", header);
   }
@@ -560,8 +569,9 @@ const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorizatio
 const pullHarnessFromMcp: PullHarnessHandler = async ({ owner, name, version }, authorization) => {
   const result = await archiveForClient(owner, name, version, authorization, "mcp");
   if (result.status === 200) return result.body;
+  const body = result.body && typeof result.body === "object" ? result.body as { error?: string } : {};
   return {
-    error: result.body.error ?? "Pull failed",
+    error: body.error ?? "Pull failed",
     status: result.status,
     payment: result.status === 402 ? result.body : undefined
   };
@@ -613,7 +623,7 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
   };
 }
 
-async function archiveForClient(owner: string, repo: string, version: string | undefined, authorization: string | undefined, client: "api" | "mcp") {
+async function archiveForClient(owner: string, repo: string, version: string | undefined, authorization: string | undefined, client: "api" | "mcp", paymentSignature?: string): Promise<ArchiveClientResponse> {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return { status: 404, body: { error: "Harness not found" } };
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
@@ -632,11 +642,83 @@ async function archiveForClient(owner: string, repo: string, version: string | u
     userId: auth.user?.id
   });
   if (!payment.allowed) {
+    const x402 = paymentSignature
+      ? await settleX402ArchivePayment({ owner, repo, version: archive.version, manifest, paymentRequired: payment.body, paymentSignature })
+      : undefined;
+    if (x402?.ok) {
+      await recordEvent({ kind: "purchase", owner, repo, version: archive.version, subject: `wallet:${x402.payer}`, target: "x402", client });
+      await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: `wallet:${x402.payer}`, target: "archive", client });
+      return { status: 200, headers: x402.headers, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
+    }
     await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
     return { status: payment.status, body: payment.body };
   }
   await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
   return { status: 200, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
+}
+
+async function settleX402ArchivePayment(input: {
+  owner: string;
+  repo: string;
+  version: string;
+  manifest: HarnessManifest;
+  paymentRequired: PaymentRequiredBody;
+  paymentSignature: string;
+}): Promise<{ ok: true; payer: string; headers: Record<string, string> } | { ok: false }> {
+  const facilitatorUrl = process.env.X402_FACILITATOR_URL?.trim();
+  const requirement = input.paymentRequired.x402.requirements[0];
+  if (!facilitatorUrl || !input.paymentRequired.x402.paymentRequired || !requirement) return { ok: false };
+  let paymentPayload: PaymentPayload;
+  try {
+    paymentPayload = decodePaymentSignatureHeader(input.paymentSignature);
+  } catch {
+    return { ok: false };
+  }
+  const accepted = paymentPayload.accepted;
+  if (!accepted || !x402RequirementMatches(requirement, accepted)) return { ok: false };
+  const facilitator = new HTTPFacilitatorClient(x402FacilitatorConfig(facilitatorUrl));
+  let verify: VerifyResponse;
+  try {
+    verify = await facilitator.verify(paymentPayload, accepted);
+  } catch {
+    return { ok: false };
+  }
+  if (!verify.isValid) return { ok: false };
+  let settle: SettleResponse;
+  try {
+    settle = await facilitator.settle(paymentPayload, accepted);
+  } catch {
+    return { ok: false };
+  }
+  if (!settle.success) return { ok: false };
+  const payer = (settle.payer ?? verify.payer)?.trim().toLowerCase();
+  if (!payer) return { ok: false };
+  const persisted = await settleX402Purchase({
+    owner: input.owner,
+    repo: input.repo,
+    version: input.version,
+    manifest: input.manifest,
+    payer,
+    transaction: settle.transaction,
+    network: settle.network,
+    amount: settle.amount
+  });
+  if (!persisted.ok) {
+    console.warn("x402 entitlement persistence failed", {
+      owner: input.owner,
+      repo: input.repo,
+      version: input.version,
+      payer,
+      error: persisted.error
+    });
+  }
+  return {
+    ok: true,
+    payer,
+    headers: {
+      "PAYMENT-RESPONSE": encodePaymentResponseHeader(settle)
+    }
+  };
 }
 
 async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, options: ImportOptions = {}) {
@@ -722,6 +804,10 @@ function orgWorkspacePermissionsSummary(items: registry.RegistryItem[]): OrgWork
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function paymentSignatureFromRequest(request: FastifyRequest): string | undefined {
+  return headerValue(request.headers["payment-signature"]) ?? headerValue(request.headers["x-payment"]);
 }
 
 function orgTokenFromRequest(request: FastifyRequest): string | undefined {
@@ -857,6 +943,33 @@ function supabaseRestHeaders() {
 
 function eventSubject(userId: string | undefined): string {
   return userId ? `user:${userId}` : "anonymous";
+}
+
+function x402FacilitatorConfig(url: string) {
+  const bearer = process.env.X402_FACILITATOR_TOKEN?.trim();
+  const apiKey = process.env.X402_FACILITATOR_API_KEY?.trim();
+  if (!bearer && !apiKey) return { url };
+  const headers: Record<string, string> = bearer ? { Authorization: `Bearer ${bearer}` } : { "x-api-key": apiKey ?? "" };
+  return {
+    url,
+    createAuthHeaders: async () => ({
+      verify: headers,
+      settle: headers,
+      supported: headers
+    })
+  };
+}
+
+function x402RequirementMatches(expected: X402PaymentRequirements, accepted: PaymentRequirements): boolean {
+  return expected.scheme === accepted.scheme
+    && expected.network === accepted.network
+    && expected.amount === accepted.amount
+    && sameAddressish(expected.asset, accepted.asset)
+    && sameAddressish(expected.payTo, accepted.payTo);
+}
+
+function sameAddressish(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
 }
 
 function importCliCommand(tempSource: string, target: string, name: string) {

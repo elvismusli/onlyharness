@@ -22,7 +22,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
-  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying.
+  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
 - Entitlement check: GET /entitlements/check?subject=user:{id}&harness={owner}/{name}&version={optional semver}

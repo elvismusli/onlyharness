@@ -1,15 +1,19 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const workspace = mkdtempSync(path.join(os.tmpdir(), "hh-x402-smoke-"));
 const payTo = "0x000000000000000000000000000000000000dEaD";
+const payer = "0x1111111111111111111111111111111111111111";
 let stdout = "";
 let stderr = "";
 
 createPaidHarness(path.join(workspace, "data/imports/x402-paid-harness"));
+const facilitator = await startFakeFacilitator(8803);
 
 const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
   cwd: root,
@@ -23,6 +27,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     PAYMENTS_ENABLED: "true",
     X402_ENABLED: "true",
     X402_PAY_TO: payTo,
+    X402_FACILITATOR_URL: "http://127.0.0.1:8803",
     X402_NETWORK: "eip155:8453",
     X402_ASSET: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     HARNESS_LOCAL_PAYMENTS_PATH: path.join(workspace, "payments.json")
@@ -70,10 +75,37 @@ try {
   if (body.x402?.enabled !== true || body.x402.requirements?.[0]?.payTo !== payTo || !body.x402.paymentRequired) {
     throw new Error(`Invalid x402 JSON body: ${JSON.stringify(body.x402)}`);
   }
-  console.log("x402 smoke passed: paid archive returns 402 with v2 PAYMENT-REQUIRED header and JSON requirements");
+  const paidResponse = await fetch("http://127.0.0.1:8802/repos/local/x402-paid-harness/archive?version=0.1.0", {
+    headers: {
+      "PAYMENT-SIGNATURE": encodePaymentSignature({
+        x402Version: 2,
+        resource: paymentRequired.resource,
+        accepted: requirement,
+        payload: { smoke: true }
+      })
+    }
+  });
+  const paymentResponseHeader = paidResponse.headers.get("PAYMENT-RESPONSE");
+  const archive = await paidResponse.json() as { version?: string; files?: unknown[] };
+  if (paidResponse.status !== 200 || archive.version !== "0.1.0" || !archive.files?.length) {
+    throw new Error(`x402 paid archive failed: ${paidResponse.status} ${JSON.stringify(archive)}`);
+  }
+  if (!paymentResponseHeader) throw new Error("x402 paid archive did not include PAYMENT-RESPONSE");
+  const paymentState = JSON.parse(await readFile(path.join(workspace, "payments.json"), "utf8")) as {
+    purchases?: Array<{ provider?: string; provider_ref?: string; subject_type?: string; subject_id?: string; status?: string }>;
+    entitlements?: Array<{ subject_type?: string; subject_id?: string; owner?: string; repo?: string; version?: string }>;
+  };
+  if (!paymentState.purchases?.some((purchase) => purchase.provider === "x402" && purchase.provider_ref === "x402:eip155:8453:0xsmoketx" && purchase.subject_type === "wallet" && purchase.subject_id === payer && purchase.status === "paid")) {
+    throw new Error(`x402 purchase was not persisted: ${JSON.stringify(paymentState)}`);
+  }
+  if (!paymentState.entitlements?.some((entitlement) => entitlement.subject_type === "wallet" && entitlement.subject_id === payer && entitlement.owner === "local" && entitlement.repo === "x402-paid-harness" && entitlement.version === "0.1.0")) {
+    throw new Error(`x402 wallet entitlement was not persisted: ${JSON.stringify(paymentState)}`);
+  }
+  console.log("x402 smoke passed: 402 requirements, facilitator settlement, PAYMENT-RESPONSE, and wallet entitlement");
 } finally {
   api.kill("SIGTERM");
   await new Promise((resolve) => api.once("close", resolve));
+  await closeServer(facilitator);
   rmSync(workspace, { recursive: true, force: true });
 }
 
@@ -93,6 +125,49 @@ async function waitForApi(url: string) {
 
 function decodeBase64Json(value: string): unknown {
   return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+}
+
+function encodePaymentSignature(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+}
+
+async function startFakeFacilitator(port: number): Promise<Server> {
+  const server = createServer(async (request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    if (request.url === "/verify" && request.method === "POST") {
+      await readRequestBody(request);
+      response.end(JSON.stringify({ isValid: true, payer }));
+      return;
+    }
+    if (request.url === "/settle" && request.method === "POST") {
+      await readRequestBody(request);
+      response.end(JSON.stringify({
+        success: true,
+        payer,
+        transaction: "0xsmoketx",
+        network: "eip155:8453",
+        amount: "9000000"
+      }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  return server;
+}
+
+async function closeServer(server: Server) {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+}
+
+async function readRequestBody(request: NodeJS.ReadableStream): Promise<string> {
+  let raw = "";
+  request.setEncoding("utf8");
+  for await (const chunk of request) raw += chunk;
+  return raw;
 }
 
 function createPaidHarness(target: string) {

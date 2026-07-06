@@ -108,6 +108,17 @@ export type PaymentWebhookInput = {
   status?: string;
 };
 
+export type X402SettlementInput = {
+  owner: string;
+  repo: string;
+  version: string;
+  manifest: HarnessManifest;
+  payer: string;
+  transaction: string;
+  network: string;
+  amount?: string;
+};
+
 export type PaymentWebhookResult =
   | { ok: true; status: "paid" | "already_paid"; owner: string; repo: string; version: string; subject_id: string; purchase_id?: string }
   | { ok: false; status: number; error: string };
@@ -250,6 +261,35 @@ export async function settlePaymentWebhook(input: PaymentWebhookInput): Promise<
   if (input.status && !["paid", "succeeded"].includes(input.status)) return { ok: false, status: 400, error: "Unsupported payment status" };
   if (!input.provider_ref) return { ok: false, status: 400, error: "provider_ref is required" };
   return settlePurchase(input.provider_ref);
+}
+
+export async function settleX402Purchase(input: X402SettlementInput): Promise<PaymentWebhookResult> {
+  const payer = input.payer.trim().toLowerCase();
+  const transaction = input.transaction.trim();
+  if (!payer) return { ok: false, status: 400, error: "payer is required" };
+  if (!transaction) return { ok: false, status: 400, error: "transaction is required" };
+  if (!paymentsEnabled()) return { ok: false, status: 503, error: "Payments are disabled in this environment" };
+  const amount = input.manifest.pricing.amount_usd ?? 0;
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, status: 400, error: "Paid harness is missing a positive amount_usd" };
+  const purchase = {
+    id: crypto.randomUUID(),
+    subject_type: "wallet",
+    subject_id: payer,
+    owner: input.owner,
+    repo: input.repo,
+    version: input.version,
+    amount_usd: amount,
+    currency: input.manifest.pricing.currency ?? "USD",
+    provider: "x402",
+    provider_ref: x402ProviderRef(input.network, transaction),
+    referral_code: undefined,
+    creator_user_id: null,
+    status: "paid",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  } satisfies StoredPurchase;
+  if (supabaseUrl && supabaseRestKey) return settleSupabaseX402Purchase(purchase);
+  return settleLocalX402Purchase(purchase);
 }
 
 async function fetchCanonicalEntitlements(input: PaymentAccessInput): Promise<EntitlementRow[] | undefined> {
@@ -446,6 +486,102 @@ async function settleSupabasePurchase(providerRef: string): Promise<PaymentWebho
   }
 }
 
+async function settleSupabaseX402Purchase(purchase: StoredPurchase): Promise<PaymentWebhookResult> {
+  const existing = await fetchSupabasePurchase("x402", purchase.provider_ref);
+  if (existing === undefined) return { ok: false, status: 502, error: "Purchase lookup failed" };
+  let purchaseForEntitlement = existing;
+  const alreadyPaid = Boolean(existing);
+  if (!purchaseForEntitlement) {
+    try {
+      const response = await fetch(`${supabaseUrl}/rest/v1/purchases`, {
+        method: "POST",
+        headers: {
+          ...supabaseRestHeaders(),
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify(purchase)
+      });
+      if (!response.ok && response.status !== 409) return { status: 502, ok: false, error: `x402 purchase insert failed: HTTP ${response.status}` };
+      if (response.status === 409) {
+        const confirmed = await fetchSupabasePurchase("x402", purchase.provider_ref);
+        purchaseForEntitlement = confirmed ?? null;
+      } else {
+        purchaseForEntitlement = purchase;
+      }
+      if (!purchaseForEntitlement) return { ok: false, status: 502, error: "x402 purchase insert could not be confirmed" };
+    } catch {
+      return { ok: false, status: 503, error: "Payment store unavailable" };
+    }
+  }
+  const entitlement = entitlementFromPurchase(purchaseForEntitlement);
+  try {
+    const entitlementResponse = await fetch(`${supabaseUrl}/rest/v1/entitlements`, {
+      method: "POST",
+      headers: {
+        ...supabaseRestHeaders(),
+        "Content-Type": "application/json",
+        Prefer: "resolution=ignore-duplicates,return=minimal"
+      },
+      body: JSON.stringify(entitlement)
+    });
+    if (!entitlementResponse.ok && entitlementResponse.status !== 409) {
+      return { ok: false, status: 502, error: `x402 entitlement insert failed: HTTP ${entitlementResponse.status}` };
+    }
+  } catch {
+    return { ok: false, status: 503, error: "Payment store unavailable" };
+  }
+  return {
+    ok: true,
+    status: alreadyPaid ? "already_paid" : "paid",
+    owner: purchaseForEntitlement.owner,
+    repo: purchaseForEntitlement.repo,
+    version: purchaseForEntitlement.version,
+    subject_id: purchaseForEntitlement.subject_id,
+    purchase_id: purchaseForEntitlement.id
+  };
+}
+
+async function fetchSupabasePurchase(provider: StoredPurchase["provider"], providerRef: string): Promise<StoredPurchase | null | undefined> {
+  const params = new URLSearchParams({
+    select: "id,subject_type,subject_id,owner,repo,version,status",
+    provider: `eq.${provider}`,
+    provider_ref: `eq.${providerRef}`,
+    limit: "1"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/purchases?${params.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return undefined;
+    const purchases = await response.json() as StoredPurchase[];
+    return purchases[0] ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
+function settleLocalX402Purchase(purchase: StoredPurchase): PaymentWebhookResult {
+  if (!localPaymentStorePath) return { ok: false, status: 503, error: "Payment store unavailable" };
+  const state = readLocalPaymentState();
+  const existing = state.purchases.find((row) => row.provider === "x402" && row.provider_ref === purchase.provider_ref);
+  const purchaseForEntitlement = existing ?? purchase;
+  if (!existing) state.purchases.push(purchase);
+  if (!state.entitlements.some((row) => sameEntitlement(row, purchaseForEntitlement))) {
+    state.entitlements.push(entitlementFromPurchase(purchaseForEntitlement));
+  }
+  writeLocalPaymentState(state);
+  return {
+    ok: true,
+    status: existing ? "already_paid" : "paid",
+    owner: purchaseForEntitlement.owner,
+    repo: purchaseForEntitlement.repo,
+    version: purchaseForEntitlement.version,
+    subject_id: purchaseForEntitlement.subject_id,
+    purchase_id: purchaseForEntitlement.id
+  };
+}
+
 async function hasLocalEntitlement(input: PaymentAccessInput): Promise<boolean> {
   if (!localPaymentStorePath || !input.userId) return false;
   const rows = readLocalPaymentState().entitlements
@@ -555,6 +691,10 @@ function x402MaxTimeoutSeconds(): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 300;
 }
 
+function x402ProviderRef(network: string, transaction: string): string {
+  return `x402:${network}:${transaction}`;
+}
+
 function paymentsEnabled(): boolean {
   return process.env.PAYMENTS_ENABLED === "true";
 }
@@ -593,7 +733,7 @@ type StoredPurchase = {
   version: string;
   amount_usd: number;
   currency: string;
-  provider: "manual";
+  provider: "manual" | "x402";
   provider_ref: string;
   referral_code?: string;
   creator_user_id?: string | null;
