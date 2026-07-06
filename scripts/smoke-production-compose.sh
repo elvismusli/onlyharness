@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-onlyharness-smoke}"
 ENV_FILE="${ENV_FILE:-$ROOT/infra/production.env}"
 BASE_URL="${SMOKE_BASE_URL:-http://127.0.0.1:8088}"
+VITE_HARNESS_API_URL="${VITE_HARNESS_API_URL:-$BASE_URL/api}"
+export VITE_HARNESS_API_URL
 
 cleanup() {
   docker compose \
@@ -42,7 +44,12 @@ curl -fsS "$BASE_URL/api/leaderboard?limit=1" | grep -q '"items"'
 curl -fsS "$BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
 curl -fsS "$BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
 curl -fsSI "$BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
-curl -fsS "$BASE_URL/" | grep -q "OnlyHarness"
+index_html="$(curl -fsS "$BASE_URL/")"
+[[ "$index_html" == *"OnlyHarness"* ]]
+web_asset="$(node -e 'const html = process.argv[1] ?? ""; const match = html.match(/src="(\/assets\/[^"]+\.js)"/); if (!match) process.exit(1); console.log(match[1]);' "$index_html")"
+test -n "$web_asset"
+web_js="$(curl -fsS "$BASE_URL$web_asset")"
+[[ "$web_js" == *"$VITE_HARNESS_API_URL"* ]]
 (
   cd "$ROOT"
   set -a
