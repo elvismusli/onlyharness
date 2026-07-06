@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import { fmtK, heatPct, keyFor } from "./format";
+import { fmtContextCost, fmtK, heatPct, keyFor } from "./format";
 import type { DetailTab, RegistryItem } from "./types";
 import { Btn, GroupBox, HeatMeter, MenuBar, TitleBar } from "./win98";
 
@@ -232,6 +232,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         <div className="stats-plate">
           <span>⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span>
           <span>💬 {item.threads}</span>
+          <span>ctx {fmtK(item.contextCost.approxTokens)}</span>
           <span className="eval-ok">eval {item.evalScore ? item.evalScore.toFixed(2) : "—"}</span>
         </div>
         <div className="heat-block">
@@ -240,6 +241,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
             <span className="heat-num">{heat.toFixed(1)} 🔥</span>
           </div>
           <HeatMeter heat={heat} pct={heatPct(heat)} />
+          <div style={{ fontSize: 11, marginTop: 3, color: "#404040" }}>context: {fmtContextCost(item.contextCost)}</div>
         </div>
         <div className="hcard-actions">
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>

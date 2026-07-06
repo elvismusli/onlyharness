@@ -74,7 +74,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const { inspection, evalResult, security, standard } = registry.registryDetailBasics(root);
+  const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
   return {
@@ -89,6 +89,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     ...inspection,
     evalResult,
     security,
+    contextCost,
     standard,
     readme: registry.readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root)

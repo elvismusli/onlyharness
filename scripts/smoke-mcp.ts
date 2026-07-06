@@ -49,8 +49,20 @@ try {
   if (!searchText.includes("deep-market-researcher")) {
     throw new Error(`MCP search_harnesses returned wrong content: ${JSON.stringify(search)}`);
   }
+  if (!searchText.includes("\"contextCost\"")) {
+    throw new Error(`MCP search_harnesses did not include context cost: ${JSON.stringify(search)}`);
+  }
 
-  const pull = await rpc(4, "tools/call", {
+  const detail = await rpc(4, "tools/call", {
+    name: "harness_detail",
+    arguments: { owner: "harnesses", name: "deep-market-researcher" }
+  });
+  const detailText = detail.result?.content?.[0]?.text ?? "";
+  if (!detailText.includes("\"contextCost\"") || !detailText.includes("\"estimated\"")) {
+    throw new Error(`MCP harness_detail did not include context cost: ${JSON.stringify(detail)}`);
+  }
+
+  const pull = await rpc(5, "tools/call", {
     name: "pull_harness",
     arguments: { owner: "harnesses", name: "deep-market-researcher" }
   });
@@ -59,7 +71,7 @@ try {
     throw new Error(`MCP pull_harness returned wrong content: ${JSON.stringify(pull)}`);
   }
 
-  const paidPull = await rpc(5, "tools/call", {
+  const paidPull = await rpc(6, "tools/call", {
     name: "pull_harness",
     arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
   });
@@ -68,7 +80,7 @@ try {
     throw new Error(`MCP paid pull did not return payment requirements: ${JSON.stringify(paidPull)}`);
   }
 
-  const publish = await rpc(6, "tools/call", {
+  const publish = await rpc(7, "tools/call", {
     name: "publish_markdown_to_harness",
     arguments: {
       name: "no-auth",

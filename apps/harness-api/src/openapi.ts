@@ -215,6 +215,7 @@ export const openapi = {
           riskTier: { type: "string" },
           evalStatus: { type: "string" },
           evalScore: { type: "number" },
+          contextCost: { $ref: "#/components/schemas/ContextCost" },
           standard: { type: "string", enum: ["conformant", "partial"] },
           stars: { type: "number" },
           forks: { type: "number" },
@@ -227,7 +228,7 @@ export const openapi = {
           cliCommand: { type: "string" },
           updatedAt: { type: "string" }
         },
-        required: ["owner", "name", "title", "summary", "tags", "valid", "riskTier", "evalStatus", "standard", "cliCommand"]
+        required: ["owner", "name", "title", "summary", "tags", "valid", "riskTier", "evalStatus", "contextCost", "standard", "cliCommand"]
       },
       HarnessDetail: {
         type: "object",
@@ -239,12 +240,24 @@ export const openapi = {
           issues: { type: "array", items: { type: "object" } },
           risk: { type: "object" },
           security: { $ref: "#/components/schemas/SecurityReport" },
+          contextCost: { $ref: "#/components/schemas/ContextCost" },
           standard: { type: "string", enum: ["conformant", "partial"] },
           evalResult: { type: "object" },
           example: { type: "object" },
           files: { type: "array", items: { type: "string" } },
           readme: { type: "string" }
         }
+      },
+      ContextCost: {
+        type: "object",
+        description: "Deterministic estimate from markdown instruction files. It is not a measured LLM bill.",
+        properties: {
+          approxTokens: { type: "number" },
+          files: { type: "number" },
+          bytes: { type: "number" },
+          status: { type: "string", enum: ["estimated"] }
+        },
+        required: ["approxTokens", "files", "bytes", "status"]
       },
       Archive: {
         type: "object",

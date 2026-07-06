@@ -55,7 +55,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; heatDelta: number }>;
+    items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
   if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"]) throw new Error("OpenAPI endpoint returned an invalid contract");
@@ -71,11 +71,17 @@ try {
     if (item.heatDelta !== 0) {
       throw new Error(`Heat delta must stay 0 until historical snapshots exist: ${JSON.stringify(item)}`);
     }
+    if (item.contextCost?.status !== "estimated" || !Number.isFinite(item.contextCost.approxTokens) || !Number.isFinite(item.contextCost.files)) {
+      throw new Error(`Registry item is missing context-cost estimate: ${JSON.stringify(item)}`);
+    }
   }
   const security = await fetch("http://127.0.0.1:8799/repos/local/smoke-malicious-harness/security-report").then((response) => response.json()) as { verdict?: string; findings?: unknown[] };
   if (security.verdict !== "fail" || !security.findings?.length) throw new Error(`Malicious security report did not fail: ${JSON.stringify(security)}`);
-  const detail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { manifest?: { name: string } };
+  const detail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { manifest?: { name: string }; contextCost?: { approxTokens?: number; files?: number; status?: string } };
   if (detail.manifest?.name !== "deep-market-researcher") throw new Error("Detail endpoint returned wrong manifest");
+  if (detail.contextCost?.status !== "estimated" || !detail.contextCost.approxTokens || !detail.contextCost.files) {
+    throw new Error(`Detail endpoint returned invalid context-cost estimate: ${JSON.stringify(detail.contextCost)}`);
+  }
   const paidRequired = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive");
   const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string };
   if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || !paidRequiredBody.checkout_url) {

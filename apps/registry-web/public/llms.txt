@@ -15,9 +15,9 @@ OpenAPI: https://onlyharness.com/api/openapi.json
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, outcome and tags.
-  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, heat, evalScore, evalStatus, riskScore, riskTier, badge, cliCommand, updatedAt }] }
+  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Harness detail: GET /repos/{owner}/{name}/harness
-  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report and file list.
+  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement.
@@ -40,9 +40,9 @@ Transport: Streamable HTTP. Reads are anonymous; publishing requires `Authorizat
 
 Tools:
 
-- search_harnesses: search registry items by task/outcome/tag.
-- harness_detail: inspect manifest, trust signals, examples and files.
-- pull_instructions: return CLI and archive commands for a harness.
+- search_harnesses: search registry items by task/outcome/tag, including contextCost estimates.
+- harness_detail: inspect manifest, trust signals, contextCost, examples and files.
+- pull_instructions: return CLI and archive commands plus contextCost for a harness.
 - pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
@@ -100,7 +100,7 @@ Local development check from a repo clone:
 
 ## What is a harness
 
-A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, stars, forks, threads and Harness Heat.
+A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), stars, forks, threads and Harness Heat.
 
 ## Safety notes for agents
 

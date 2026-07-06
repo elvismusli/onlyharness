@@ -9,6 +9,11 @@ export function fmtK(value: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
 }
 
+export function fmtContextCost(cost?: { approxTokens: number; files: number }) {
+  if (!cost) return "unknown";
+  return `~${fmtK(cost.approxTokens)} tokens / ${cost.files} files`;
+}
+
 /* per handoff: heatPct = min(100, round(heat/30*100)) */
 export function heatPct(heat: number) {
   return Math.min(100, Math.round((heat / 30) * 100));

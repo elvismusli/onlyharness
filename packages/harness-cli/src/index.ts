@@ -27,6 +27,10 @@ type SearchItem = {
   threads: number;
   evalScore: number;
   heat: number;
+  contextCost?: {
+    approxTokens: number;
+    files: number;
+  };
 };
 
 type ArchiveFile = { path: string; truncated: boolean; content: string };
@@ -57,6 +61,12 @@ type PaymentRequiredBody = {
     amount_usd?: number;
     currency?: string;
   };
+};
+type ContextCost = {
+  approxTokens: number;
+  files: number;
+  bytes: number;
+  status: "estimated";
 };
 
 export const EXIT = {
@@ -103,7 +113,7 @@ program.command("search")
     writeStdout(items.map((item) => [
       `${item.owner}/${item.name} — ${item.title}`,
       `  ${item.summary}`,
-      `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · heat ${item.heat} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
+      `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · heat ${item.heat} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
       `  hh pull ${item.owner}/${item.name}`
     ].join("\n")).join("\n\n") + "\n");
   });
@@ -404,8 +414,10 @@ program.command("inspect")
   .argument("[dir]", "harness directory", ".")
   .option("--json", "print JSON", false)
   .action((dir, options) => {
-    const result = inspectHarness(path.resolve(dir));
-    writeStdout(options.json ? result : inspectText(result));
+    const root = path.resolve(dir);
+    const result = inspectHarness(root);
+    const payload = { ...result, contextCost: estimateContextCost(root) };
+    writeStdout(options.json ? payload : inspectText(payload));
     process.exit(result.valid ? EXIT.OK : EXIT.VALIDATION);
   });
 
@@ -596,6 +608,12 @@ function priceLabel(body: PaymentRequiredBody): string {
   return body.pricing?.model ?? "";
 }
 
+function contextCostLabel(cost: Pick<ContextCost, "approxTokens" | "files"> | undefined): string {
+  if (!cost) return "unknown";
+  const tokens = cost.approxTokens >= 1000 ? `${(cost.approxTokens / 1000).toFixed(1)}k` : String(cost.approxTokens);
+  return `~${tokens}/${cost.files} files`;
+}
+
 function writeArchiveFiles(out: string, files: ArchiveFile[]): { written: number; skipped: number; paths: string[] } {
   mkdirSync(out, { recursive: true });
   let written = 0;
@@ -628,6 +646,7 @@ function harnessDoctorPayload(value: string | boolean | undefined) {
     version: result.manifest?.version ?? null,
     risk: result.risk.score,
     issues: result.issues.length,
+    contextCost: estimateContextCost(root),
     source
   };
 }
@@ -708,6 +727,44 @@ function readHarnessVersion(root: string): string | undefined {
   return validateHarnessDir(root).manifest?.version;
 }
 
+function estimateContextCost(root: string): ContextCost {
+  const files = contextFiles(root);
+  const bytes = files.reduce((sum, file) => {
+    try {
+      return sum + statSync(path.join(root, file)).size;
+    } catch {
+      return sum;
+    }
+  }, 0);
+  return {
+    approxTokens: Math.round(bytes / 4),
+    files: files.length,
+    bytes,
+    status: "estimated"
+  };
+}
+
+function contextFiles(root: string): string[] {
+  const files: string[] = [];
+  if (!existsSync(root)) return files;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) files.push(entry.name);
+  }
+  for (const dir of ["agents", "skills", "runbooks", "prompts"]) {
+    collectMarkdownFiles(root, path.join(root, dir), files);
+  }
+  return files.sort();
+}
+
+function collectMarkdownFiles(root: string, dir: string, files: string[]) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectMarkdownFiles(root, full, files);
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) files.push(path.relative(root, full));
+  }
+}
+
 function compareVersions(left: string, right: string): number {
   const a = parseSemver(left);
   const b = parseSemver(right);
@@ -758,13 +815,14 @@ function validationText(result: ReturnType<typeof validateHarnessDir>): string {
   ].join("\n") + "\n";
 }
 
-function inspectText(result: ReturnType<typeof inspectHarness>): string {
+function inspectText(result: ReturnType<typeof inspectHarness> & { contextCost?: ContextCost }): string {
   const manifest = result.manifest;
   if (!manifest) return validationText(result);
   return [
     `${manifest.title} (${manifest.name})`,
     manifest.summary,
     `Runtime: ${manifest.runtime.primary}`,
+    `Context: ${contextCostLabel(result.contextCost)}`,
     `Agents: ${result.components?.agents ?? 0}`,
     `Stages: ${result.components?.stages ?? 0}`,
     `Tools: ${result.components?.tools ?? 0}`,

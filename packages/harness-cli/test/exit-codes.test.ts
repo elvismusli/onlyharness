@@ -168,10 +168,23 @@ test("doctor --harness reports local harness validity", async () => {
   const result = await runCli(["doctor", "--harness", seedHarness, "--json"], { HH_REGISTRY_URL: registryUrl });
 
   assert.equal(result.status, 0, result.stderr);
-  const body = JSON.parse(result.stdout) as { harness?: { valid?: boolean; name?: string; version?: string } };
+  const body = JSON.parse(result.stdout) as { harness?: { valid?: boolean; name?: string; version?: string; contextCost?: { approxTokens?: number; files?: number; status?: string } } };
   assert.equal(body.harness?.valid, true);
   assert.equal(body.harness?.name, "deep-market-researcher");
   assert.equal(body.harness?.version, "0.1.0");
+  assert.equal(body.harness?.contextCost?.status, "estimated");
+  assert.equal(typeof body.harness?.contextCost?.approxTokens, "number");
+  assert.equal(typeof body.harness?.contextCost?.files, "number");
+});
+
+test("inspect --json includes local context cost", async () => {
+  const result = await runCli(["inspect", seedHarness, "--json"]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const body = JSON.parse(result.stdout) as { contextCost?: { approxTokens?: number; files?: number; status?: string } };
+  assert.equal(body.contextCost?.status, "estimated");
+  assert.equal(typeof body.contextCost?.approxTokens, "number");
+  assert.equal(typeof body.contextCost?.files, "number");
 });
 
 test("pin writes pin metadata and outdated exits 3 for newer registry version", async () => {

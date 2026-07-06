@@ -41,6 +41,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 ## Agent Contract
 
 - `hh search <terms> --json` prints machine-readable registry results.
+- Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.

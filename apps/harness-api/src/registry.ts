@@ -46,6 +46,7 @@ export type RegistryItem = {
     findings: number;
     scanner: StaticSecurityReport["scanner"];
   };
+  contextCost: ContextCost;
   standard: "conformant" | "partial";
   forks: number;
   stars: number;
@@ -57,6 +58,13 @@ export type RegistryItem = {
   badge: string;
   cliCommand: string;
   updatedAt: string;
+};
+
+export type ContextCost = {
+  approxTokens: number;
+  files: number;
+  bytes: number;
+  status: "estimated";
 };
 
 export type RegistryQuery = {
@@ -105,6 +113,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
   const evalResult = readEvalResult(repoPath);
   const updatedAt = statDate(repoPath);
   const security = securityReportFor(repoPath, validation.security, validation.manifest.permissions.network_allowlist);
+  const contextCost = estimateContextCost(repoPath);
   if (security.verdict === "fail") return undefined;
   const social = socialFromCounters(counters.get(`${owner}/${validation.manifest.name}`), {
     riskTier: validation.risk.tier,
@@ -132,6 +141,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
       findings: security.findings.length,
       scanner: security.scanner
     },
+    contextCost,
     standard: standardLevel(validation.valid, validation.manifest, security),
     forks: social.forks,
     stars: social.stars,
@@ -230,8 +240,9 @@ export function registryDetailBasics(root: string) {
   const inspection = inspectHarness(root);
   const evalResult = readEvalResult(root);
   const security = securityReportFor(root, inspection.security, inspection.manifest?.permissions.network_allowlist ?? []);
+  const contextCost = estimateContextCost(root);
   const standard = standardLevel(Boolean(inspection.valid), inspection.manifest, security);
-  return { inspection, evalResult, security, standard };
+  return { inspection, evalResult, security, contextCost, standard };
 }
 
 export function securityReportFor(root: string, manifestSecurity: ManifestSecurityReport | undefined, networkAllowlist: string[]) {
@@ -256,10 +267,50 @@ export function readExample(root: string) {
   };
 }
 
+export function estimateContextCost(root: string): ContextCost {
+  const files = contextFiles(root);
+  const bytes = files.reduce((sum, file) => {
+    try {
+      return sum + statSync(path.join(root, file)).size;
+    } catch {
+      return sum;
+    }
+  }, 0);
+  return {
+    approxTokens: Math.round(bytes / 4),
+    files: files.length,
+    bytes,
+    status: "estimated"
+  };
+}
+
 export function listHarnessFiles(root: string) {
   const files: string[] = [];
   collectFiles(root, root, files);
   return files.slice(0, 80);
+}
+
+function contextFiles(root: string): string[] {
+  const files: string[] = [];
+  if (!existsSync(root)) return files;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+      files.push(entry.name);
+    }
+  }
+  for (const dir of ["agents", "skills", "runbooks", "prompts"]) {
+    collectMarkdownFiles(root, path.join(root, dir), files);
+  }
+  return files.sort();
+}
+
+function collectMarkdownFiles(root: string, dir: string, files: string[]) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectMarkdownFiles(root, full, files);
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) files.push(path.relative(root, full));
+  }
 }
 
 export function readEvalResult(root: string) {

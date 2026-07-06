@@ -1,4 +1,4 @@
-import { cleanReadme, fmtK, heatPct, relativeTime } from "./format";
+import { cleanReadme, fmtContextCost, fmtK, heatPct, relativeTime } from "./format";
 import { DETAIL_TABS, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
@@ -198,6 +198,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
             <InfoLine label="Eval" value={detail?.evalResult ? `${detail.evalResult.score} (${detail.evalResult.status})` : item.evalStatus} />
             <InfoLine label="Risk" value={`${detail?.risk.tier ?? item.riskTier} (${detail?.risk.score ?? item.riskScore})`} />
             <InfoLine label="Runtime" value={manifest?.runtime.primary ?? item.runtime} />
+            <InfoLine label="Context" value={fmtContextCost(detail?.contextCost ?? item.contextCost)} />
             <InfoLine label="Eval gate" value={manifest ? `score ≥ ${manifest.quality_gates.min_score}` : "…"} />
             <InfoLine label="Permissions" value={grantedPermissions.length ? grantedPermissions.join(", ") : "conservative"} />
             {detail?.risk.reasons?.[0] && (

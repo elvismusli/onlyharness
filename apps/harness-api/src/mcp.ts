@@ -53,7 +53,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     async ({ owner, name }) => {
       const root = registry.resolveHarnessPath(owner, name);
       if (!root) return json({ error: `Harness ${owner}/${name} not found` });
-      const { inspection, evalResult, security, standard } = registry.registryDetailBasics(root);
+      const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
       const counters = await fetchCountersMap();
       const item = registry.registryItemFromDir(owner, root, counters);
       return json({
@@ -65,6 +65,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         issues: inspection.issues,
         risk: inspection.risk,
         security,
+        contextCost,
         standard,
         evalResult,
         example: registry.readExample(root),
@@ -89,10 +90,12 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
       const { inspection } = registry.registryDetailBasics(root);
       const version = inspection.manifest?.version ?? "current";
       const pricing = inspection.manifest?.pricing;
+      const contextCost = registry.estimateContextCost(root);
       return json({
         command: `npx onlyharness pull ${owner}/${name}`,
         localCommand: `node packages/harness-cli/dist/hh.mjs pull ${owner}/${name}`,
         archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
+        contextCost,
         payment: pricing && pricing.model !== "free"
           ? { required: true, pricing, tokenEnv: "HH_TOKEN", paymentExitCode: 5 }
           : { required: false },

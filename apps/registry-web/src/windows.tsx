@@ -1,4 +1,4 @@
-import { fmtK, heatPct, isoWeek } from "./format";
+import { fmtContextCost, fmtK, heatPct, isoWeek } from "./format";
 import type { HarnessDetail, RegistryItem } from "./types";
 import { Btn, HeatMeter, InfoLine } from "./win98";
 
@@ -126,6 +126,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
             <h4>Trust before install</h4>
             <InfoLine label="Eval" value={item ? `${item.evalScore ? item.evalScore.toFixed(2) : "unknown"} (${item.evalStatus})` : "select a harness"} />
             <InfoLine label="Risk" value={item ? `${item.riskTier} (${item.riskScore})` : "select a harness"} />
+            <InfoLine label="Context" value={item ? fmtContextCost(item.contextCost) : "select a harness"} />
             <InfoLine label="Standard" value={item?.standard ?? "select a harness"} />
           </div>
           <div className="plate" style={{ fontSize: 11 }}>Cursor adapter and team bundle are not shipped yet.</div>
@@ -248,7 +249,7 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
 export function ShareBody({ item, starred, onCopy, copied }: { item: RegistryItem; starred: boolean; onCopy: (text: string) => void; copied: boolean }) {
   const stars = item.stars + (starred ? 1 : 0);
   const heat = item.heat + (starred ? 0.4 : 0);
-  const brag = `★ LOOK AT MY HARNESS ★\n${item.title} — ${item.summary}\n★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · Heat ${heat.toFixed(1)}🔥\n> ${item.cliCommand}`;
+  const brag = `★ LOOK AT MY HARNESS ★\n${item.title} — ${item.summary}\n★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥\n> ${item.cliCommand}`;
   return (
     <div className="win-body">
       <div className="share-stage">
@@ -275,6 +276,7 @@ export function ShareBody({ item, starred, onCopy, copied }: { item: RegistryIte
                   <div className="share-stat"><div className="num">⑂ {fmtK(item.forks)}</div><div className="cap">forks</div></div>
                   <div className="share-stat"><div className="num">💬 {item.threads}</div><div className="cap">threads</div></div>
                   <div className="share-stat"><div className="num ok">{item.evalScore ? item.evalScore.toFixed(2) : "—"}</div><div className="cap">eval</div></div>
+                  <div className="share-stat"><div className="num">{fmtK(item.contextCost.approxTokens)}</div><div className="cap">ctx tokens</div></div>
                 </div>
               </div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
