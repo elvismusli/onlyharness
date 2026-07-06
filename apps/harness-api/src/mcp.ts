@@ -12,10 +12,14 @@ type PublishMarkdownInput = {
 
 export type PublishMarkdownHandler = (input: PublishMarkdownInput, authorization?: string) => Promise<unknown>;
 export type PullHarnessHandler = (input: { owner: string; name: string; version?: string }, authorization?: string) => Promise<unknown>;
+export type HarnessDetailHandler = (input: { owner: string; name: string }, authorization?: string) => Promise<unknown>;
+export type PullInstructionsHandler = (input: { owner: string; name: string }, authorization?: string) => Promise<unknown>;
 
 type BuildMcpServerOptions = {
   publishMarkdown: PublishMarkdownHandler;
   pullHarness: PullHarnessHandler;
+  harnessDetail: HarnessDetailHandler;
+  pullInstructions: PullInstructionsHandler;
 };
 
 let docsCache: { source: string; text: string; loadedAt: number } | undefined;
@@ -50,27 +54,9 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         name: z.string().describe("Harness slug, for example deep-market-researcher.")
       }
     },
-    async ({ owner, name }) => {
-      const root = registry.resolveHarnessPath(owner, name);
-      if (!root) return json({ error: `Harness ${owner}/${name} not found` });
-      const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
-      const counters = await fetchCountersMap();
-      const item = registry.registryItemFromDir(owner, root, counters);
-      return json({
-        owner,
-        name,
-        social: item ? registry.socialFromItem(item) : undefined,
-        manifest: inspection.manifest,
-        valid: inspection.valid,
-        issues: inspection.issues,
-        risk: inspection.risk,
-        security,
-        contextCost,
-        standard,
-        evalResult,
-        example: registry.readExample(root),
-        files: registry.listHarnessFiles(root)
-      });
+    async ({ owner, name }, extra) => {
+      const authorization = headerValue(extra.requestInfo?.headers.authorization);
+      return json(await options.harnessDetail({ owner, name }, authorization));
     }
   );
 
@@ -84,23 +70,9 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         name: z.string()
       }
     },
-    async ({ owner, name }) => {
-      const root = registry.resolveHarnessPath(owner, name);
-      if (!root) return json({ error: `Harness ${owner}/${name} not found` });
-      const { inspection } = registry.registryDetailBasics(root);
-      const version = inspection.manifest?.version ?? "current";
-      const pricing = inspection.manifest?.pricing;
-      const contextCost = registry.estimateContextCost(root);
-      return json({
-        command: `npx onlyharness pull ${owner}/${name}`,
-        localCommand: `node packages/harness-cli/dist/hh.mjs pull ${owner}/${name}`,
-        archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
-        contextCost,
-        payment: pricing && pricing.model !== "free"
-          ? { required: true, pricing, tokenEnv: "HH_TOKEN", paymentExitCode: 5 }
-          : { required: false },
-        next: [`hh run ${name} --json`, `hh eval ${name} --json`, `hh gate --dir ${name} --json`]
-      });
+    async ({ owner, name }, extra) => {
+      const authorization = headerValue(extra.requestInfo?.headers.authorization);
+      return json(await options.pullInstructions({ owner, name }, authorization));
     }
   );
 

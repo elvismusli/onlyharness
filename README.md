@@ -91,6 +91,7 @@ node packages/harness-cli/dist/hh.mjs doctor
 node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name my-private-harness
 ```
 
 ## For agents
@@ -98,7 +99,8 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 - Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), and MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json).
 - MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, and `publish_markdown_to_harness`.
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
-- Team setup: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle` with `HH_ORG_TOKEN` when `ORGS_ENABLED=true`; default output is `.harnesshub/orgs/acme`.
+- Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`.
+- Org-private pulls use the same token path: `HH_ORG_TOKEN=<org-token> hh pull @acme/private-harness`.
 - Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install onlyharness@onlyharness`.
 - Local validation: `npm run check:mcp-registry && claude plugin validate . && claude plugin validate plugins/onlyharness`.
 

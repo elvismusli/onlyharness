@@ -4,12 +4,13 @@ import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
+import type { HarnessManifest } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
-import { appendOrgAudit, readOrgBundle } from "./orgs.js";
+import { appendOrgAudit, authorizeOrgToken, readOrgBundle } from "./orgs.js";
 import { createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
@@ -27,6 +28,11 @@ const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected
 type ImportRequest = {
   name?: string;
   markdown: string;
+};
+
+type ImportOptions = {
+  orgSlug?: string;
+  owner?: string;
 };
 
 type CheckoutRequest = {
@@ -92,6 +98,8 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
+  const orgGate = gateOrgVisibility(owner, inspection.manifest, headerValue(request.headers.authorization), "detail");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
   return {
@@ -129,10 +137,12 @@ app.post("/billing/checkout", async (request, reply) => {
   if (!owner || !repo) return reply.code(400).send({ error: "owner and repo are required" });
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const archive = registry.buildArchiveForVersion(owner, repo, root, body.version);
-  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
   if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "checkout");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
+  const archive = registry.buildArchiveForVersion(owner, repo, root, body.version);
+  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
   const attribution = await resolveCheckoutAttribution({
     owner,
     repo,
@@ -194,8 +204,7 @@ app.get("/storefront/:handle", async (request, reply) => {
 app.get("/orgs/:slug/bundle", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Org setup is not enabled" });
   const { slug } = request.params as { slug: string };
-  const authorization = headerValue(request.headers.authorization);
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : headerValue(request.headers["x-harness-org-token"]);
+  const token = orgTokenFromRequest(request);
   const result = readOrgBundle(slug, token);
   if (!result.ok) {
     appendOrgAudit({ slug: result.slug ?? "invalid", action: result.auditAction, tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
@@ -213,10 +222,29 @@ app.get("/orgs/:slug/bundle", async (request, reply) => {
   };
 });
 
+app.post("/orgs/:slug/imports/markdown-to-harness", async (request, reply) => {
+  if (!orgsEnabled) return reply.code(404).send({ error: "Org publishing is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = orgTokenFromRequest(request);
+  const auth = authorizeOrgToken(slug, token, ["publish"]);
+  if (!auth.ok) {
+    appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "publish" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body as ImportRequest;
+  const result = await importMarkdownToHarness(body, { id: `org:${auth.org.slug}` }, { orgSlug: auth.org.slug, owner: `@${auth.org.slug}` });
+  if ("error" in result) return reply.code(result.status ?? 500).send({ error: result.error });
+  appendOrgAudit({ slug: auth.org.slug, action: "publish_import", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
+  return result;
+});
+
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "thread");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   return { items: await fetchThreadPosts(owner, repo) };
 });
 
@@ -224,18 +252,29 @@ app.get("/repos/:owner/:repo/security-report", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  return registry.registryDetailBasics(root).security;
+  const { inspection, security } = registry.registryDetailBasics(root);
+  const orgGate = gateOrgVisibility(owner, inspection.manifest, headerValue(request.headers.authorization), "security");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
+  return security;
 });
 
 app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string; number: string };
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "semantic_diff");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   return samplePrReview(root);
 });
 
 app.post("/mcp", async (request, reply) => {
-  const server = buildMcpServer({ publishMarkdown: publishMarkdownFromMcp, pullHarness: pullHarnessFromMcp });
+  const server = buildMcpServer({
+    publishMarkdown: publishMarkdownFromMcp,
+    pullHarness: pullHarnessFromMcp,
+    harnessDetail: harnessDetailFromMcp,
+    pullInstructions: pullInstructionsFromMcp
+  });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
   reply.raw.on("close", () => {
@@ -390,13 +429,61 @@ const pullHarnessFromMcp: PullHarnessHandler = async ({ owner, name, version }, 
   };
 };
 
+const harnessDetailFromMcp = async ({ owner, name }: { owner: string; name: string }, authorization?: string) => {
+  return harnessDetailPayload(owner, name, authorization);
+};
+
+const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: string }, authorization?: string) => {
+  const detail = await harnessDetailPayload(owner, name, authorization);
+  if ("error" in detail) return detail;
+  const version = detail.manifest?.version ?? "current";
+  const pricing = detail.manifest?.pricing;
+  return {
+    command: `npx onlyharness pull ${owner}/${name}`,
+    localCommand: `node packages/harness-cli/dist/hh.mjs pull ${owner}/${name}`,
+    archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
+    contextCost: detail.contextCost,
+    payment: pricing && pricing.model !== "free"
+      ? { required: true, pricing, tokenEnv: "HH_TOKEN", paymentExitCode: 5 }
+      : { required: false },
+    next: [`hh run ${name} --json`, `hh eval ${name} --json`, `hh gate --dir ${name} --json`]
+  };
+};
+
+async function harnessDetailPayload(owner: string, repo: string, authorization: string | undefined) {
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return { status: 404, error: "Harness not found" };
+  const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
+  const orgGate = gateOrgVisibility(owner, inspection.manifest, authorization, "detail");
+  if (!orgGate.ok) return { status: orgGate.status, error: orgGate.error };
+  const counters = await fetchCountersMap();
+  const item = registry.registryItemFromDir(owner, root, counters);
+  return {
+    owner,
+    name: repo,
+    social: item ? registry.socialFromItem(item) : undefined,
+    manifest: inspection.manifest,
+    valid: inspection.valid,
+    issues: inspection.issues,
+    risk: inspection.risk,
+    security,
+    contextCost,
+    standard,
+    evalResult,
+    example: registry.readExample(root),
+    files: registry.listHarnessFiles(root)
+  };
+}
+
 async function archiveForClient(owner: string, repo: string, version: string | undefined, authorization: string | undefined, client: "api" | "mcp") {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return { status: 404, body: { error: "Harness not found" } };
-  const archive = registry.buildArchiveForVersion(owner, repo, root, version);
-  if (!archive) return { status: 404, body: { error: "Harness version not found" } };
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
   if (!manifest) return { status: 500, body: { error: "Harness manifest unavailable" } };
+  const orgGate = gateOrgVisibility(owner, manifest, authorization, "archive");
+  if (!orgGate.ok) return { status: orgGate.status, body: { error: orgGate.error } };
+  const archive = registry.buildArchiveForVersion(owner, repo, root, version);
+  if (!archive) return { status: 404, body: { error: "Harness version not found" } };
   const auth = authorization ? await userFromAuthorization(authorization) : {};
   const payment = await requireArchivePaymentAccess({
     owner,
@@ -414,12 +501,13 @@ async function archiveForClient(owner: string, repo: string, version: string | u
   return { status: 200, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
 }
 
-async function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
+async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, options: ImportOptions = {}) {
   if (!body?.markdown || body.markdown.length < 20) {
     return { status: 400, error: "markdown must be at least 20 characters" };
   }
   const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
-  const target = path.join(registry.importRoot, name);
+  const owner = options.owner ?? "local";
+  const target = options.orgSlug ? path.join(registry.orgImportRoot(options.orgSlug), name) : path.join(registry.importRoot, name);
   mkdirSync(path.dirname(target), { recursive: true });
   const tempSource = path.join(registry.workspaceRoot, "data", `${name}.source.md`);
   writeFileSync(tempSource, body.markdown);
@@ -431,16 +519,53 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
   if (cli.status !== 0) {
     return { status: 500, error: cli.stderr || cli.stdout || "import failed" };
   }
-  const item = registry.registryItemFromDir("local", target, new Map());
-  const snapshot = registry.writeArchiveSnapshot("local", name, target);
-  await upsertHarnessCreator("local", name, user.id);
-  await recordEvent({ kind: "applied", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
+  if (options.orgSlug) applyOrgManifest(target, options.orgSlug);
+  const item = registry.registryItemFromDir(owner, target, new Map());
+  const snapshot = registry.writeArchiveSnapshot(owner, name, target);
+  if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
+  await recordEvent({ kind: "applied", owner, repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
   appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
   return { item, output: cli.stdout, snapshotVersion: snapshot?.version };
 }
 
+function applyOrgManifest(root: string, orgSlug: string) {
+  const manifestPath = path.join(root, "harness.yaml");
+  const manifest = YAML.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+  manifest.schemaVersion = "harness.v0.2";
+  manifest.visibility = "org";
+  manifest.org = orgSlug;
+  writeFileSync(manifestPath, YAML.stringify(manifest));
+}
+
 function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function orgTokenFromRequest(request: FastifyRequest): string | undefined {
+  const authorization = headerValue(request.headers.authorization);
+  return authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : headerValue(request.headers["x-harness-org-token"]);
+}
+
+function orgTokenFromAuthorization(authorization: string | undefined): string | undefined {
+  return authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+}
+
+function gateOrgVisibility(owner: string, manifest: HarnessManifest | undefined, authorization: string | undefined, target: string):
+  | { ok: true }
+  | { ok: false; status: number; error: string } {
+  if (owner.startsWith("@") && manifest?.visibility !== "org") return { ok: false, status: 403, error: "Org harness visibility mismatch" };
+  if (manifest?.visibility === "private") return { ok: false, status: 403, error: "Private harness is not available through this API" };
+  if (manifest?.visibility !== "org") return { ok: true };
+  if (!orgsEnabled) return { ok: false, status: 404, error: "Org access is not enabled" };
+  const slug = manifest.org;
+  if (!slug || owner !== `@${slug}`) return { ok: false, status: 403, error: "Org harness owner mismatch" };
+  const auth = authorizeOrgToken(slug, orgTokenFromAuthorization(authorization), ["read", "setup", "publish"]);
+  if (!auth.ok) {
+    appendOrgAudit({ slug: auth.slug ?? slug, action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target });
+    return { ok: false, status: auth.status, error: auth.error };
+  }
+  appendOrgAudit({ slug: auth.org.slug, action: `${target}_read`, tokenName: auth.tokenName, subject: eventSubject(undefined), target: manifest.name });
+  return { ok: true };
 }
 
 function requireInternalToken(request: FastifyRequest, reply: FastifyReply): boolean {

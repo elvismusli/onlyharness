@@ -16,6 +16,8 @@ let sawPullToken = false;
 let sawUpdateToken = false;
 let sawSetupBundleToken = false;
 let sawSetupArchiveToken = false;
+let sawOrgPublishToken = false;
+let sawOrgPullToken = false;
 
 before(async () => {
   server = createServer((request, response) => {
@@ -53,6 +55,36 @@ before(async () => {
             { path: "../outside-from-setup-test.md", content: "must not write\n" }
           ]
         }
+      }));
+      return;
+    }
+
+    if (request.url === "/orgs/acme/imports/markdown-to-harness" && request.method === "POST") {
+      if (request.headers.authorization !== "Bearer org-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid org token" }));
+        return;
+      }
+      sawOrgPublishToken = true;
+      response.end(JSON.stringify({
+        item: { owner: "@acme", name: "team-workflow", title: "Team Workflow" },
+        snapshotVersion: "0.1.0"
+      }));
+      return;
+    }
+
+    if (request.url?.startsWith("/repos/@acme/team-workflow/archive")) {
+      if (request.headers.authorization !== "Bearer org-token") {
+        response.statusCode = 401;
+        response.end(JSON.stringify({ error: "Org token required" }));
+        return;
+      }
+      sawOrgPullToken = true;
+      response.end(JSON.stringify({
+        owner: "@acme",
+        repo: "team-workflow",
+        version: "0.1.0",
+        files: [{ path: "README.md", truncated: false, content: "# Team Workflow\n" }]
       }));
       return;
     }
@@ -232,6 +264,48 @@ test("setup installs an org bundle with org-token auth and idempotent retry", as
     assert.doesNotMatch(denied.stderr, /bad-token/);
   } finally {
     await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("publish --org sends HH_ORG_TOKEN to the org import endpoint", async () => {
+  sawOrgPublishToken = false;
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-org-publish-"));
+  const source = path.join(root, "team.md");
+  try {
+    await writeFile(source, "# Team Workflow\n\nPublish this workflow into a private org namespace.");
+
+    const result = await runCli(["publish", source, "--name", "team-workflow", "--org", "acme", "--json"], { HH_REGISTRY_URL: registryUrl, HH_ORG_TOKEN: "org-token" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawOrgPublishToken, true);
+    assert.doesNotMatch(result.stdout, /org-token/);
+    const body = JSON.parse(result.stdout) as { owner?: string; name?: string; title?: string };
+    assert.equal(body.owner, "@acme");
+    assert.equal(body.name, "team-workflow");
+
+    const denied = await runCli(["publish", source, "--name", "team-workflow", "--org", "acme", "--org-token", "bad-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(denied.status, 2);
+    assert.doesNotMatch(denied.stderr, /bad-token/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pull of an org harness sends HH_ORG_TOKEN as a bearer token", async () => {
+  sawOrgPullToken = false;
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-org-pull-"));
+  try {
+    const result = await runCli(["pull", "@acme/team-workflow", "--out", out, "--json"], { HH_REGISTRY_URL: registryUrl, HH_ORG_TOKEN: "org-token" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawOrgPullToken, true);
+    assert.doesNotMatch(result.stdout, /org-token/);
+    const body = JSON.parse(result.stdout) as { owner?: string; name?: string; version?: string };
+    assert.equal(body.owner, "@acme");
+    assert.equal(body.name, "team-workflow");
+    assert.equal(body.version, "0.1.0");
+  } finally {
+    await rm(out, { recursive: true, force: true });
   }
 });
 

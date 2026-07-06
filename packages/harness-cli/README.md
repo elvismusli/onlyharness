@@ -12,6 +12,7 @@ npx onlyharness update deep-market-researcher --diff
 npx onlyharness audit-setup
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme
+HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name team-workflow
 ```
 
 Global install after npm publish:
@@ -33,7 +34,7 @@ HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 
 Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`.
 
-Team setup uses a separate org token: `HH_ORG_TOKEN=<org-token> hh setup @acme`. It reads the org bundle, installs pinned harnesses and config snippets into `.harnesshub/orgs/acme` by default, and writes `.harnesshub/setup.json` inside that managed output.
+Team setup, org-private pull, and org publishing use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name` and `hh publish workflow.md --org acme` use the same org token path.
 
 ## Publishing
 
@@ -48,6 +49,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh search <terms> --json` prints machine-readable registry results.
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
+- `hh pull @org/name` sends `HH_ORG_TOKEN` when set.
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.
@@ -55,6 +57,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh audit-setup` scans local `~/.claude` and `./.claude` skills for trigger conflicts, stale skills and estimated markdown context cost. It stays local and emits a sanitized share card.
 - `hh extract <skill-dir|SKILL.md>` creates a private `harness.v0.2` scaffold from local skill markdown, infers candidate `depends_on`, and redacts obvious token-shaped secrets.
 - `hh setup @org` installs a token-gated team bundle with pinned harnesses and config snippets; repeated runs of the same bundle are idempotent.
+- `hh publish --org <slug>` uses `HH_ORG_TOKEN` and publishes a private org harness.
 - `hh pin`, `hh outdated`, and `hh update --diff` use `.harnesshub/source.json` / `.harnesshub/pin.json` for safe version-aware updates.
 - Use `--json` where available, or `--format json` for risk/diff; failures print `{ "error", "code", "next" }` to stderr.
 

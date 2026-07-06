@@ -95,7 +95,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
     { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
     { name: "Claude Code plugin", status: "available", detail: "skill + .mcp.json" },
     { name: "Cursor adapter", status: "planned", detail: "adapter command not shipped yet" },
-    { name: "Team bundle", status: "planned", detail: "org setup waits for Teams core" }
+    { name: "Team bundle", status: "available", detail: "hh setup @org / hh publish --org with HH_ORG_TOKEN" }
   ];
 
   return (

@@ -61,6 +61,8 @@ export const openapi = {
             description: "Harness manifest, trust signals, examples, files and review preview",
             content: { "application/json": { schema: { $ref: "#/components/schemas/HarnessDetail" } } }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" }
         }
       }
@@ -78,6 +80,8 @@ export const openapi = {
             description: "Payment required for a paid harness archive",
             content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentRequired" } } }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" }
         }
       }
@@ -226,6 +230,39 @@ export const openapi = {
           "200": {
             description: "Organization setup bundle",
             content: { "application/json": { schema: { $ref: "#/components/schemas/OrgBundleResponse" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/orgs/{slug}/imports/markdown-to-harness": {
+      post: {
+        summary: "Publish markdown into an organization namespace",
+        description: "Requires ORGS_ENABLED=true and a Bearer org token with publish scope. The generated manifest is marked visibility: org.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  markdown: { type: "string", minLength: 20 }
+                },
+                required: ["markdown"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Imported org harness",
+            content: { "application/json": { schema: { type: "object", properties: { item: { $ref: "#/components/schemas/RegistryItem" }, output: { type: "string" }, snapshotVersion: { type: "string" } } } } }
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },

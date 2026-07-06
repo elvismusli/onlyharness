@@ -204,8 +204,41 @@ try {
   });
   if (deniedOrg.status !== 403) throw new Error(`Invalid org token should be 403, got ${deniedOrg.status}`);
   const orgAudit = existsSync(orgAuditPath) ? readFileSync(orgAuditPath, "utf8") : "";
-  if (!orgAudit.includes("bundle_read") || !orgAudit.includes("bundle_token_denied")) throw new Error(`Org setup audit log incomplete: ${orgAudit}`);
+  if (!orgAudit.includes("bundle_read") || !orgAudit.includes("org_token_denied")) throw new Error(`Org setup audit log incomplete: ${orgAudit}`);
   if (orgAudit.includes("smoke-org-token") || orgAudit.includes("wrong-org-token")) throw new Error("Org audit log leaked a raw token");
+  const orgSource = path.join(smokeDataRoot, "org-import.md");
+  writeFileSync(orgSource, "# Acme Private Workflow\n\nRun the private Acme review workflow with measured handoff notes.");
+  const orgPublish = run("node", [cliBin, "publish", orgSource, "--name", "acme-private-workflow", "--org", "acme", "--org-token", "smoke-org-token", "--json"], { env: cliEnv });
+  const orgPublishBody = JSON.parse(orgPublish.stdout) as { owner?: string; name?: string };
+  if (orgPublishBody.owner !== "@acme" || orgPublishBody.name !== "acme-private-workflow") throw new Error(`Org publish returned wrong owner/name: ${orgPublish.stdout}`);
+  const publicRegistryAfterOrgPublish = await fetch("http://127.0.0.1:8799/registry?q=acme-private-workflow").then((response) => response.json()) as { items?: Array<{ owner?: string; name?: string }> };
+  if (publicRegistryAfterOrgPublish.items?.some((item) => item.name === "acme-private-workflow")) {
+    throw new Error(`Org-private harness leaked into public registry: ${JSON.stringify(publicRegistryAfterOrgPublish)}`);
+  }
+  const orgUnauthArchive = await fetch("http://127.0.0.1:8799/repos/@acme/acme-private-workflow/archive");
+  if (orgUnauthArchive.status !== 401) throw new Error(`Org archive without token should be 401, got ${orgUnauthArchive.status}`);
+  for (const [label, url] of [
+    ["thread", "http://127.0.0.1:8799/repos/@acme/acme-private-workflow/thread"],
+    ["security", "http://127.0.0.1:8799/repos/@acme/acme-private-workflow/security-report"],
+    ["semantic diff", "http://127.0.0.1:8799/prs/@acme/acme-private-workflow/1/semantic-diff"]
+  ] as const) {
+    const response = await fetch(url);
+    if (response.status !== 401) throw new Error(`Org ${label} without token should be 401, got ${response.status}`);
+  }
+  const orgCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner: "@acme", repo: "acme-private-workflow" })
+  });
+  if (orgCheckout.status !== 401) throw new Error(`Org checkout without token should be 401, got ${orgCheckout.status}`);
+  const orgDetail = await fetch("http://127.0.0.1:8799/repos/@acme/acme-private-workflow/harness", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { manifest?: { visibility?: string; org?: string } };
+  if (orgDetail.manifest?.visibility !== "org" || orgDetail.manifest.org !== "acme") throw new Error(`Org detail did not preserve org visibility: ${JSON.stringify(orgDetail.manifest)}`);
+  const orgArchive = await fetch("http://127.0.0.1:8799/repos/@acme/acme-private-workflow/archive", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { owner?: string; repo?: string; files?: unknown[] };
+  if (orgArchive.owner !== "@acme" || orgArchive.repo !== "acme-private-workflow" || !orgArchive.files?.length) throw new Error(`Org archive did not return files with token: ${JSON.stringify(orgArchive)}`);
   const auditProject = path.join(smokeDataRoot, "audit-project");
   mkdirSync(path.join(auditProject, ".claude/skills/smoke"), { recursive: true });
   mkdirSync(path.join(auditProject, ".claude/skills/smoke-helper"), { recursive: true });
@@ -250,7 +283,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, org setup/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, org setup/publish/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -416,7 +449,7 @@ function createOrgStore(target: string, token: string) {
           {
             name: "smoke",
             hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
-            scopes: ["setup"],
+            scopes: ["setup", "publish"],
             expires_at: null
           }
         ],

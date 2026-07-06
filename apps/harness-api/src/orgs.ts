@@ -42,6 +42,10 @@ export type OrgBundleResult =
   | { ok: true; org: OrgRecord; bundle: OrgBundle; tokenName: string }
   | { ok: false; status: number; error: string; slug?: string; tokenName?: string; auditAction: string };
 
+export type OrgAuthResult =
+  | { ok: true; org: OrgRecord; tokenName: string }
+  | { ok: false; status: number; error: string; slug?: string; tokenName?: string; auditAction: string };
+
 const orgsPath = path.resolve(process.env.HARNESS_ORGS_PATH ?? path.join(workspaceRoot, "data/orgs.json"));
 const orgAuditPath = path.resolve(process.env.HARNESS_ORG_AUDIT_PATH ?? path.join(workspaceRoot, "data/org-audit.jsonl"));
 
@@ -55,27 +59,33 @@ export function cleanOrgSlug(value: string | undefined): string | undefined {
 }
 
 export function readOrgBundle(slugValue: string | undefined, token: string | undefined): OrgBundleResult {
+  const auth = authorizeOrgToken(slugValue, token, ["read", "setup"]);
+  if (!auth.ok) return auth;
+  const bundle = normalizeBundle(auth.org.bundle);
+  if (!bundle) return { ok: false, status: 404, error: "Org setup bundle not found", slug: auth.org.slug, tokenName: auth.tokenName, auditAction: "bundle_missing" };
+  return { ok: true, org: auth.org, bundle, tokenName: auth.tokenName };
+}
+
+export function authorizeOrgToken(slugValue: string | undefined, token: string | undefined, allowedScopes: string[]): OrgAuthResult {
   const slug = cleanOrgSlug(slugValue);
-  if (!slug) return { ok: false, status: 400, error: "Invalid org slug", auditAction: "bundle_invalid_slug" };
+  if (!slug) return { ok: false, status: 400, error: "Invalid org slug", auditAction: "org_invalid_slug" };
   const store = readOrgStore();
   const org = store.organizations?.find((row) => row.slug === slug);
-  if (!org) return { ok: false, status: 404, error: "Org not found", slug, auditAction: "bundle_org_missing" };
-  if (!token) return { ok: false, status: 401, error: "Org token required", slug, auditAction: "bundle_token_missing" };
+  if (!org) return { ok: false, status: 404, error: "Org not found", slug, auditAction: "org_missing" };
+  if (!token) return { ok: false, status: 401, error: "Org token required", slug, auditAction: "org_token_missing" };
   const tokens = Array.isArray(org.tokens) ? org.tokens : [];
   const tokenRow = tokens.find((row) => tokenMatches(token, row.hash));
-  if (!tokenRow) return { ok: false, status: 403, error: "Invalid org token", slug, auditAction: "bundle_token_denied" };
+  if (!tokenRow) return { ok: false, status: 403, error: "Invalid org token", slug, auditAction: "org_token_denied" };
   const tokenName = typeof tokenRow.name === "string" && tokenRow.name ? tokenRow.name : "unnamed";
   const expiresAt = tokenRow.expires_at ? Date.parse(tokenRow.expires_at) : Number.POSITIVE_INFINITY;
   if (tokenRow.expires_at && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
-    return { ok: false, status: 403, error: "Org token expired", slug, tokenName, auditAction: "bundle_token_expired" };
+    return { ok: false, status: 403, error: "Org token expired", slug, tokenName, auditAction: "org_token_expired" };
   }
   const scopes = Array.isArray(tokenRow.scopes) ? tokenRow.scopes : [];
-  if (!scopes.includes("read") && !scopes.includes("setup")) {
-    return { ok: false, status: 403, error: "Org token cannot read setup bundle", slug, tokenName, auditAction: "bundle_scope_denied" };
+  if (!allowedScopes.some((scope) => scopes.includes(scope))) {
+    return { ok: false, status: 403, error: "Org token cannot perform this action", slug, tokenName, auditAction: "org_scope_denied" };
   }
-  const bundle = normalizeBundle(org.bundle);
-  if (!bundle) return { ok: false, status: 404, error: "Org setup bundle not found", slug, tokenName, auditAction: "bundle_missing" };
-  return { ok: true, org, bundle, tokenName };
+  return { ok: true, org, tokenName };
 }
 
 export function appendOrgAudit(input: { slug: string; action: string; tokenName?: string; subject?: string; target?: string }) {
@@ -106,7 +116,7 @@ function normalizeBundle(bundle: OrgRecord["bundle"]): OrgBundle | undefined {
     version: typeof bundle.version === "string" && bundle.version ? bundle.version : "0.1.0",
     harnesses: bundle.harnesses
       .flatMap((item) => {
-        const owner = cleanRefSegment(item.owner);
+        const owner = cleanOwnerSegment(item.owner);
         const name = cleanRefSegment(item.name);
         if (!owner || !name) return [];
         const version = cleanVersion(item.version);
@@ -133,6 +143,10 @@ function tokenMatches(token: string, storedHash: string | undefined): boolean {
 
 function cleanRefSegment(value: string | undefined): string | undefined {
   return value && /^[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : undefined;
+}
+
+function cleanOwnerSegment(value: string | undefined): string | undefined {
+  return value && /^@?[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : undefined;
 }
 
 function cleanVersion(value: string | undefined): string | undefined {

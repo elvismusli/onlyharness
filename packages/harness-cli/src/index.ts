@@ -196,20 +196,20 @@ program.command("pull")
       fail("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher", EXIT.VALIDATION, "hh pull harnesses/deep-market-researcher", options.json);
     }
     const archiveUrl = `${registryUrl}/repos/${owner}/${name}/archive`;
-    const token = options.token ?? process.env.HH_TOKEN;
+    const token = options.token ?? (owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
     const response = await fetchRegistryResponse(archiveUrl, options.json, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
     if (response.status === 404) {
       fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, options.json);
     }
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as { error?: string };
       fail(
-        `Pull failed (401): ${body.error ?? "authorization required"}`,
+        `Pull failed (${response.status}): ${body.error ?? "authorization required"}`,
         EXIT.AUTH,
-        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
         options.json
-      );
-    }
+        );
+      }
     if (response.status === 402) {
       const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as PaymentRequiredBody;
       const price = priceLabel(body);
@@ -311,12 +311,18 @@ program.command("publish")
   .argument("<file>", "source markdown file")
   .option("--name <name>", "harness slug")
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .option("--org <slug>", "publish into an organization namespace")
+  .option("--org-token <token>", "org publish token (defaults to HH_ORG_TOKEN)")
   .option("--json", "print JSON", false)
   .action(async (file: string, options) => {
-    const token = options.token ?? process.env.HH_TOKEN;
+    const orgSlug = options.org ? cleanSetupOrg(options.org) : undefined;
+    if (options.org && !orgSlug) fail("Invalid org slug.", EXIT.VALIDATION, "hh publish workflow.md --org acme --org-token <token>", options.json);
+    const token = orgSlug ? options.orgToken ?? process.env.HH_ORG_TOKEN : options.token ?? process.env.HH_TOKEN;
+    if (orgSlug && !token) fail("Org token required.", EXIT.AUTH, "Set HH_ORG_TOKEN or pass --org-token <token>", options.json);
     const markdown = readFileSync(path.resolve(file), "utf8");
     const name = options.name ?? slugify(path.basename(file, path.extname(file)));
-    const response = await fetch(`${registryUrl}/imports/markdown-to-harness`, {
+    const publishUrl = orgSlug ? `${registryUrl}/orgs/${orgSlug}/imports/markdown-to-harness` : `${registryUrl}/imports/markdown-to-harness`;
+    const response = await fetch(publishUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -326,22 +332,25 @@ program.command("publish")
     });
     const body = await response.json().catch(() => ({})) as { item?: { title?: string; name?: string }; error?: string };
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         fail(
-          `Publish failed (401): ${body.error ?? "authorization required"}`,
+          `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
           EXIT.AUTH,
-          "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+          orgSlug ? "Check HH_ORG_TOKEN and org publish scope." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
           options.json
         );
+      }
+      if (response.status === 404) {
+        fail(`Publish failed (404): ${body.error ?? "org or endpoint not found"}`, EXIT.NOT_FOUND, orgSlug ? "Ask an org admin to enable org publishing." : undefined, options.json);
       }
       fail(`Publish failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, EXIT.GENERAL, undefined, options.json);
     }
     const title = body.item?.title ?? name;
     if (options.json) {
-      writeStdout({ title, name: body.item?.name ?? name, url: "https://onlyharness.com" });
+      writeStdout({ title, name: body.item?.name ?? name, owner: orgSlug ? `@${orgSlug}` : "local", url: orgSlug ? `https://onlyharness.com/@${orgSlug}/${body.item?.name ?? name}` : "https://onlyharness.com" });
       return;
     }
-    writeStdout(`Published ${title} — live on https://onlyharness.com\n`);
+    writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://onlyharness.com\n`);
   });
 
 program.command("doctor")
@@ -853,7 +862,7 @@ async function setupOrgBundle(input: { org: string; out?: string; token?: string
   const configReports: Array<{ path: string }> = [];
   if (!input.dryRun) mkdirSync(out, { recursive: true });
   for (const item of payload.bundle.harnesses ?? []) {
-    const owner = cleanRegistrySegment(item.owner);
+    const owner = cleanRegistryOwner(item.owner);
     const name = cleanRegistrySegment(item.name);
     if (!owner || !name) continue;
     const version = item.version;
@@ -897,6 +906,10 @@ function cleanSetupOrg(value: string): string | undefined {
 
 function cleanRegistrySegment(value: string | undefined): string | undefined {
   return value && /^[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : undefined;
+}
+
+function cleanRegistryOwner(value: string | undefined): string | undefined {
+  return value && /^@?[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : undefined;
 }
 
 function resolveRemoteRef(root: string, json = false): SourceMetadata | PinMetadata {

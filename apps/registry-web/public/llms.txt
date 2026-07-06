@@ -33,6 +33,8 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Returns { profile, referralCode, items }. Use referralCode as checkout ref for creator attribution.
 - Org setup bundle: GET /orgs/{slug}/bundle
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, bundle: { version, harnesses, configs } }. Use `HH_ORG_TOKEN=... hh setup @slug` instead of hand-writing files.
+- Org publish: POST /orgs/{slug}/imports/markdown-to-harness
+  Requires ORGS_ENABLED=true and an org token with publish scope. Use `HH_ORG_TOKEN=... hh publish workflow.md --org slug --name team-workflow`. The generated harness is `visibility: org` and archive/detail require an org token.
 - Events: POST /events
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
 - Leaderboard: GET /leaderboard?limit=10
@@ -86,12 +88,14 @@ For local development from the repo:
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set
+- hh pull @org/{name}       download an org-private harness; sends HH_ORG_TOKEN when set
 - hh run [dir]              run the bundled example locally (sample mode: no LLM calls, no credentials)
 - hh eval [dir]             score the eval cases; writes .harnesshub/results.json
 - hh gate --dir [dir]       enforce the manifest quality gates
 - hh audit-setup            audit local ~/.claude and ./.claude skills for context cost, stale triggers and overlapping descriptions
 - hh extract <skill>        create a private harness.v0.2 scaffold from a local skill, with candidate depends_on and redacted markdown source
 - hh setup @org             install a token-gated team bundle; uses HH_ORG_TOKEN and writes managed setup metadata
+- hh publish --org <slug>   publish markdown into an org-private namespace; uses HH_ORG_TOKEN
 - hh validate [dir]         schema and permission checks (--strict fails on warnings)
 - hh doctor --harness [dir] inspect registry connectivity and a local harness
 - hh pin [dir]              pin a pulled harness to its current registry version

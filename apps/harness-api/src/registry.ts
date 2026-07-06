@@ -7,6 +7,7 @@ import { socialFromCounters, type Counters } from "./social.js";
 export const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
 export const seedRoot = path.join(workspaceRoot, "seed-harnesses");
 export const importRoot = path.join(workspaceRoot, "data/imports");
+export const orgRoot = path.resolve(process.env.HARNESS_ORG_ROOT ?? path.join(workspaceRoot, "data/orgs"));
 export const versionRoot = path.resolve(process.env.HARNESS_VERSION_ROOT ?? path.join(workspaceRoot, "data/harness-versions"));
 
 export const MAX_ARCHIVE_FILE_BYTES = 256 * 1024;
@@ -110,6 +111,9 @@ export function scanHarnessRoot(owner: string, root: string, counters: Map<strin
 export function registryItemFromDir(owner: string, repoPath: string, counters: Map<string, Counters>): RegistryItem | undefined {
   const validation = validateHarnessDir(repoPath);
   if (!validation.manifest) return undefined;
+  if (validation.manifest.visibility === "private") return undefined;
+  if (owner.startsWith("@") && validation.manifest.visibility !== "org") return undefined;
+  if (validation.manifest.visibility === "org" && owner !== `@${validation.manifest.org}`) return undefined;
   const evalResult = readEvalResult(repoPath);
   const updatedAt = statDate(repoPath);
   const security = securityReportFor(repoPath, validation.security, validation.manifest.permissions.network_allowlist);
@@ -122,7 +126,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
   });
   return {
     owner,
-    ownerLabel: owner === "harnesses" ? "onlyharness" : "local",
+    ownerLabel: owner === "harnesses" ? "onlyharness" : owner.startsWith("@") ? owner : "local",
     name: validation.manifest.name,
     title: validation.manifest.title,
     summary: validation.manifest.summary,
@@ -180,12 +184,23 @@ export function socialFromItem(item: RegistryItem) {
 }
 
 export function resolveHarnessPath(owner: string, repo: string): string | undefined {
-  const roots = owner === "local" ? [importRoot] : owner === "harnesses" ? [seedRoot] : [seedRoot, importRoot];
+  const orgSlug = owner.startsWith("@") ? cleanOrgOwner(owner) : undefined;
+  const roots = orgSlug
+    ? [orgImportRoot(orgSlug)]
+    : owner === "local"
+      ? [importRoot]
+      : owner === "harnesses"
+        ? [seedRoot]
+        : [seedRoot, importRoot];
   for (const root of roots) {
     const candidate = path.join(root, repo);
     if (existsSync(path.join(candidate, "harness.yaml"))) return candidate;
   }
   return undefined;
+}
+
+export function orgImportRoot(slug: string): string {
+  return path.join(orgRoot, slug);
 }
 
 export function buildArchive(root: string): { files: ArchiveFile[] } {
@@ -367,5 +382,10 @@ function archiveSnapshotPath(owner: string, repo: string, version: string): stri
 }
 
 function safeSnapshotSegment(value: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$/.test(value);
+  return /^@?[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$/.test(value);
+}
+
+function cleanOrgOwner(owner: string): string | undefined {
+  const slug = owner.replace(/^@/, "");
+  return /^[a-z][a-z0-9_-]{1,48}$/.test(slug) ? slug : undefined;
 }
