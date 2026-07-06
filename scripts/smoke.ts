@@ -585,6 +585,12 @@ try {
     headers: { Authorization: "Bearer smoke-org-token" }
   }).then((response) => response.json()) as { manifest?: { visibility?: string; org?: string } };
   if (orgDetail.manifest?.visibility !== "org" || orgDetail.manifest.org !== "acme") throw new Error(`Org detail did not preserve org visibility: ${JSON.stringify(orgDetail.manifest)}`);
+  const orgSemanticDiff = await fetch("http://127.0.0.1:8799/prs/@acme/acme-private-workflow/1/semantic-diff", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; demo?: { demo?: boolean }; next?: string } }));
+  if (orgSemanticDiff.status !== 501 || orgSemanticDiff.body.code !== "PR_SEMANTIC_DIFF_NOT_AVAILABLE" || orgSemanticDiff.body.demo?.demo !== true || !orgSemanticDiff.body.next?.includes("hh diff")) {
+    throw new Error(`PR semantic diff endpoint must be explicit demo-only 501: ${JSON.stringify(orgSemanticDiff)}`);
+  }
   const orgArchive = await fetch("http://127.0.0.1:8799/repos/@acme/acme-private-workflow/archive", {
     headers: { Authorization: "Bearer smoke-org-token" }
   }).then((response) => response.json()) as { owner?: string; repo?: string; files?: unknown[] };

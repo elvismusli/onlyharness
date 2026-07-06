@@ -653,13 +653,21 @@ app.get("/repos/:owner/:repo/security-report", async (request, reply) => {
 });
 
 app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
-  const { owner, repo } = request.params as { owner: string; repo: string; number: string };
+  const { owner, repo, number } = request.params as { owner: string; repo: string; number: string };
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
   const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "semantic_diff");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
-  return samplePrReview(root);
+  return reply.code(501).send({
+    error: "Real forge PR semantic diff is not available yet",
+    code: "PR_SEMANTIC_DIFF_NOT_AVAILABLE",
+    owner,
+    repo,
+    number,
+    demo: samplePrReview(root),
+    next: "Use `hh diff --base-dir <base> --head-dir <head>` locally, or inspect the Maintainer Review demo in the harness detail payload."
+  });
 });
 
 app.post("/mcp", async (request, reply) => {
