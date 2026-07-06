@@ -46,6 +46,8 @@ curl -fsS "$BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource"
 curl -fsSI "$BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
 index_html="$(curl -fsS "$BASE_URL/")"
 [[ "$index_html" == *"OnlyHarness"* ]]
+checkout_html="$(curl -fsS "$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher&version=0.2.0&provider_ref=manual_smoke")"
+[[ "$checkout_html" == *"OnlyHarness"* ]]
 web_asset="$(node -e 'const html = process.argv[1] ?? ""; const match = html.match(/src="(\/assets\/[^"]+\.js)"/); if (!match) process.exit(1); console.log(match[1]);' "$index_html")"
 test -n "$web_asset"
 web_js="$(curl -fsS "$BASE_URL$web_asset")"

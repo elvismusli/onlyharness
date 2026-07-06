@@ -70,6 +70,7 @@ check(envExample.includes("ORGS_ENABLED=false"), "production.env.example must ke
 check(gitignore.split("\n").includes("infra/production.env"), "infra/production.env must stay gitignored");
 check(smokeCompose.includes('VITE_HARNESS_API_URL="${VITE_HARNESS_API_URL:-$BASE_URL/api}"'), "production compose smoke must build the web UI against the local smoke API");
 check(smokeCompose.includes('SMOKE_AUTH_RATE_LIMIT_OK="${SMOKE_AUTH_RATE_LIMIT_OK:-1}"'), "production compose smoke must soft-skip external Supabase auth rate limits by default");
+check(smokeCompose.includes('$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "production compose smoke must verify checkout deep links fall back to the SPA");
 
 console.log("Production config check passed: compose env, example env, and smoke API routing are in sync");
 
