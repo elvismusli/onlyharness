@@ -142,6 +142,31 @@ export const openapi = {
         }
       }
     },
+    "/billing/receipt": {
+      get: {
+        summary: "Read a checkout receipt",
+        description: "Auth required. Returns the caller's own purchase receipt by provider_ref without mutating payment or entitlement state.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "provider_ref",
+            in: "query",
+            required: true,
+            schema: { type: "string" },
+            description: "Provider reference returned by checkout, for example manual_<uuid>."
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Purchase receipt",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PurchaseReceipt" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/entitlements/check": {
       get: {
         summary: "Check whether a subject can access a harness",
@@ -718,6 +743,41 @@ export const openapi = {
           next: { type: "string" }
         },
         required: ["provider", "provider_ref", "checkout_url", "status", "owner", "repo", "version", "pricing", "next"]
+      },
+      PurchaseReceipt: {
+        type: "object",
+        properties: {
+          receipt_id: { type: "string" },
+          purchase_id: { type: "string" },
+          provider: { type: "string", enum: ["manual", "x402"] },
+          provider_ref: { type: "string" },
+          status: { type: "string", enum: ["pending", "paid"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          amount_usd: { type: "number" },
+          currency: { type: "string" },
+          subject: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["user", "wallet", "org"] },
+              id: { type: "string" }
+            },
+            required: ["type", "id"]
+          },
+          created_at: { type: "string", format: "date-time" },
+          updated_at: { type: "string", format: "date-time" },
+          entitlement: {
+            type: "object",
+            properties: {
+              granted: { type: "boolean" },
+              kind: { type: "string", enum: ["one_time"] },
+              expires_at: { type: ["string", "null"], format: "date-time" }
+            },
+            required: ["granted"]
+          }
+        },
+        required: ["receipt_id", "purchase_id", "provider", "provider_ref", "status", "owner", "repo", "version", "amount_usd", "currency", "subject", "created_at", "updated_at", "entitlement"]
       },
       PaymentWebhookResult: {
         type: "object",

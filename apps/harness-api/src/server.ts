@@ -14,7 +14,7 @@ import { createCommunityInviteCode, verifyCommunityInviteCode } from "./communit
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
-import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, settleX402Purchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
+import { checkEntitlement, createCheckoutSession, readPurchaseReceipt, requireArchivePaymentAccess, settlePaymentWebhook, settleX402Purchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
@@ -43,6 +43,10 @@ type CheckoutRequest = {
   repo?: string;
   version?: string;
   ref?: string;
+};
+
+type ReceiptQuery = {
+  provider_ref?: string;
 };
 
 type CommunityInviteRequest = {
@@ -224,6 +228,18 @@ app.post("/billing/checkout", async (request, reply) => {
   if ("error" in session) return reply.code(session.status).send({ error: session.error });
   await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(user.id), target: "billing", client: "api" });
   return reply.code(201).send(session);
+});
+
+app.get("/billing/receipt", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const query = request.query as ReceiptQuery;
+  const receipt = await readPurchaseReceipt({
+    providerRef: query.provider_ref ?? "",
+    userId: user.id
+  });
+  if ("error" in receipt) return reply.code(receipt.status).send({ error: receipt.error });
+  return receipt;
 });
 
 app.get("/entitlements/check", async (request, reply) => {

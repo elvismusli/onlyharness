@@ -26,6 +26,8 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Directory shelf entries use owner `directories` and manifest content.type=directory. They are link-only discovery indexes: search results expose `open <url>`, and archive returns HTTP 409 { code: "DIRECTORY_LINK_ONLY", url, next } instead of files.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
+- Receipt: GET /billing/receipt?provider_ref={ref}
+  Auth required. Returns the caller's own pending/paid purchase status, amount, harness ref and entitlement flag. Read-only only: this endpoint must not settle payments or grant access.
 - Entitlement check: GET /entitlements/check?subject=user:{id}&harness={owner}/{name}&version={optional semver}
   Bot-facing read-only decision. Requires ORGS_ENABLED=true and Authorization: Bearer {org token with entitlements:read}. Response includes { entitled, status } and never returns archive files.
 - Community invite code: POST /community/invite-code

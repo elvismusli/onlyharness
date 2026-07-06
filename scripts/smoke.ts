@@ -76,7 +76,7 @@ try {
     items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
@@ -162,6 +162,17 @@ try {
   if (!checkout.provider_ref || checkout.status !== "pending" || !checkout.checkout_url?.includes(`ref=${profile.referral_code}`)) {
     throw new Error(`Checkout session failed: ${JSON.stringify(checkout)}`);
   }
+  const pendingReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(checkout.provider_ref)}`).then((response) => response.json()) as {
+    status?: string;
+    owner?: string;
+    repo?: string;
+    version?: string;
+    amount_usd?: number;
+    entitlement?: { granted?: boolean };
+  };
+  if (pendingReceipt.status !== "pending" || pendingReceipt.owner !== "local" || pendingReceipt.repo !== "smoke-paid-harness" || pendingReceipt.version !== "0.1.0" || pendingReceipt.amount_usd !== 9 || pendingReceipt.entitlement?.granted !== false) {
+    throw new Error(`Pending receipt is invalid: ${JSON.stringify(pendingReceipt)}`);
+  }
   const paymentState = JSON.parse(readFileSync(path.join(smokeDataRoot, "payments.json"), "utf8")) as {
     purchases?: Array<{ provider_ref?: string; referral_code?: string; creator_user_id?: string | null }>;
   };
@@ -181,6 +192,13 @@ try {
     body: JSON.stringify({ provider: "manual", provider_ref: checkout.provider_ref, status: "paid" })
   }).then((response) => response.json()) as { ok?: boolean; status?: string };
   if (!webhook.ok || webhook.status !== "paid") throw new Error(`Payment webhook failed: ${JSON.stringify(webhook)}`);
+  const paidReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(checkout.provider_ref)}`).then((response) => response.json()) as {
+    status?: string;
+    entitlement?: { granted?: boolean; kind?: string; expires_at?: string | null };
+  };
+  if (paidReceipt.status !== "paid" || paidReceipt.entitlement?.granted !== true || paidReceipt.entitlement.kind !== "one_time" || paidReceipt.entitlement.expires_at !== null) {
+    throw new Error(`Paid receipt is invalid: ${JSON.stringify(paidReceipt)}`);
+  }
   const idempotentWebhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
@@ -419,7 +437,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

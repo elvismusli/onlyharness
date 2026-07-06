@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCheckoutSession, entitlementRowsAllow, settlePaymentWebhook } from "../src/payments.ts";
+import { createCheckoutSession, entitlementRowsAllow, readPurchaseReceipt, settlePaymentWebhook } from "../src/payments.ts";
 
 test("entitlementRowsAllow accepts repo-wide and matching version entitlements", () => {
   const now = Date.parse("2026-07-06T00:00:00Z");
@@ -56,4 +56,15 @@ test("createCheckoutSession requires PAYMENTS_ENABLED before creating purchases"
     if (previous === undefined) delete process.env.PAYMENTS_ENABLED;
     else process.env.PAYMENTS_ENABLED = previous;
   }
+});
+
+test("readPurchaseReceipt validates provider_ref and fails closed without a payment store", async () => {
+  assert.deepEqual(await readPurchaseReceipt({ providerRef: "", userId: "user-1" }), {
+    status: 400,
+    error: "provider_ref is required"
+  });
+  assert.deepEqual(await readPurchaseReceipt({ providerRef: "manual_123", userId: "user-1" }), {
+    status: 503,
+    error: "Payment store unavailable"
+  });
 });

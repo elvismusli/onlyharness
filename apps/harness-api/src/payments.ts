@@ -123,6 +123,30 @@ export type PaymentWebhookResult =
   | { ok: true; status: "paid" | "already_paid"; owner: string; repo: string; version: string; subject_id: string; purchase_id?: string }
   | { ok: false; status: number; error: string };
 
+export type PurchaseReceipt = {
+  receipt_id: string;
+  purchase_id: string;
+  provider: "manual" | "x402";
+  provider_ref: string;
+  status: "pending" | "paid";
+  owner: string;
+  repo: string;
+  version: string;
+  amount_usd: number;
+  currency: string;
+  subject: {
+    type: "user" | "wallet" | "org";
+    id: string;
+  };
+  created_at: string;
+  updated_at: string;
+  entitlement: {
+    granted: boolean;
+    kind?: "one_time";
+    expires_at?: string | null;
+  };
+};
+
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const checkoutBaseUrl = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://onlyharness.com/checkout";
@@ -290,6 +314,18 @@ export async function settleX402Purchase(input: X402SettlementInput): Promise<Pa
   } satisfies StoredPurchase;
   if (supabaseUrl && supabaseRestKey) return settleSupabaseX402Purchase(purchase);
   return settleLocalX402Purchase(purchase);
+}
+
+export async function readPurchaseReceipt(input: { providerRef: string; userId: string }): Promise<PurchaseReceipt | { status: number; error: string }> {
+  const providerRef = input.providerRef.trim();
+  if (!providerRef) return { status: 400, error: "provider_ref is required" };
+  if (supabaseUrl && supabaseRestKey) return readSupabasePurchaseReceipt(providerRef, input.userId);
+  if (!localPaymentStorePath) return { status: 503, error: "Payment store unavailable" };
+  const state = readLocalPaymentState();
+  const purchase = state.purchases.find((row) => row.provider_ref === providerRef && row.subject_type === "user" && row.subject_id === input.userId);
+  if (!purchase) return { status: 404, error: "Purchase receipt not found" };
+  const entitlement = state.entitlements.find((row) => row.purchase_id === purchase.id || sameEntitlement(row, purchase));
+  return receiptFromPurchase(purchase, entitlement);
 }
 
 async function fetchCanonicalEntitlements(input: PaymentAccessInput): Promise<EntitlementRow[] | undefined> {
@@ -559,6 +595,95 @@ async function fetchSupabasePurchase(provider: StoredPurchase["provider"], provi
   } catch {
     return undefined;
   }
+}
+
+async function readSupabasePurchaseReceipt(providerRef: string, userId: string): Promise<PurchaseReceipt | { status: number; error: string }> {
+  if (!isUuid(userId)) return { status: 404, error: "Purchase receipt not found" };
+  const params = new URLSearchParams({
+    select: "id,subject_type,subject_id,owner,repo,version,amount_usd,currency,provider,provider_ref,status,created_at,updated_at",
+    provider_ref: `eq.${providerRef}`,
+    subject_type: "eq.user",
+    subject_id: `eq.${userId}`,
+    limit: "1"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/purchases?${params.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return { status: 502, error: `Purchase receipt lookup failed: HTTP ${response.status}` };
+    const purchases = await response.json() as StoredPurchase[];
+    const purchase = purchases[0];
+    if (!purchase) return { status: 404, error: "Purchase receipt not found" };
+    const entitlement = await fetchSupabaseEntitlementForPurchase(purchase);
+    if (entitlement === undefined) return { status: 502, error: "Purchase entitlement lookup failed" };
+    return receiptFromPurchase(purchase, entitlement ?? undefined);
+  } catch {
+    return { status: 503, error: "Payment store unavailable" };
+  }
+}
+
+async function fetchSupabaseEntitlementForPurchase(purchase: StoredPurchase): Promise<StoredEntitlement | null | undefined> {
+  const byPurchase = new URLSearchParams({
+    select: "id,subject_type,subject_id,owner,repo,version,kind,purchase_id,expires_at,created_at",
+    purchase_id: `eq.${purchase.id}`,
+    limit: "1"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/entitlements?${byPurchase.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return undefined;
+    const rows = await response.json() as StoredEntitlement[];
+    if (rows[0]) return rows[0];
+  } catch {
+    return undefined;
+  }
+
+  const bySubject = new URLSearchParams({
+    select: "id,subject_type,subject_id,owner,repo,version,kind,purchase_id,expires_at,created_at",
+    subject_type: `eq.${purchase.subject_type}`,
+    subject_id: `eq.${purchase.subject_id}`,
+    owner: `eq.${purchase.owner}`,
+    repo: `eq.${purchase.repo}`,
+    version: `eq.${purchase.version}`,
+    limit: "1"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/entitlements?${bySubject.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return undefined;
+    const rows = await response.json() as StoredEntitlement[];
+    return rows[0] ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
+function receiptFromPurchase(purchase: StoredPurchase, entitlement: StoredEntitlement | undefined): PurchaseReceipt {
+  return {
+    receipt_id: `oh_receipt_${purchase.id}`,
+    purchase_id: purchase.id,
+    provider: purchase.provider,
+    provider_ref: purchase.provider_ref,
+    status: purchase.status,
+    owner: purchase.owner,
+    repo: purchase.repo,
+    version: purchase.version,
+    amount_usd: purchase.amount_usd,
+    currency: purchase.currency,
+    subject: {
+      type: purchase.subject_type,
+      id: purchase.subject_id
+    },
+    created_at: purchase.created_at,
+    updated_at: purchase.updated_at,
+    entitlement: {
+      granted: purchase.status === "paid" && Boolean(entitlement),
+      ...(entitlement?.kind ? { kind: entitlement.kind } : {}),
+      ...(entitlement ? { expires_at: entitlement.expires_at ?? null } : {})
+    }
+  };
 }
 
 function settleLocalX402Purchase(purchase: StoredPurchase): PaymentWebhookResult {

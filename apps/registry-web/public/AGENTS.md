@@ -68,6 +68,7 @@ Core endpoints:
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
+| GET | `/billing/receipt?provider_ref={ref}` | Authenticated buyer receipt; read-only, never grants entitlement by itself |
 | GET | `/entitlements/check?subject={type:id}&harness={owner/name}` | Bot-facing entitlement check; requires org token with `entitlements:read` scope |
 | POST | `/community/invite-code` | Authenticated buyer gets a short-lived signed community gate code after entitlement is verified |
 | POST | `/community/verify-code` | Bot verifies a community gate code with a scoped org token before granting Discord/Telegram access |
@@ -91,6 +92,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
 - Paid `hh install`/`hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps. `hh install --pay` and `hh pull --pay` may sign x402 with `HH_WALLET_KEY`/`EVM_PRIVATE_KEY`, but must enforce `HH_MAX_PAY_USD` before signing; API archive delivery requires facilitator verify/settle via `X402_FACILITATOR_URL` before wallet entitlement is written.
+- `/billing/receipt` is read-only buyer evidence keyed by `provider_ref`; it must never create purchases, settle providers, or grant entitlements.
 - Payout tooling may create only draft/manual payout ledgers (`payout_runs`, `payout_items`); it must not call payout providers or mark ledger items paid.
 - `hh suggest` is the agent-first autopilot path: search, detail trust summary, optional `--apply --out <dir>`. `--apply` must use the same archive semantics as `hh pull`, including paid 402 and directory 409.
 - `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed.
