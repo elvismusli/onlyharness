@@ -177,6 +177,65 @@ type SyncReport = {
   imported: Array<{ path: string; name: string; owner: string; title: string; snapshotVersion?: string }>;
   skipped: SyncSkipped[];
 };
+type BenchmarkRole = "candidate" | "analog";
+type BenchmarkSuiteEntry = {
+  name?: string;
+  label?: string;
+  path?: string;
+  role?: BenchmarkRole;
+  notes?: string;
+};
+type BenchmarkSuiteFile = {
+  category?: string;
+  title?: string;
+  description?: string;
+  min_score?: number;
+  harnesses?: BenchmarkSuiteEntry[];
+  candidates?: BenchmarkSuiteEntry[];
+  analogs?: BenchmarkSuiteEntry[];
+};
+type BenchmarkRow = {
+  rank: number;
+  role: BenchmarkRole;
+  name: string;
+  label: string;
+  path: string;
+  valid: boolean;
+  score: number;
+  status: string;
+  verified: boolean;
+  verificationStatus: string;
+  riskScore: number;
+  riskTier: string;
+  costUsd: number;
+  cases: number;
+  aboveMinScore: boolean;
+  notes?: string;
+  errors: string[];
+};
+type BenchmarkResult = {
+  runner: "harnesshub-category-benchmark";
+  suite: string;
+  category: string;
+  title: string;
+  description?: string;
+  minScore: number;
+  status: "passed" | "failed" | "unverified";
+  verificationStatus: string;
+  generatedAt: string;
+  summary: {
+    harnesses: number;
+    candidates: number;
+    analogs: number;
+    verified: number;
+    invalid: number;
+    topCandidate?: Pick<BenchmarkRow, "name" | "label" | "score" | "riskScore">;
+    topAnalog?: Pick<BenchmarkRow, "name" | "label" | "score" | "riskScore">;
+    candidateDeltaVsAnalog?: number;
+  };
+  rows: BenchmarkRow[];
+  notes: string[];
+};
 
 export const EXIT = {
   OK: 0,
@@ -490,6 +549,18 @@ program.command("audit-setup")
       return;
     }
     writeStdout(output);
+  });
+
+program.command("benchmark")
+  .description("run a local category benchmark suite across candidate and analog harnesses")
+  .argument("<suite>", "benchmark suite YAML")
+  .option("--json", "print JSON", false)
+  .option("--out <path>", "write report to a file")
+  .action((suite: string, options) => {
+    const result = runBenchmarkSuite(path.resolve(suite), options.json);
+    const output = options.json ? `${JSON.stringify(result, null, 2)}\n` : benchmarkText(result);
+    writeOutput(output, options.out);
+    process.exit(result.status === "passed" ? EXIT.OK : EXIT.VALIDATION);
   });
 
 program.command("pin")
@@ -1627,6 +1698,173 @@ function setupAuditText(audit: SetupAudit): string {
   lines.push(...audit.recommendations.map((item) => `- ${item}`));
   lines.push("", "Share card:", audit.shareCard, "");
   return lines.join("\n");
+}
+
+function runBenchmarkSuite(suitePath: string, json = false): BenchmarkResult {
+  if (!existsSync(suitePath)) fail(`Benchmark suite not found: ${suitePath}`, EXIT.NOT_FOUND, "hh benchmark benchmarks/research-discovery.yaml", json);
+  const suite = (YAML.parse(readFileSync(suitePath, "utf8")) ?? {}) as BenchmarkSuiteFile;
+  const suiteDir = path.dirname(suitePath);
+  const minScore = benchmarkMinScore(suite.min_score);
+  const entries = benchmarkEntries(suite);
+  const notes = [
+    "Local category benchmark runner. It compares declared eval case scores from harness repositories; it does not call an LLM or independently verify output quality.",
+    "Use this for relative smoke checks until Owner-authored benchmark suites add externally measured scores."
+  ];
+  const rows = entries.map((entry, index) => benchmarkRow(entry, index, suiteDir, minScore));
+  rows.sort((left, right) => right.score - left.score || left.riskScore - right.riskScore || left.label.localeCompare(right.label));
+  rows.forEach((row, index) => {
+    row.rank = index + 1;
+  });
+  const candidates = rows.filter((row) => row.role === "candidate");
+  const analogs = rows.filter((row) => row.role === "analog");
+  const topCandidate = candidates[0] ? benchmarkSummaryRow(candidates[0]) : undefined;
+  const topAnalog = analogs[0] ? benchmarkSummaryRow(analogs[0]) : undefined;
+  const invalid = rows.filter((row) => !row.valid).length;
+  const unverified = rows.filter((row) => !row.verified).length;
+  let status: BenchmarkResult["status"] = "passed";
+  if (!rows.length || !candidates.length || invalid || !candidates.some((row) => row.aboveMinScore)) status = "failed";
+  else if (unverified) status = "unverified";
+  const candidateDeltaVsAnalog = topCandidate && topAnalog
+    ? Number((topCandidate.score - topAnalog.score).toFixed(3))
+    : undefined;
+  return {
+    runner: "harnesshub-category-benchmark",
+    suite: path.resolve(suitePath),
+    category: suite.category ?? path.basename(suitePath, path.extname(suitePath)),
+    title: suite.title ?? titleize(path.basename(suitePath, path.extname(suitePath))),
+    ...(suite.description ? { description: suite.description } : {}),
+    minScore,
+    status,
+    verificationStatus: unverified ? "unverified_or_missing_case_scores" : "declared_case_scores",
+    generatedAt: new Date().toISOString(),
+    summary: {
+      harnesses: rows.length,
+      candidates: candidates.length,
+      analogs: analogs.length,
+      verified: rows.filter((row) => row.verified).length,
+      invalid,
+      ...(topCandidate ? { topCandidate } : {}),
+      ...(topAnalog ? { topAnalog } : {}),
+      ...(candidateDeltaVsAnalog !== undefined ? { candidateDeltaVsAnalog } : {})
+    },
+    rows,
+    notes
+  };
+}
+
+function benchmarkEntries(suite: BenchmarkSuiteFile): BenchmarkSuiteEntry[] {
+  return [
+    ...benchmarkEntryList(suite.harnesses, "candidate"),
+    ...benchmarkEntryList(suite.candidates, "candidate"),
+    ...benchmarkEntryList(suite.analogs, "analog")
+  ];
+}
+
+function benchmarkEntryList(entries: BenchmarkSuiteEntry[] | undefined, role: BenchmarkRole): BenchmarkSuiteEntry[] {
+  return (entries ?? []).map((entry) => ({
+    ...entry,
+    role: entry.role ?? role
+  }));
+}
+
+function benchmarkMinScore(value: unknown): number {
+  const score = typeof value === "number" && Number.isFinite(value) ? value : 0.8;
+  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
+}
+
+function benchmarkRow(entry: BenchmarkSuiteEntry, index: number, suiteDir: string, minScore: number): BenchmarkRow {
+  const role = entry.role ?? "candidate";
+  if (!entry.path) {
+    return {
+      rank: index + 1,
+      role,
+      name: entry.name ?? `missing-path-${index + 1}`,
+      label: entry.label ?? entry.name ?? `missing-path-${index + 1}`,
+      path: "",
+      valid: false,
+      score: 0,
+      status: "invalid",
+      verified: false,
+      verificationStatus: "missing_path",
+      riskScore: 100,
+      riskTier: "UNKNOWN",
+      costUsd: 0,
+      cases: 0,
+      aboveMinScore: false,
+      ...(entry.notes ? { notes: entry.notes } : {}),
+      errors: ["benchmark entry requires path"]
+    };
+  }
+  const root = path.resolve(suiteDir, entry.path);
+  const validation = validateHarnessDir(root);
+  const result = runLocalEval(root);
+  const name = entry.name ?? validation.manifest?.name ?? path.basename(root);
+  const errors = [
+    ...validation.issues.filter((issue) => issue.severity === "error").map((issue) => `${issue.path}: ${issue.message}`),
+    ...validation.risk.blocking
+  ];
+  const valid = Boolean(validation.valid && validation.manifest);
+  return {
+    rank: index + 1,
+    role,
+    name,
+    label: entry.label ?? validation.manifest?.title ?? titleize(name),
+    path: root,
+    valid,
+    score: result.score,
+    status: result.status,
+    verified: result.verified,
+    verificationStatus: result.verification_status,
+    riskScore: validation.risk.score,
+    riskTier: validation.risk.tier,
+    costUsd: result.cost_usd,
+    cases: result.cases.length,
+    aboveMinScore: result.verified && result.score >= minScore,
+    ...(entry.notes ? { notes: entry.notes } : {}),
+    errors
+  };
+}
+
+function benchmarkSummaryRow(row: BenchmarkRow): Pick<BenchmarkRow, "name" | "label" | "score" | "riskScore"> {
+  return {
+    name: row.name,
+    label: row.label,
+    score: row.score,
+    riskScore: row.riskScore
+  };
+}
+
+function benchmarkText(result: BenchmarkResult): string {
+  const lines = [
+    `OnlyHarness benchmark: ${result.title}`,
+    `Category: ${result.category}`,
+    `Status: ${result.status}`,
+    `Runner: ${result.runner} (${result.verificationStatus})`,
+    `Min candidate score: ${result.minScore}`,
+    `Harnesses: ${result.summary.harnesses} (${result.summary.candidates} candidates, ${result.summary.analogs} analogs)`,
+    ""
+  ];
+  if (result.summary.topCandidate) {
+    lines.push(`Top candidate: ${result.summary.topCandidate.label} (${result.summary.topCandidate.score})`);
+  }
+  if (result.summary.topAnalog) {
+    lines.push(`Top analog: ${result.summary.topAnalog.label} (${result.summary.topAnalog.score})`);
+  }
+  if (result.summary.candidateDeltaVsAnalog !== undefined) {
+    lines.push(`Candidate delta vs analog: ${signedNumber(result.summary.candidateDeltaVsAnalog)}`);
+  }
+  lines.push("", "Ranking:");
+  for (const row of result.rows) {
+    lines.push(`${row.rank}. [${row.role}] ${row.label} - score ${row.score}, risk ${row.riskScore} ${row.riskTier}, ${row.verified ? "verified" : row.verificationStatus}`);
+    if (row.errors.length) lines.push(`   errors: ${row.errors.join("; ")}`);
+  }
+  lines.push("", "Notes:");
+  lines.push(...result.notes.map((note) => `- ${note}`), "");
+  return lines.join("\n");
+}
+
+function signedNumber(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function contextFiles(root: string): string[] {

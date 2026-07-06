@@ -10,6 +10,7 @@ npx onlyharness eval deep-market-researcher
 npx onlyharness gate --dir deep-market-researcher
 npx onlyharness update deep-market-researcher --diff
 npx onlyharness audit-setup
+npx onlyharness benchmark benchmarks/research-discovery.yaml --json
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme
 HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name team-workflow
@@ -57,6 +58,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh gate` enforces `quality_gates` from `harness.yaml`.
 - `hh doctor --harness [dir]` checks a local harness plus registry connectivity.
 - `hh audit-setup` scans local `~/.claude` and `./.claude` skills for trigger conflicts, stale skills and estimated markdown context cost. It stays local and emits a sanitized share card.
+- `hh benchmark <suite.yaml>` runs a local category benchmark suite across candidate and analog harness paths. It compares declared eval case scores and exits 3 for invalid, unverified, or below-threshold candidate suites.
 - `hh extract <skill-dir|SKILL.md>` creates a private `harness.v0.2` scaffold from local skill markdown, infers candidate `depends_on`, and redacts obvious token-shaped secrets.
 - `hh setup @org` installs a token-gated team bundle with pinned harnesses and config snippets; repeated runs of the same bundle are idempotent.
 - `hh publish --org <slug>` uses `HH_ORG_TOKEN` and publishes a private org harness.

@@ -9,6 +9,7 @@ import YAML from "yaml";
 
 const HH = new URL("../dist/hh.mjs", import.meta.url).pathname;
 const seedHarness = path.resolve(import.meta.dirname, "../../../seed-harnesses/deep-market-researcher");
+const gtmHarness = path.resolve(import.meta.dirname, "../../../seed-harnesses/gtm-research-sprint");
 
 let server: Server;
 let registryUrl = "";
@@ -651,6 +652,50 @@ test("audit-setup reports local skill conflicts, stale skills and a share card w
     await rm(home, { recursive: true, force: true });
     await rm(project, { recursive: true, force: true });
   }
+});
+
+test("benchmark compares candidate harnesses against analogs", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-benchmark-"));
+  const suite = path.join(root, "suite.yaml");
+  try {
+    await writeFile(suite, YAML.stringify({
+      category: "research",
+      title: "Research Benchmark",
+      min_score: 0.82,
+      candidates: [{ name: "deep-market-researcher", path: seedHarness }],
+      analogs: [{ name: "gtm-research-sprint", path: gtmHarness }]
+    }));
+
+    const result = await runCli(["benchmark", suite, "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as {
+      runner?: string;
+      status?: string;
+      summary?: { candidates?: number; analogs?: number; candidateDeltaVsAnalog?: number };
+      rows?: Array<{ role?: string; name?: string; score?: number; verified?: boolean }>;
+    };
+    assert.equal(body.runner, "harnesshub-category-benchmark");
+    assert.equal(body.status, "passed");
+    assert.equal(body.summary?.candidates, 1);
+    assert.equal(body.summary?.analogs, 1);
+    assert.equal(body.summary?.candidateDeltaVsAnalog, 0);
+    assert.ok(body.rows?.some((row) => row.role === "candidate" && row.name === "deep-market-researcher" && row.verified === true && row.score === 0.88));
+    assert.ok(body.rows?.some((row) => row.role === "analog" && row.name === "gtm-research-sprint" && row.verified === true && row.score === 0.88));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("benchmark missing suite returns JSON not found guidance", async () => {
+  const missing = path.join(os.tmpdir(), `hh-missing-benchmark-${Date.now()}.yaml`);
+  const result = await runCli(["benchmark", missing, "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 4);
+  const body = JSON.parse(result.stderr) as { error?: string; code?: number; next?: string };
+  assert.match(body.error ?? "", /Benchmark suite not found/);
+  assert.equal(body.code, 4);
+  assert.match(body.next ?? "", /hh benchmark/);
 });
 
 test("extract creates a valid harness with inferred depends_on and redacted source markdown", async () => {

@@ -1,0 +1,18 @@
+category: research
+title: Research Discovery Local Benchmark
+description: Local declared-score comparison for research-style harnesses. This is an infrastructure smoke suite, not an externally measured benchmark.
+min_score: 0.82
+candidates:
+  - name: deep-market-researcher
+    label: Deep Market Researcher
+    path: ../seed-harnesses/deep-market-researcher
+    notes: Multi-stage market research, synthesis and critique flow.
+analogs:
+  - name: gtm-research-sprint
+    label: GTM Research Sprint
+    path: ../seed-harnesses/gtm-research-sprint
+    notes: Adjacent account research and outreach hypothesis flow.
+  - name: founder-decision-memo
+    label: Founder Decision Memo
+    path: ../seed-harnesses/founder-decision-memo
+    notes: Adjacent strategy memo harness for score/risk comparison.
