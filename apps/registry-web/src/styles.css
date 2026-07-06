@@ -1031,6 +1031,22 @@ button.status-plate { cursor: pointer; }
 
 .logon-note { font-size: 11px; color: #404040; margin: 0; }
 
+.linklike {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #000080;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linklike:disabled {
+  color: #808080;
+  cursor: default;
+}
+
 .logon-status { font-size: 12px; font-weight: bold; margin: 0; }
 
 /* ---------- desktop easter eggs ---------- */

@@ -45,7 +45,7 @@ if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
     exit 1
   fi
   upstream_users="$(ss -ltnp 2>/dev/null | awk -v port=":$ONLYHARNESS_WEB_PORT" '$4 ~ port { print }' || true)"
-  existing_onlyharness="$(docker ps --format '{{.Names}} {{.Ports}}' | grep -E '^onlyharness-web-1 ' || true)"
+  existing_onlyharness="$(docker ps --filter 'label=com.docker.compose.service=web' --format '{{.Names}} {{.Ports}}' | grep -F "127.0.0.1:${ONLYHARNESS_WEB_PORT}->80/tcp" || true)"
   if [[ -n "$upstream_users" && -z "$existing_onlyharness" ]]; then
     echo "Port $ONLYHARNESS_WEB_PORT is already used by another process; choose ONLYHARNESS_WEB_PORT." >&2
     echo "$upstream_users" >&2
@@ -54,7 +54,7 @@ if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
 else
   port_users="$(ss -ltnp '( sport = :80 or sport = :443 )' 2>/dev/null | tail -n +2 || true)"
   if [[ -n "$port_users" ]]; then
-    existing_onlyharness="$(docker ps --format '{{.Names}} {{.Ports}}' | grep -E '^onlyharness-web-1 ' || true)"
+    existing_onlyharness="$(docker ps --filter 'label=com.docker.compose.service=web' --format '{{.Names}} {{.Ports}}' | grep -E '(^|, )0\\.0\\.0\\.0:80->80/tcp|(^|, ):::80->80/tcp|(^|, )80/tcp' || true)"
     if [[ -n "$existing_onlyharness" ]]; then
       :
     elif grep -qi 'caddy' <<<"$port_users"; then

@@ -46,7 +46,7 @@ curl -fsS "$BASE_URL/" | grep -q "OnlyHarness"
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
-  SMOKE_API_URL="$BASE_URL/api" npm run smoke:prod-auth --silent
+  SMOKE_API_URL="$BASE_URL/api" SMOKE_EXPECT_EMAIL_CONFIRMATION="${SMOKE_EXPECT_EMAIL_CONFIRMATION:-1}" npm run smoke:prod-auth --silent
 )
 
 echo "Production compose smoke passed at $BASE_URL"

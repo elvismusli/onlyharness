@@ -388,6 +388,21 @@ function App() {
     flashMsg(`Logged on as ${email}`);
   }
 
+  async function resendConfirmation(email: string) {
+    if (!supabase) return setAuthStatus("Auth backend is not configured.");
+    if (!email) return setAuthStatus("Email is required.");
+    setAuthBusy(true);
+    setAuthStatus("Sending confirmation email...");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: window.location.origin }
+    });
+    setAuthBusy(false);
+    if (error) return setAuthStatus(error.message);
+    setAuthStatus("Confirmation email sent. Check your inbox, then log on.");
+  }
+
   async function signUp(name: string, email: string, password: string) {
     if (!supabase) return setAuthStatus("Auth backend is not configured.");
     if (!email || !password) return setAuthStatus("Email and password are required.");
@@ -396,7 +411,10 @@ function App() {
     const { error, data } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { display_name: name || email.split("@")[0] } }
+      options: {
+        data: { display_name: name || email.split("@")[0] },
+        emailRedirectTo: window.location.origin
+      }
     });
     setAuthBusy(false);
     if (error) return setAuthStatus(error.message);
@@ -655,6 +673,7 @@ function App() {
           configured={Boolean(supabase)}
           onSignIn={signIn}
           onSignUp={signUp}
+          onResendConfirmation={resendConfirmation}
           onClose={() => setLogon({ open: false, note: "" })}
         />
       )}

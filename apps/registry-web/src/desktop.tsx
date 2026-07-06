@@ -157,13 +157,14 @@ export function StartMenu({ items, onClose }: { items: StartEntry[]; onClose: ()
 
 /* ---------- Log On dialog (plain tone: credentials are a no-joke zone) ---------- */
 
-export function LogonDialog({ note, status, busy, configured, onSignIn, onSignUp, onClose }: {
+export function LogonDialog({ note, status, busy, configured, onSignIn, onSignUp, onResendConfirmation, onClose }: {
   note: string;
   status: string;
   busy: boolean;
   configured: boolean;
   onSignIn: (email: string, password: string) => void;
   onSignUp: (name: string, email: string, password: string) => void;
+  onResendConfirmation: (email: string) => void;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -218,6 +219,13 @@ export function LogonDialog({ note, status, busy, configured, onSignIn, onSignUp
         </div>
         {!configured && <p className="logon-note">Auth backend is not configured in this environment.</p>}
         {status && <p className="logon-status">{status}</p>}
+        {mode === "in" && (
+          <p className="logon-note">
+            <button className="linklike" type="button" disabled={busy || !configured} onClick={() => onResendConfirmation(email)}>
+              Resend confirmation email
+            </button>
+          </p>
+        )}
         <p className="logon-note">Your account stores stars, forks, runs and thread posts. Nothing else.</p>
       </div>
     </Dialog>

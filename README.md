@@ -94,7 +94,7 @@ scripts/smoke-production-compose.sh
 set -a
 . infra/production.env
 set +a
-SMOKE_API_URL=https://onlyharness.com/api npm run smoke:prod-auth
+SMOKE_API_URL=https://onlyharness.com/api SMOKE_EXPECT_EMAIL_CONFIRMATION=1 npm run smoke:prod-auth
 ```
 
 ## Verification
@@ -108,7 +108,7 @@ npm run smoke
 scripts/smoke-production-compose.sh
 ```
 
-The production auth smoke creates a QA Supabase user, obtains an access token, and publishes a harness through the public API.
+The production auth smoke creates a QA Supabase user and verifies that email confirmation blocks immediate sign-in. To test authenticated publish with a pre-confirmed token, pass `HH_TOKEN` to the CLI publish flow or run the API publish smoke against a confirmed session.
 
 ## Repository Layout
 

@@ -13,14 +13,30 @@ const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const email = `qa+publish-${suffix}@onlyharness.com`;
 const password = `OnlyHarnessSmoke-${suffix}!`;
 const name = `qa-publish-${suffix}`;
+const expectEmailConfirmation = process.env.SMOKE_EXPECT_EMAIL_CONFIRMATION === "1";
 
 const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
   email,
   password,
-  options: { data: { display_name: "OnlyHarness QA" } }
+  options: {
+    data: { display_name: "OnlyHarness QA" },
+    emailRedirectTo: "https://onlyharness.com"
+  }
 });
 
 if (signUpError) throw new Error(`Supabase signUp failed: ${signUpError.message}`);
+
+if (expectEmailConfirmation) {
+  if (signUpData.session?.access_token) {
+    throw new Error("Expected email confirmation to block immediate session, but signup returned an access token");
+  }
+  const login = await supabase.auth.signInWithPassword({ email, password });
+  if (!login.error) {
+    throw new Error("Expected unconfirmed user sign-in to fail before email confirmation");
+  }
+  console.log(`Production auth confirmation smoke passed: signup requires email confirmation for ${email}`);
+  process.exit(0);
+}
 
 const session = signUpData.session ?? (await supabase.auth.signInWithPassword({ email, password })).data.session;
 if (!session?.access_token) throw new Error("Supabase did not return an access token; check email confirmation settings");
