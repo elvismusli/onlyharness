@@ -764,7 +764,7 @@ export const openapi = {
     "/events": {
       post: {
         summary: "Record a privacy-safe registry event",
-        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials and arbitrary metadata. Authenticated install events from client=claude-code count toward the works-in-Claude-Code confirms badge.",
+        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials and arbitrary metadata. Authenticated install events from client=claude-code count toward the works-in-Claude-Code confirms badge; suggested/accepted/applied events power the CLI autopilot funnel.",
         requestBody: {
           required: true,
           content: {
@@ -772,7 +772,7 @@ export const openapi = {
               schema: {
                 type: "object",
                 properties: {
-                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] },
+                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "accepted", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] },
                   owner: { type: "string" },
                   repo: { type: "string" },
                   version: { type: "string" },

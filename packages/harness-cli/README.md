@@ -52,7 +52,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 
 - `hh search <terms> --json` prints machine-readable registry results.
 - `hh suggest <terms> --json` searches, fetches detail, and prints a trust summary for the selected harness.
-- `hh suggest <terms> --apply --out <dir>` installs through the same archive path as `hh pull`, preserves paid 402/directory 409 behavior, and records `applied` only after files are written.
+- `hh suggest <terms> --apply --out <dir>` installs through the same archive path as `hh pull`, preserves paid 402/directory 409 behavior, records `accepted` when `--apply` is chosen, and records `applied` only after files are written.
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
 - `hh install owner/name --target cli|claude-code|codex|cursor` pulls a runnable harness and records a privacy-safe `install` event after optional adapter generation succeeds.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.

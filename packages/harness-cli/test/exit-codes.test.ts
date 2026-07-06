@@ -688,7 +688,7 @@ test("suggest prints a trust summary and records a privacy-safe suggested event"
   });
 });
 
-test("suggest --apply installs the selected harness and records applied after writing files", async () => {
+test("suggest --apply records accepted before install and applied after writing files", async () => {
   verificationEvents = [];
   const out = await mkdtemp(path.join(os.tmpdir(), "hh-suggest-apply-"));
   try {
@@ -708,7 +708,7 @@ test("suggest --apply installs the selected harness and records applied after wr
     assert.equal(source.version, "0.2.0");
     assert.equal(source.registry, registryUrl);
     assert.ok(source.files?.includes("README.md"));
-    assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "applied"]);
+    assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "accepted", "applied"]);
     for (const event of verificationEvents) {
       assert.equal(event.owner, "harnesses");
       assert.equal(event.repo, "deep-market-researcher");
@@ -717,7 +717,8 @@ test("suggest --apply installs the selected harness and records applied after wr
       assert.equal(event.path, undefined);
     }
     assert.equal(verificationEvents[0].target, "apply");
-    assert.equal(verificationEvents[1].target, "scoped-install");
+    assert.equal(verificationEvents[1].target, "apply");
+    assert.equal(verificationEvents[2].target, "scoped-install");
   } finally {
     await rm(out, { recursive: true, force: true });
   }
@@ -732,8 +733,9 @@ test("suggest --apply does not bypass paid archive 402", async () => {
   assert.match(body.error ?? "", /Payment required/);
   assert.equal(body.code, 5);
   assert.match(body.next ?? "", /checkout/);
-  assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested"]);
+  assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "accepted"]);
   assert.equal(verificationEvents[0].target, "apply");
+  assert.equal(verificationEvents[1].target, "apply");
 });
 
 test("suggest --apply refuses harnesses without a passing security scan", async () => {
@@ -745,10 +747,13 @@ test("suggest --apply refuses harnesses without a passing security scan", async 
   assert.match(body.error ?? "", /security scan is fail/);
   assert.equal(body.code, 3);
   assert.match(body.next ?? "", /security-report/);
-  assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested"]);
+  assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "accepted"]);
   assert.equal(verificationEvents[0].owner, "harnesses");
   assert.equal(verificationEvents[0].repo, "unsafe-harness");
   assert.equal(verificationEvents[0].target, "apply");
+  assert.equal(verificationEvents[1].owner, "harnesses");
+  assert.equal(verificationEvents[1].repo, "unsafe-harness");
+  assert.equal(verificationEvents[1].target, "apply");
 });
 
 test("setup installs an org bundle with org-token auth and idempotent retry", async () => {

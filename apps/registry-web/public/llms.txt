@@ -63,7 +63,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
   `kind=install&client=claude-code` with an authenticated subject contributes to the "works in Claude Code: N confirms" badge.
   `kind=eval|gate&target=passed&client=hh` contributes to verification.lastVerifiedAt in harness detail.
-  `kind=suggested|applied&client=hh` records CLI autopilot usage without prompts or local paths.
+  `kind=suggested|accepted|applied&client=hh` records CLI autopilot funnel usage without prompts or local paths. `accepted` means the user chose `--apply`; `applied` is recorded only after local files are written.
 - Leaderboard: GET /leaderboard?limit=10
   Returns only heatQualified items. Cold harnesses stay out of Top 10 until enough real social signals or a verified install confirm exists.
 - Publish (auth required): POST /imports/markdown-to-harness

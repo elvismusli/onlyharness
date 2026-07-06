@@ -486,6 +486,15 @@ program.command("suggest")
 
     let applied: PullHarnessResult | undefined;
     if (options.apply) {
+      await recordCliRegistryEvent({
+        registry: registryUrl,
+        kind: "accepted",
+        owner: suggestion.owner,
+        repo: suggestion.name,
+        version: suggestion.version,
+        target: "apply",
+        client: "hh"
+      });
       if (suggestion.contentType === "directory") {
         fail(
           `Directory ${suggestion.ref} is link-only and cannot be applied as a runnable harness.`,
@@ -2413,7 +2422,7 @@ async function recordCliVerificationEvent(root: string, kind: "eval" | "gate"): 
 
 async function recordCliRegistryEvent(input: {
   registry: string;
-  kind: "suggested" | "applied" | "install" | "eval" | "gate";
+  kind: "suggested" | "accepted" | "applied" | "install" | "eval" | "gate";
   owner: string;
   repo: string;
   version?: string;

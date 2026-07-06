@@ -25,13 +25,22 @@ test("sanitizeEvent accepts eval and gate verification events without arbitrary 
   });
 });
 
-test("sanitizeEvent accepts suggested and applied CLI events without local paths", () => {
+test("sanitizeEvent accepts suggested, accepted and applied CLI events without local paths", () => {
   const suggested = sanitizeEvent({
     kind: "suggested",
     owner: "harnesses",
     repo: "deep-market-researcher",
     version: "0.2.0",
     target: "inspect",
+    client: "hh",
+    prompt: "must-not-store"
+  } as Parameters<typeof sanitizeEvent>[0] & { prompt: string });
+  const accepted = sanitizeEvent({
+    kind: "accepted",
+    owner: "harnesses",
+    repo: "deep-market-researcher",
+    version: "0.2.0",
+    target: "apply",
     client: "hh",
     prompt: "must-not-store"
   } as Parameters<typeof sanitizeEvent>[0] & { prompt: string });
@@ -52,6 +61,15 @@ test("sanitizeEvent accepts suggested and applied CLI events without local paths
     version: "0.2.0",
     subject: "anonymous",
     target: "inspect",
+    client: "hh"
+  });
+  assert.deepEqual(accepted, {
+    kind: "accepted",
+    owner: "harnesses",
+    repo: "deep-market-researcher",
+    version: "0.2.0",
+    subject: "anonymous",
+    target: "apply",
     client: "hh"
   });
   assert.deepEqual(applied, {

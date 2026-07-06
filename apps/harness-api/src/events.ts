@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { workspaceRoot } from "./registry.js";
 
-export const EVENT_KINDS = ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] as const;
+export const EVENT_KINDS = ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "accepted", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export type EventInput = {
