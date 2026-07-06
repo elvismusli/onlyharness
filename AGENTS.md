@@ -109,6 +109,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Payout tooling may create only draft/manual payout ledgers (`payout_runs`, `payout_items`); it must not call payout providers or mark ledger items paid.
 - `hh suggest` is the agent-first autopilot path: search, detail trust summary, optional `--apply --out <dir>`. `--apply` must use the same archive semantics as `hh pull`, including paid 402 and directory 409.
 - `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed.
+- Community stats and Harness Heat are not safety guarantees. Agent/plugin flows must inspect detail/security/risk/permissions before applying a harness and must surface blocking risk instead of installing.
 - Directory shelf entries use manifest `content.type: directory` and `source.vendor_policy: link-only`; they must stay free, expose `open <url>`, and must not return archive files.
 - Category benchmarks are local declared-score comparisons until Owner-authored suites add external measurements; never present `hh benchmark` as an independent LLM quality proof.
 - Team `hh setup @org`, `hh install @org/name`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org bundles/publishing/sync are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.

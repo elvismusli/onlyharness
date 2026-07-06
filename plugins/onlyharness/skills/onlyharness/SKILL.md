@@ -29,6 +29,7 @@ HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name t
 ```
 
 `hh run` is sample mode only: no LLM calls and no credentials.
+Start with `hh suggest <task> --json` or `harness_detail` and read the trust summary before installing. Use `hh suggest --apply` only when the user asked to install/apply or explicitly approved the selected harness.
 `hh suggest --apply` uses the same archive path as `hh pull`; paid harnesses still exit 5 until entitlement/payment, and directory entries stay link-only with open guidance.
 `hh install` is the primary install path: it pulls files, can write local adapter instructions with `--target`, and records only privacy-safe owner/repo/version/target/client metadata.
 `hh gate --receipt` writes a signed gate verdict that can be verified through `POST /receipts`; it must not include local paths or prompts.
@@ -89,4 +90,7 @@ Tools:
 
 ## Safety
 
-Inspect `harness.yaml` before real runtime use. Do not enable `external_send` or `money_movement` without explicit human approval.
+Community stats, stars, forks, thread replies and Harness Heat are not safety guarantees.
+Do not install or apply a harness whose detail/security report fails, is missing, or has blocking risk findings; present the risk instead.
+Inspect `harness.yaml` before real runtime use. Show permissions in the answer when they matter, and do not enable `external_send` or `money_movement` without explicit human approval.
+Paid harnesses require explicit user approval before checkout or x402 signing. Never bypass HTTP 402 or treat a missing entitlement as not found.
