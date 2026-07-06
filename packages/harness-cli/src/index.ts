@@ -69,6 +69,40 @@ type ContextCost = {
   bytes: number;
   status: "estimated";
 };
+type SetupSkillAudit = {
+  scope: "home" | "project";
+  name: string;
+  relativePath: string;
+  description: string;
+  approxTokens: number;
+  markdownFiles: number;
+  modifiedAt: string;
+  ageDays: number;
+  terms: string[];
+};
+type SetupConflict = {
+  left: Pick<SetupSkillAudit, "scope" | "name" | "relativePath">;
+  right: Pick<SetupSkillAudit, "scope" | "name" | "relativePath">;
+  similarity: number;
+  sharedTerms: string[];
+};
+type SetupAudit = {
+  summary: {
+    roots: number;
+    existingRoots: number;
+    skills: number;
+    markdownFiles: number;
+    approxTokens: number;
+    staleSkills: number;
+    conflicts: number;
+  };
+  roots: Array<{ scope: "home" | "project"; exists: boolean; skills: number; markdownFiles: number; approxTokens: number }>;
+  skills: Omit<SetupSkillAudit, "terms">[];
+  conflicts: SetupConflict[];
+  stale: Omit<SetupSkillAudit, "terms" | "description" | "approxTokens" | "markdownFiles">[];
+  recommendations: string[];
+  shareCard: string;
+};
 
 export const EXIT = {
   OK: 0,
@@ -301,6 +335,29 @@ program.command("doctor")
     }
     writeStdout(lines.join("\n") + "\n");
     process.exit(payload.harness && !payload.harness.valid ? EXIT.VALIDATION : EXIT.OK);
+  });
+
+program.command("audit-setup")
+  .description("audit local Claude skills for context cost, stale triggers and overlapping descriptions")
+  .option("--home-dir <dir>", "home directory to scan (default: current OS home)")
+  .option("--project-dir <dir>", "project directory to scan (default: current working directory)")
+  .option("--stale-days <n>", "mark skills stale after this many days", "90")
+  .option("--json", "print JSON", false)
+  .option("--out <path>", "write report to a file")
+  .action((options) => {
+    const staleDays = Math.max(1, Number(options.staleDays) || 90);
+    const audit = auditClaudeSetup({
+      homeDir: path.resolve(options.homeDir ?? os.homedir()),
+      projectDir: path.resolve(options.projectDir ?? process.cwd()),
+      staleDays
+    });
+    const output = options.json ? `${JSON.stringify(audit, null, 2)}\n` : setupAuditText(audit);
+    if (options.out) {
+      writeOutput(output, options.out);
+      writeStdout(options.json ? { out: path.resolve(options.out), summary: audit.summary } : `Wrote ${path.resolve(options.out)}\n`);
+      return;
+    }
+    writeStdout(output);
   });
 
 program.command("pin")
@@ -748,6 +805,221 @@ function estimateContextCost(root: string): ContextCost {
     bytes,
     status: "estimated"
   };
+}
+
+function auditClaudeSetup(input: { homeDir: string; projectDir: string; staleDays: number }): SetupAudit {
+  const roots = [
+    { scope: "home" as const, dir: path.join(input.homeDir, ".claude") },
+    { scope: "project" as const, dir: path.join(input.projectDir, ".claude") }
+  ];
+  const seenRoots = new Set<string>();
+  const rootReports: SetupAudit["roots"] = [];
+  const skills: SetupSkillAudit[] = [];
+  for (const root of roots) {
+    const resolved = path.resolve(root.dir);
+    if (seenRoots.has(resolved)) continue;
+    seenRoots.add(resolved);
+    const report = scanClaudeRoot(root.scope, resolved);
+    rootReports.push({
+      scope: root.scope,
+      exists: report.exists,
+      skills: report.skills.length,
+      markdownFiles: report.skills.reduce((sum, skill) => sum + skill.markdownFiles, 0),
+      approxTokens: report.skills.reduce((sum, skill) => sum + skill.approxTokens, 0)
+    });
+    skills.push(...report.skills);
+  }
+  const conflicts = findSetupConflicts(skills);
+  const stale = skills
+    .filter((skill) => skill.ageDays >= input.staleDays)
+    .map(({ terms: _terms, description: _description, approxTokens: _tokens, markdownFiles: _files, ...skill }) => skill)
+    .sort((left, right) => right.ageDays - left.ageDays);
+  const recommendations = setupRecommendations(skills, conflicts, stale.length);
+  const summary = {
+    roots: rootReports.length,
+    existingRoots: rootReports.filter((root) => root.exists).length,
+    skills: skills.length,
+    markdownFiles: rootReports.reduce((sum, root) => sum + root.markdownFiles, 0),
+    approxTokens: rootReports.reduce((sum, root) => sum + root.approxTokens, 0),
+    staleSkills: stale.length,
+    conflicts: conflicts.length
+  };
+  const publicSkills = skills.map(({ terms: _terms, ...skill }) => skill);
+  return {
+    summary,
+    roots: rootReports,
+    skills: publicSkills,
+    conflicts,
+    stale,
+    recommendations,
+    shareCard: setupShareCard(summary, recommendations)
+  };
+}
+
+function scanClaudeRoot(scope: "home" | "project", claudeDir: string): { exists: boolean; skills: SetupSkillAudit[] } {
+  if (!existsSync(claudeDir)) return { exists: false, skills: [] };
+  const skillFiles = findSkillFiles(claudeDir);
+  return {
+    exists: true,
+    skills: skillFiles.map((skillFile) => auditSkillFile(scope, claudeDir, skillFile)).sort((left, right) => `${left.scope}:${left.relativePath}`.localeCompare(`${right.scope}:${right.relativePath}`))
+  };
+}
+
+function findSkillFiles(root: string): string[] {
+  const files: string[] = [];
+  const visit = (dir: string, depth: number) => {
+    if (depth > 8 || !existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full, depth + 1);
+      else if (entry.isFile() && entry.name === "SKILL.md") files.push(full);
+    }
+  };
+  visit(root, 0);
+  return files;
+}
+
+function auditSkillFile(scope: "home" | "project", claudeDir: string, skillFile: string): SetupSkillAudit {
+  const skillDir = path.dirname(skillFile);
+  const text = readFileSync(skillFile, "utf8");
+  const markdownFiles = markdownFilesUnder(skillDir);
+  const bytes = markdownFiles.reduce((sum, file) => {
+    try {
+      return sum + statSync(path.join(skillDir, file)).size;
+    } catch {
+      return sum;
+    }
+  }, 0);
+  const modifiedMs = markdownFiles.reduce((latest, file) => {
+    try {
+      return Math.max(latest, statSync(path.join(skillDir, file)).mtimeMs);
+    } catch {
+      return latest;
+    }
+  }, statSync(skillFile).mtimeMs);
+  const description = extractSkillDescription(text);
+  const relativePath = path.relative(claudeDir, skillFile).split(path.sep).join("/");
+  return {
+    scope,
+    name: path.basename(skillDir),
+    relativePath,
+    description,
+    approxTokens: Math.round(bytes / 4),
+    markdownFiles: markdownFiles.length,
+    modifiedAt: new Date(modifiedMs).toISOString(),
+    ageDays: Math.max(0, Math.floor((Date.now() - modifiedMs) / 86_400_000)),
+    terms: [...descriptionTerms(description)].sort()
+  };
+}
+
+function markdownFilesUnder(root: string): string[] {
+  const files: string[] = [];
+  collectMarkdownFiles(root, root, files);
+  return files.sort();
+}
+
+function extractSkillDescription(text: string): string {
+  const frontmatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const source = frontmatter?.[1] ?? text.split("\n").slice(0, 40).join("\n");
+  const descriptionLine = source.split(/\r?\n/).find((line) => /^\s*description\s*:/.test(line));
+  if (descriptionLine) {
+    const raw = descriptionLine.replace(/^\s*description\s*:\s*/, "").trim();
+    const unquoted = raw.replace(/^['"]|['"]$/g, "").trim();
+    if (unquoted && unquoted !== "|" && unquoted !== ">") return unquoted.slice(0, 280);
+  }
+  const heading = text.split(/\r?\n/).find((line) => /^#\s+/.test(line));
+  if (heading) return heading.replace(/^#\s+/, "").trim().slice(0, 280);
+  return "No trigger description found";
+}
+
+function descriptionTerms(description: string): Set<string> {
+  const stop = new Set(["when", "with", "that", "this", "from", "into", "your", "user", "users", "task", "asks", "help", "using", "should", "would", "could", "about", "after", "before"]);
+  const terms = new Set<string>();
+  for (const match of description.toLowerCase().matchAll(/[\p{L}\p{N}][\p{L}\p{N}-]{2,}/gu)) {
+    const term = match[0].replace(/^-+|-+$/g, "");
+    if (term.length >= 4 && !stop.has(term)) terms.add(term);
+  }
+  return terms;
+}
+
+function findSetupConflicts(skills: SetupSkillAudit[]): SetupConflict[] {
+  const conflicts: SetupConflict[] = [];
+  for (let leftIndex = 0; leftIndex < skills.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < skills.length; rightIndex += 1) {
+      const left = skills[leftIndex];
+      const right = skills[rightIndex];
+      const sharedTerms = left.terms.filter((term) => right.terms.includes(term));
+      const unionSize = new Set([...left.terms, ...right.terms]).size;
+      const similarity = unionSize ? sharedTerms.length / unionSize : 0;
+      if (sharedTerms.length >= 3 && similarity >= 0.34) {
+        conflicts.push({
+          left: skillRef(left),
+          right: skillRef(right),
+          similarity: Number(similarity.toFixed(2)),
+          sharedTerms: sharedTerms.slice(0, 8)
+        });
+      }
+    }
+  }
+  return conflicts.sort((left, right) => right.similarity - left.similarity).slice(0, 10);
+}
+
+function skillRef(skill: SetupSkillAudit): Pick<SetupSkillAudit, "scope" | "name" | "relativePath"> {
+  return { scope: skill.scope, name: skill.name, relativePath: skill.relativePath };
+}
+
+function setupRecommendations(skills: SetupSkillAudit[], conflicts: SetupConflict[], staleCount: number): string[] {
+  const recommendations: string[] = [];
+  const totalTokens = skills.reduce((sum, skill) => sum + skill.approxTokens, 0);
+  if (!skills.length) {
+    recommendations.push("No Claude skills found in home or project .claude directories; install or create one before expecting skill triggers.");
+    return recommendations;
+  }
+  if (conflicts.length) recommendations.push("Review candidate trigger conflicts and narrow or merge overlapping skill descriptions before sharing the setup.");
+  if (staleCount) recommendations.push("Review stale skills before sharing the setup; archive unused skills or refresh their trigger descriptions.");
+  if (totalTokens > 20_000) recommendations.push("Trim long markdown references or split heavyweight skills; total local setup context is above 20k estimated tokens.");
+  if (skills.some((skill) => skill.description === "No trigger description found")) recommendations.push("Add frontmatter descriptions to skills missing trigger text.");
+  if (!recommendations.length) recommendations.push("Setup looks tight: no obvious trigger conflicts, stale skills or oversized context load.");
+  return recommendations;
+}
+
+function setupShareCard(summary: SetupAudit["summary"], recommendations: string[]): string {
+  return [
+    "OnlyHarness setup audit",
+    `Skills ${summary.skills} · context ~${summary.approxTokens} tokens · conflicts ${summary.conflicts} · stale ${summary.staleSkills}`,
+    `Next: ${recommendations[0] ?? "Run hh audit-setup again after your next skill change."}`
+  ].join("\n");
+}
+
+function setupAuditText(audit: SetupAudit): string {
+  const lines = [
+    "OnlyHarness setup audit",
+    `Roots: ${audit.summary.existingRoots}/${audit.summary.roots} found`,
+    `Skills: ${audit.summary.skills}`,
+    `Context: ~${audit.summary.approxTokens} tokens across ${audit.summary.markdownFiles} markdown files`,
+    `Conflicts: ${audit.summary.conflicts}`,
+    `Stale: ${audit.summary.staleSkills}`,
+    ""
+  ];
+  if (audit.conflicts.length) {
+    lines.push("Candidate trigger conflicts:");
+    for (const conflict of audit.conflicts) {
+      lines.push(`- ${conflict.left.scope}:${conflict.left.relativePath} vs ${conflict.right.scope}:${conflict.right.relativePath} (${Math.round(conflict.similarity * 100)}%, ${conflict.sharedTerms.join(", ")})`);
+    }
+    lines.push("");
+  }
+  if (audit.stale.length) {
+    lines.push("Stale candidates:");
+    for (const skill of audit.stale.slice(0, 10)) {
+      lines.push(`- ${skill.scope}:${skill.relativePath} (${skill.ageDays} days old)`);
+    }
+    lines.push("");
+  }
+  lines.push("Recommendations:");
+  lines.push(...audit.recommendations.map((item) => `- ${item}`));
+  lines.push("", "Share card:", audit.shareCard, "");
+  return lines.join("\n");
 }
 
 function contextFiles(root: string): string[] {

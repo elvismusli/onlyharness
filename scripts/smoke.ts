@@ -185,6 +185,16 @@ try {
   }
 
   const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
+  const auditProject = path.join(smokeDataRoot, "audit-project");
+  mkdirSync(path.join(auditProject, ".claude/skills/smoke"), { recursive: true });
+  writeFileSync(path.join(auditProject, ".claude/skills/smoke/SKILL.md"), [
+    "---",
+    "description: Use for smoke testing OnlyHarness setup audit behavior.",
+    "---",
+    "# Smoke Skill",
+    "Local fixture for hh audit-setup."
+  ].join("\n"));
+  run("node", [cliBin, "audit-setup", "--home-dir", smokeDataRoot, "--project-dir", auditProject, "--json"], { env: cliEnv });
   run("node", [cliBin, "doctor", "--json"], { env: cliEnv });
   run("node", [cliBin, "search", "research", "--json"], { env: cliEnv });
   const pullTmp = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-"));
@@ -211,7 +221,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, CLI validate/eval/gate/diff/update, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, CLI validate/eval/gate/diff/update/audit-setup, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

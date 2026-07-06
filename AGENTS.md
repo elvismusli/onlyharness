@@ -44,6 +44,7 @@ npx onlyharness pull harnesses/deep-market-researcher
 npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json
+npx onlyharness audit-setup --json
 npx onlyharness pin deep-market-researcher --json
 npx onlyharness outdated deep-market-researcher --json
 npx onlyharness update deep-market-researcher --diff --json

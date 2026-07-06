@@ -1,7 +1,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -347,6 +347,58 @@ test("doctor --json returns machine readable status", async () => {
   assert.equal(body.ok, true);
   assert.equal(body.indexed, 1);
   assert.equal(body.registry, registryUrl);
+});
+
+test("audit-setup reports local skill conflicts, stale skills and a share card without absolute paths", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "hh-audit-home-"));
+  const project = await mkdtemp(path.join(os.tmpdir(), "hh-audit-project-"));
+  try {
+    const homeSkill = path.join(home, ".claude/skills/research/SKILL.md");
+    const projectSkill = path.join(project, ".claude/skills/research-copy/SKILL.md");
+    await mkdir(path.dirname(homeSkill), { recursive: true });
+    await mkdir(path.dirname(projectSkill), { recursive: true });
+    await writeFile(homeSkill, [
+      "---",
+      "description: Use for market research competitor analysis and synthesis workflows.",
+      "---",
+      "# Research",
+      "Collect market facts and synthesize a decision memo."
+    ].join("\n"));
+    await writeFile(path.join(path.dirname(homeSkill), "reference.md"), "Longer market research notes for context.\n");
+    await writeFile(projectSkill, [
+      "---",
+      "description: Use for market research competitor analysis and buyer synthesis.",
+      "---",
+      "# Research Copy",
+      "Overlapping trigger on purpose."
+    ].join("\n"));
+    const oldDate = new Date(Date.now() - 130 * 86_400_000);
+    await utimes(homeSkill, oldDate, oldDate);
+    await utimes(path.join(path.dirname(homeSkill), "reference.md"), oldDate, oldDate);
+
+    const result = await runCli(["audit-setup", "--home-dir", home, "--project-dir", project, "--stale-days", "90", "--json"]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as {
+      summary?: { skills?: number; conflicts?: number; staleSkills?: number; approxTokens?: number };
+      conflicts?: unknown[];
+      stale?: unknown[];
+      shareCard?: string;
+      recommendations?: string[];
+    };
+    assert.equal(body.summary?.skills, 2);
+    assert.equal(body.summary?.conflicts, 1);
+    assert.equal(body.summary?.staleSkills, 1);
+    assert.ok((body.summary?.approxTokens ?? 0) > 0);
+    assert.equal(body.conflicts?.length, 1);
+    assert.equal(body.stale?.length, 1);
+    assert.match(body.shareCard ?? "", /OnlyHarness setup audit/);
+    assert.doesNotMatch(body.shareCard ?? "", new RegExp(home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(body.recommendations?.some((item) => /overlapping/i.test(item)));
+  } finally {
+    await rm(home, { recursive: true, force: true });
+    await rm(project, { recursive: true, force: true });
+  }
 });
 
 test("run --json exposes eval status for a pulled harness", async () => {
