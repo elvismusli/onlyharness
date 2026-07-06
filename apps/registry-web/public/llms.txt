@@ -22,7 +22,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
-  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
+  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh install --pay` or `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
   Directory shelf entries use owner `directories` and manifest content.type=directory. They are link-only discovery indexes: search results expose `open <url>`, and archive returns HTTP 409 { code: "DIRECTORY_LINK_ONLY", url, next } instead of files.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
@@ -90,9 +90,8 @@ After npm publish, agents can run the CLI without cloning the repo:
 
     npx onlyharness search market research
     npx onlyharness suggest market research --json
-    npx onlyharness suggest market research --apply --out deep-market-researcher --json
-    npx onlyharness pull harnesses/deep-market-researcher
-    npx onlyharness adapt deep-market-researcher --target claude-code --json
+    npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
+    npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
     npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
     npx onlyharness run deep-market-researcher
     npm i -g onlyharness   # installs the hh command
@@ -106,11 +105,14 @@ For local development from the repo:
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
 - hh suggest {terms}        select a harness with detail trust summary; --apply installs through the pull archive path
+- hh install {owner}/{name} --target cli|claude-code|codex|cursor    primary install path; pulls files, optionally writes adapter files, then records a privacy-safe install event
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set
 - hh adapt [dir] --target claude-code|codex|cursor    generate local adapter instruction files
 - hh mcp-config [dir] --target claude-desktop|claude-code|cursor    generate package-backed MCP client JSON
-- hh pull {owner}/{name} --pay    pay an x402-enabled 402 with HH_WALLET_KEY/EVM_PRIVATE_KEY, capped by HH_MAX_PAY_USD
-- hh pull @org/{name}       download an org-private harness; sends HH_ORG_TOKEN when set
+- hh install {owner}/{name} --pay    pay an x402-enabled 402 with HH_WALLET_KEY/EVM_PRIVATE_KEY, capped by HH_MAX_PAY_USD
+- hh pull {owner}/{name} --pay    low-level archive download with the same x402 payment behavior
+- hh install @org/{name}    download an org-private harness; sends HH_ORG_TOKEN when set
+- hh pull @org/{name}       low-level org-private archive download; sends HH_ORG_TOKEN when set
 - hh run [dir]              run the bundled example locally (sample mode: no LLM calls, no credentials)
 - hh eval [dir]             score the eval cases; writes .harnesshub/results.json
 - hh gate --dir [dir]       enforce the manifest quality gates
@@ -128,7 +130,7 @@ For local development from the repo:
 - hh doctor                 registry connectivity check
 
 Set HH_REGISTRY_URL to target another registry (default https://onlyharness.com/api).
-Set HH_TOKEN before pulling a paid harness after checkout/manual entitlement. For x402, set HH_WALLET_KEY or EVM_PRIVATE_KEY plus HH_MAX_PAY_USD; payment-required failures exit 5.
+Set HH_TOKEN before installing/pulling a paid harness after checkout/manual entitlement. For x402, set HH_WALLET_KEY or EVM_PRIVATE_KEY plus HH_MAX_PAY_USD; payment-required failures exit 5.
 
 ## Claude Code Plugin
 

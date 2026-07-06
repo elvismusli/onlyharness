@@ -742,8 +742,8 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
   const version = detail.manifest?.version ?? "current";
   const pricing = detail.manifest?.pricing;
   return {
-    command: `npx onlyharness pull ${owner}/${name}`,
-    localCommand: `node packages/harness-cli/dist/hh.mjs pull ${owner}/${name}`,
+    command: `npx onlyharness install ${owner}/${name}`,
+    localCommand: `node packages/harness-cli/dist/hh.mjs install ${owner}/${name}`,
     archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
     contextCost: detail.contextCost,
     payment: pricing && pricing.model !== "free"

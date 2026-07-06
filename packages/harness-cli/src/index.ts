@@ -317,6 +317,7 @@ type BenchmarkResult = {
   notes: string[];
 };
 type AdaptTarget = "claude-code" | "codex" | "cursor";
+type InstallTarget = "cli" | AdaptTarget;
 type McpConfigTarget = "claude-desktop" | "claude-code" | "cursor";
 type AdapterResult = {
   target: AdaptTarget;
@@ -324,6 +325,11 @@ type AdapterResult = {
   root: string;
   out: string;
   files: string[];
+  next: string[];
+};
+type InstallResult = PullHarnessResult & {
+  target: InstallTarget;
+  adapter?: AdapterResult;
   next: string[];
 };
 type McpConfigResult = {
@@ -382,7 +388,7 @@ program.command("search")
       `${item.owner}/${item.name} — ${item.title}`,
       `  ${item.summary}`,
       `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · heat ${item.heat} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
-      `  ${item.cliCommand ?? (item.contentType === "directory" && item.directory?.url ? `open ${item.directory.url}` : `hh pull ${item.owner}/${item.name}`)}`
+      `  ${item.cliCommand ?? (item.contentType === "directory" && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`)}`
     ].join("\n")).join("\n\n") + "\n");
   });
 
@@ -482,10 +488,7 @@ program.command("pull")
   .option("--pay", "pay x402-enabled 402 responses with HH_WALLET_KEY/EVM_PRIVATE_KEY", false)
   .option("--json", "print JSON", false)
   .action(async (harness: string, options) => {
-    const [owner, name] = harness.split("/");
-    if (!owner || !name) {
-      fail("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher", EXIT.VALIDATION, "hh pull harnesses/deep-market-researcher", options.json);
-    }
+    const { owner, name } = parseHarnessRef(harness, "hh pull harnesses/deep-market-researcher", options.json);
     const result = await pullHarnessArchive({
       owner,
       name,
@@ -503,6 +506,34 @@ program.command("pull")
       `Pulled ${result.owner}/${result.name}@${result.version} -> ${result.out} (${result.files} files${result.skipped ? `, ${result.skipped} skipped as too large` : ""})`,
       `Next: hh run ${result.out} · hh eval ${result.out} && hh gate --dir ${result.out}`
     ].join("\n") + "\n");
+  });
+
+program.command("install")
+  .description("install a harness and optionally generate local adapter files")
+  .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
+  .option("--target <target>", "cli|claude-code|codex|cursor", "cli")
+  .option("--out <dir>", "output directory for the pulled harness (default ./<name>)")
+  .option("--adapter-out <dir>", "output directory for generated adapter files")
+  .option("--force", "write into non-empty output directories and overwrite generated adapter files", false)
+  .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .option("--pay", "pay x402-enabled 402 responses with HH_WALLET_KEY/EVM_PRIVATE_KEY", false)
+  .option("--json", "print JSON", false)
+  .action(async (harness: string, options) => {
+    const target = cleanInstallTarget(options.target);
+    if (!target) fail("Unsupported install target.", EXIT.VALIDATION, "Use --target cli, claude-code, codex, or cursor.", options.json);
+    const { owner, name } = parseHarnessRef(harness, "hh install harnesses/deep-market-researcher --target codex", options.json);
+    const result = await installHarness({
+      owner,
+      name,
+      target,
+      out: options.out,
+      adapterOut: options.adapterOut,
+      force: options.force,
+      token: options.token,
+      pay: options.pay,
+      json: options.json
+    });
+    writeStdout(options.json ? result : installText(result));
   });
 
 program.command("setup")
@@ -567,7 +598,7 @@ program.command("run")
     const root = path.resolve(dir);
     const validation = validateHarnessDir(root);
     if (!validation.manifest) {
-      fail("Not a harness directory: harness.yaml is missing or invalid.", EXIT.NOT_FOUND, "hh pull <owner>/<name>", options.json);
+      fail("Not a harness directory: harness.yaml is missing or invalid.", EXIT.NOT_FOUND, "hh install <owner>/<name>", options.json);
     }
     const inputPath = path.resolve(root, options.input);
     const expectedPath = path.join(root, "examples/expected.md");
@@ -756,7 +787,7 @@ program.command("pin")
     const source = readSourceMetadata(root);
     const validation = validateHarnessDir(root);
     if (!validation.manifest) {
-      fail("Cannot pin: harness.yaml is missing or invalid.", EXIT.NOT_FOUND, "hh pull <owner>/<name>", options.json);
+      fail("Cannot pin: harness.yaml is missing or invalid.", EXIT.NOT_FOUND, "hh install <owner>/<name>", options.json);
     }
     const owner = options.owner ?? source?.owner;
     if (!owner) {
@@ -1176,7 +1207,7 @@ function walletPrivateKey(json: boolean): `0x${string}` {
   const raw = process.env.HH_WALLET_KEY ?? process.env.EVM_PRIVATE_KEY;
   if (!raw) {
     fail(
-      "HH_WALLET_KEY or EVM_PRIVATE_KEY is required for hh pull --pay.",
+      "HH_WALLET_KEY or EVM_PRIVATE_KEY is required for x402 payment.",
       EXIT.PAYMENT,
       "Set HH_WALLET_KEY to an EVM private key and HH_MAX_PAY_USD to your spend cap.",
       json
@@ -1333,6 +1364,7 @@ async function pullHarnessArchive(input: {
   token?: string;
   pay: boolean;
   json: boolean;
+  command?: "pull" | "install";
 }): Promise<PullHarnessResult> {
   const archiveUrl = `${registryUrl}/repos/${input.owner}/${input.name}/archive`;
   const token = input.token ?? (input.owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
@@ -1381,13 +1413,91 @@ async function pullHarnessArchive(input: {
   const data = await readResponseJson(response, archiveUrl, input.json) as ArchivePayload;
   const out = path.resolve(input.out ?? input.name);
   if (existsSync(out) && readdirSync(out).length > 0 && !input.force) {
-    fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh pull ${input.owner}/${input.name} --force`, input.json);
+    fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh ${input.command ?? "pull"} ${input.owner}/${input.name} --force`, input.json);
   }
   const { written, skipped, paths } = writeArchiveFiles(out, data.files ?? []);
   if (!written) fail(`No files received for ${input.owner}/${input.name}`, EXIT.GENERAL, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
   const version = data.version ?? readHarnessVersion(out) ?? "unknown";
   writeSourceMetadata(out, { owner: input.owner, name: input.name, version, registry: registryUrl, pulledAt: new Date().toISOString(), files: paths });
   return { owner: input.owner, name: input.name, version, out, files: written, skipped };
+}
+
+async function installHarness(input: {
+  owner: string;
+  name: string;
+  target: InstallTarget;
+  out?: string;
+  adapterOut?: string;
+  force: boolean;
+  token?: string;
+  pay: boolean;
+  json: boolean;
+}): Promise<InstallResult> {
+  const pulled = await pullHarnessArchive({
+    owner: input.owner,
+    name: input.name,
+    out: input.out,
+    force: input.force,
+    token: input.token,
+    pay: input.pay,
+    json: input.json,
+    command: "install"
+  });
+  const adapter = input.target === "cli"
+    ? undefined
+    : adaptHarness({
+      root: pulled.out,
+      target: input.target,
+      out: input.adapterOut,
+      force: input.force,
+      json: input.json
+    });
+  await recordCliRegistryEvent({
+    registry: registryUrl,
+    kind: "install",
+    owner: pulled.owner,
+    repo: pulled.name,
+    version: pulled.version,
+    target: input.target,
+    client: "hh"
+  });
+  return {
+    ...pulled,
+    target: input.target,
+    ...(adapter ? { adapter } : {}),
+    next: installNextSteps(pulled.out, input.target)
+  };
+}
+
+function parseHarnessRef(ref: string, next: string, json: boolean): { owner: string; name: string } {
+  const parts = ref.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    fail("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher", EXIT.VALIDATION, next, json);
+  }
+  return { owner: parts[0], name: parts[1] };
+}
+
+function cleanInstallTarget(value: string | undefined): InstallTarget | undefined {
+  return value === "cli" || value === "claude-code" || value === "codex" || value === "cursor" ? value : undefined;
+}
+
+function installNextSteps(out: string, target: InstallTarget): string[] {
+  const quoted = shellQuote(displayPath(out));
+  const steps = [`hh run ${quoted} --json`, `hh eval ${quoted} --json`, `hh gate --dir ${quoted} --json`];
+  if (target === "claude-code") return [`hh mcp-config ${quoted} --target claude-code --out .mcp.json`, ...steps];
+  return steps;
+}
+
+function installText(result: InstallResult): string {
+  const lines = [
+    `Installed ${result.owner}/${result.name}@${result.version} -> ${displayPath(result.out)} (${result.files} files${result.skipped ? `, ${result.skipped} skipped as too large` : ""})`
+  ];
+  if (result.adapter) {
+    lines.push(`Adapter ${result.adapter.target} -> ${displayPath(result.adapter.out)}`);
+    lines.push(...result.adapter.files.map((file) => `- ${displayPath(file)}`));
+  }
+  lines.push("Next:", ...result.next.map((step) => `- ${step}`), "");
+  return lines.join("\n");
 }
 
 function buildSuggestionReport(item: SearchItem, detail: SuggestDetail): SuggestionReport {
@@ -1420,7 +1530,7 @@ function buildSuggestionReport(item: SearchItem, detail: SuggestDetail): Suggest
 
 function candidateCommand(item: SearchItem): string {
   if (item.contentType === "directory" && item.directory?.url) return `open ${item.directory.url}`;
-  return `hh pull ${item.owner}/${item.name}`;
+  return `hh install ${item.owner}/${item.name}`;
 }
 
 function evalTrustLabel(item: SearchItem, detail: SuggestDetail): string {
@@ -1795,7 +1905,7 @@ function resolveRemoteRef(root: string, json = false): SourceMetadata | PinMetad
   if (pin) return pin;
   const source = readSourceMetadata(root);
   if (source) return source;
-  fail("No registry source metadata found for this harness.", EXIT.VALIDATION, "hh pull <owner>/<name> or hh pin --owner <owner>", json);
+  fail("No registry source metadata found for this harness.", EXIT.VALIDATION, "hh install <owner>/<name> or hh pin --owner <owner>", json);
 }
 
 function removeManagedFiles(root: string, files: string[] | undefined) {
@@ -1857,7 +1967,7 @@ async function recordCliVerificationEvent(root: string, kind: "eval" | "gate"): 
 
 async function recordCliRegistryEvent(input: {
   registry: string;
-  kind: "suggested" | "applied" | "eval" | "gate";
+  kind: "suggested" | "applied" | "install" | "eval" | "gate";
   owner: string;
   repo: string;
   version?: string;
@@ -2546,7 +2656,7 @@ function cursorAdapter(manifest: HarnessManifest, root: string): string {
 }
 
 function adapterNextSteps(target: AdaptTarget, root: string): string[] {
-  const displayed = displayPath(root);
+  const displayed = shellQuote(displayPath(root));
   if (target === "claude-code") return [`hh mcp-config ${displayed} --target claude-code --out .mcp.json`, `hh eval ${displayed} --json`, `hh gate --dir ${displayed} --json`];
   if (target === "codex") return [`hh eval ${displayed} --json`, `hh gate --dir ${displayed} --json`];
   return [`hh mcp-config ${displayed} --target cursor`, `hh eval ${displayed} --json`, `hh gate --dir ${displayed} --json`];

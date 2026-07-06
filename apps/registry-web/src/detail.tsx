@@ -46,7 +46,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
         "# Do not treat this as a runnable harness."
       ].join("\n")
     : [
-        `npx onlyharness pull ${item.owner}/${item.name}`,
+        `npx onlyharness install ${item.owner}/${item.name}`,
         `npx onlyharness run ${item.name} --json`,
         `npx onlyharness eval ${item.name} --json`,
         `npx onlyharness gate --dir ${item.name} --json`

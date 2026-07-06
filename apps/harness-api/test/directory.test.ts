@@ -37,6 +37,23 @@ test("registryItemFromDir exposes link-only directory metadata", () => {
   }
 });
 
+test("registryItemFromDir exposes install as the primary runnable harness command", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "hh-runnable-"));
+  try {
+    writeHarnessFixture(root, {
+      name: "agent-runner",
+      title: "Agent Runner"
+    });
+
+    const item = registryItemFromDir("harnesses", root, new Map());
+    assert.ok(item);
+    assert.equal(item.contentType, "harness");
+    assert.equal(item.cliCommand, "hh install harnesses/agent-runner");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("directory manifests must stay free, v0.2 and link-only", () => {
   const valid = directoryManifest({
     name: "valid-directory",
@@ -71,6 +88,17 @@ function writeDirectoryFixture(root: string, input: { name: string; title: strin
   writeFileSync(path.join(root, "README.md"), "# Directory\n");
   writeFileSync(path.join(root, "agents/curator.md"), "# Curator\n");
   writeFileSync(path.join(root, "evals/promptfooconfig.yaml"), "description: directory\nprompts: []\nproviders: []\n");
+  writeFileSync(path.join(root, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
+  writeFileSync(path.join(root, "examples/input.md"), "input\n");
+  writeFileSync(path.join(root, "examples/expected.md"), "expected\n");
+}
+
+function writeHarnessFixture(root: string, input: { name: string; title: string }) {
+  for (const dir of ["agents", "evals/cases", "examples"]) mkdirSync(path.join(root, dir), { recursive: true });
+  writeFileSync(path.join(root, "harness.yaml"), YAML.stringify(harnessManifest(input)));
+  writeFileSync(path.join(root, "README.md"), "# Harness\n");
+  writeFileSync(path.join(root, "agents/operator.md"), "# Operator\n");
+  writeFileSync(path.join(root, "evals/promptfooconfig.yaml"), "description: harness\nprompts: []\nproviders: []\n");
   writeFileSync(path.join(root, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
   writeFileSync(path.join(root, "examples/input.md"), "input\n");
   writeFileSync(path.join(root, "examples/expected.md"), "expected\n");
@@ -128,5 +156,51 @@ function directoryManifest(input: { name: string; title: string; url: string; it
       required_checks: ["schema_valid"]
     },
     examples: [{ title: "Directory lookup", input: "examples/input.md", output: "examples/expected.md" }]
+  };
+}
+
+function harnessManifest(input: { name: string; title: string }) {
+  return {
+    schemaVersion: "harness.v0.2",
+    name: input.name,
+    title: input.title,
+    summary: "Runnable harness test fixture.",
+    version: "0.1.0",
+    license: "MIT",
+    source: {
+      upstream_url: "https://example.com/agent-runner",
+      upstream_license: "MIT",
+      attribution: "Test fixture",
+      vendor_policy: "original"
+    },
+    tags: ["test"],
+    runtime: { primary: "custom", adapters: [] },
+    agents: [{ id: "operator", role: "operator", prompt: "agents/operator.md", tools: [], handoffs: [] }],
+    workflow: { entrypoint: "operator", stages: [{ id: "run", agent: "operator" }] },
+    tools: { mcp_servers: [], function_tools: [], external_apis: [] },
+    permissions: {
+      network: "false",
+      network_allowlist: [],
+      filesystem: "readonly",
+      shell: false,
+      browser: false,
+      credentials: "false",
+      external_send: false,
+      money_movement: false,
+      user_data: false,
+      human_approval_required: []
+    },
+    evals: {
+      promptfoo_config: "evals/promptfooconfig.yaml",
+      command: "npx promptfoo@latest eval -c evals/promptfooconfig.yaml"
+    },
+    quality_gates: {
+      min_score: 0.8,
+      max_regression: 0.03,
+      max_cost_usd_per_run: 1,
+      max_risk_score: 39,
+      required_checks: ["schema_valid"]
+    },
+    examples: [{ title: "Smoke", input: "examples/input.md", output: "examples/expected.md" }]
   };
 }

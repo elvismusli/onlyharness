@@ -5,9 +5,8 @@
 ```bash
 npx onlyharness search market research
 npx onlyharness suggest market research --json
-npx onlyharness suggest market research --apply --out deep-market-researcher --json
-npx onlyharness pull harnesses/deep-market-researcher
-npx onlyharness adapt deep-market-researcher --target claude-code --json
+npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
+npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
 npx onlyharness run deep-market-researcher
 npx onlyharness eval deep-market-researcher
@@ -38,9 +37,9 @@ By default `hh` talks to `https://onlyharness.com/api`.
 HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 ```
 
-Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`. If the registry includes x402 requirements, `HH_WALLET_KEY=<evm-key> HH_MAX_PAY_USD=20 hh pull owner/name --pay` signs one x402 payment and retries; the default cap is 20 USD. The registry must verify/settle via its facilitator before archive files are returned.
+Paid harness installs/pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh install --json` / `hh pull --json` exits 5 with `{ "error", "code", "next" }`. If the registry includes x402 requirements, `HH_WALLET_KEY=<evm-key> HH_MAX_PAY_USD=20 hh install owner/name --pay` signs one x402 payment and retries; the default cap is 20 USD. The registry must verify/settle via its facilitator before archive files are returned.
 
-Team setup, org-private pull, org publishing, repo sync, and Network Neighborhood use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name`, `hh publish workflow.md --org acme`, and `hh sync <git-url-or-local-path> --org acme` use the same org token path; the web/API workspace is `GET /orgs/{slug}/workspace`.
+Team setup, org-private install/pull, org publishing, repo sync, and Network Neighborhood use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh install @acme/name`, `hh pull @acme/name`, `hh publish workflow.md --org acme`, and `hh sync <git-url-or-local-path> --org acme` use the same org token path; the web/API workspace is `GET /orgs/{slug}/workspace`.
 
 ## Publishing
 
@@ -56,9 +55,10 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh suggest <terms> --json` searches, fetches detail, and prints a trust summary for the selected harness.
 - `hh suggest <terms> --apply --out <dir>` installs through the same archive path as `hh pull`, preserves paid 402/directory 409 behavior, and records `applied` only after files are written.
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
+- `hh install owner/name --target cli|claude-code|codex|cursor` pulls a runnable harness and records a privacy-safe `install` event after optional adapter generation succeeds.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
-- `hh pull owner/name --pay` uses `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuses to sign above `HH_MAX_PAY_USD`.
-- `hh pull @org/name` sends `HH_ORG_TOKEN` when set.
+- `hh install owner/name --pay` and `hh pull owner/name --pay` use `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuse to sign above `HH_MAX_PAY_USD`.
+- `hh install @org/name` and `hh pull @org/name` send `HH_ORG_TOKEN` when set.
 - `hh adapt [dir] --target claude-code|codex|cursor` writes local adapter instruction files and refuses to overwrite without `--force`.
 - `hh mcp-config [dir] --target claude-desktop|claude-code|cursor` generates package-backed MCP client JSON from `tools.mcp_servers`.
 - `hh run` is sample mode only: no LLM calls, no credentials.

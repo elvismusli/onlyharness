@@ -81,8 +81,7 @@ After the npm package is published:
 ```bash
 npx onlyharness search market research
 npx onlyharness suggest market research --json
-npx onlyharness pull harnesses/deep-market-researcher
-npx onlyharness adapt deep-market-researcher --target claude-code --json
+npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
 npm i -g onlyharness   # installs the `hh` command
 ```
@@ -93,8 +92,8 @@ This local branch prepares the `onlyharness` npm bundle but does not publish it.
 npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 node packages/harness-cli/dist/hh.mjs audit-setup
-node packages/harness-cli/dist/hh.mjs suggest market research --apply --out deep-market-researcher --json
-node packages/harness-cli/dist/hh.mjs adapt deep-market-researcher --target codex --json
+node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target codex --out deep-market-researcher --adapter-out .codex/harnesses/deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --out mcp.json
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
@@ -117,7 +116,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Category benchmark infrastructure is local-first: `hh benchmark <suite.yaml>` compares candidate and analog harnesses from local paths using declared eval case scores. It is a runner/comparison layer, not an independent LLM quality measurement.
 - Agent autopilot: `hh suggest <task> --json` searches, fetches detail, prints a trust summary, and records a privacy-safe `suggested` event. `hh suggest <task> --apply --out <dir>` installs the selected harness through the same archive path as `hh pull` and records `applied` only after files are written.
 - `hh eval` and `hh gate` record privacy-safe `eval`/`gate` events for pulled harnesses when they pass; detail payloads expose `verification.lastVerifiedAt` from those events.
-- Paid pulls return 402 until entitled. When `PAYMENTS_ENABLED=true`, `X402_ENABLED=true`, and `X402_PAY_TO` is set, the archive response also includes an x402 v2 `PAYMENT-REQUIRED` header. Successful `hh pull --pay` archive delivery requires `X402_FACILITATOR_URL` to verify/settle and then grants a wallet entitlement.
+- Paid installs/pulls return 402 until entitled. When `PAYMENTS_ENABLED=true`, `X402_ENABLED=true`, and `X402_PAY_TO` is set, the archive response also includes an x402 v2 `PAYMENT-REQUIRED` header. Successful `hh install --pay` or `hh pull --pay` archive delivery requires `X402_FACILITATOR_URL` to verify/settle and then grants a wallet entitlement.
 - Bot gates can call `GET /api/entitlements/check?subject=user:<id>&harness=owner/name` with an org token that has `entitlements:read`; this returns a decision only, never archive files.
 - Safer community gates use short-lived signed codes: the buyer calls `POST /api/community/invite-code` after entitlement, then the Telegram/Discord bot calls `POST /api/community/verify-code` with a scoped org token before granting access. `COMMUNITY_INVITE_SECRET` must be configured on the API.
 - Registry items include `installConfirms`; only authenticated `kind=install&client=claude-code` events count toward the `works in Claude Code: N confirms` badge.

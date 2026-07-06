@@ -191,7 +191,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
               title="Copy CLI command"
               onClick={() => top && actions.copyText(top.cliCommand, "CLI command copied")}
             >
-              C:\hub&gt; {top?.cliCommand ?? "hh pull harnesses/deep-market-researcher"}<span className="cursor" />
+              C:\hub&gt; {top?.cliCommand ?? "hh install harnesses/deep-market-researcher"}<span className="cursor" />
             </button>
           </GroupBox>
 

@@ -80,8 +80,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
     ? `open ${directoryUrl}\n# Link-only directory. Review upstream source and licensing before importing entries.`
     : item
     ? [
-        `npx onlyharness pull ${target}`,
-        `npx onlyharness adapt ${item.name} --target claude-code --json`,
+        `npx onlyharness install ${target} --target claude-code --json`,
         `npx onlyharness run ${item.name} --json`,
         `npx onlyharness eval ${item.name} --json`,
         `npx onlyharness gate --dir ${item.name} --json`
@@ -91,7 +90,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
   const mcpConfig = item && isDirectory
     ? `# Directory entries are link-only.\nopen ${directoryUrl}`
     : item
-    ? `npx onlyharness pull ${target}\nnpx onlyharness mcp-config ${item.name} --target claude-desktop --out mcp.json\nclaude mcp add onlyharness https://onlyharness.com/mcp\n# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
+    ? `npx onlyharness install ${target} --json\nnpx onlyharness mcp-config ${item.name} --target claude-desktop --out mcp.json\nclaude mcp add onlyharness https://onlyharness.com/mcp\n# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
     : "Select a harness to generate MCP setup.";
   const pluginGuide = item && isDirectory
     ? `# Plugin install is not needed for link-only directories.\nopen ${directoryUrl}`
@@ -103,7 +102,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
     { name: "License review", status: "planned", detail: "required before vendoring upstream content" },
     { name: "Harness import", status: "planned", detail: "convert selected entries only after source review" }
   ] : [
-    { name: "CLI", status: "available", detail: "npx onlyharness pull/run/eval/gate" },
+    { name: "CLI", status: "available", detail: "npx onlyharness install/run/eval/gate" },
     { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
     { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
     { name: "Claude Code adapter", status: "available", detail: "hh adapt --target claude-code" },
@@ -349,7 +348,7 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
 /* ---------- MS-DOS Prompt (CLI) ---------- */
 
 export function CliBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string) => void; copied: boolean }) {
-  const pull = item?.cliCommand ?? "hh pull harnesses/deep-market-researcher";
+  const pull = item?.cliCommand ?? "hh install harnesses/deep-market-researcher";
   const isDirectory = item?.contentType === "directory";
   const commands = isDirectory
     ? `${pull}\n# link-only directory: review upstream source and licensing before importing entries`
@@ -472,7 +471,7 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
   const heat = item.heat + (starred ? 0.4 : 0);
   const isDirectory = item.contentType === "directory";
   const shareBanner = isDirectory ? "★ LOOK AT MY DIRECTORY ★" : "★ LOOK AT MY HARNESS ★";
-  const shareCommand = item.cliCommand ?? (isDirectory && item.directory?.url ? `open ${item.directory.url}` : `hh pull ${item.owner}/${item.name}`);
+  const shareCommand = item.cliCommand ?? (isDirectory && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`);
   const metricLine = isDirectory
     ? `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · ${item.directory?.itemCount ?? "curated"} items · Heat ${heat.toFixed(1)}🔥`
     : `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥`;

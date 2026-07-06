@@ -170,7 +170,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     heatDelta: social.heatDelta,
     freshness: social.freshness,
     badge: social.badge,
-    cliCommand: contentType === "directory" && directory?.url ? `open ${directory.url}` : `hh pull ${owner}/${validation.manifest.name}`,
+    cliCommand: contentType === "directory" && directory?.url ? `open ${directory.url}` : `hh install ${owner}/${validation.manifest.name}`,
     updatedAt
   };
 }

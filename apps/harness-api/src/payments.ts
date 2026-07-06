@@ -153,7 +153,7 @@ export async function requireArchivePaymentAccess(input: PaymentAccessInput): Pr
         paymentRequired: x402PaymentRequired ?? null
       },
       next: enabled
-        ? "Complete checkout, get a manual entitlement, or retry hh pull --pay with HH_WALLET_KEY."
+        ? "Complete checkout, get a manual entitlement, or retry hh install --pay with HH_WALLET_KEY."
         : "Payments are disabled in this environment; no checkout can be created."
     }
   };
@@ -252,7 +252,7 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
     repo: input.repo,
     version: input.version,
     pricing: input.manifest.pricing,
-    next: "Manual provider pending. After payment confirmation, retry hh pull with HH_TOKEN."
+    next: "Manual provider pending. After payment confirmation, retry hh install with HH_TOKEN."
   };
 }
 

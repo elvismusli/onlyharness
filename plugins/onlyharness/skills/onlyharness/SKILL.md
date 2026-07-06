@@ -13,10 +13,9 @@ Use the CLI first when shell access is available:
 
 ```bash
 npx onlyharness suggest market research --json
-npx onlyharness suggest market research --apply --out deep-market-researcher --json
+npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
 npx onlyharness search market research
-npx onlyharness pull harnesses/deep-market-researcher
-npx onlyharness adapt deep-market-researcher --target claude-code --json
+npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
 npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
@@ -30,6 +29,7 @@ HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name t
 
 `hh run` is sample mode only: no LLM calls and no credentials.
 `hh suggest --apply` uses the same archive path as `hh pull`; paid harnesses still exit 5 until entitlement/payment, and directory entries stay link-only with open guidance.
+`hh install` is the primary install path: it pulls files, can write local adapter instructions with `--target`, and records only privacy-safe owner/repo/version/target/client metadata.
 For paid harnesses, set `HH_TOKEN`; payment-required pulls exit 5 and include checkout/manual-entitlement next steps.
 For team setup bundles, org-private pulls, or org-private publishing, set `HH_ORG_TOKEN`; setup writes managed metadata and should be safe to retry.
 

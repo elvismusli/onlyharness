@@ -49,7 +49,7 @@ before(async () => {
           heat: 1,
           riskScore: 10,
           riskTier: "LOW",
-          cliCommand: "hh pull harnesses/paid-harness"
+          cliCommand: "hh install harnesses/paid-harness"
         }] }));
         return;
       }
@@ -67,7 +67,7 @@ before(async () => {
         heat: 12,
         riskScore: 18,
         riskTier: "LOW",
-        cliCommand: "hh pull harnesses/deep-market-researcher",
+        cliCommand: "hh install harnesses/deep-market-researcher",
         contextCost: { approxTokens: 1800, files: 6 }
       }] }));
       return;
@@ -404,6 +404,58 @@ test("pull sends HH_TOKEN as a bearer token", async () => {
     assert.equal(sawPullToken, true);
   } finally {
     await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("install pulls a harness, writes adapter files, and records a privacy-safe install event", async () => {
+  verificationEvents = [];
+  const parent = await mkdtemp(path.join(os.tmpdir(), "hh-install-"));
+  const out = path.join(parent, "dmr");
+  const adapterOut = path.join(parent, "codex-adapter");
+  try {
+    const result = await runCli([
+      "install",
+      "harnesses/deep-market-researcher",
+      "--out",
+      out,
+      "--target",
+      "codex",
+      "--adapter-out",
+      adapterOut,
+      "--json"
+    ], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as {
+      owner?: string;
+      name?: string;
+      version?: string;
+      out?: string;
+      target?: string;
+      adapter?: { target?: string; out?: string; files?: string[] };
+      next?: string[];
+    };
+    assert.equal(body.owner, "harnesses");
+    assert.equal(body.name, "deep-market-researcher");
+    assert.equal(body.version, "0.2.0");
+    assert.equal(body.out, out);
+    assert.equal(body.target, "codex");
+    assert.equal(body.adapter?.target, "codex");
+    assert.equal(body.adapter?.out, adapterOut);
+    assert.ok(body.adapter?.files?.includes(path.join(adapterOut, "AGENTS.md")));
+    assert.ok(body.next?.some((step) => step.includes("hh gate")));
+    assert.match(await readFile(path.join(adapterOut, "AGENTS.md"), "utf8"), /Deep Market Researcher/);
+    assert.match(await readFile(path.join(out, ".harnesshub/source.json"), "utf8"), /deep-market-researcher/);
+    assert.deepEqual(verificationEvents, [{
+      kind: "install",
+      owner: "harnesses",
+      repo: "deep-market-researcher",
+      version: "0.2.0",
+      target: "codex",
+      client: "hh"
+    }]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
   }
 });
 
@@ -810,7 +862,7 @@ test("run outside a harness dir exits 4", async () => {
   const result = await runCli(["run", "/tmp"]);
 
   assert.equal(result.status, 4);
-  assert.match(result.stderr, /hh pull/);
+  assert.match(result.stderr, /hh install/);
 });
 
 test("doctor --json returns machine readable status", async () => {
