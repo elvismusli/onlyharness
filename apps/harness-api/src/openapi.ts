@@ -502,6 +502,27 @@ export const openapi = {
           "400": { $ref: "#/components/responses/BadRequest" }
         }
       }
+    },
+    "/receipts": {
+      post: {
+        summary: "Verify a signed gate receipt",
+        description: "Validates an ed25519 hh gate --receipt payload. This endpoint is side-effect-free: it does not store receipts, grant entitlements, settle payments, or ingest prompts/local paths.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/GateReceipt" }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Gate receipt signature verified",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/GateReceiptVerification" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
     }
   },
   components: {
@@ -778,6 +799,51 @@ export const openapi = {
           }
         },
         required: ["receipt_id", "purchase_id", "provider", "provider_ref", "status", "owner", "repo", "version", "amount_usd", "currency", "subject", "created_at", "updated_at", "entitlement"]
+      },
+      GateReceipt: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["onlyharness.gate_receipt.v1"] },
+          algorithm: { type: "string", enum: ["ed25519"] },
+          payload: { $ref: "#/components/schemas/GateReceiptPayload" },
+          publicKey: { type: "string", description: "SPKI PEM public key derived from the local install key." },
+          signature: { type: "string", description: "Base64 ed25519 signature over the stable JSON payload." }
+        },
+        required: ["type", "algorithm", "payload", "publicKey", "signature"]
+      },
+      GateReceiptPayload: {
+        type: "object",
+        properties: {
+          harness: { type: "string", description: "Harness ref, for example harnesses/deep-market-researcher or @org/name." },
+          version: { type: "string" },
+          resultsHash: { type: "string", pattern: "^[a-fA-F0-9]{64}$" },
+          verdict: { type: "string", enum: ["passed", "failed"] },
+          at: { type: "string", format: "date-time" },
+          gate: {
+            type: "object",
+            properties: {
+              score: { type: "number" },
+              risk: { type: "number" },
+              cost: { type: "number" },
+              failures: { type: "array", items: { type: "string" } }
+            },
+            required: ["score", "risk", "cost", "failures"]
+          }
+        },
+        required: ["harness", "version", "resultsHash", "verdict", "at", "gate"]
+      },
+      GateReceiptVerification: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean", enum: [true] },
+          receipt_hash: { type: "string", pattern: "^[a-fA-F0-9]{64}$" },
+          harness: { type: "string" },
+          version: { type: "string" },
+          verdict: { type: "string", enum: ["passed", "failed"] },
+          resultsHash: { type: "string", pattern: "^[a-fA-F0-9]{64}$" },
+          at: { type: "string", format: "date-time" }
+        },
+        required: ["ok", "receipt_hash", "harness", "version", "verdict", "resultsHash", "at"]
       },
       PaymentWebhookResult: {
         type: "object",

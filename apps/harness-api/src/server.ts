@@ -15,6 +15,7 @@ import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, readPurchaseReceipt, requireArchivePaymentAccess, settlePaymentWebhook, settleX402Purchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
+import { verifyGateReceipt } from "./receipts.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
@@ -581,6 +582,12 @@ app.post("/events", async (request, reply) => {
   if (!event) return reply.code(400).send({ error: "Invalid event" });
   await recordEvent(event);
   return reply.code(202).send({ ok: true });
+});
+
+app.post("/receipts", async (request, reply) => {
+  const result = verifyGateReceipt(request.body);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  return result;
 });
 
 app.post("/webhooks/gitea", async (request, reply) => {

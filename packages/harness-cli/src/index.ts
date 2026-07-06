@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { createHash, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -331,6 +332,26 @@ type InstallResult = PullHarnessResult & {
   target: InstallTarget;
   adapter?: AdapterResult;
   next: string[];
+};
+type GateReceiptPayload = {
+  harness: string;
+  version: string;
+  resultsHash: string;
+  verdict: "passed" | "failed";
+  at: string;
+  gate: {
+    score: number;
+    risk: number;
+    cost: number;
+    failures: string[];
+  };
+};
+type GateReceipt = {
+  type: "onlyharness.gate_receipt.v1";
+  algorithm: "ed25519";
+  payload: GateReceiptPayload;
+  publicKey: string;
+  signature: string;
 };
 type McpConfigResult = {
   target: McpConfigTarget;
@@ -943,6 +964,7 @@ program.command("eval")
 program.command("gate")
   .option("--results <path>", "results JSON path", ".harnesshub/results.json")
   .option("--dir <path>", "harness directory", ".")
+  .option("--receipt [path]", "write a signed gate receipt (default .harnesshub/gate-receipt.json)")
   .option("--json", "print JSON", false)
   .action(async (options) => {
     const root = path.resolve(options.dir);
@@ -951,8 +973,10 @@ program.command("gate")
       fail("Gate failed: invalid harness manifest", EXIT.VALIDATION, "hh validate --strict", options.json);
     }
     let result: { score?: number; cost_usd?: number };
+    let resultsRaw = "";
     try {
-      result = JSON.parse(readFileSync(path.resolve(root, options.results), "utf8"));
+      resultsRaw = readFileSync(path.resolve(root, options.results), "utf8");
+      result = JSON.parse(resultsRaw);
     } catch {
       fail("Gate failed: results JSON missing or invalid", EXIT.VALIDATION, `hh eval ${root}`, options.json);
     }
@@ -969,7 +993,19 @@ program.command("gate")
       failures.push(`risk ${validation.risk.score} above ${validation.manifest.quality_gates.max_risk_score}`);
     }
     failures.push(...validation.risk.blocking);
-    const payload = { passed: failures.length === 0, score, risk: validation.risk.score, cost, failures };
+    const receipt = options.receipt !== undefined
+      ? writeGateReceipt({
+        root,
+        manifest: validation.manifest,
+        resultsRaw,
+        score,
+        risk: validation.risk.score,
+        cost,
+        failures,
+        out: typeof options.receipt === "string" ? options.receipt : undefined
+      })
+      : undefined;
+    const payload = { passed: failures.length === 0, score, risk: validation.risk.score, cost, failures, ...(receipt ? { receipt } : {}) };
     if (failures.length) {
       if (options.json) fail(`Gate failed: ${failures.join("; ")}`, EXIT.VALIDATION, "hh eval && hh gate --dir .", true);
       writeStdout(`Gate failed:\n${failures.map((failure) => `- ${failure}`).join("\n")}\n`);
@@ -1941,6 +1977,77 @@ function readJsonFile<T>(file: string): T | undefined {
 function writeJsonFile(file: string, value: unknown) {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeGateReceipt(input: {
+  root: string;
+  manifest: HarnessManifest;
+  resultsRaw: string;
+  score: number;
+  risk: number;
+  cost: number;
+  failures: string[];
+  out?: string;
+}): { path: string; receipt: GateReceipt } {
+  const source = readSourceMetadata(input.root);
+  const payload: GateReceiptPayload = {
+    harness: source ? `${source.owner}/${source.name}` : receiptHarnessRef(input.manifest),
+    version: source?.version ?? input.manifest.version,
+    resultsHash: sha256Hex(input.resultsRaw),
+    verdict: input.failures.length ? "failed" : "passed",
+    at: new Date().toISOString(),
+    gate: {
+      score: input.score,
+      risk: input.risk,
+      cost: input.cost,
+      failures: input.failures
+    }
+  };
+  const key = gateReceiptKey();
+  const signature = sign(null, Buffer.from(stableJson(payload)), key.privateKey).toString("base64");
+  const receipt: GateReceipt = {
+    type: "onlyharness.gate_receipt.v1",
+    algorithm: "ed25519",
+    payload,
+    publicKey: key.publicKey,
+    signature
+  };
+  const out = path.resolve(input.root, input.out ?? path.join(".harnesshub", "gate-receipt.json"));
+  mkdirSync(path.dirname(out), { recursive: true });
+  writeJsonFile(out, receipt);
+  return { path: out, receipt };
+}
+
+function receiptHarnessRef(manifest: HarnessManifest): string {
+  if (manifest.visibility === "org" && manifest.org) return `@${manifest.org}/${manifest.name}`;
+  return `local/${manifest.name}`;
+}
+
+function gateReceiptKey(): { privateKey: string; publicKey: string } {
+  const file = path.resolve(process.env.ONLYHARNESS_KEY_PATH ?? path.join(os.homedir(), ".onlyharness", "key"));
+  if (!existsSync(file)) {
+    const pair = generateKeyPairSync("ed25519", {
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" }
+    });
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, pair.privateKey, { mode: 0o600 });
+    return { privateKey: pair.privateKey, publicKey: pair.publicKey };
+  }
+  const privateKey = readFileSync(file, "utf8");
+  const publicKey = createPublicKey(privateKey).export({ type: "spki", format: "pem" }).toString();
+  return { privateKey, publicKey };
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(",")}}`;
 }
 
 function readHarnessVersion(root: string): string | undefined {

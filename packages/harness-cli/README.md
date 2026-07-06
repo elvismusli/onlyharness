@@ -64,6 +64,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.
+- `hh gate --receipt` writes a signed gate receipt to `.harnesshub/gate-receipt.json` by default. The receipt includes harness ref, version, `resultsHash`, verdict and timestamp, signed with the local ed25519 install key at `~/.onlyharness/key`.
 - `hh doctor --harness [dir]` checks a local harness plus registry connectivity.
 - `hh audit-setup` scans local `~/.claude` and `./.claude` skills for trigger conflicts, stale skills and estimated markdown context cost. It stays local and emits a sanitized share card.
 - `hh benchmark <suite.yaml>` runs a local category benchmark suite across candidate and analog harness paths. It compares declared eval case scores and exits 3 for invalid, unverified, or below-threshold candidate suites.

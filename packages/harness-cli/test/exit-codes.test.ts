@@ -1,6 +1,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import os from "node:os";
@@ -1102,6 +1103,44 @@ test("eval and gate record privacy-safe verification events for pulled harnesses
       assert.equal(event.client, "hh");
       assert.equal(event.path, undefined);
     }
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("gate --receipt writes a signed receipt with results hash and no local paths", async () => {
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-gate-receipt-"));
+  const keyPath = path.join(out, "receipt-key.pem");
+  const receiptPath = path.join(out, "receipt.json");
+  try {
+    await cp(seedHarness, out, { recursive: true });
+    await mkdir(path.join(out, ".harnesshub"), { recursive: true });
+    await writeFile(path.join(out, ".harnesshub/source.json"), JSON.stringify({
+      owner: "harnesses",
+      name: "deep-market-researcher",
+      version: "0.1.0",
+      registry: registryUrl,
+      pulledAt: new Date().toISOString()
+    }, null, 2));
+
+    const evalResult = await runCli(["eval", out, "--json"], { HH_REGISTRY_URL: "http://127.0.0.1:1" });
+    assert.equal(evalResult.status, 0, evalResult.stderr);
+    const resultsRaw = await readFile(path.join(out, ".harnesshub/results.json"), "utf8");
+    const gateResult = await runCli(["gate", "--dir", out, "--receipt", receiptPath, "--json"], {
+      HH_REGISTRY_URL: "http://127.0.0.1:1",
+      ONLYHARNESS_KEY_PATH: keyPath
+    });
+    assert.equal(gateResult.status, 0, gateResult.stderr);
+    const body = JSON.parse(gateResult.stdout) as { receipt?: { path?: string; receipt?: { payload?: { harness?: string; version?: string; resultsHash?: string; verdict?: string }; publicKey?: string; signature?: string } } };
+    assert.equal(body.receipt?.path, receiptPath);
+    assert.equal(body.receipt?.receipt?.payload?.harness, "harnesses/deep-market-researcher");
+    assert.equal(body.receipt?.receipt?.payload?.version, "0.1.0");
+    assert.equal(body.receipt?.receipt?.payload?.verdict, "passed");
+    assert.equal(body.receipt?.receipt?.payload?.resultsHash, createHash("sha256").update(resultsRaw).digest("hex"));
+    assert.match(body.receipt?.receipt?.publicKey ?? "", /BEGIN PUBLIC KEY/);
+    assert.ok(body.receipt?.receipt?.signature);
+    const receiptFile = await readFile(receiptPath, "utf8");
+    assert.doesNotMatch(receiptFile, new RegExp(out.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   } finally {
     await rm(out, { recursive: true, force: true });
   }

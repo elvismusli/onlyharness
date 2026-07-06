@@ -76,7 +76,7 @@ try {
     items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
@@ -416,6 +416,44 @@ try {
     run("node", [cliBin, "run", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "eval", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "gate", "--dir", pulled, "--json"], { env: cliEnv });
+    const receiptPath = path.join(pullTmp, "gate-receipt.json");
+    const receiptKeyPath = path.join(pullTmp, "gate-receipt-key.pem");
+    const gateReceiptResult = run("node", [cliBin, "gate", "--dir", pulled, "--receipt", receiptPath, "--json"], {
+      env: { ...cliEnv, ONLYHARNESS_KEY_PATH: receiptKeyPath }
+    });
+    const gateReceiptBody = JSON.parse(gateReceiptResult.stdout) as {
+      receipt?: {
+        path?: string;
+        receipt?: {
+          payload?: { harness?: string; version?: string; verdict?: string; resultsHash?: string };
+          publicKey?: string;
+          signature?: string;
+        };
+      };
+    };
+    const receiptOutput = gateReceiptBody.receipt;
+    const receiptPayload = receiptOutput?.receipt?.payload;
+    if (receiptOutput?.path !== receiptPath || receiptPayload?.harness !== "harnesses/deep-market-researcher" || receiptPayload?.version !== "0.1.0" || receiptPayload?.verdict !== "passed" || !receiptPayload?.resultsHash || !receiptOutput?.receipt?.publicKey || !receiptOutput?.receipt?.signature) {
+      throw new Error(`Gate receipt CLI output invalid: ${gateReceiptResult.stdout}`);
+    }
+    const gateReceiptRaw = readFileSync(receiptPath, "utf8");
+    if (gateReceiptRaw.includes(pulled) || gateReceiptRaw.includes(pullTmp)) throw new Error("Gate receipt leaked local paths");
+    const gateReceipt = JSON.parse(gateReceiptRaw) as { payload?: { harness?: string; version?: string; verdict?: string }; signature?: string };
+    const verifiedReceipt = await fetch("http://127.0.0.1:8799/receipts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(gateReceipt)
+    }).then(async (response) => ({ status: response.status, body: await response.json() as { ok?: boolean; harness?: string; version?: string; verdict?: string; receipt_hash?: string } }));
+    if (verifiedReceipt.status !== 200 || verifiedReceipt.body.ok !== true || verifiedReceipt.body.harness !== "harnesses/deep-market-researcher" || verifiedReceipt.body.version !== "0.1.0" || verifiedReceipt.body.verdict !== "passed" || !verifiedReceipt.body.receipt_hash) {
+      throw new Error(`Gate receipt verification failed: ${JSON.stringify(verifiedReceipt)}`);
+    }
+    const tamperedReceipt = { ...gateReceipt, payload: { ...gateReceipt.payload, verdict: "failed" } };
+    const tamperedReceiptResponse = await fetch("http://127.0.0.1:8799/receipts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tamperedReceipt)
+    });
+    if (tamperedReceiptResponse.status !== 400) throw new Error(`Tampered gate receipt should be rejected, got ${tamperedReceiptResponse.status}`);
     const verifiedDetail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { verification?: { lastVerifiedAt?: string } };
     if (!verifiedDetail.verification?.lastVerifiedAt) throw new Error(`Verification event did not reach detail payload: ${JSON.stringify(verifiedDetail.verification)}`);
     run("node", [cliBin, "doctor", "--harness", pulled, "--json"], { env: cliEnv });
@@ -437,7 +475,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
