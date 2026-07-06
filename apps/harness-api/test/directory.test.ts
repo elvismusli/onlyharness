@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import YAML from "yaml";
 import { harnessManifestSchema } from "@harnesshub/schema";
-import { registryItemFromDir } from "../src/registry.ts";
+import { ArchiveSnapshotConflictError, buildArchiveForVersion, listArchiveVersions, registryItemFromDir, versionRoot, writeArchiveSnapshot } from "../src/registry.ts";
 
 test("registryItemFromDir exposes link-only directory metadata", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "hh-directory-"));
@@ -59,6 +59,56 @@ test("registryItemFromDir exposes install as the primary runnable harness comman
   }
 });
 
+test("listArchiveVersions exposes current manifest plus immutable snapshots", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "hh-versions-"));
+  const owner = `test-${process.pid}`;
+  const repo = `agent-runner-${Date.now()}`;
+  try {
+    writeHarnessFixture(root, {
+      name: repo,
+      title: "Agent Runner",
+      version: "0.1.0"
+    });
+    const first = writeArchiveSnapshot(owner, repo, root);
+    assert.equal(first?.version, "0.1.0");
+
+    writeHarnessFixture(root, {
+      name: repo,
+      title: "Agent Runner",
+      version: "0.2.0"
+    });
+
+    const versions = listArchiveVersions(owner, repo, root);
+    assert.deepEqual(versions.map((entry) => ({
+      version: entry.version,
+      current: entry.current,
+      snapshot: entry.snapshot
+    })), [
+      { version: "0.2.0", current: true, snapshot: false },
+      { version: "0.1.0", current: false, snapshot: true }
+    ]);
+    assert.ok(versions.every((entry) => entry.fileCount > 0));
+
+    const oldArchive = buildArchiveForVersion(owner, repo, root, "0.1.0");
+    assert.equal(oldArchive?.version, "0.1.0");
+    assert.equal(oldArchive?.snapshot, true);
+    assert.match(oldArchive?.files.find((file) => file.path === "harness.yaml")?.content ?? "", /version: 0\.1\.0/);
+
+    writeHarnessFixture(root, {
+      name: repo,
+      title: "Agent Runner",
+      version: "0.1.0"
+    });
+    writeFileSync(path.join(root, "README.md"), "# Mutated same version\n");
+    assert.throws(() => writeArchiveSnapshot(owner, repo, root), ArchiveSnapshotConflictError);
+    const preservedArchive = buildArchiveForVersion(owner, repo, root, "0.1.0");
+    assert.doesNotMatch(preservedArchive?.files.find((file) => file.path === "README.md")?.content ?? "", /Mutated/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(path.join(versionRoot, owner), { recursive: true, force: true });
+  }
+});
+
 test("directory manifests must stay free, v0.2 and link-only", () => {
   const valid = directoryManifest({
     name: "valid-directory",
@@ -98,7 +148,7 @@ function writeDirectoryFixture(root: string, input: { name: string; title: strin
   writeFileSync(path.join(root, "examples/expected.md"), "expected\n");
 }
 
-function writeHarnessFixture(root: string, input: { name: string; title: string }) {
+function writeHarnessFixture(root: string, input: { name: string; title: string; version?: string }) {
   for (const dir of ["agents", "evals/cases", "examples"]) mkdirSync(path.join(root, dir), { recursive: true });
   writeFileSync(path.join(root, "harness.yaml"), YAML.stringify(harnessManifest(input)));
   writeFileSync(path.join(root, "README.md"), "# Harness\n");
@@ -164,13 +214,13 @@ function directoryManifest(input: { name: string; title: string; url: string; it
   };
 }
 
-function harnessManifest(input: { name: string; title: string }) {
+function harnessManifest(input: { name: string; title: string; version?: string }) {
   return {
     schemaVersion: "harness.v0.2",
     name: input.name,
     title: input.title,
     summary: "Runnable harness test fixture.",
-    version: "0.1.0",
+    version: input.version ?? "0.1.0",
     license: "MIT",
     source: {
       upstream_url: "https://example.com/agent-runner",

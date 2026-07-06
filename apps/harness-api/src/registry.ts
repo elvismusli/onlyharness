@@ -27,6 +27,28 @@ export type ArchiveSnapshot = {
   files: ArchiveFile[];
 };
 
+export type ArchiveVersion = {
+  version: string;
+  createdAt: string;
+  snapshot: boolean;
+  current: boolean;
+  fileCount: number;
+};
+
+export class ArchiveSnapshotConflictError extends Error {
+  readonly owner: string;
+  readonly repo: string;
+  readonly version: string;
+
+  constructor(owner: string, repo: string, version: string) {
+    super(`Archive snapshot already exists for ${owner}/${repo}@${version} with different files`);
+    this.name = "ArchiveSnapshotConflictError";
+    this.owner = owner;
+    this.repo = repo;
+    this.version = version;
+  }
+}
+
 export type RegistryItem = {
   owner: string;
   ownerLabel: string;
@@ -276,6 +298,16 @@ export function buildArchive(root: string): { files: ArchiveFile[] } {
   return { files };
 }
 
+export function assertArchiveSnapshotWritable(owner: string, repo: string, root: string, version?: string): ArchiveSnapshot {
+  const candidate = archiveSnapshotCandidate(owner, repo, root, version);
+  if (!candidate) throw new Error(`Invalid archive snapshot ref for ${owner}/${repo}${version ? `@${version}` : ""}`);
+  const existing = readArchiveSnapshot(owner, repo, candidate.version);
+  if (existing && !archiveFilesEqual(existing.files, candidate.files)) {
+    throw new ArchiveSnapshotConflictError(owner, repo, candidate.version);
+  }
+  return existing ?? candidate;
+}
+
 export function buildArchiveForVersion(owner: string, repo: string, root: string, version?: string): { files: ArchiveFile[]; version: string; snapshot: boolean } | undefined {
   const currentVersion = registryDetailBasics(root).inspection.manifest?.version ?? "0.0.0";
   if (!version) return { ...buildArchive(root), version: currentVersion, snapshot: false };
@@ -286,16 +318,14 @@ export function buildArchiveForVersion(owner: string, repo: string, root: string
 }
 
 export function writeArchiveSnapshot(owner: string, repo: string, root: string, version?: string): ArchiveSnapshot | undefined {
-  const resolvedVersion = version ?? registryDetailBasics(root).inspection.manifest?.version;
-  if (!resolvedVersion || !safeSnapshotSegment(owner) || !safeSnapshotSegment(repo) || !safeSnapshotSegment(resolvedVersion)) return undefined;
-  const snapshot: ArchiveSnapshot = {
-    owner,
-    repo,
-    version: resolvedVersion,
-    createdAt: new Date().toISOString(),
-    files: buildArchive(root).files
-  };
-  const file = archiveSnapshotPath(owner, repo, resolvedVersion);
+  const snapshot = archiveSnapshotCandidate(owner, repo, root, version);
+  if (!snapshot) return undefined;
+  const existing = readArchiveSnapshot(owner, repo, snapshot.version);
+  if (existing) {
+    if (archiveFilesEqual(existing.files, snapshot.files)) return existing;
+    throw new ArchiveSnapshotConflictError(owner, repo, snapshot.version);
+  }
+  const file = archiveSnapshotPath(owner, repo, snapshot.version);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(snapshot, null, 2));
   return snapshot;
@@ -312,6 +342,39 @@ export function readArchiveSnapshot(owner: string, repo: string, version: string
   } catch {
     return undefined;
   }
+}
+
+export function listArchiveVersions(owner: string, repo: string, root: string): ArchiveVersion[] {
+  const currentVersion = registryDetailBasics(root).inspection.manifest?.version ?? "0.0.0";
+  const currentCreatedAt = statDate(root);
+  const versions = new Map<string, ArchiveVersion>();
+  if (safeSnapshotSegment(owner) && safeSnapshotSegment(repo)) {
+    const dir = archiveSnapshotDir(owner, repo);
+    if (existsSync(dir)) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+        const version = entry.name.slice(0, -".json".length);
+        const snapshot = readArchiveSnapshot(owner, repo, version);
+        if (!snapshot) continue;
+        versions.set(version, {
+          version,
+          createdAt: snapshot.createdAt,
+          snapshot: true,
+          current: version === currentVersion,
+          fileCount: snapshot.files.length
+        });
+      }
+    }
+  }
+  const current = versions.get(currentVersion);
+  versions.set(currentVersion, {
+    version: currentVersion,
+    createdAt: current?.createdAt ?? currentCreatedAt,
+    snapshot: current?.snapshot ?? false,
+    current: true,
+    fileCount: current?.fileCount ?? buildArchive(root).files.length
+  });
+  return [...versions.values()].sort(compareArchiveVersions);
 }
 
 export function registryDetailBasics(root: string) {
@@ -452,11 +515,64 @@ function statSafe(file: string): number {
 }
 
 function archiveSnapshotPath(owner: string, repo: string, version: string): string {
-  return path.join(versionRoot, owner, repo, `${version}.json`);
+  return path.join(archiveSnapshotDir(owner, repo), `${version}.json`);
+}
+
+function archiveSnapshotCandidate(owner: string, repo: string, root: string, version?: string): ArchiveSnapshot | undefined {
+  const resolvedVersion = version ?? registryDetailBasics(root).inspection.manifest?.version;
+  if (!resolvedVersion || !safeSnapshotSegment(owner) || !safeSnapshotSegment(repo) || !safeSnapshotSegment(resolvedVersion)) return undefined;
+  return {
+    owner,
+    repo,
+    version: resolvedVersion,
+    createdAt: new Date().toISOString(),
+    files: buildArchive(root).files
+  };
+}
+
+function archiveFilesEqual(left: ArchiveFile[], right: ArchiveFile[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftByPath = new Map(left.map((file) => [file.path, file]));
+  for (const file of right) {
+    const existing = leftByPath.get(file.path);
+    if (!existing || existing.truncated !== file.truncated || existing.content !== file.content) return false;
+  }
+  return true;
+}
+
+function archiveSnapshotDir(owner: string, repo: string): string {
+  return path.join(archiveSnapshotRoot(), owner, repo);
+}
+
+function archiveSnapshotRoot(): string {
+  return path.resolve(process.env.HARNESS_VERSION_ROOT ?? path.join(workspaceRoot, "data/harness-versions"));
 }
 
 function safeSnapshotSegment(value: string): boolean {
   return /^@?[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$/.test(value);
+}
+
+function compareArchiveVersions(left: ArchiveVersion, right: ArchiveVersion): number {
+  if (left.current !== right.current) return left.current ? -1 : 1;
+  const version = compareSemverLike(right.version, left.version);
+  if (version !== 0) return version;
+  return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+}
+
+function compareSemverLike(left: string, right: string): number {
+  const a = semverParts(left);
+  const b = semverParts(right);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const delta = (a[index] ?? 0) - (b[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return left.localeCompare(right);
+}
+
+function semverParts(value: string): number[] {
+  const match = value.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  if (!match) return [0, 0, 0];
+  return [Number(match[1] ?? 0), Number(match[2] ?? 0), Number(match[3] ?? 0)];
 }
 
 function cleanOrgOwner(owner: string): string | undefined {

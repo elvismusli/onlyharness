@@ -429,6 +429,7 @@ program
   .name("hh")
   .description("OnlyHarness CLI — find, pull, run, eval and publish agent harnesses (onlyharness.com)")
   .version("0.2.0");
+program.enablePositionalOptions();
 
 program.command("search")
   .description("search the OnlyHarness registry")
@@ -549,6 +550,7 @@ program.command("suggest")
 program.command("pull")
   .description("download a harness from the registry into a local directory")
   .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
+  .option("--version <semver>", "pull an immutable archive version instead of the current manifest")
   .option("--out <dir>", "output directory (default ./<name>)")
   .option("--force", "write into a non-empty directory", false)
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
@@ -559,6 +561,7 @@ program.command("pull")
     const result = await pullHarnessArchive({
       owner,
       name,
+      version: options.version,
       out: options.out,
       force: options.force,
       token: options.token,
@@ -579,6 +582,7 @@ program.command("install")
   .description("install a harness and optionally generate local adapter files")
   .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
   .option("--target <target>", "cli|claude-code|codex|cursor", "cli")
+  .option("--version <semver>", "install an immutable archive version instead of the current manifest")
   .option("--out <dir>", "output directory for the pulled harness (default ./<name>)")
   .option("--adapter-out <dir>", "output directory for generated adapter files")
   .option("--force", "write into non-empty output directories and overwrite generated adapter files", false)
@@ -593,6 +597,7 @@ program.command("install")
       owner,
       name,
       target,
+      version: options.version,
       out: options.out,
       adapterOut: options.adapterOut,
       force: options.force,
@@ -1482,6 +1487,7 @@ async function fetchHarnessDetail(registryBase: string, owner: string, name: str
 async function pullHarnessArchive(input: {
   owner: string;
   name: string;
+  version?: string;
   out?: string;
   force: boolean;
   token?: string;
@@ -1489,12 +1495,13 @@ async function pullHarnessArchive(input: {
   json: boolean;
   command?: "pull" | "install";
 }): Promise<PullHarnessResult> {
-  const archiveUrl = `${registryUrl}/repos/${input.owner}/${input.name}/archive`;
+  const ref = `${input.owner}/${input.name}${input.version ? `@${input.version}` : ""}`;
+  const archiveUrl = `${registryUrl}/repos/${input.owner}/${input.name}/archive${input.version ? `?version=${encodeURIComponent(input.version)}` : ""}`;
   const token = input.token ?? (input.owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
   const archiveInit = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
   let response = await fetchRegistryResponse(archiveUrl, input.json, archiveInit);
   if (response.status === 404) {
-    fail(`Harness ${input.owner}/${input.name} not found.`, EXIT.NOT_FOUND, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
+    fail(`Harness ${ref} not found.`, EXIT.NOT_FOUND, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
   }
   if (response.status === 401 || response.status === 403) {
     const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as { error?: string };
@@ -1512,7 +1519,7 @@ async function pullHarnessArchive(input: {
     } else {
       const price = priceLabel(body);
       fail(
-        `Payment required for ${input.owner}/${input.name}${price ? ` (${price})` : ""}`,
+        `Payment required for ${ref}${price ? ` (${price})` : ""}`,
         EXIT.PAYMENT,
         paymentNext(body),
         input.json
@@ -1523,7 +1530,7 @@ async function pullHarnessArchive(input: {
     const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as DirectoryLinkOnlyBody | HostedExecutionUnavailableBody;
     if (body.code === "DIRECTORY_LINK_ONLY") {
       fail(
-        `Directory ${input.owner}/${input.name} is link-only and cannot be pulled as a runnable harness.`,
+        `Directory ${ref} is link-only and cannot be pulled as a runnable harness.`,
         EXIT.VALIDATION,
         body.next ?? (body.url ? `open ${body.url}` : `hh search ${input.name}`),
         input.json
@@ -1531,7 +1538,7 @@ async function pullHarnessArchive(input: {
     }
     if (body.code === "HOSTED_EXECUTION_NOT_AVAILABLE") {
       fail(
-        `Hosted execution for ${input.owner}/${input.name} is not available yet.`,
+        `Hosted execution for ${ref} is not available yet.`,
         EXIT.VALIDATION,
         body.next ?? "Use hh search to choose a file-based harness.",
         input.json
@@ -1544,10 +1551,10 @@ async function pullHarnessArchive(input: {
   const data = await readResponseJson(response, archiveUrl, input.json) as ArchivePayload;
   const out = path.resolve(input.out ?? input.name);
   if (existsSync(out) && readdirSync(out).length > 0 && !input.force) {
-    fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh ${input.command ?? "pull"} ${input.owner}/${input.name} --force`, input.json);
+    fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh ${input.command ?? "pull"} ${input.owner}/${input.name}${input.version ? ` --version ${input.version}` : ""} --force`, input.json);
   }
   const { written, skipped, paths } = writeArchiveFiles(out, data.files ?? []);
-  if (!written) fail(`No files received for ${input.owner}/${input.name}`, EXIT.GENERAL, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
+  if (!written) fail(`No files received for ${ref}`, EXIT.GENERAL, `hh search ${input.name.replaceAll("-", " ")}`, input.json);
   const version = data.version ?? readHarnessVersion(out) ?? "unknown";
   writeSourceMetadata(out, { owner: input.owner, name: input.name, version, registry: registryUrl, pulledAt: new Date().toISOString(), files: paths });
   return { owner: input.owner, name: input.name, version, out, files: written, skipped };
@@ -1557,6 +1564,7 @@ async function installHarness(input: {
   owner: string;
   name: string;
   target: InstallTarget;
+  version?: string;
   out?: string;
   adapterOut?: string;
   force: boolean;
@@ -1567,6 +1575,7 @@ async function installHarness(input: {
   const pulled = await pullHarnessArchive({
     owner: input.owner,
     name: input.name,
+    version: input.version,
     out: input.out,
     force: input.force,
     token: input.token,

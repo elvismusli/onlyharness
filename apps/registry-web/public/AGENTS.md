@@ -44,6 +44,7 @@ node packages/harness-cli/dist/hh.mjs search market research
 node packages/harness-cli/dist/hh.mjs suggest market research --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target claude-code --json
+node packages/harness-cli/dist/hh.mjs pull harnesses/deep-market-researcher --version 0.1.0 --out deep-market-researcher-0.1.0 --json
 node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --json
 node packages/harness-cli/dist/hh.mjs run deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs eval deep-market-researcher --json
@@ -112,7 +113,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Hosted execution endpoints are not live. `hh run` stays local-only, MCP/HTTP archive routes deliver files, and `pricing.model=per_call` returns `409 HOSTED_EXECUTION_NOT_AVAILABLE` until a partner-backed or first-party runner has passed runtime smoke.
 - Payout tooling may create only draft/manual payout ledgers (`payout_runs`, `payout_items`); it must not call payout providers or mark ledger items paid.
 - `hh suggest` is the agent-first autopilot path: search, detail trust summary, optional `--apply --out <dir>`. `--apply` must use the same archive semantics as `hh pull`, including paid 402 and directory 409.
-- `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed.
+- `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed. `hh install owner/name --version <semver>` and `hh pull owner/name --version <semver>` request the same immutable `/archive?version=` path.
 - Directory shelf entries use manifest `content.type: directory` and `source.vendor_policy: link-only`; they must stay free, expose `open <url>`, and must not return archive files.
 - Category benchmarks are local declared-score comparisons until Owner-authored suites add external measurements; never present `hh benchmark` as an independent LLM quality proof.
 - Team `hh setup @org`, `hh install @org/name`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org bundles/publishing/sync are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.

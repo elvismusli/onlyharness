@@ -573,7 +573,12 @@ button.status-plate { cursor: pointer; }
 
 /* ---------- detail window ---------- */
 
-.detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; }
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; min-width: 0; }
+
+.detail-grid > section,
+.detail-grid > aside {
+  min-width: 0;
+}
 
 .detail-head { margin-bottom: 10px; }
 
@@ -734,6 +739,50 @@ button.status-plate { cursor: pointer; }
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.version-list {
+  background: #fff;
+  box-shadow: var(--bevel-sunken);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: minmax(70px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.version-row:hover {
+  background: var(--navy);
+  color: #fff;
+}
+
+.version-row .tag98 {
+  max-width: 150px;
+  overflow-wrap: anywhere;
+}
+
+.version-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.version-meta span {
+  color: #404040;
+  overflow-wrap: anywhere;
+}
+
+.version-row:hover .version-meta span {
+  color: #fff;
 }
 
 /* ---------- terminal window ---------- */
@@ -1231,6 +1280,7 @@ button.status-plate { cursor: pointer; }
   .float-win { left: 8px !important; right: 8px; top: 8px !important; width: auto !important; }
   .float-win .win-scroll { max-height: calc(100vh - 120px); }
   .detail-grid, .review-grid, .try-grid { grid-template-columns: 1fr; }
+  .win-body, .tabpanel, .trust-panel, .win-statusbar { min-width: 0; }
   .network-connect { grid-template-columns: 1fr; }
   .wordart { font-size: 38px; }
   .share-stage { width: 300px; height: 158px; max-width: 100%; }

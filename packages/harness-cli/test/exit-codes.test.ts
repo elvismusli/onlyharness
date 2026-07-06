@@ -392,15 +392,17 @@ before(async () => {
     }
 
     if (request.url?.startsWith("/repos/harnesses/deep-market-researcher/archive")) {
+      const url = new URL(request.url, "http://127.0.0.1");
+      const version = url.searchParams.get("version") ?? "0.2.0";
       if (request.headers.authorization === "Bearer update-token") sawUpdateToken = true;
       if (request.headers.authorization === "Bearer org-token") sawSetupArchiveToken = true;
       response.end(JSON.stringify({
         owner: "harnesses",
         repo: "deep-market-researcher",
-        version: "0.2.0",
+        version,
         files: [
-          { path: "harness.yaml", truncated: false, content: updatedHarnessYaml() },
-          { path: "README.md", truncated: false, content: "# Deep Market Researcher\n\nUpdated registry version.\n" },
+          { path: "harness.yaml", truncated: false, content: updatedHarnessYaml(version) },
+          { path: "README.md", truncated: false, content: `# Deep Market Researcher\n\nRegistry version ${version}.\n` },
           { path: "agents/web_researcher.md", truncated: false, content: "Updated researcher prompt.\n" },
           { path: "agents/synthesizer.md", truncated: false, content: "Updated synthesizer prompt.\n" },
           { path: "agents/critic.md", truncated: false, content: "Updated critic prompt.\n" },
@@ -984,6 +986,25 @@ test("pull writes source metadata for update flows", async () => {
   }
 });
 
+test("pull --version requests an immutable archive version and records it in source metadata", async () => {
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-versioned-pull-"));
+  try {
+    const result = await runCli(["pull", "harnesses/deep-market-researcher", "--version", "0.1.0", "--out", out, "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as { owner?: string; name?: string; version?: string; out?: string };
+    assert.equal(body.owner, "harnesses");
+    assert.equal(body.name, "deep-market-researcher");
+    assert.equal(body.version, "0.1.0");
+    assert.equal(body.out, out);
+    const source = JSON.parse(await readFile(path.join(out, ".harnesshub/source.json"), "utf8")) as { version?: string; registry?: string };
+    assert.equal(source.version, "0.1.0");
+    assert.equal(source.registry, registryUrl);
+    assert.match(await readFile(path.join(out, "harness.yaml"), "utf8"), /version: 0\.1\.0/);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
 test("doctor --harness reports local harness validity", async () => {
   const result = await runCli(["doctor", "--harness", seedHarness, "--json"], { HH_REGISTRY_URL: registryUrl });
 
@@ -1559,12 +1580,12 @@ function x402PaymentRequired(priceUsd: number, amount: number) {
   };
 }
 
-function updatedHarnessYaml(): string {
+function updatedHarnessYaml(version = "0.2.0"): string {
   return `schemaVersion: harness.v0.1
 name: deep-market-researcher
 title: Deep Market Researcher
 summary: Multi-stage research, synthesis, critique and validation pipeline for market questions.
-version: 0.2.0
+version: ${version}
 license: MIT
 tags: [research, strategy, validation]
 runtime:

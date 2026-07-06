@@ -39,6 +39,9 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
     .map(([key]) => key.replaceAll("_", " "));
   const targets = compatibilityTargetsFor(item, detail);
   const version = manifest?.version ?? "current";
+  const versionHistory = detail?.versions?.length
+    ? detail.versions
+    : [{ version, createdAt: item.updatedAt, snapshot: false, current: true, fileCount: detail?.files?.length ?? 0 }];
   const installConfirms = detail?.social?.installConfirms ?? item.installConfirms ?? 0;
   const isDirectory = item.contentType === "directory" || manifest?.content?.type === "directory";
   const directory = item.directory ?? manifestDirectory(manifest);
@@ -246,15 +249,29 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
 
             {tab === "Versions" && (
               <div>
-                <h4>Current version</h4>
-                <div className="file-list">
-                  <div className="file-row">
-                    <span className="tag98 safe">{version}</span>
-                    <span>{detail ? "Current manifest/archive version" : "Loading version..."}</span>
-                  </div>
+                <h4>Archive versions</h4>
+                <div className="version-list">
+                  {versionHistory.map((entry) => (
+                    <div className="version-row" key={entry.version}>
+                      <span className={`tag98 ${entry.current ? "safe" : entry.snapshot ? "" : "warn"}`}>{entry.version}</span>
+                      <div className="version-meta">
+                        <strong>{entry.current ? "Current" : "Previous"}</strong>
+                        <span>{entry.snapshot ? "immutable snapshot" : "live manifest"} · {entry.fileCount} files · {relativeTime(entry.createdAt)}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {!detail && <div className="version-row"><span className="tag98">...</span><div className="version-meta"><strong>Loading</strong><span>Fetching archive history...</span></div></div>}
                 </div>
+                {!isDirectory && (
+                  <>
+                    <h4 style={{ marginTop: 10 }}>Pull a specific version</h4>
+                    <pre className="pre98">{versionHistory.map((entry) => versionPullCommand(item, entry.version)).join("\n")}</pre>
+                  </>
+                )}
                 <div className="plate" style={{ marginTop: 8 }}>
-                  Immutable archive snapshots are served with <code>?version=</code>. Full version history UI is not populated until more publish events exist.
+                  {isDirectory
+                    ? "Directory entries are link-only; version rows document catalog snapshots, not runnable files."
+                    : "Rows marked immutable snapshot are served from stored archive files. A live current row is generated from the current manifest until publish records a snapshot."}
                 </div>
               </div>
             )}
@@ -335,4 +352,9 @@ function manifestDirectory(manifest: HarnessDetail["manifest"] | undefined): Reg
 function lastVerifiedLabel(detail?: HarnessDetail): string {
   if (!detail?.verification?.lastVerifiedAt) return "not recorded";
   return relativeTime(detail.verification.lastVerifiedAt);
+}
+
+function versionPullCommand(item: RegistryItem, version: string): string {
+  const out = `${item.name}-${version.replace(/[^a-zA-Z0-9._-]+/g, "-")}`;
+  return `${LOCAL_HH} pull ${item.owner}/${item.name} --version ${version} --out ${out}`;
 }

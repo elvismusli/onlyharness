@@ -25,7 +25,7 @@ Supabase auth is enabled for signup/login, stars/forks, thread posts, and authen
 
 - HuggingFace-style discovery for agent harnesses, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
 - Outcome filters, global search, leaderboard, Harness Heat, stars, forks, runs, and threads.
-- Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel.
+- Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel; Versions is backed by archive snapshot history.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
 - CLI package `onlyharness` with `hh search`, `hh suggest`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh audit-setup`, `hh benchmark`, `hh extract`, `hh setup @org`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
@@ -95,6 +95,7 @@ node packages/harness-cli/dist/hh.mjs doctor
 node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target codex --out deep-market-researcher --adapter-out .codex/harnesses/deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs pull harnesses/deep-market-researcher --version 0.1.0 --out deep-market-researcher-0.1.0 --json
 node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --out mcp.json
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
@@ -118,6 +119,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Directory shelf entries are link-only discovery indexes under owner `directories`. They show `open <url>` in search results and `GET /api/repos/directories/{name}/archive` returns `409 DIRECTORY_LINK_ONLY` instead of runnable files.
 - Category benchmark infrastructure is local-first: `hh benchmark <suite.yaml>` compares candidate and analog harnesses from local paths using declared eval case scores. It is a runner/comparison layer, not an independent LLM quality measurement.
 - Agent autopilot: `hh suggest <task> --json` searches, fetches detail, prints a trust summary, and records a privacy-safe `suggested` event. `hh suggest <task> --apply --out <dir>` installs the selected harness through the same archive path as `hh pull`, records `accepted` when `--apply` is chosen, and records `applied` only after files are written.
+- Versioned archives: harness detail includes `versions[]`; `hh pull owner/name --version <semver>` and `hh install owner/name --version <semver>` request the same immutable `/archive?version=` path and keep `.harnesshub/source.json` pinned to the resolved version.
 - `hh eval` and `hh gate` record privacy-safe `eval`/`gate` events for pulled harnesses when they pass; detail payloads expose `verification.lastVerifiedAt` from those events.
 - `hh gate --receipt` writes a signed gate receipt with harness ref, version, `resultsHash`, verdict and timestamp. `POST /api/receipts` verifies the ed25519 signature only; it is side-effect-free and does not store prompts, local paths, payments or entitlements.
 - Gate escrow is reserved-first: `pricing.model: gate_escrow` checkout/webhook creates `reserved` plus an expiring `escrow_reserved` archive entitlement. `POST /api/billing/escrow/receipt` captures on a valid passing receipt or refunds on a valid failing receipt; `POST /api/billing/escrow/timeout` refunds after the 72h window.

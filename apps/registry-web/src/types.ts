@@ -79,6 +79,14 @@ export type ThreadItem = {
   userId?: string;
 };
 
+export type ArchiveVersion = {
+  version: string;
+  createdAt: string;
+  snapshot: boolean;
+  current: boolean;
+  fileCount: number;
+};
+
 export type HarnessDetail = {
   owner: string;
   repo: string;
@@ -121,6 +129,7 @@ export type HarnessDetail = {
   contextCost?: ContextCost;
   standard?: "conformant" | "partial";
   verification?: { lastVerifiedAt?: string };
+  versions?: ArchiveVersion[];
   prReview: { status: string; markdown: string; diff: { riskDelta: number; riskTier: string; changes: Array<{ severity: string; area: string; message: string }> } };
   readme: string;
 };

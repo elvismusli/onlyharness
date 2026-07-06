@@ -211,6 +211,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     thread: await fetchThreadPosts(owner, repo),
     example: registry.readExample(root),
     files: registry.listHarnessFiles(root),
+    versions: registry.listArchiveVersions(owner, repo, root),
     ...inspection,
     evalResult,
     security,
@@ -1124,24 +1125,41 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
   const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
   const owner = options.owner ?? "local";
   const target = options.orgSlug ? path.join(registry.orgImportRoot(options.orgSlug), name) : path.join(registry.importRoot, name);
+  const tempTarget = path.join(registry.workspaceRoot, "data", `.import-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(path.dirname(target), { recursive: true });
   const tempSource = path.join(registry.workspaceRoot, "data", `${name}.source.md`);
-  writeFileSync(tempSource, body.markdown);
-  const cliCommand = importCliCommand(tempSource, target, name);
-  const cli = spawnSync(cliCommand.command, cliCommand.args, {
-    cwd: registry.workspaceRoot,
-    encoding: "utf8"
-  });
-  if (cli.status !== 0) {
-    return { status: 500, error: cli.stderr || cli.stdout || "import failed" };
+  try {
+    writeFileSync(tempSource, body.markdown);
+    const cliCommand = importCliCommand(tempSource, tempTarget, name);
+    const cli = spawnSync(cliCommand.command, cliCommand.args, {
+      cwd: registry.workspaceRoot,
+      encoding: "utf8"
+    });
+    if (cli.status !== 0) {
+      return { status: 500, error: cli.stderr || cli.stdout || "import failed" };
+    }
+    if (options.orgSlug) applyOrgManifest(tempTarget, options.orgSlug);
+    let snapshot: registry.ArchiveSnapshot;
+    try {
+      snapshot = registry.assertArchiveSnapshotWritable(owner, name, tempTarget);
+    } catch (error) {
+      if (error instanceof registry.ArchiveSnapshotConflictError) {
+        return { status: 409, error: error.message, code: "SNAPSHOT_VERSION_CONFLICT", version: error.version };
+      }
+      throw error;
+    }
+    rmSync(target, { recursive: true, force: true });
+    mkdirSync(path.dirname(target), { recursive: true });
+    renameSync(tempTarget, target);
+    const writtenSnapshot = registry.writeArchiveSnapshot(owner, name, target, snapshot.version);
+    const item = registry.registryItemFromDir(owner, target, new Map());
+    if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
+    await recordEvent({ kind: "applied", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
+    appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
+    return { item, output: cli.stdout, snapshotVersion: writtenSnapshot?.version };
+  } finally {
+    rmSync(tempTarget, { recursive: true, force: true });
   }
-  if (options.orgSlug) applyOrgManifest(target, options.orgSlug);
-  const item = registry.registryItemFromDir(owner, target, new Map());
-  const snapshot = registry.writeArchiveSnapshot(owner, name, target);
-  if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
-  await recordEvent({ kind: "applied", owner, repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
-  appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
-  return { item, output: cli.stdout, snapshotVersion: snapshot?.version };
 }
 
 async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: AuthUser, options: ImportOptions = {}) {
@@ -1193,18 +1211,27 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
     const owner = options.owner ?? "local";
     const targetRoot = options.orgSlug ? registry.orgImportRoot(options.orgSlug) : registry.importRoot;
     const target = path.join(targetRoot, name);
+    let snapshot: registry.ArchiveSnapshot;
+    try {
+      snapshot = registry.assertArchiveSnapshotWritable(owner, name, temp);
+    } catch (error) {
+      if (error instanceof registry.ArchiveSnapshotConflictError) {
+        return { status: 409, error: error.message, code: "SNAPSHOT_VERSION_CONFLICT", version: error.version };
+      }
+      throw error;
+    }
     rmSync(target, { recursive: true, force: true });
     mkdirSync(path.dirname(target), { recursive: true });
     renameSync(temp, target);
     const item = registry.registryItemFromDir(owner, target, new Map());
-    const snapshot = registry.writeArchiveSnapshot(owner, name, target);
+    const writtenSnapshot = registry.writeArchiveSnapshot(owner, name, target, snapshot.version);
     if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
-    await recordEvent({ kind: "applied", owner, repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "verified_publish", client: "api" });
-    await recordEvent({ kind: "gate", owner, repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "passed", client: "api" });
+    await recordEvent({ kind: "applied", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "verified_publish", client: "api" });
+    await recordEvent({ kind: "gate", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "passed", client: "api" });
     appendState({ type: options.orgSlug ? "org_verified_publish" : "verified_publish", org: options.orgSlug, name, target, userId: user.id, at: new Date().toISOString() });
     return {
       item,
-      snapshotVersion: snapshot?.version,
+      snapshotVersion: writtenSnapshot?.version,
       verified: true,
       gate: {
         score: gate.score,

@@ -19,7 +19,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Multi-word queries AND-match against name, title, summary, job and tags. `outcome` remains a legacy alias for the job filter.
   Response: { items: [{ owner, name, title, summary, tags, job, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Harness detail: GET /repos/{owner}/{name}/harness
-  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
+  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost, file list and versions[] archive history.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh install --pay` or `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
@@ -123,9 +123,11 @@ For local development from the repo:
 - hh suggest {terms}        select a harness with detail trust summary; --apply installs through the pull archive path
 - hh install {owner}/{name} --target cli|claude-code|codex|cursor    primary install path; pulls files, optionally writes adapter files, then records a privacy-safe install event
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set
+- hh pull {owner}/{name} --version <semver>    download an immutable archive snapshot and write that version to .harnesshub/source.json
 - hh adapt [dir] --target claude-code|codex|cursor    generate local adapter instruction files
 - hh mcp-config [dir] --target claude-desktop|claude-code|cursor    generate package-backed MCP client JSON
 - hh install {owner}/{name} --pay    pay an x402-enabled 402 with HH_WALLET_KEY/EVM_PRIVATE_KEY, capped by HH_MAX_PAY_USD
+- hh install {owner}/{name} --version <semver>    install a specific immutable archive snapshot through the same payment/entitlement path
 - hh pull {owner}/{name} --pay    low-level archive download with the same x402 payment behavior
 - hh install @org/{name}    download an org-private harness; sends HH_ORG_TOKEN when set
 - hh pull @org/{name}       low-level org-private archive download; sends HH_ORG_TOKEN when set

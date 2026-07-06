@@ -938,8 +938,20 @@ export const openapi = {
           },
           example: { type: "object" },
           files: { type: "array", items: { type: "string" } },
+          versions: { type: "array", items: { $ref: "#/components/schemas/ArchiveVersion" } },
           readme: { type: "string" }
         }
+      },
+      ArchiveVersion: {
+        type: "object",
+        properties: {
+          version: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+          snapshot: { type: "boolean" },
+          current: { type: "boolean" },
+          fileCount: { type: "number" }
+        },
+        required: ["version", "createdAt", "snapshot", "current", "fileCount"]
       },
       ContextCost: {
         type: "object",
