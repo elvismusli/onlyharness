@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPayoutReport, formatPayoutReport, monthWindow, type PurchaseRow } from "./payout-report.ts";
+import { buildPayoutLedger, buildPayoutReport, formatPayoutLedger, formatPayoutReport, monthWindow, type PurchaseRow } from "./payout-report.ts";
 
 const purchases: PurchaseRow[] = [
   {
@@ -73,6 +73,7 @@ test("buildPayoutReport applies payout rates and excludes unsettled purchases", 
   const missing = report.rows.find((row) => row.recipient === "unresolved:harnesses/unknown-creator");
 
   assert.equal(creator?.grossUsd, 120);
+  assert.deepEqual(creator?.purchaseIds, ["catalog", "ref"]);
   assert.equal(creator?.payoutUsd, 104);
   assert.equal(creator?.platformUsd, 16);
   assert.equal(creator?.catalogPurchases, 1);
@@ -81,11 +82,45 @@ test("buildPayoutReport applies payout rates and excludes unsettled purchases", 
   assert.equal(anchor?.payoutUsd, 50);
   assert.equal(anchor?.platformUsd, 0);
   assert.equal(missing?.grossUsd, 10);
+  assert.deepEqual(missing?.purchaseIds, ["missing-creator"]);
   assert.equal(missing?.payoutUsd, 0);
   assert.equal(missing?.blockedReason, "MISSING_CREATOR_ID");
   assert.equal(report.totals.purchases, 4);
   assert.equal(report.totals.grossUsd, 180);
   assert.equal(report.totals.payoutUsd, 154);
+});
+
+test("buildPayoutLedger creates deterministic draft ledger items without marking paid", () => {
+  const report = buildPayoutReport({
+    month: "2026-07",
+    purchases,
+    payoutAccounts: [
+      { user_id: "creator-user", method: "usdc_wallet", address: "0xcreator" }
+    ],
+    anchors: { anchors: ["anchor-user"] }
+  });
+  const ledger = buildPayoutLedger(report, "2026-07-20T00:00:00.000Z");
+  const repeat = buildPayoutLedger(report, "2026-07-20T00:00:00.000Z");
+
+  assert.equal(ledger.kind, "onlyharness-payout-ledger");
+  assert.equal(ledger.version, 1);
+  assert.equal(ledger.run.status, "draft");
+  assert.equal(ledger.run.idempotencyKey, repeat.run.idempotencyKey);
+  assert.equal(ledger.run.totals.payoutUsd, 154);
+  assert.ok(ledger.items.every((item) => item.status !== "paid"));
+  assert.deepEqual(ledger.items.map((item) => item.idempotencyKey), repeat.items.map((item) => item.idempotencyKey));
+
+  const ready = ledger.items.find((item) => item.recipient === "creator-user");
+  const missingAccount = ledger.items.find((item) => item.recipient === "anchor-user");
+  const missingCreator = ledger.items.find((item) => item.recipient === "unresolved:harnesses/unknown-creator");
+  assert.equal(ready?.status, "ready_manual_payout");
+  assert.deepEqual(ready?.purchaseIds, ["catalog", "ref"]);
+  assert.equal(missingAccount?.status, "blocked");
+  assert.equal(missingAccount?.blockedReason, "MISSING_PAYOUT_ACCOUNT");
+  assert.equal(missingCreator?.status, "blocked");
+  assert.equal(missingCreator?.blockedReason, "MISSING_CREATOR_ID");
+  assert.match(formatPayoutLedger(ledger), /ready_manual_payout/);
+  assert.match(formatPayoutLedger(ledger), /blocked/);
 });
 
 test("formatPayoutReport makes blocked payout state visible", () => {

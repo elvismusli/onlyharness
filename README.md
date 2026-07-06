@@ -62,16 +62,17 @@ Open:
 - API: `http://127.0.0.1:8787/healthz`
 - Local Gitea forge: `http://127.0.0.1:3000`
 
-## Operator Reports
+## Operator Payouts
 
-Payout reporting is dry-run only. It reads settled `purchases` plus `payout_accounts`, applies the current manual rates, and prints blocked rows instead of moving money.
+Payout reporting and ledger creation are manual-ops only. The script reads settled `purchases` plus `payout_accounts`, applies the current rates, and can create an idempotent draft payout ledger. It never calls a payout provider and never marks items paid.
 
 ```bash
 npm run payout:report -- --month 2026-07
 npm run payout:report -- --month 2026-07 --json
+npm run payout:ledger -- --month 2026-07 --ledger-out data/payout-ledgers/2026-07.json
 ```
 
-Use `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, or local JSON fixtures via `--purchases` and `--payout-accounts`. Rows without `creator_user_id` are marked `MISSING_CREATOR_ID` and get no payout amount.
+Use `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, or local JSON fixtures via `--purchases` and `--payout-accounts`. `--record-ledger` upserts `payout_runs`/`payout_items` through Supabase service role. Rows without `creator_user_id` are marked `MISSING_CREATOR_ID`; rows without payout account are blocked as `MISSING_PAYOUT_ACCOUNT`.
 
 ## CLI
 

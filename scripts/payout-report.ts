@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -48,6 +49,7 @@ export type PayoutReportRow = {
   recipient: string;
   method: string;
   address: string;
+  purchaseIds: string[];
   purchases: number;
   grossUsd: number;
   payoutUsd: number;
@@ -71,6 +73,43 @@ export type PayoutReport = {
     platformUsd: number;
     missingPayoutAccounts: number;
   };
+};
+
+export type PayoutLedgerRun = {
+  idempotencyKey: string;
+  month: string;
+  start: string;
+  end: string;
+  status: "draft";
+  currency: "USD";
+  generatedAt: string;
+  totals: PayoutReport["totals"];
+};
+
+export type PayoutLedgerItem = {
+  idempotencyKey: string;
+  recipient: string;
+  method: string;
+  address: string;
+  status: "ready_manual_payout" | "blocked";
+  blockedReason?: PayoutReportRow["blockedReason"];
+  purchaseIds: string[];
+  purchases: number;
+  grossUsd: number;
+  payoutUsd: number;
+  platformUsd: number;
+  mix: {
+    anchor: number;
+    referral: number;
+    catalog: number;
+  };
+};
+
+export type PayoutLedger = {
+  kind: "onlyharness-payout-ledger";
+  version: 1;
+  run: PayoutLedgerRun;
+  items: PayoutLedgerItem[];
 };
 
 type RateKind = "anchor" | "referral" | "catalog";
@@ -120,6 +159,7 @@ export function buildPayoutReport(input: {
       recipient,
       method: account?.method ?? "missing",
       address: account?.address ?? "",
+      purchaseIds: [],
       purchases: 0,
       grossUsd: 0,
       payoutUsd: 0,
@@ -131,6 +171,7 @@ export function buildPayoutReport(input: {
       blockedReason: account ? undefined : "MISSING_PAYOUT_ACCOUNT"
     };
 
+    row.purchaseIds.push(purchaseRef(purchase));
     row.purchases += 1;
     row.grossUsd = roundMoney(row.grossUsd + amount);
     row.payoutUsd = roundMoney(row.payoutUsd + payout);
@@ -154,6 +195,42 @@ export function buildPayoutReport(input: {
       platformUsd: roundMoney(sortedRows.reduce((sum, row) => sum + row.platformUsd, 0)),
       missingPayoutAccounts: sortedRows.filter((row) => row.missingPayoutAccount).length
     }
+  };
+}
+
+export function buildPayoutLedger(report: PayoutReport, generatedAt = new Date().toISOString()): PayoutLedger {
+  const runKey = stableKey(["payout-run", report.month]);
+  return {
+    kind: "onlyharness-payout-ledger",
+    version: 1,
+    run: {
+      idempotencyKey: runKey,
+      month: report.month,
+      start: report.start,
+      end: report.end,
+      status: "draft",
+      currency: "USD",
+      generatedAt,
+      totals: report.totals
+    },
+    items: report.rows.map((row) => ({
+      idempotencyKey: stableKey(["payout-item", runKey, row.recipient]),
+      recipient: row.recipient,
+      method: row.method,
+      address: row.address,
+      status: row.blockedReason ? "blocked" : "ready_manual_payout",
+      ...(row.blockedReason ? { blockedReason: row.blockedReason } : {}),
+      purchaseIds: row.purchaseIds,
+      purchases: row.purchases,
+      grossUsd: row.grossUsd,
+      payoutUsd: row.payoutUsd,
+      platformUsd: row.platformUsd,
+      mix: {
+        anchor: row.anchorPurchases,
+        referral: row.referralPurchases,
+        catalog: row.catalogPurchases
+      }
+    }))
   };
 }
 
@@ -197,14 +274,47 @@ export function formatPayoutReport(report: PayoutReport): string {
   return `${lines.join("\n")}\n`;
 }
 
+export function formatPayoutLedger(ledger: PayoutLedger): string {
+  const ready = ledger.items.filter((item) => item.status === "ready_manual_payout").length;
+  const blocked = ledger.items.filter((item) => item.status === "blocked").length;
+  return [
+    `# OnlyHarness payout ledger ${ledger.run.month}`,
+    "",
+    `Run: ${ledger.run.idempotencyKey}`,
+    `Status: ${ledger.run.status}`,
+    `Window: ${ledger.run.start} <= created_at < ${ledger.run.end}`,
+    `Items: ${ledger.items.length} (${ready} ready, ${blocked} blocked)`,
+    `Totals: ${ledger.run.totals.purchases} purchases · gross ${money(ledger.run.totals.grossUsd)} · payout ${money(ledger.run.totals.payoutUsd)} · platform ${money(ledger.run.totals.platformUsd)}`,
+    "",
+    "| recipient | status | purchases | payout | reason |",
+    "| --- | --- | ---: | ---: | --- |",
+    ...ledger.items.map((item) => [
+      item.recipient,
+      item.status,
+      String(item.purchases),
+      money(item.payoutUsd),
+      item.blockedReason ?? "-"
+    ].join(" | ").replace(/^/, "| ").replace(/$/, " |")),
+    ""
+  ].join("\n");
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const month = args.month ?? currentUtcMonth();
   const anchors = readAnchors(args.anchors ?? path.join(workspaceRoot, "data/anchors.json"));
   const data = await loadData(args);
   const report = buildPayoutReport({ month, purchases: data.purchases, payoutAccounts: data.payoutAccounts, anchors });
-  if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  else process.stdout.write(formatPayoutReport(report));
+  const ledger = args.ledger || args.ledgerOut || args.recordLedger ? buildPayoutLedger(report) : undefined;
+  if (ledger && args.ledgerOut) writeJsonFile(args.ledgerOut, ledger);
+  const recorded = ledger && args.recordLedger ? await recordPayoutLedger(ledger) : undefined;
+  if (args.json) {
+    process.stdout.write(`${JSON.stringify(args.ledger ? { ledger, recorded } : { report, ledger, recorded }, null, 2)}\n`);
+  } else {
+    process.stdout.write(ledger && args.ledger ? formatPayoutLedger(ledger) : formatPayoutReport(report));
+    if (args.ledgerOut) process.stdout.write(`Ledger written: ${path.resolve(args.ledgerOut)}\n`);
+    if (recorded) process.stdout.write(`Ledger recorded: ${recorded.runId} (${recorded.items} items)\n`);
+  }
   if (args.failOnMissing && report.totals.missingPayoutAccounts > 0) process.exit(1);
 }
 
@@ -248,21 +358,90 @@ async function restFetch<T>(supabaseUrl: string, serviceKey: string, table: stri
   return await response.json() as T[];
 }
 
+export async function recordPayoutLedger(ledger: PayoutLedger): Promise<{ runId: string; items: number }> {
+  const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to record a payout ledger.");
+  }
+  const [run] = await restUpsert<{ id: string }>(supabaseUrl, serviceKey, "payout_runs", "idempotency_key", [{
+    idempotency_key: ledger.run.idempotencyKey,
+    month: ledger.run.month,
+    start_at: ledger.run.start,
+    end_at: ledger.run.end,
+    status: ledger.run.status,
+    currency: ledger.run.currency,
+    purchases: ledger.run.totals.purchases,
+    gross_usd: ledger.run.totals.grossUsd,
+    payout_usd: ledger.run.totals.payoutUsd,
+    platform_usd: ledger.run.totals.platformUsd,
+    missing_payout_accounts: ledger.run.totals.missingPayoutAccounts,
+    generated_at: ledger.run.generatedAt
+  }]);
+  if (!run?.id) throw new Error("Supabase payout_runs upsert did not return a run id.");
+  await restUpsert(supabaseUrl, serviceKey, "payout_items", "idempotency_key", ledger.items.map((item) => ({
+    run_id: run.id,
+    idempotency_key: item.idempotencyKey,
+    recipient: item.recipient,
+    method: item.method,
+    address: item.address || null,
+    status: item.status,
+    blocked_reason: item.blockedReason ?? null,
+    purchase_ids: item.purchaseIds,
+    purchases: item.purchases,
+    gross_usd: item.grossUsd,
+    payout_usd: item.payoutUsd,
+    platform_usd: item.platformUsd,
+    anchor_purchases: item.mix.anchor,
+    referral_purchases: item.mix.referral,
+    catalog_purchases: item.mix.catalog
+  })));
+  return { runId: run.id, items: ledger.items.length };
+}
+
+async function restUpsert<T = unknown>(
+  supabaseUrl: string,
+  serviceKey: string,
+  table: string,
+  conflict: string,
+  rows: unknown[]
+): Promise<T[]> {
+  if (!rows.length) return [];
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?on_conflict=${encodeURIComponent(conflict)}`, {
+    method: "POST",
+    headers: {
+      apikey: serviceKey,
+      authorization: `Bearer ${serviceKey}`,
+      "content-type": "application/json",
+      prefer: "resolution=merge-duplicates,return=representation"
+    },
+    body: JSON.stringify(rows)
+  });
+  if (!response.ok) throw new Error(`Supabase ${table} upsert failed: HTTP ${response.status} ${await response.text()}`);
+  return await response.json() as T[];
+}
+
 function parseArgs(argv: string[]) {
   const args: {
     month?: string;
     purchases?: string;
     payoutAccounts?: string;
     anchors?: string;
+    ledger: boolean;
+    ledgerOut?: string;
+    recordLedger: boolean;
     json: boolean;
     failOnMissing: boolean;
-  } = { json: false, failOnMissing: false };
+  } = { ledger: false, recordLedger: false, json: false, failOnMissing: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--month") args.month = requireValue(argv, ++index, arg);
     else if (arg === "--purchases") args.purchases = requireValue(argv, ++index, arg);
     else if (arg === "--payout-accounts") args.payoutAccounts = requireValue(argv, ++index, arg);
     else if (arg === "--anchors") args.anchors = requireValue(argv, ++index, arg);
+    else if (arg === "--ledger") args.ledger = true;
+    else if (arg === "--ledger-out") args.ledgerOut = requireValue(argv, ++index, arg);
+    else if (arg === "--record-ledger") args.recordLedger = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--fail-on-missing") args.failOnMissing = true;
     else if (arg === "--help" || arg === "-h") {
@@ -294,6 +473,12 @@ function readRows<T>(file: string | undefined, key: "purchases" | "payoutAccount
 function readAnchors(file: string): AnchorConfig {
   if (!existsSync(file)) return {};
   return JSON.parse(readFileSync(file, "utf8")) as AnchorConfig;
+}
+
+function writeJsonFile(file: string, value: unknown) {
+  const target = path.resolve(file);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function recipientKey(purchase: PurchaseRow): string | undefined {
@@ -347,6 +532,7 @@ function addBlockedPurchase(
     recipient,
     method: "missing",
     address: "",
+    purchaseIds: [],
     purchases: 0,
     grossUsd: 0,
     payoutUsd: 0,
@@ -357,6 +543,7 @@ function addBlockedPurchase(
     missingPayoutAccount: true,
     blockedReason
   };
+  row.purchaseIds.push(purchaseRef(purchase));
   row.purchases += 1;
   row.grossUsd = roundMoney(row.grossUsd + amount);
   rows.set(recipient, row);
@@ -379,13 +566,29 @@ function money(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+function purchaseRef(purchase: PurchaseRow): string {
+  if (purchase.id) return purchase.id;
+  return stableKey([
+    "purchase",
+    purchase.owner,
+    purchase.repo,
+    createdAtOf(purchase) ?? "unknown",
+    String(amountUsd(purchase)),
+    purchase.status
+  ]);
+}
+
+function stableKey(parts: string[]): string {
+  return createHash("sha256").update(parts.join("\u0000")).digest("hex");
+}
+
 function currentUtcMonth(): string {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function helpText(): string {
-  return `Usage: tsx scripts/payout-report.ts [--month YYYY-MM] [--json] [--fail-on-missing]
+  return `Usage: tsx scripts/payout-report.ts [--month YYYY-MM] [--json] [--ledger] [--ledger-out file] [--record-ledger] [--fail-on-missing]
 
 Sources:
   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
@@ -395,6 +598,12 @@ Rates:
   anchor purchases: 100%
   referral-attributed purchases: 95%
   catalog purchases: 85%
+
+Ledger:
+  --ledger prints an idempotent draft ledger instead of the report
+  --ledger-out writes the draft ledger JSON to a local file
+  --record-ledger upserts payout_runs/payout_items through Supabase service role
+  The script never marks items paid and never calls a payout provider.
 `;
 }
 
