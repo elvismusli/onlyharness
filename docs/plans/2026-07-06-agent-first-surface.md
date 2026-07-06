@@ -93,15 +93,50 @@ an agent never gets lost and can use the full functionality?
 | OpenAPI spec for the REST API | ❌ missing (nice-to-have; registry consumers use it) |
 | Vendor skill / Claude Code plugin | ❌ missing (P2, cheap) |
 
-## Roadmap (priority = impact on "agent never gets lost")
+## CLI vs MCP: the correction (2026-07-06 follow-up)
 
-**P0 — Remote MCP server at `https://onlyharness.com/mcp`.**
-Streamable HTTP, stateless, direct-response. Meta-tools mirroring the REST API:
-`search_harnesses`, `harness_details`, `pull_harness` (archive), `publish_harness`
-(authed), `docs_search` (serves llms-full/README/harness docs live). Reads anonymous,
-publish behind Bearer. Fastify already hosts the API — mount the MCP endpoint in the
-same app (official TypeScript SDK supports stateless Streamable HTTP). One-command
-install story: `claude mcp add --transport http onlyharness https://onlyharness.com/mcp`.
+The MCP criticism is real and measured, and it reorders our priorities:
+
+- **Context bloat**: most MCP clients load every tool schema upfront — GitHub's server
+  exposed 93 tools ≈ 55K tokens before the first message; Anthropic itself measured
+  134K tokens of tool definitions and responded with "code execution with MCP"
+  (present servers as code APIs; 98.7% token reduction in their example). Claude Code
+  now defers MCP schemas by default; Cursor reported −46.9% agent tokens.
+- **Benchmarks**: ScaleKit (75 runs, Sonnet 4): CLI used 4–32× fewer tokens per op,
+  100% vs 72% success, ~$3.20 vs ~$55.20 per 10K ops. Zechner's benchmark is more
+  nuanced: a *well-designed* MCP beat CLI on a complex task (−39% cost, −23% time) —
+  his conclusion: **tool design matters more than protocol; build an excellent CLI
+  first, then wrap it as MCP** where statefulness/no-shell reach is needed.
+- **Training prior**: models know bash/git/jq from trillions of tokens; CLI discovery
+  is lazy (`--help` costs nothing until used); pipes compose in ways tool authors
+  never anticipated.
+
+Where MCP still earns its place: agents **without a shell** (claude.ai web/mobile,
+ChatGPT connectors, thin IDE integrations) can't run `hh` at all; MCP is their only
+door. And OnlyHarness harnesses are *files* — actually using one requires a shell-
+capable agent anyway, which makes CLI/HTTP the natural primary surface and MCP the
+reach/onboarding layer. Our planned server is ~5 meta-tools (≈2–3K tokens), not a
+93-tool schema dump — the bloat criticism targets a shape we're not building.
+
+**Resulting stance: CLI-first, MCP as a thin adapter over the same API.**
+
+## Roadmap (priority = impact on "agent never gets lost"; reordered after the CLI/MCP correction)
+
+**P0 — `hh` on npm + agent-grade CLI DX.** Today installing hh means clone+npm install —
+the single biggest failure of our primary surface. Publish `@onlyharness/hh` so
+`npx @onlyharness/hh search research` works in one command with zero setup. Then:
+`--json` on every command (pull/run/doctor/publish still lack it), a stable exit-code
+taxonomy (0 ok / 2 auth / 3 validation / 4 not-found), errors that name the next
+command, additive-only flag changes (CLI-as-API-contract).
+
+**P1 — Remote MCP server at `https://onlyharness.com/mcp`.**
+Streamable HTTP, stateless, direct-response — a thin adapter over the same REST API,
+~5 meta-tools: `search_harnesses`, `harness_details`, `pull_harness` (archive),
+`publish_harness` (authed), `docs_search` (serves llms-full/README/harness docs live).
+Reads anonymous, publish behind Bearer. Fastify already hosts the API — mount the MCP
+endpoint in the same app (official TypeScript SDK supports stateless Streamable HTTP).
+One-command install: `claude mcp add --transport http onlyharness https://onlyharness.com/mcp`.
+Purpose: no-shell clients + registry discoverability, not a replacement for hh.
 
 **P0 — AGENTS.md + CLAUDE.md** at repo root and served on the site; cross-link every
 surface (API ↔ CLI ↔ MCP ↔ llms.txt) so any entry point names all the others. Also add
@@ -124,14 +159,10 @@ proper PATs.
 later expose the harness registry itself via the MCP-registry OpenAPI shape — the
 "subregistry" strategic option from finding 4).
 
-**P2 — CLI polish** per practitioner consensus (unverified leg): `--json` on every
-command (pull/run/doctor/publish still lack it), exit-code taxonomy, errors that name
-the next command ("Not a harness directory. Try `hh pull <owner>/<name>` first." —
-partially done).
-
 **P2 — Vendor skill + Claude Code plugin** ("onlyharness" plugin: SKILL.md teaching
-search→pull→run→eval→gate, bundling the MCP server config). Submit to the Anthropic
-skills directory when open.
+the search→pull→run→eval→gate CLI loop, bundling the MCP server config). A skill IS
+essentially packaged CLI instructions — this leg reinforces CLI-first. Submit to the
+Anthropic skills directory when open.
 
 **Anti-goals:** no SSE transport; no tool-per-endpoint MCP; no A2A; don't replace the
 REST API with MCP — layer.
