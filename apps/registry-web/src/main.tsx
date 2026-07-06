@@ -6,8 +6,8 @@ import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu,
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
 import { clockLabel, keyFor, relativeTime } from "./format";
-import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, RegistryItem, ThreadItem, WinKind } from "./types";
-import { CliBody, InstallBody, LeaderboardBody, PublishBody, ReviewBody, ShareBody } from "./windows";
+import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, RegistryItem, StorefrontPage, ThreadItem, WinKind } from "./types";
+import { CliBody, InstallBody, LeaderboardBody, PublishBody, ReviewBody, ShareBody, StorefrontBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
 
@@ -25,7 +25,8 @@ const WIN_WIDTHS: Record<WinKind, number> = {
   cli: 620,
   review: 860,
   leaderboard: 460,
-  share: 660
+  share: 660,
+  storefront: 860
 };
 
 type ActiveDialog = DialogSpec & { onOk?: () => void };
@@ -36,6 +37,7 @@ function App() {
   const [leaderboard, setLeaderboard] = useState<RegistryItem[]>([]);
   const [details, setDetails] = useState<Record<string, HarnessDetail>>({});
   const [knownItems, setKnownItems] = useState<Record<string, RegistryItem>>({});
+  const [storefronts, setStorefronts] = useState<Record<string, StorefrontPage>>({});
   const [query, setQuery] = useState("");
   const [outcome, setOutcome] = useState("all");
   const [sort, setSort] = useState("trending");
@@ -54,6 +56,7 @@ function App() {
   const [logon, setLogon] = useState<{ open: boolean; note: string }>({ open: false, note: "" });
   const [authStatus, setAuthStatus] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [myHandle, setMyHandle] = useState("");
 
   /* publish */
   const [importName, setImportName] = useState("customer-research-pipeline");
@@ -73,6 +76,7 @@ function App() {
   const [startOpen, setStartOpen] = useState(false);
   const [flash, setFlash] = useState("");
   const [copiedTag, setCopiedTag] = useState("");
+  const [refCode, setRefCode] = useState(() => initialRefCode());
   const [time, setTime] = useState(() => clockLabel(new Date()));
   const flashTimer = useRef(0);
   const copiedTimer = useRef(0);
@@ -120,6 +124,7 @@ function App() {
     if (!supabase || !session?.user) {
       setStarred({});
       setForked({});
+      setMyHandle("");
       return;
     }
     supabase
@@ -139,12 +144,35 @@ function App() {
   }, [session]);
 
   useEffect(() => {
+    if (!session?.access_token) return;
+    fetch(`${apiUrl}/me/storefront`, {
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    })
+      .then((response) => response.ok ? response.json() : undefined)
+      .then((profile: { handle?: string } | undefined) => setMyHandle(profile?.handle ?? ""))
+      .catch(() => undefined);
+  }, [session]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setTime(clockLabel(new Date())), 20_000);
     return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
     function openFromHash() {
+      const ref = refFromLocation();
+      if (ref) {
+        setRefCode((current) => current === ref ? current : ref);
+        localStorage.setItem("onlyharness.ref", ref);
+      }
+      const storefront = parseStorefrontHash(window.location.hash);
+      if (storefront) {
+        const canonical = `#/@${storefront.handle}`;
+        if (handledHash.current === canonical && wins.some((win) => win.id === `storefront:${storefront.handle}` && !win.minimized)) return;
+        handledHash.current = canonical;
+        openStorefront(storefront.handle);
+        return;
+      }
       const parsed = parseHarnessHash(window.location.hash);
       if (!parsed) return;
       const key = `${parsed.owner}/${parsed.name}`;
@@ -249,7 +277,7 @@ function App() {
   }
 
   function openWin(kind: WinKind, hkey?: string) {
-    const id = kind === "harness" ? `harness:${hkey}` : kind;
+    const id = kind === "harness" ? `harness:${hkey}` : kind === "storefront" ? `storefront:${hkey}` : kind;
     openCount.current += 1;
     const step = openCount.current % 5;
     setWins((current) => {
@@ -292,6 +320,21 @@ function App() {
     }
   }
 
+  function loadStorefront(handle: string) {
+    if (storefronts[handle]) return;
+    fetch(`${apiUrl}/storefront/${encodeURIComponent(handle)}`)
+      .then((response) => response.json())
+      .then((data: StorefrontPage) => {
+        setStorefronts((current) => ({ ...current, [handle]: data }));
+        setKnownItems((current) => {
+          const next = { ...current };
+          for (const item of data.items ?? []) next[keyFor(item)] = item;
+          return next;
+        });
+      })
+      .catch(() => undefined);
+  }
+
   function openHarness(item: RegistryItem, tab?: DetailTab) {
     const key = keyFor(item);
     setKnownItems((current) => (current[key] ? current : { ...current, [key]: item }));
@@ -299,6 +342,13 @@ function App() {
     loadDetail(item);
     setHarnessHash(item);
     openWin("harness", key);
+  }
+
+  function openStorefront(handle: string) {
+    const clean = handle.replace(/^@/, "").toLowerCase();
+    if (!clean) return;
+    loadStorefront(clean);
+    openWin("storefront", clean);
   }
 
   function openInstall(item?: RegistryItem) {
@@ -486,6 +536,7 @@ function App() {
       case "review": return { icon: "🔧", title: "Maintainer Review — Demo" };
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
       case "share": return { icon: "💾", title: `harness_flex.exe — ${item?.title ?? ""}` };
+      case "storefront": return { icon: "🗂️", title: `@${win.hkey ?? "handle"} — My Briefcase` };
     }
   }
 
@@ -519,6 +570,7 @@ function App() {
     { icon: "🧭", label: "Explore", onClick: () => { setFocusedId(""); window.scrollTo({ top: 0, behavior: "smooth" }); } },
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
     { icon: "💿", label: "Install Center", onClick: () => openInstall(topItem) },
+    ...(myHandle ? [{ icon: "🗂️", label: `@${myHandle}`, onClick: () => openStorefront(myHandle) }] : []),
     { icon: "📄", label: "New harness...", onClick: () => openWin("publish") },
     { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", topItem ? keyFor(topItem) : undefined) },
     { icon: "🔧", label: "Maintainer Review", onClick: () => openReview() },
@@ -609,8 +661,12 @@ function App() {
         return <LeaderboardBody items={leaderboard} onOpen={(entry) => openHarness(entry)} />;
       case "share":
         return item
-          ? <ShareBody item={item} starred={Boolean(starred[keyFor(item)])} onCopy={(text) => copyText(text, "Brag copied. Go make them jealous.", "brag")} copied={copiedTag === "brag"} />
+          ? <ShareBody item={item} starred={Boolean(starred[keyFor(item)])} refCode={refCode} onCopy={(text) => copyText(text, "Share text copied", "brag")} copied={copiedTag === "brag"} />
           : <div className="win-body plate">Nothing to brag about yet.</div>;
+      case "storefront": {
+        const handle = win.hkey ?? "";
+        return <StorefrontBody page={storefronts[handle]} handle={handle} referrer={refCode} onOpen={(entry) => openHarness(entry)} onCopy={(text) => copyText(text, "Ref-link copied", `storefront:${handle}`)} copied={copiedTag === `storefront:${handle}`} />;
+      }
     }
   }
 
@@ -749,7 +805,7 @@ const root = (window as HarnessWindow).__harnessHub98Root ?? createRoot(containe
 root.render(<App />);
 
 function parseHarnessHash(hash: string): { owner: string; name: string } | undefined {
-  const match = hash.match(/^#\/h\/([^/]+)\/([^/?#]+)$/);
+  const match = hash.match(/^#\/h\/([^/]+)\/([^/?#]+)(?:\?.*)?$/);
   if (!match) return undefined;
   return {
     owner: decodeURIComponent(match[1]),
@@ -757,8 +813,25 @@ function parseHarnessHash(hash: string): { owner: string; name: string } | undef
   };
 }
 
+function parseStorefrontHash(hash: string): { handle: string } | undefined {
+  const match = hash.match(/^#\/@([^/?#]+)(?:\?.*)?$/);
+  if (!match) return undefined;
+  return { handle: decodeURIComponent(match[1]).replace(/^@/, "").toLowerCase() };
+}
+
 function setHarnessHash(item: RegistryItem) {
   const next = `#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`;
   if (window.location.hash === next) return;
   window.history.replaceState(null, "", next);
+}
+
+function initialRefCode(): string {
+  return refFromLocation() ?? localStorage.getItem("onlyharness.ref") ?? "";
+}
+
+function refFromLocation(): string | undefined {
+  const queryRef = new URLSearchParams(window.location.search).get("ref");
+  if (queryRef) return queryRef;
+  const hashQuery = window.location.hash.split("?")[1];
+  return hashQuery ? new URLSearchParams(hashQuery).get("ref") ?? undefined : undefined;
 }

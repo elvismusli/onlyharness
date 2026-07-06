@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { fmtContextCost, fmtK, heatPct, isoWeek } from "./format";
-import type { HarnessDetail, RegistryItem } from "./types";
-import { Btn, HeatMeter, InfoLine } from "./win98";
+import type { CompatibilityTarget, HarnessDetail, RegistryItem, StorefrontPage } from "./types";
+import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 /* ---------- New Harness Wizard (publish) ---------- */
 
@@ -67,9 +68,13 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
 
 /* ---------- Install Center ---------- */
 
-export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: "cli" | "archive") => void; copied: boolean }) {
+const INSTALL_TABS = ["CLI", "MCP", "Plugin", "Planned"] as const;
+type InstallTab = (typeof INSTALL_TABS)[number];
+
+export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: "cli" | "archive" | "mcp" | "plugin") => void; copied: boolean }) {
+  const [tab, setTab] = useState<InstallTab>("CLI");
   const target = item ? `${item.owner}/${item.name}` : "";
-  const commands = item
+  const cliCommands = item
     ? [
         `npx onlyharness pull ${target}`,
         `npx onlyharness run ${item.name} --json`,
@@ -78,7 +83,13 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
       ].join("\n")
     : "Select a harness to generate install commands.";
   const archive = item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
-  const targets = [
+  const mcpConfig = item
+    ? `claude mcp add onlyharness https://onlyharness.com/mcp\n# then call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
+    : "Select a harness to generate MCP setup.";
+  const pluginGuide = item
+    ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin v0.1 exposes the OnlyHarness skill and MCP wiring guide.\n# Use: npx onlyharness pull ${target}`
+    : "Select a harness to generate plugin setup.";
+  const targets: CompatibilityTarget[] = [
     { name: "CLI", status: "available", detail: "npx onlyharness pull/run/eval/gate" },
     { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
     { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
@@ -97,11 +108,24 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
 
       <div className="detail-grid">
         <section>
+          <TabStrip tabs={INSTALL_TABS} active={tab} onSelect={setTab} />
           <div className="trust-box">
-            <h4>Recommended install loop</h4>
-            <pre className="pre98">{commands}</pre>
+            <h4>{tab === "CLI" ? "Recommended install loop" : tab === "MCP" ? "MCP setup" : tab === "Plugin" ? "Plugin v0.1" : "Planned adapters"}</h4>
+            {tab === "CLI" && <pre className="pre98">{cliCommands}</pre>}
+            {tab === "MCP" && <pre className="pre98">{mcpConfig}</pre>}
+            {tab === "Plugin" && <pre className="pre98">{pluginGuide}</pre>}
+            {tab === "Planned" && (
+              <div className="file-list">
+                {targets.filter((targetInfo) => targetInfo.status === "planned").map((targetInfo) => (
+                  <div className="file-row" key={targetInfo.name}>
+                    <span className="tag98 warn">planned</span>
+                    <span><b>{targetInfo.name}</b> · {targetInfo.detail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-              <Btn strong disabled={!item} onClick={() => onCopy(commands, "cli")}>{copied ? "✓ Copied" : "📋 Copy CLI loop"}</Btn>
+              <Btn strong disabled={!item} onClick={() => onCopy(tab === "MCP" ? mcpConfig : tab === "Plugin" ? pluginGuide : cliCommands, tab === "MCP" ? "mcp" : tab === "Plugin" ? "plugin" : "cli")}>{copied ? "✓ Copied" : "📋 Copy shown setup"}</Btn>
               <Btn disabled={!item} onClick={() => onCopy(archive, "archive")}>📦 Copy archive curl</Btn>
             </div>
           </div>
@@ -130,6 +154,59 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
             <InfoLine label="Standard" value={item?.standard ?? "select a harness"} />
           </div>
           <div className="plate" style={{ fontSize: 11 }}>Cursor adapter and team bundle are not shipped yet.</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+export function StorefrontBody({ page, handle, referrer, onOpen, onCopy, copied }: {
+  page?: StorefrontPage;
+  handle: string;
+  referrer?: string;
+  onOpen: (item: RegistryItem) => void;
+  onCopy: (text: string) => void;
+  copied: boolean;
+}) {
+  const baseUrl = typeof window === "undefined" ? "https://onlyharness.com" : window.location.origin;
+  const ref = page?.referralCode || referrer || "";
+  const refLink = `${baseUrl}/#/@${encodeURIComponent(page?.profile.handle ?? handle)}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`;
+  return (
+    <div className="win-body">
+      <div className="detail-head">
+        <div className="owner-line">My Briefcase</div>
+        <h2>@{page?.profile.handle ?? handle}</h2>
+        <div className="promise">{page?.profile.bio || "Creator storefront is loading."}</div>
+        <div className="tagrow">
+          {ref && <span className="tag98 safe">ref {ref}</span>}
+          <span className="tag98">public safe profile</span>
+        </div>
+      </div>
+      <div className="detail-grid">
+        <section>
+          <div className="trust-box">
+            <h4>Published harnesses</h4>
+            <div className="file-list">
+              {(page?.items ?? []).map((item) => (
+                <button className="file-row as-button" key={`${item.owner}/${item.name}`} onClick={() => onOpen(item)}>
+                  <span>📦</span>
+                  <span><b>{item.title}</b> · {item.summary}</span>
+                </button>
+              ))}
+              {page && !page.items.length && <div className="file-row"><span>□</span><span>No public harnesses attached to this handle yet.</span></div>}
+              {!page && <div className="file-row"><span>⌛</span><span>Loading storefront...</span></div>}
+            </div>
+          </div>
+        </section>
+        <aside className="trust-panel">
+          <div className="trust-box">
+            <h4>Creator ref-link</h4>
+            <pre className="pre98" style={{ maxHeight: 86 }}>{refLink}</pre>
+            <div style={{ marginTop: 8 }}>
+              <Btn strong onClick={() => onCopy(refLink)}>{copied ? "✓ Copied" : "📋 Copy ref-link"}</Btn>
+            </div>
+          </div>
+          <div className="plate" style={{ fontSize: 11 }}>Referral attribution is applied at checkout; it does not grant free access.</div>
         </aside>
       </div>
     </div>
@@ -246,10 +323,12 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
 
 /* ---------- harness_flex.exe (share card) ---------- */
 
-export function ShareBody({ item, starred, onCopy, copied }: { item: RegistryItem; starred: boolean; onCopy: (text: string) => void; copied: boolean }) {
+export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: RegistryItem; starred: boolean; refCode?: string; onCopy: (text: string) => void; copied: boolean }) {
   const stars = item.stars + (starred ? 1 : 0);
   const heat = item.heat + (starred ? 0.4 : 0);
-  const brag = `★ LOOK AT MY HARNESS ★\n${item.title} — ${item.summary}\n★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥\n> ${item.cliCommand}`;
+  const baseUrl = typeof window === "undefined" ? "https://onlyharness.com" : window.location.origin;
+  const shareUrl = `${baseUrl}/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
+  const brag = `★ LOOK AT MY HARNESS ★\n${item.title} — ${item.summary}\n★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥\nWorks with: CLI, MCP, HTTP archive\n${shareUrl}\n> ${item.cliCommand}`;
   return (
     <div className="win-body">
       <div className="share-stage">
@@ -269,6 +348,8 @@ export function ShareBody({ item, starred, onCopy, copied }: { item: RegistryIte
                 <div className="share-tags">
                   {item.tags.slice(0, 2).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
                   {item.riskTier === "LOW" && <span className="tag98 safe">✓ safety reviewed</span>}
+                  <span className="tag98 safe">CLI</span>
+                  <span className="tag98 safe">MCP</span>
                 </div>
                 <div style={{ flex: 1 }} />
                 <div className="share-stats">

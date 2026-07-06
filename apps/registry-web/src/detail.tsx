@@ -1,5 +1,5 @@
 import { cleanReadme, fmtContextCost, fmtK, heatPct, relativeTime } from "./format";
-import { DETAIL_TABS, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "./types";
+import { DETAIL_TABS, type CompatibilityTarget, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 const THREAD_KINDS = ["question", "recipe", "result", "proposal", "bug/risk"];
@@ -33,6 +33,14 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
   const grantedPermissions = Object.entries(permissions)
     .filter(([, value]) => value === true)
     .map(([key]) => key.replaceAll("_", " "));
+  const targets = compatibilityTargets(item, detail);
+  const version = manifest?.version ?? "current";
+  const installLoop = [
+    `npx onlyharness pull ${item.owner}/${item.name}`,
+    `npx onlyharness run ${item.name} --json`,
+    `npx onlyharness eval ${item.name} --json`,
+    `npx onlyharness gate --dir ${item.name} --json`
+  ].join("\n");
 
   return (
     <div className="win-body">
@@ -74,7 +82,63 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
               </div>
             )}
 
-            {tab === "Try" && (
+            {tab === "Install" && (
+              <div>
+                <h4>Install loop</h4>
+                <pre className="pre98">{installLoop}</pre>
+                <div className="tagrow" style={{ marginTop: 8 }}>
+                  {targets.map((target) => (
+                    <span key={target.name} className={`tag98 ${target.status === "verified" || target.status === "available" ? "safe" : "warn"}`}>
+                      {target.name}: {target.status}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  <Btn strong onClick={onInstall}>💿 Open Install Center</Btn>
+                  <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : ">_ Copy CLI"}</Btn>
+                </div>
+                <div className="plate" style={{ marginTop: 8, fontSize: 11 }}>
+                  Planned targets are visible but do not imply adapter support. Use available targets for automation.
+                </div>
+              </div>
+            )}
+
+            {tab === "Trust" && (
+              <div className="trust-questions">
+                <div className="trust-box">
+                  <h4>1. Safe enough to inspect?</h4>
+                  <InfoLine label="Security scan" value={detail?.security ? `${detail.security.verdict} · ${detail.security.findings.length} findings` : `${item.security.verdict} · ${item.security.findings} findings`} />
+                  <InfoLine label="Risk" value={`${detail?.risk.tier ?? item.riskTier} (${detail?.risk.score ?? item.riskScore})`} />
+                  <InfoLine label="Permissions" value={grantedPermissions.length ? grantedPermissions.join(", ") : "conservative"} />
+                  {detail?.risk.blocking?.length ? <p className="trust-note">{detail.risk.blocking[0]}</p> : null}
+                </div>
+                <div className="trust-box">
+                  <h4>2. Works in my setup?</h4>
+                  <InfoLine label="Runtime" value={manifest?.runtime.primary ?? item.runtime} />
+                  <InfoLine label="Adapters" value={manifest?.runtime.adapters?.length ? manifest.runtime.adapters.join(", ") : "none declared"} />
+                  <InfoLine label="Context" value={fmtContextCost(detail?.contextCost ?? item.contextCost)} />
+                  <div className="tagrow" style={{ marginTop: 6 }}>
+                    {targets.map((target) => <span key={target.name} className={`tag98 ${target.status === "planned" ? "warn" : "safe"}`}>{target.name}: {target.status}</span>)}
+                  </div>
+                </div>
+                <div className="trust-box">
+                  <h4>3. Better than alternatives?</h4>
+                  <InfoLine label="Eval" value={detail?.evalResult ? `${detail.evalResult.score} (${detail.evalResult.status})` : item.evalStatus} />
+                  <InfoLine label="Gate" value={manifest ? `score >= ${manifest.quality_gates.min_score}` : "not loaded"} />
+                  <InfoLine label="Last verified" value={lastVerifiedLabel(detail)} />
+                  {(detail?.evalResult?.cases ?? []).slice(0, 4).map((entry) => (
+                    <div className={`eval-row ${entry.passed ? "pass" : "fail"}`} key={entry.id}>
+                      <span>{entry.passed ? "✓" : "✗"}</span>
+                      <strong>{entry.title}</strong>
+                      <span className="score">{entry.score.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {detail && !detail.evalResult?.cases?.length && <div className="plate">No recorded eval cases for this harness yet.</div>}
+                </div>
+              </div>
+            )}
+
+            {tab === "Try sample" && (
               <div className="try-grid">
                 <div>
                   <h4>Example input</h4>
@@ -135,23 +199,6 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
               </div>
             )}
 
-            {tab === "Evals" && (
-              <div>
-                <div className="plate" style={{ marginBottom: 8 }}>
-                  Latest run: <b>{detail?.evalResult ? `${detail.evalResult.status} · score ${detail.evalResult.score}` : item.evalStatus}</b>
-                  {manifest && <> · gate requires ≥ {manifest.quality_gates.min_score}</>}
-                </div>
-                {(detail?.evalResult?.cases ?? []).map((entry) => (
-                  <div className={`eval-row ${entry.passed ? "pass" : "fail"}`} key={entry.id}>
-                    <span>{entry.passed ? "✓" : "✗"}</span>
-                    <strong>{entry.title}</strong>
-                    <span className="score">{entry.score.toFixed(2)}</span>
-                  </div>
-                ))}
-                {detail && !detail.evalResult?.cases?.length && <div className="plate">No recorded eval cases for this harness yet.</div>}
-              </div>
-            )}
-
             {tab === "Files" && (
               <div>
                 <div className="file-list">
@@ -167,6 +214,21 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                   <a href={detail?.forgeUrl ?? item.forgeUrl} target="_blank" rel="noreferrer" style={{ color: "var(--navy)" }}>
                     Open repository ↗
                   </a>
+                </div>
+              </div>
+            )}
+
+            {tab === "Versions" && (
+              <div>
+                <h4>Current version</h4>
+                <div className="file-list">
+                  <div className="file-row">
+                    <span className="tag98 safe">{version}</span>
+                    <span>{detail ? "Current manifest/archive version" : "Loading version..."}</span>
+                  </div>
+                </div>
+                <div className="plate" style={{ marginTop: 8 }}>
+                  Immutable archive snapshots are served with <code>?version=</code>. Full version history UI is not populated until more publish events exist.
                 </div>
               </div>
             )}
@@ -222,4 +284,21 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
       </div>
     </div>
   );
+}
+
+function compatibilityTargets(item: RegistryItem, detail?: HarnessDetail): CompatibilityTarget[] {
+  const declared = detail?.manifest?.compatibility?.targets ?? [];
+  if (declared.length) return declared;
+  return [
+    { name: "CLI", status: "available", notes: item.cliCommand },
+    { name: "HTTP archive", status: "available" },
+    { name: "MCP pull_harness", status: "available" },
+    { name: "Cursor adapter", status: "planned" },
+    { name: "Team bundle", status: "planned" }
+  ];
+}
+
+function lastVerifiedLabel(detail?: HarnessDetail): string {
+  if (!detail?.evalResult || detail.evalResult.status === "unknown") return "not recorded";
+  return "eval result file present";
 }

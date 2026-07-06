@@ -420,6 +420,14 @@ input, textarea, select { font-family: var(--font-ui); color: var(--ink); }
 
 .tagrow { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
 
+.compat-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 8px;
+  min-width: 0;
+}
+
 .stats-plate {
   display: flex;
   justify-content: space-between;
@@ -457,6 +465,12 @@ input, textarea, select { font-family: var(--font-ui); color: var(--ink); }
 .hcard-actions { display: flex; gap: 5px; margin-top: 10px; }
 
 .hcard-actions .star-btn { flex: 1; font-weight: bold; }
+
+.hcard-cta-grid {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(88px, 1.2fr) minmax(56px, .8fr) 32px;
+  align-items: stretch;
+}
 
 /* ---------- outcome / cli strip ---------- */
 
@@ -500,7 +514,14 @@ button.status-plate { cursor: pointer; }
 
 /* ---------- tabs ---------- */
 
-.tabs98 { display: flex; gap: 2px; padding: 0 2px; flex-wrap: wrap; }
+.tabs98 {
+  display: flex;
+  gap: 2px;
+  padding: 0 2px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 
 .tab98 {
   background: var(--silver);
@@ -560,6 +581,23 @@ button.status-plate { cursor: pointer; }
 .info-line span { color: #404040; }
 
 .info-line strong { text-align: right; }
+
+.info-line strong, .file-row span:last-child, .breakable-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.trust-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trust-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #404040;
+}
 
 .trust-actions { display: flex; flex-direction: column; gap: 5px; }
 
@@ -659,6 +697,14 @@ button.status-plate { cursor: pointer; }
 .file-row { display: flex; align-items: center; gap: 7px; padding: 2px 6px; font-size: 12px; }
 
 .file-row:hover { background: var(--navy); color: #fff; }
+
+.file-row.as-button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
 
 /* ---------- terminal window ---------- */
 

@@ -81,7 +81,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
       key: "harness",
       label: <span><u>H</u>arness</span>,
       items: [
-        { icon: "▶", label: top ? `Run "${top.title}"` : "Run sample", onClick: () => top && actions.openHarness(top, "Try") },
+        { icon: "▶", label: top ? `Run "${top.title}"` : "Run sample", onClick: () => top && actions.openHarness(top, "Try sample") },
         { icon: "💿", label: top ? `Install "${top.title}"` : "Install Center", onClick: () => actions.openInstall(top) },
         { icon: "⑂", label: top ? `Fork "${top.title}"` : "Fork", onClick: () => top && actions.fork(top) },
         "sep" as const,
@@ -117,7 +117,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
           <Btn onClick={actions.openPublish}>📄 New harness</Btn>
           <Btn onClick={() => top && actions.fork(top)}>⑂ Fork</Btn>
           <Btn onClick={() => actions.openInstall(top)}>💿 Install</Btn>
-          <Btn onClick={() => top && actions.openHarness(top, "Try")}>▶ Run</Btn>
+          <Btn onClick={() => top && actions.openHarness(top, "Try sample")}>▶ Run</Btn>
           <Btn onClick={actions.openCli}>&gt;_ CLI</Btn>
           <div className="vsep" />
           <label className="field98">
@@ -229,6 +229,11 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
           {item.tags.slice(0, 3).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
           {item.standard === "conformant" && <span className="tag98 safe">✓ Standard</span>}
         </div>
+        <div className="compat-chiprow">
+          <span className="tag98 safe">CLI</span>
+          <span className="tag98 safe">MCP</span>
+          <span className="tag98 safe">HTTP archive</span>
+        </div>
         <div className="stats-plate">
           <span>⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span>
           <span>💬 {item.threads}</span>
@@ -243,9 +248,10 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
           <HeatMeter heat={heat} pct={heatPct(heat)} />
           <div style={{ fontSize: 11, marginTop: 3, color: "#404040" }}>context: {fmtContextCost(item.contextCost)}</div>
         </div>
-        <div className="hcard-actions">
+        <div className="hcard-actions hcard-cta-grid">
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>
-          <Btn onClick={() => onOpen("Try")}>Try</Btn>
+          <Btn strong onClick={() => onOpen("Install")}>💿 Install</Btn>
+          <Btn onClick={() => onOpen("Try sample")}>Try</Btn>
           <Btn pressed={forked} onClick={onFork} title="Fork">⑂</Btn>
         </div>
       </div>

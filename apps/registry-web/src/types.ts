@@ -32,6 +32,19 @@ export type RegistryItem = {
   updatedAt: string;
 };
 
+export type CompatibilityTarget = {
+  name: string;
+  status: "planned" | "available" | "verified";
+  notes?: string;
+  detail?: string;
+};
+
+export type HarnessPricing = {
+  model?: "free" | "one_time" | "subscription" | "gate_escrow";
+  amount_usd?: number;
+  currency?: string;
+};
+
 export type ContextCost = {
   approxTokens: number;
   files: number;
@@ -61,6 +74,7 @@ export type HarnessDetail = {
   files?: string[];
   manifest?: {
     name: string;
+    version: string;
     title: string;
     summary: string;
     tags: string[];
@@ -70,6 +84,10 @@ export type HarnessDetail = {
     tools: { mcp_servers: Array<{ id: string }>; external_apis: Array<{ id: string; hostname: string }> };
     permissions: Record<string, unknown>;
     quality_gates: { min_score: number; max_cost_usd_per_run: number; max_risk_score: number };
+    pricing?: HarnessPricing;
+    compatibility?: {
+      targets?: CompatibilityTarget[];
+    };
   };
   valid: boolean;
   risk: { score: number; tier: string; reasons: string[]; blocking: string[] };
@@ -81,10 +99,20 @@ export type HarnessDetail = {
   readme: string;
 };
 
-export const DETAIL_TABS = ["Overview", "Try", "Thread", "Evals", "Files"] as const;
+export type StorefrontPage = {
+  profile: {
+    handle: string;
+    display_name: string;
+    bio: string;
+  };
+  referralCode: string;
+  items: RegistryItem[];
+};
+
+export const DETAIL_TABS = ["Overview", "Install", "Trust", "Try sample", "Thread", "Files", "Versions"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
-export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share";
+export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share" | "storefront";
 
 /* stacking order = position in the wins array (last = top); z-index derives from it */
 export type FloatWin = {
