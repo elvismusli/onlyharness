@@ -21,6 +21,7 @@ test("readOrgBundle requires hashed org token, scope and expiry", () => {
         tokens: [
           { name: "setup", hash: hashToken("valid-token"), scopes: ["setup"], expires_at: null },
           { name: "publish", hash: hashToken("publish-token"), scopes: ["publish"], expires_at: null },
+          { name: "entitlements", hash: hashToken("entitlements-token"), scopes: ["entitlements:read"], expires_at: null },
           { name: "expired", hash: hashToken("expired-token"), scopes: ["setup"], expires_at: "2026-01-01T00:00:00Z" },
           { name: "badexpiry", hash: hashToken("bad-expiry-token"), scopes: ["setup"], expires_at: "not-a-date" },
           { name: "noscope", hash: hashToken("noscope-token"), scopes: ["billing"], expires_at: null }
@@ -71,6 +72,15 @@ test("readOrgBundle requires hashed org token, scope and expiry", () => {
   const publish = orgs.authorizeOrgToken("@acme", "publish-token", ["publish"]);
   assert.equal(publish.ok, true);
   assert.equal(publish.tokenName, "publish");
+
+  const entitlements = orgs.authorizeAnyOrgToken("entitlements-token", ["entitlements:read"]);
+  assert.equal(entitlements.ok, true);
+  assert.equal(entitlements.tokenName, "entitlements");
+
+  const setupForEntitlements = orgs.authorizeAnyOrgToken("valid-token", ["entitlements:read"]);
+  assert.equal(setupForEntitlements.ok, false);
+  assert.equal(setupForEntitlements.status, 403);
+  assert.equal(setupForEntitlements.auditAction, "org_scope_denied");
 });
 
 test("appendOrgAudit writes no raw token values", () => {

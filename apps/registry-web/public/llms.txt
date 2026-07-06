@@ -25,6 +25,8 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
+- Entitlement check: GET /entitlements/check?subject=user:{id}&harness={owner}/{name}&version={optional semver}
+  Bot-facing read-only decision. Requires ORGS_ENABLED=true and Authorization: Bearer {org token with entitlements:read}. Response includes { entitled, status } and never returns archive files.
 - Payment webhook: POST /webhooks/payments
   Internal only. Requires x-harness-token matching HARNESS_WEBHOOK_TOKEN; marks a manual purchase paid and grants entitlement idempotently.
 - Storefront profile: PUT /me/storefront and GET /me/storefront

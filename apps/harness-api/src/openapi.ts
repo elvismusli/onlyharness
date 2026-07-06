@@ -132,6 +132,40 @@ export const openapi = {
         }
       }
     },
+    "/entitlements/check": {
+      get: {
+        summary: "Check whether a subject can access a harness",
+        description: "Bot-facing read-only check. Requires ORGS_ENABLED=true and a Bearer org token with entitlements:read scope. The token authorizes the check but is never treated as a buyer entitlement.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "subject",
+            in: "query",
+            required: true,
+            schema: { type: "string", pattern: "^(user|wallet|org):" },
+            description: "Subject ref, for example user:<id>, wallet:<address> or org:<slug>."
+          },
+          {
+            name: "harness",
+            in: "query",
+            required: true,
+            schema: { type: "string" },
+            description: "Harness ref as owner/name, including @org/name for org-private harnesses."
+          },
+          queryParam("version", "Optional immutable archive version")
+        ],
+        responses: {
+          "200": {
+            description: "Entitlement decision",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/EntitlementCheck" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/imports/markdown-to-harness": {
       post: {
         summary: "Publish markdown as an unverified harness scaffold",
@@ -507,6 +541,21 @@ export const openapi = {
           purchase_id: { type: "string" }
         },
         required: ["ok", "status", "owner", "repo", "version", "subject_id"]
+      },
+      EntitlementCheck: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+          entitled: { type: "boolean" },
+          status: { type: "string", enum: ["free", "entitled", "payment_required"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          subject_type: { type: "string", enum: ["user", "wallet", "org"] },
+          subject_id: { type: "string" },
+          pricing: { type: "object" }
+        },
+        required: ["ok", "entitled", "status", "owner", "repo", "version", "subject_type", "subject_id", "pricing"]
       },
       StorefrontProfile: {
         type: "object",

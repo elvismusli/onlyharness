@@ -63,6 +63,7 @@ Core endpoints:
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled |
+| GET | `/entitlements/check?subject={type:id}&harness={owner/name}` | Bot-facing entitlement check; requires org token with `entitlements:read` scope |
 | GET | `/orgs/{slug}/bundle` | Team setup bundle; requires `ORGS_ENABLED=true` and Bearer org token |
 | POST | `/orgs/{slug}/imports/markdown-to-harness` | Publish org-private markdown harness; requires org token with publish scope |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
@@ -83,6 +84,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
 - Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
 - Team `hh setup @org`, `hh pull @org/name`, and `hh publish --org` use `HH_ORG_TOKEN`; org bundles/publishing are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.
+- `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
 - Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.

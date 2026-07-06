@@ -11,6 +11,24 @@ export type PaymentAccessInput = {
   userId?: string;
 };
 
+export type EntitlementSubject = {
+  type: "user" | "wallet" | "org";
+  id: string;
+};
+
+export type EntitlementCheckInput = {
+  owner: string;
+  repo: string;
+  version: string;
+  manifest: HarnessManifest;
+  subject: EntitlementSubject;
+};
+
+export type EntitlementCheckResult = {
+  entitled: boolean;
+  status: "free" | "entitled" | "payment_required";
+};
+
 export type PaymentAccessResult =
   | { allowed: true }
   | { allowed: false; status: 402; body: PaymentRequiredBody };
@@ -103,8 +121,18 @@ export async function requireArchivePaymentAccess(input: PaymentAccessInput): Pr
   };
 }
 
+export async function checkEntitlement(input: EntitlementCheckInput): Promise<EntitlementCheckResult> {
+  if (input.manifest.pricing.model === "free") return { entitled: true, status: "free" };
+  if (await hasSubjectEntitlement(input)) return { entitled: true, status: "entitled" };
+  return { entitled: false, status: "payment_required" };
+}
+
 async function hasEntitlement(input: PaymentAccessInput): Promise<boolean> {
   return hasManualEntitlement(input) || await hasLocalEntitlement(input) || await hasSupabaseEntitlement(input);
+}
+
+async function hasSubjectEntitlement(input: EntitlementCheckInput): Promise<boolean> {
+  return await hasLocalSubjectEntitlement(input) || await hasSupabaseSubjectEntitlement(input);
 }
 
 function hasManualEntitlement(input: PaymentAccessInput): boolean {
@@ -125,6 +153,15 @@ async function hasSupabaseEntitlement(input: PaymentAccessInput): Promise<boolea
   const canonical = await fetchCanonicalEntitlements(input);
   if (canonical !== undefined) return entitlementRowsAllow(canonical, input.version);
   const legacy = await fetchLegacyEntitlements(input);
+  return entitlementRowsAllow(legacy ?? [], input.version);
+}
+
+async function hasSupabaseSubjectEntitlement(input: EntitlementCheckInput): Promise<boolean> {
+  if (!supabaseUrl || !supabaseRestKey) return false;
+  const canonical = await fetchCanonicalEntitlementsForSubject(input);
+  if (canonical !== undefined) return entitlementRowsAllow(canonical, input.version);
+  if (input.subject.type !== "user" || !isUuid(input.subject.id)) return false;
+  const legacy = await fetchLegacyEntitlementsForSubject(input);
   return entitlementRowsAllow(legacy ?? [], input.version);
 }
 
@@ -203,10 +240,49 @@ async function fetchCanonicalEntitlements(input: PaymentAccessInput): Promise<En
   }
 }
 
+async function fetchCanonicalEntitlementsForSubject(input: EntitlementCheckInput): Promise<EntitlementRow[] | undefined> {
+  const params = new URLSearchParams({
+    select: "version,expires_at",
+    subject_type: `eq.${input.subject.type}`,
+    subject_id: `eq.${input.subject.id}`,
+    owner: `eq.${input.owner}`,
+    repo: `eq.${input.repo}`,
+    limit: "20"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/entitlements?${params.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return undefined;
+    return await response.json() as EntitlementRow[];
+  } catch {
+    return undefined;
+  }
+}
+
 async function fetchLegacyEntitlements(input: PaymentAccessInput): Promise<EntitlementRow[] | undefined> {
   const params = new URLSearchParams({
     select: "version,expires_at",
     user_id: `eq.${input.userId}`,
+    owner: `eq.${input.owner}`,
+    repo: `eq.${input.repo}`,
+    limit: "20"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/harness_entitlements?${params.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return undefined;
+    return await response.json() as EntitlementRow[];
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchLegacyEntitlementsForSubject(input: EntitlementCheckInput): Promise<EntitlementRow[] | undefined> {
+  const params = new URLSearchParams({
+    select: "version,expires_at",
+    user_id: `eq.${input.subject.id}`,
     owner: `eq.${input.owner}`,
     repo: `eq.${input.repo}`,
     limit: "20"
@@ -348,6 +424,16 @@ async function hasLocalEntitlement(input: PaymentAccessInput): Promise<boolean> 
   return entitlementRowsAllow(rows, input.version);
 }
 
+async function hasLocalSubjectEntitlement(input: EntitlementCheckInput): Promise<boolean> {
+  if (!localPaymentStorePath) return false;
+  const rows = readLocalPaymentState().entitlements
+    .filter((row) => row.subject_type === input.subject.type
+      && row.subject_id === input.subject.id
+      && row.owner === input.owner
+      && row.repo === input.repo);
+  return entitlementRowsAllow(rows, input.version);
+}
+
 function readLocalPaymentState(): LocalPaymentState {
   if (!localPaymentStorePath || !existsSync(localPaymentStorePath)) return { purchases: [], entitlements: [] };
   try {
@@ -433,7 +519,7 @@ type LocalPaymentState = {
 
 type StoredPurchase = {
   id: string;
-  subject_type: "user";
+  subject_type: "user" | "wallet" | "org";
   subject_id: string;
   owner: string;
   repo: string;
@@ -451,7 +537,7 @@ type StoredPurchase = {
 
 type StoredEntitlement = EntitlementRow & {
   id: string;
-  subject_type: "user";
+  subject_type: "user" | "wallet" | "org";
   subject_id: string;
   owner: string;
   repo: string;

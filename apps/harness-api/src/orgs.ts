@@ -88,6 +88,27 @@ export function authorizeOrgToken(slugValue: string | undefined, token: string |
   return { ok: true, org, tokenName };
 }
 
+export function authorizeAnyOrgToken(token: string | undefined, allowedScopes: string[]): OrgAuthResult {
+  if (!token) return { ok: false, status: 401, error: "Org token required", auditAction: "org_token_missing" };
+  const store = readOrgStore();
+  for (const org of store.organizations ?? []) {
+    const tokens = Array.isArray(org.tokens) ? org.tokens : [];
+    const tokenRow = tokens.find((row) => tokenMatches(token, row.hash));
+    if (!tokenRow) continue;
+    const tokenName = typeof tokenRow.name === "string" && tokenRow.name ? tokenRow.name : "unnamed";
+    const expiresAt = tokenRow.expires_at ? Date.parse(tokenRow.expires_at) : Number.POSITIVE_INFINITY;
+    if (tokenRow.expires_at && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
+      return { ok: false, status: 403, error: "Org token expired", slug: org.slug, tokenName, auditAction: "org_token_expired" };
+    }
+    const scopes = Array.isArray(tokenRow.scopes) ? tokenRow.scopes : [];
+    if (!allowedScopes.some((scope) => scopes.includes(scope))) {
+      return { ok: false, status: 403, error: "Org token cannot perform this action", slug: org.slug, tokenName, auditAction: "org_scope_denied" };
+    }
+    return { ok: true, org, tokenName };
+  }
+  return { ok: false, status: 403, error: "Invalid org token", auditAction: "org_token_denied" };
+}
+
 export function appendOrgAudit(input: { slug: string; action: string; tokenName?: string; subject?: string; target?: string }) {
   mkdirSync(path.dirname(orgAuditPath), { recursive: true });
   appendFileSync(orgAuditPath, `${JSON.stringify({

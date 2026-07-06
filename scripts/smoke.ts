@@ -70,7 +70,7 @@ try {
     items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/entitlements/check"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   for (const item of registry.items) {
@@ -112,6 +112,14 @@ try {
   const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string; payments_enabled?: boolean };
   if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || paidRequiredBody.payments_enabled !== true || !paidRequiredBody.checkout_url) {
     throw new Error(`Paid archive did not require payment: ${paidRequired.status} ${JSON.stringify(paidRequiredBody)}`);
+  }
+  const entitlementNoToken = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-paid-harness");
+  if (entitlementNoToken.status !== 401) throw new Error(`Entitlement check without org token should be 401, got ${entitlementNoToken.status}`);
+  const entitlementBefore = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-paid-harness&version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { entitled?: boolean; status?: string; pricing?: { model?: string } };
+  if (entitlementBefore.entitled !== false || entitlementBefore.status !== "payment_required" || entitlementBefore.pricing?.model !== "one_time") {
+    throw new Error(`Entitlement check should deny before checkout webhook: ${JSON.stringify(entitlementBefore)}`);
   }
   const unpaidBuyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
     headers: { Authorization: "Bearer smoke-buyer-token" }
@@ -156,6 +164,12 @@ try {
     headers: { Authorization: "Bearer smoke-buyer-token" }
   }).then((response) => response.json()) as { version?: string; files?: unknown[] };
   if (buyerArchive.version !== "0.1.0" || !buyerArchive.files?.length) throw new Error(`Checkout/webhook entitlement failed: ${JSON.stringify(buyerArchive)}`);
+  const entitlementAfter = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-paid-harness&version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { entitled?: boolean; status?: string; version?: string };
+  if (entitlementAfter.entitled !== true || entitlementAfter.status !== "entitled" || entitlementAfter.version !== "0.1.0") {
+    throw new Error(`Entitlement check should allow after checkout webhook: ${JSON.stringify(entitlementAfter)}`);
+  }
   const paidArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
     headers: { Authorization: "Bearer smoke-paid-token" }
   }).then((response) => response.json()) as { version?: string; files?: unknown[] };
@@ -239,6 +253,14 @@ try {
     headers: { Authorization: "Bearer smoke-org-token" }
   }).then((response) => response.json()) as { owner?: string; repo?: string; files?: unknown[] };
   if (orgArchive.owner !== "@acme" || orgArchive.repo !== "acme-private-workflow" || !orgArchive.files?.length) throw new Error(`Org archive did not return files with token: ${JSON.stringify(orgArchive)}`);
+  const orgEntitlementNoToken = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=@acme/acme-private-workflow");
+  if (orgEntitlementNoToken.status !== 401) throw new Error(`Org entitlement check without token should be 401, got ${orgEntitlementNoToken.status}`);
+  const orgEntitlement = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=@acme/acme-private-workflow", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { entitled?: boolean; status?: string; owner?: string };
+  if (orgEntitlement.entitled !== true || orgEntitlement.status !== "free" || orgEntitlement.owner !== "@acme") {
+    throw new Error(`Org entitlement check should allow free org-private harness with scoped token: ${JSON.stringify(orgEntitlement)}`);
+  }
   const auditProject = path.join(smokeDataRoot, "audit-project");
   mkdirSync(path.join(auditProject, ".claude/skills/smoke"), { recursive: true });
   mkdirSync(path.join(auditProject, ".claude/skills/smoke-helper"), { recursive: true });
@@ -283,7 +305,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, org setup/publish/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check, events, org setup/publish/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -449,7 +471,7 @@ function createOrgStore(target: string, token: string) {
           {
             name: "smoke",
             hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
-            scopes: ["setup", "publish"],
+            scopes: ["setup", "publish", "entitlements:read"],
             expires_at: null
           }
         ],

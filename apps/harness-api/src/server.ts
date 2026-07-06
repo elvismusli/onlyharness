@@ -10,8 +10,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
-import { appendOrgAudit, authorizeOrgToken, readOrgBundle } from "./orgs.js";
-import { createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook } from "./payments.js";
+import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgBundle } from "./orgs.js";
+import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, type EntitlementSubject } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
@@ -40,6 +40,12 @@ type CheckoutRequest = {
   repo?: string;
   version?: string;
   ref?: string;
+};
+
+type EntitlementCheckQuery = {
+  subject?: string;
+  harness?: string;
+  version?: string;
 };
 
 type StorefrontRequest = {
@@ -161,6 +167,54 @@ app.post("/billing/checkout", async (request, reply) => {
   if ("error" in session) return reply.code(session.status).send({ error: session.error });
   await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(user.id), target: "billing", client: "api" });
   return reply.code(201).send(session);
+});
+
+app.get("/entitlements/check", async (request, reply) => {
+  if (!orgsEnabled) return reply.code(404).send({ error: "Entitlement checks are not enabled" });
+  const token = orgTokenFromRequest(request);
+  const auth = authorizeAnyOrgToken(token, ["entitlements:read"]);
+  if (!auth.ok) {
+    appendOrgAudit({ slug: auth.slug ?? "unknown", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "entitlements_check" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+
+  const query = request.query as EntitlementCheckQuery;
+  const subject = parseEntitlementSubject(query.subject);
+  if (!subject) return reply.code(400).send({ error: "subject must be user:<id>, wallet:<id> or org:<slug>" });
+  const harness = parseHarnessRef(query.harness);
+  if (!harness) return reply.code(400).send({ error: "harness must be owner/name" });
+
+  const root = registry.resolveHarnessPath(harness.owner, harness.repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const orgGate = gateEntitlementCheckVisibility(harness.owner, manifest, auth.org.slug);
+  if (!orgGate.ok) {
+    appendOrgAudit({ slug: auth.org.slug, action: orgGate.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${harness.owner}/${harness.repo}` });
+    return reply.code(orgGate.status).send({ error: orgGate.error });
+  }
+
+  const archive = registry.buildArchiveForVersion(harness.owner, harness.repo, root, query.version);
+  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
+  const result = await checkEntitlement({
+    owner: harness.owner,
+    repo: harness.repo,
+    version: archive.version,
+    manifest,
+    subject
+  });
+  appendOrgAudit({ slug: auth.org.slug, action: "entitlement_check_read", tokenName: auth.tokenName, subject: `${subject.type}:${subject.id}`, target: `${harness.owner}/${harness.repo}@${archive.version}` });
+  return {
+    ok: true,
+    entitled: result.entitled,
+    status: result.status,
+    owner: harness.owner,
+    repo: harness.repo,
+    version: archive.version,
+    subject_type: subject.type,
+    subject_id: subject.id,
+    pricing: manifest.pricing
+  };
 });
 
 app.get("/me/storefront", async (request, reply) => {
@@ -356,6 +410,44 @@ app.post("/internal/eval-result", async (request, reply) => {
 const port = Number(process.env.HARNESS_API_PORT ?? 8787);
 const host = process.env.HARNESS_API_HOST ?? "127.0.0.1";
 await app.listen({ port, host });
+
+function parseEntitlementSubject(value: string | undefined): EntitlementSubject | undefined {
+  const match = value?.match(/^(user|wallet|org):(.+)$/);
+  if (!match) return undefined;
+  const type = match[1] as EntitlementSubject["type"];
+  const id = match[2]?.trim();
+  if (!id || id.length > 160) return undefined;
+  if (type === "org") {
+    return /^[a-z][a-z0-9_-]{1,48}$/.test(id) ? { type, id } : undefined;
+  }
+  return /^[A-Za-z0-9._:@-]+$/.test(id) ? { type, id } : undefined;
+}
+
+function parseHarnessRef(value: string | undefined): { owner: string; repo: string } | undefined {
+  const match = value?.match(/^(@?[a-z0-9][a-z0-9_-]{1,80})\/([a-z0-9][a-z0-9_-]{1,80})$/);
+  if (!match) return undefined;
+  return { owner: match[1], repo: match[2] };
+}
+
+function gateEntitlementCheckVisibility(owner: string, manifest: HarnessManifest | undefined, tokenOrgSlug: string):
+  | { ok: true }
+  | { ok: false; status: number; error: string; auditAction: string } {
+  if (owner.startsWith("@") && manifest?.visibility !== "org") {
+    return { ok: false, status: 403, error: "Org harness visibility mismatch", auditAction: "entitlement_check_visibility_mismatch" };
+  }
+  if (manifest?.visibility === "private") {
+    return { ok: false, status: 403, error: "Private harness is not available through this API", auditAction: "entitlement_check_private_denied" };
+  }
+  if (manifest?.visibility !== "org") return { ok: true };
+  const slug = manifest.org;
+  if (!slug || owner !== `@${slug}`) {
+    return { ok: false, status: 403, error: "Org harness owner mismatch", auditAction: "entitlement_check_owner_mismatch" };
+  }
+  if (tokenOrgSlug !== slug) {
+    return { ok: false, status: 403, error: "Org token cannot check this harness", auditAction: "entitlement_check_org_denied" };
+  }
+  return { ok: true };
+}
 
 function parseCsv(value: string | undefined): Set<string> {
   return new Set((value ?? "").split(",").map((origin) => origin.trim()).filter(Boolean));
