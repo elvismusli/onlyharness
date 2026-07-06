@@ -81,7 +81,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
       key: "harness",
       label: <span><u>H</u>arness</span>,
       items: [
-        { icon: "▶", label: top ? `Run "${top.title}"` : "Run sample", onClick: () => top && actions.openHarness(top, "Try sample") },
+        { icon: "▶", label: top ? `Preview "${top.title}"` : "Preview sample", onClick: () => top && actions.openHarness(top, "Try sample") },
         { icon: "💿", label: top ? `Install "${top.title}"` : "Install Center", onClick: () => actions.openInstall(top) },
         { icon: "⑂", label: top ? `Fork "${top.title}"` : "Fork", onClick: () => top && actions.fork(top) },
         "sep" as const,
@@ -117,7 +117,7 @@ export function ExploreWindow({ items, outcomes, outcome, setOutcome, query, set
           <Btn onClick={actions.openPublish}>📄 New harness</Btn>
           <Btn onClick={() => top && actions.fork(top)}>⑂ Fork</Btn>
           <Btn onClick={() => actions.openInstall(top)}>💿 Install</Btn>
-          <Btn onClick={() => top && actions.openHarness(top, "Try sample")}>▶ Run</Btn>
+          <Btn onClick={() => top && actions.openHarness(top, "Try sample")}>▶ Preview</Btn>
           <Btn onClick={actions.openCli}>&gt;_ CLI</Btn>
           <div className="vsep" />
           <label className="field98">

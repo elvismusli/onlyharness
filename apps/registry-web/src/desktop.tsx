@@ -230,7 +230,7 @@ export function LogonDialog({ note, status, busy, configured, onSignIn, onSignUp
             </button>
           </p>
         )}
-        <p className="logon-note">Your account stores stars, forks, runs and thread posts. Nothing else.</p>
+        <p className="logon-note">Your account stores stars, forks and thread posts. Nothing else.</p>
       </div>
     </Dialog>
   );

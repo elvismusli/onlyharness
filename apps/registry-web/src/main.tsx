@@ -443,11 +443,8 @@ function App() {
       return;
     }
     const key = keyFor(item);
-    setTryStates((current) => ({ ...current, [key]: "running" }));
-    if (supabase && session?.user) {
-      await supabase.from("user_harness_actions").upsert({ user_id: session.user.id, owner: item.owner, repo: item.name, action: "run" });
-    }
-    window.setTimeout(() => setTryStates((current) => ({ ...current, [key]: "done" })), 900);
+    setTryStates((current) => ({ ...current, [key]: "done" }));
+    flashMsg("Preview only. Run hh eval or hh gate locally for execution evidence.");
   }
 
   async function addThreadPost(item: RegistryItem) {
