@@ -30,6 +30,7 @@ Supabase auth is enabled for signup/login, stars/forks, thread posts, and authen
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
 - CLI package `onlyharness` with `hh search`, `hh suggest`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh audit-setup`, `hh benchmark`, `hh extract`, `hh setup @org`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
 - Agent-friendly discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), [`/server.json`](https://onlyharness.com/server.json), and `/mcp` document the HTTP/MCP surfaces so an AI agent can find and pull a harness without a browser.
+- Local bounty flow: create/claim/deliver/accept work-state over the existing `gate_escrow` rail; `paid` is set only after a matching escrow purchase captures against the delivered gate receipt.
 - Semantic PR review and quality gate sidecar API.
 - Docker production stack with system Caddy deployment mode for shared VPS hosts.
 
@@ -118,6 +119,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - `hh eval` and `hh gate` record privacy-safe `eval`/`gate` events for pulled harnesses when they pass; detail payloads expose `verification.lastVerifiedAt` from those events.
 - `hh gate --receipt` writes a signed gate receipt with harness ref, version, `resultsHash`, verdict and timestamp. `POST /api/receipts` verifies the ed25519 signature only; it is side-effect-free and does not store prompts, local paths, payments or entitlements.
 - Gate escrow is reserved-first: `pricing.model: gate_escrow` checkout/webhook creates `reserved` plus an expiring `escrow_reserved` archive entitlement. `POST /api/billing/escrow/receipt` captures on a valid passing receipt or refunds on a valid failing receipt; `POST /api/billing/escrow/timeout` refunds after the 72h window.
+- Bounties are work-state over the same escrow rail: `/api/bounties*` supports create, claim, deliver and accept; accept verifies the delivered receipt, escrow target, amount and currency, blocks escrow reuse, and writes `paid` only after capture.
 - Paid installs/pulls return 402 until entitled. When `PAYMENTS_ENABLED=true`, `X402_ENABLED=true`, and `X402_PAY_TO` is set, the archive response also includes an x402 v2 `PAYMENT-REQUIRED` header. Successful `hh install --pay` or `hh pull --pay` archive delivery requires `X402_FACILITATOR_URL` to verify/settle and then grants a wallet entitlement.
 - Buyer receipts are read-only: `GET /api/billing/receipt?provider_ref=<ref>` returns the authenticated user's pending/paid purchase status and entitlement flag, but never settles providers or grants access.
 - Bot gates can call `GET /api/entitlements/check?subject=user:<id>&harness=owner/name` with an org token that has `entitlements:read`; this returns a decision only, never archive files.

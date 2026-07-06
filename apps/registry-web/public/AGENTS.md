@@ -73,6 +73,11 @@ Core endpoints:
 | POST | `/billing/escrow/receipt` | Authenticated buyer settles a reserved `gate_escrow` purchase with a signed gate receipt |
 | POST | `/billing/escrow/timeout` | Authenticated buyer refunds an expired reserved `gate_escrow` purchase |
 | POST | `/receipts` | Verify a signed `hh gate --receipt` payload; side-effect-free, no payment or entitlement mutation |
+| GET | `/bounties` | List local bounty work-state; payment truth stays in linked purchases |
+| POST | `/bounties` | Authenticated customer creates an `open` bounty |
+| POST | `/bounties/{id}/claim` | Authenticated builder claims an open bounty |
+| POST | `/bounties/{id}/deliver` | Claimant delivers with a signed passing `hh gate --receipt` |
+| POST | `/bounties/{id}/accept` | Customer accepts by matching receipt + `gate_escrow` purchase; marks paid only after escrow capture |
 | GET | `/entitlements/check?subject={type:id}&harness={owner/name}` | Bot-facing entitlement check; requires org token with `entitlements:read` scope |
 | POST | `/community/invite-code` | Authenticated buyer gets a short-lived signed community gate code after entitlement is verified |
 | POST | `/community/verify-code` | Bot verifies a community gate code with a scoped org token before granting Discord/Telegram access |
@@ -99,6 +104,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - `/billing/receipt` is read-only buyer evidence keyed by `provider_ref`; it must never create purchases, settle providers, or grant entitlements.
 - `hh gate --receipt` signs `{harness, version, resultsHash, verdict, at}` with the local install key at `~/.onlyharness/key` by default. `/receipts` only verifies that signature and must not store prompts, local paths, payments, or entitlements.
 - `pricing.model: gate_escrow` must reserve first, not mark paid: provider confirmation creates `reserved` + expiring `escrow_reserved`; `/billing/escrow/receipt` captures only a valid passing receipt and refunds a valid failing receipt; `/billing/escrow/timeout` refunds after expiry.
+- Bounties are work-state only: `open -> claimed -> delivered -> paid`. `/bounties/{id}/accept` must verify the delivered receipt, match escrow target/amount/currency, block escrow reuse, and set `paid` only after the linked `gate_escrow` purchase is captured.
 - Payout tooling may create only draft/manual payout ledgers (`payout_runs`, `payout_items`); it must not call payout providers or mark ledger items paid.
 - `hh suggest` is the agent-first autopilot path: search, detail trust summary, optional `--apply --out <dir>`. `--apply` must use the same archive semantics as `hh pull`, including paid 402 and directory 409.
 - `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed.

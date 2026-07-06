@@ -425,6 +425,99 @@ export const openapi = {
         }
       }
     },
+    "/bounties": {
+      get: {
+        summary: "List local harness bounties",
+        description: "Returns bounty work-state. Payment truth remains the linked gate_escrow purchase.",
+        responses: {
+          "200": {
+            description: "Bounty list",
+            content: { "application/json": { schema: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Bounty" } } }, required: ["items"] } } }
+          }
+        }
+      },
+      post: {
+        summary: "Create a local harness bounty",
+        description: "Auth required. Creates open bounty work-state; it does not move money.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/BountyCreate" } } }
+        },
+        responses: {
+          "201": {
+            description: "Bounty created",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Bounty" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/bounties/{id}/claim": {
+      post: {
+        summary: "Claim an open bounty",
+        description: "Auth required. The customer cannot claim their own bounty.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("id")],
+        responses: {
+          "200": {
+            description: "Bounty claimed",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Bounty" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/bounties/{id}/deliver": {
+      post: {
+        summary: "Deliver a bounty with a signed gate receipt",
+        description: "Auth required. Only the claimant can deliver, and the receipt must be a passed hh gate --receipt for the delivered harness/version.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("id")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/BountyDeliver" } } }
+        },
+        responses: {
+          "200": {
+            description: "Bounty delivered",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Bounty" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/bounties/{id}/accept": {
+      post: {
+        summary: "Accept a delivered bounty and capture linked escrow",
+        description: "Auth required. Only the customer can accept. The signed passed receipt, delivered target, gate_escrow target, amount and currency must all match. A bounty is marked paid only after the linked escrow purchase is captured.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("id")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/BountyAccept" } } }
+        },
+        responses: {
+          "200": {
+            description: "Bounty accepted and paid",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Bounty" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
     "/orgs/{slug}/bundle": {
       get: {
         summary: "Read an organization setup bundle",
@@ -888,6 +981,56 @@ export const openapi = {
           reason: { type: "string", enum: ["receipt_passed", "receipt_failed", "timeout"] }
         },
         required: ["ok", "status", "owner", "repo", "version", "subject_id", "purchase_id", "reason"]
+      },
+      Bounty: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          title: { type: "string" },
+          spec: { type: "string" },
+          budget_usd: { type: "number" },
+          currency: { type: "string" },
+          status: { type: "string", enum: ["open", "claimed", "delivered", "paid"] },
+          customer_user_id: { type: "string" },
+          claimant_user_id: { type: ["string", "null"] },
+          delivered_harness: { type: ["string", "null"] },
+          delivered_version: { type: ["string", "null"] },
+          delivery_receipt_hash: { type: ["string", "null"], pattern: "^[a-fA-F0-9]{64}$" },
+          accepted_receipt_hash: { type: ["string", "null"], pattern: "^[a-fA-F0-9]{64}$" },
+          payment_purchase_id: { type: ["string", "null"] },
+          escrow_provider_ref: { type: ["string", "null"] },
+          paid_at: { type: ["string", "null"], format: "date-time" },
+          created_at: { type: "string", format: "date-time" },
+          updated_at: { type: "string", format: "date-time" }
+        },
+        required: ["id", "title", "spec", "budget_usd", "currency", "status", "customer_user_id", "created_at", "updated_at"]
+      },
+      BountyCreate: {
+        type: "object",
+        properties: {
+          title: { type: "string", minLength: 4, maxLength: 120 },
+          spec: { type: "string", minLength: 20, maxLength: 20000 },
+          budget_usd: { type: "number", exclusiveMinimum: 0 },
+          currency: { type: "string", pattern: "^[A-Za-z]{3}$", default: "USD" }
+        },
+        required: ["title", "spec", "budget_usd"]
+      },
+      BountyDeliver: {
+        type: "object",
+        properties: {
+          harness: { type: "string" },
+          version: { type: "string" },
+          receipt: { $ref: "#/components/schemas/GateReceipt" }
+        },
+        required: ["receipt"]
+      },
+      BountyAccept: {
+        type: "object",
+        properties: {
+          provider_ref: { type: "string" },
+          receipt: { $ref: "#/components/schemas/GateReceipt" }
+        },
+        required: ["provider_ref", "receipt"]
       },
       GateReceipt: {
         type: "object",

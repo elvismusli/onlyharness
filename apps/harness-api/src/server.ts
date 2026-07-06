@@ -10,6 +10,7 @@ import { decodePaymentSignatureHeader, encodePaymentResponseHeader, HTTPFacilita
 import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from "@x402/core/types";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
+import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, verifyCommunityInviteCode } from "./community.js";
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
@@ -57,6 +58,24 @@ type EscrowReceiptRequest = {
 
 type EscrowTimeoutRequest = {
   provider_ref?: string;
+};
+
+type BountyCreateRequest = {
+  title?: string;
+  spec?: string;
+  budget_usd?: number;
+  currency?: string;
+};
+
+type BountyDeliverRequest = {
+  harness?: string;
+  version?: string;
+  receipt?: unknown;
+};
+
+type BountyAcceptRequest = {
+  provider_ref?: string;
+  receipt?: unknown;
 };
 
 type CommunityInviteRequest = {
@@ -468,6 +487,76 @@ app.get("/storefront/:handle", async (request, reply) => {
   };
 });
 
+app.get("/bounties", async () => ({ items: await listBounties() }));
+
+app.post("/bounties", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as BountyCreateRequest : {};
+  const result = await createBounty({
+    title: body.title,
+    spec: body.spec,
+    budgetUsd: body.budget_usd,
+    currency: body.currency,
+    userId: user.id
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  return reply.code(201).send(result.value);
+});
+
+app.post("/bounties/:id/claim", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { id } = request.params as { id: string };
+  const result = await claimBounty({ id, userId: user.id });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  return result.value;
+});
+
+app.post("/bounties/:id/deliver", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { id } = request.params as { id: string };
+  const body = request.body && typeof request.body === "object" ? request.body as BountyDeliverRequest : {};
+  const result = await deliverBounty({
+    id,
+    userId: user.id,
+    harness: body.harness,
+    version: body.version,
+    receipt: body.receipt
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  return result.value;
+});
+
+app.post("/bounties/:id/accept", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { id } = request.params as { id: string };
+  const body = request.body && typeof request.body === "object" ? request.body as BountyAcceptRequest : {};
+  const result = await acceptBounty({
+    id,
+    userId: user.id,
+    providerRef: body.provider_ref,
+    receipt: body.receipt
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  const paidHarness = parseHarnessRef(result.value.delivered_harness ?? undefined);
+  if (paidHarness) {
+    await recordEvent({
+      kind: "escrow_captured",
+      owner: paidHarness.owner,
+      repo: paidHarness.repo,
+      version: result.value.delivered_version,
+      subject: eventSubject(user.id),
+      target: "bounty_accept",
+      client: "api"
+    });
+  }
+  await recordEvent({ kind: "purchase", owner: "bounties", repo: id, subject: eventSubject(user.id), target: "bounty_paid", client: "api" });
+  return result.value;
+});
+
 app.get("/orgs/:slug/bundle", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Org setup is not enabled" });
   const { slug } = request.params as { slug: string };
@@ -732,7 +821,10 @@ async function requireUser(request: FastifyRequest, reply: FastifyReply): Promis
 }
 
 async function userFromAuthorization(authorization: string | undefined): Promise<AuthResult> {
-  if (!supabaseUrl || !supabaseAnonKey) return { user: { id: "local-dev" } };
+  if (!supabaseUrl || !supabaseAnonKey) {
+    const local = authorization?.match(/^Bearer\s+local:([A-Za-z0-9._:-]{2,80})$/);
+    return { user: { id: local?.[1] ?? "local-dev" } };
+  }
   if (!authorization?.startsWith("Bearer ")) {
     return { status: 401, error: "Sign in required" };
   }

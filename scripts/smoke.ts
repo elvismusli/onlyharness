@@ -62,6 +62,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
     HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
     HARNESS_LOCAL_PAYMENTS_PATH: path.join(smokeDataRoot, "payments.json"),
+    HARNESS_LOCAL_BOUNTIES_PATH: path.join(smokeDataRoot, "bounties.json"),
     HARNESS_LOCAL_STOREFRONT_PATH: path.join(smokeDataRoot, "storefront.json"),
     HARNESS_ORGS_PATH: orgsPath,
     HARNESS_ORG_AUDIT_PATH: orgAuditPath,
@@ -78,7 +79,7 @@ try {
     items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
@@ -302,6 +303,59 @@ try {
   }).then((response) => response.json()) as { entitled?: boolean; status?: string };
   if (escrowEntitlementAfterCapture.entitled !== true || escrowEntitlementAfterCapture.status !== "entitled") {
     throw new Error(`Escrow capture should unlock settled entitlement: ${JSON.stringify(escrowEntitlementAfterCapture)}`);
+  }
+  const bountyReceipt = JSON.parse(readFileSync(escrowReceiptPath, "utf8"));
+  const bounty = await fetch("http://127.0.0.1:8799/bounties", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-customer" },
+    body: JSON.stringify({
+      title: "Smoke escrow bounty",
+      spec: "Build a gate-verified smoke escrow harness and attach the passing receipt before customer acceptance.",
+      budget_usd: 15,
+      currency: "USD"
+    })
+  }).then((response) => response.json()) as { id?: string; status?: string; customer_user_id?: string };
+  if (!bounty.id || bounty.status !== "open" || bounty.customer_user_id !== "smoke-customer") {
+    throw new Error(`Bounty create failed: ${JSON.stringify(bounty)}`);
+  }
+  const bountyClaim = await fetch(`http://127.0.0.1:8799/bounties/${bounty.id}/claim`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:smoke-builder" }
+  }).then((response) => response.json()) as { status?: string; claimant_user_id?: string };
+  if (bountyClaim.status !== "claimed" || bountyClaim.claimant_user_id !== "smoke-builder") {
+    throw new Error(`Bounty claim failed: ${JSON.stringify(bountyClaim)}`);
+  }
+  const bountyDelivery = await fetch(`http://127.0.0.1:8799/bounties/${bounty.id}/deliver`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-builder" },
+    body: JSON.stringify({ receipt: bountyReceipt })
+  }).then((response) => response.json()) as { status?: string; delivered_harness?: string; delivery_receipt_hash?: string };
+  if (bountyDelivery.status !== "delivered" || bountyDelivery.delivered_harness !== "local/smoke-escrow-harness" || !bountyDelivery.delivery_receipt_hash) {
+    throw new Error(`Bounty delivery failed: ${JSON.stringify(bountyDelivery)}`);
+  }
+  const bountyCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-customer" },
+    body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
+  }).then((response) => response.json()) as { provider_ref?: string; status?: string };
+  if (!bountyCheckout.provider_ref || bountyCheckout.status !== "pending") throw new Error(`Bounty checkout failed: ${JSON.stringify(bountyCheckout)}`);
+  const bountyWebhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_ref: bountyCheckout.provider_ref, status: "paid" })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string };
+  if (!bountyWebhook.ok || bountyWebhook.status !== "reserved") throw new Error(`Bounty escrow reserve failed: ${JSON.stringify(bountyWebhook)}`);
+  const bountyPaid = await fetch(`http://127.0.0.1:8799/bounties/${bounty.id}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-customer" },
+    body: JSON.stringify({ provider_ref: bountyCheckout.provider_ref, receipt: bountyReceipt })
+  }).then((response) => response.json()) as { status?: string; escrow_provider_ref?: string; payment_purchase_id?: string; accepted_receipt_hash?: string };
+  if (bountyPaid.status !== "paid" || bountyPaid.escrow_provider_ref !== bountyCheckout.provider_ref || !bountyPaid.payment_purchase_id || bountyPaid.accepted_receipt_hash !== bountyDelivery.delivery_receipt_hash) {
+    throw new Error(`Bounty accept did not capture escrow: ${JSON.stringify(bountyPaid)}`);
+  }
+  const bountyList = await fetch("http://127.0.0.1:8799/bounties").then((response) => response.json()) as { items?: Array<{ id?: string; status?: string }> };
+  if (!bountyList.items?.some((item) => item.id === bounty.id && item.status === "paid")) {
+    throw new Error(`Bounty list missing paid bounty: ${JSON.stringify(bountyList)}`);
   }
   const escrowFailCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
     method: "POST",
