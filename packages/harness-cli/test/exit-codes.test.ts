@@ -14,6 +14,8 @@ let server: Server;
 let registryUrl = "";
 let sawPullToken = false;
 let sawUpdateToken = false;
+let sawSetupBundleToken = false;
+let sawSetupArchiveToken = false;
 
 before(async () => {
   server = createServer((request, response) => {
@@ -26,6 +28,32 @@ before(async () => {
 
     if (request.url === "/registry") {
       response.end(JSON.stringify({ items: [{ owner: "harnesses", name: "deep-market-researcher" }] }));
+      return;
+    }
+
+    if (request.url === "/orgs/acme/bundle") {
+      if (!request.headers.authorization) {
+        response.statusCode = 401;
+        response.end(JSON.stringify({ error: "Org token required" }));
+        return;
+      }
+      if (request.headers.authorization !== "Bearer org-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid org token" }));
+        return;
+      }
+      sawSetupBundleToken = true;
+      response.end(JSON.stringify({
+        organization: { slug: "acme", name: "Acme", plan: "team" },
+        bundle: {
+          version: "0.2.0",
+          harnesses: [{ owner: "harnesses", name: "deep-market-researcher", version: "0.2.0" }],
+          configs: [
+            { path: ".claude/onlyharness/acme.md", content: "# Acme setup\n" },
+            { path: "../outside-from-setup-test.md", content: "must not write\n" }
+          ]
+        }
+      }));
       return;
     }
 
@@ -71,7 +99,8 @@ before(async () => {
     }
 
     if (request.url?.startsWith("/repos/harnesses/deep-market-researcher/archive")) {
-      sawUpdateToken = request.headers.authorization === "Bearer update-token";
+      if (request.headers.authorization === "Bearer update-token") sawUpdateToken = true;
+      if (request.headers.authorization === "Bearer org-token") sawSetupArchiveToken = true;
       response.end(JSON.stringify({
         owner: "harnesses",
         repo: "deep-market-researcher",
@@ -168,6 +197,41 @@ test("pull sends HH_TOKEN as a bearer token", async () => {
     assert.equal(sawPullToken, true);
   } finally {
     await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("setup installs an org bundle with org-token auth and idempotent retry", async () => {
+  sawSetupBundleToken = false;
+  sawSetupArchiveToken = false;
+  const parent = await mkdtemp(path.join(os.tmpdir(), "hh-setup-parent-"));
+  const out = path.join(parent, "team");
+  try {
+    const result = await runCli(["setup", "@acme", "--out", out, "--token", "org-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawSetupBundleToken, true);
+    assert.equal(sawSetupArchiveToken, true);
+    assert.doesNotMatch(result.stdout, /org-token/);
+    const body = JSON.parse(result.stdout) as { organization?: { slug?: string }; bundleVersion?: string; harnesses?: Array<{ path?: string }>; configs?: Array<{ path?: string }> };
+    assert.equal(body.organization?.slug, "acme");
+    assert.equal(body.bundleVersion, "0.2.0");
+    assert.ok(body.harnesses?.some((item) => item.path === "harnesses/deep-market-researcher"));
+    assert.ok(body.configs?.some((item) => item.path === ".claude/onlyharness/acme.md"));
+    await readFile(path.join(out, "harnesses/deep-market-researcher/harness.yaml"), "utf8");
+    await readFile(path.join(out, ".claude/onlyharness/acme.md"), "utf8");
+    const setup = JSON.parse(await readFile(path.join(out, ".harnesshub/setup.json"), "utf8")) as { organization?: { slug?: string }; bundleVersion?: string };
+    assert.equal(setup.organization?.slug, "acme");
+    assert.equal(setup.bundleVersion, "0.2.0");
+    await assert.rejects(readFile(path.join(parent, "outside-from-setup-test.md"), "utf8"));
+
+    const retry = await runCli(["setup", "@acme", "--out", out, "--token", "org-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(retry.status, 0, retry.stderr);
+
+    const denied = await runCli(["setup", "@acme", "--out", path.join(parent, "denied"), "--token", "bad-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(denied.status, 2);
+    assert.doesNotMatch(denied.stderr, /bad-token/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
   }
 });
 

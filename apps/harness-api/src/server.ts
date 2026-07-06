@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
+import { appendOrgAudit, readOrgBundle } from "./orgs.js";
 import { createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
@@ -20,6 +21,7 @@ const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey;
 const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
+const orgsEnabled = process.env.ORGS_ENABLED === "true";
 const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected-resource";
 
 type ImportRequest = {
@@ -186,6 +188,28 @@ app.get("/storefront/:handle", async (request, reply) => {
     profile: result.value.profile,
     referralCode: result.value.referralCode,
     items
+  };
+});
+
+app.get("/orgs/:slug/bundle", async (request, reply) => {
+  if (!orgsEnabled) return reply.code(404).send({ error: "Org setup is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const authorization = headerValue(request.headers.authorization);
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : headerValue(request.headers["x-harness-org-token"]);
+  const result = readOrgBundle(slug, token);
+  if (!result.ok) {
+    appendOrgAudit({ slug: result.slug ?? "invalid", action: result.auditAction, tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
+    return reply.code(result.status).send({ error: result.error });
+  }
+  appendOrgAudit({ slug: result.org.slug, action: "bundle_read", tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
+  await recordEvent({ kind: "install", owner: result.org.slug, repo: "bundle", version: result.bundle.version, subject: eventSubject(undefined), target: "org_setup", client: "api" });
+  return {
+    organization: {
+      slug: result.org.slug,
+      name: result.org.name,
+      plan: result.org.plan
+    },
+    bundle: result.bundle
   };
 });
 

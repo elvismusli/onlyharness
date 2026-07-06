@@ -40,6 +40,7 @@ services:
       HARNESS_API_PORT: 8787
       HARNESS_API_HOST: 0.0.0.0
       HARNESS_WORKSPACE_ROOT: /app
+      ORGS_ENABLED: "false"
       GITEA_BASE_URL: http://gitea:3000
     ports:
       - "8787:8787"

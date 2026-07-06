@@ -20,10 +20,12 @@ npx onlyharness gate --dir deep-market-researcher --json
 npx onlyharness update deep-market-researcher --diff --json
 npx onlyharness audit-setup --json
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness --json
+HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme --json
 ```
 
 `hh run` is sample mode only: no LLM calls and no credentials.
 For paid harnesses, set `HH_TOKEN`; payment-required pulls exit 5 and include checkout/manual-entitlement next steps.
+For team setup bundles, set `HH_ORG_TOKEN`; setup writes managed metadata and should be safe to retry.
 
 ## Publish
 

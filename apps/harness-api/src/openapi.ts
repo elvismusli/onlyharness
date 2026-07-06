@@ -216,6 +216,24 @@ export const openapi = {
         }
       }
     },
+    "/orgs/{slug}/bundle": {
+      get: {
+        summary: "Read an organization setup bundle",
+        description: "Requires ORGS_ENABLED=true and a Bearer org token with setup or read scope. Returns pinned harness refs and safe config snippets for hh setup.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Organization setup bundle",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/OrgBundleResponse" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/webhooks/payments": {
       post: {
         summary: "Settle a manual payment webhook",
@@ -306,6 +324,10 @@ export const openapi = {
             description: "Bearer challenge with resource_metadata URL."
           }
         },
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
+      Forbidden: {
+        description: "Authorization was provided but is not allowed for this action",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
       },
       NotFound: {
@@ -476,6 +498,55 @@ export const openapi = {
           items: { type: "array", items: { $ref: "#/components/schemas/RegistryItem" } }
         },
         required: ["profile", "referralCode", "items"]
+      },
+      OrgBundleResponse: {
+        type: "object",
+        properties: {
+          organization: {
+            type: "object",
+            properties: {
+              slug: { type: "string" },
+              name: { type: "string" },
+              plan: { type: "string", enum: ["free", "team", "enterprise"] }
+            },
+            required: ["slug", "name", "plan"]
+          },
+          bundle: { $ref: "#/components/schemas/OrgBundle" }
+        },
+        required: ["organization", "bundle"]
+      },
+      OrgBundle: {
+        type: "object",
+        properties: {
+          version: { type: "string" },
+          harnesses: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrgBundleHarness" }
+          },
+          configs: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrgBundleConfig" }
+          }
+        },
+        required: ["version", "harnesses", "configs"]
+      },
+      OrgBundleHarness: {
+        type: "object",
+        properties: {
+          owner: { type: "string" },
+          name: { type: "string" },
+          version: { type: "string" },
+          target: { type: "string" }
+        },
+        required: ["owner", "name"]
+      },
+      OrgBundleConfig: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          content: { type: "string" }
+        },
+        required: ["path", "content"]
       },
       SecurityReport: {
         type: "object",

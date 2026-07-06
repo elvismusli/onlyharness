@@ -11,6 +11,7 @@ npx onlyharness gate --dir deep-market-researcher
 npx onlyharness update deep-market-researcher --diff
 npx onlyharness audit-setup
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness
+HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme
 ```
 
 Global install after npm publish:
@@ -32,6 +33,8 @@ HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 
 Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`.
 
+Team setup uses a separate org token: `HH_ORG_TOKEN=<org-token> hh setup @acme`. It reads the org bundle, installs pinned harnesses and config snippets into `.harnesshub/orgs/acme` by default, and writes `.harnesshub/setup.json` inside that managed output.
+
 ## Publishing
 
 Publishing needs an OnlyHarness access token.
@@ -51,6 +54,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh doctor --harness [dir]` checks a local harness plus registry connectivity.
 - `hh audit-setup` scans local `~/.claude` and `./.claude` skills for trigger conflicts, stale skills and estimated markdown context cost. It stays local and emits a sanitized share card.
 - `hh extract <skill-dir|SKILL.md>` creates a private `harness.v0.2` scaffold from local skill markdown, infers candidate `depends_on`, and redacts obvious token-shaped secrets.
+- `hh setup @org` installs a token-gated team bundle with pinned harnesses and config snippets; repeated runs of the same bundle are idempotent.
 - `hh pin`, `hh outdated`, and `hh update --diff` use `.harnesshub/source.json` / `.harnesshub/pin.json` for safe version-aware updates.
 - Use `--json` where available, or `--format json` for risk/diff; failures print `{ "error", "code", "next" }` to stderr.
 

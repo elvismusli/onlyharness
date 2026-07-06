@@ -46,6 +46,7 @@ npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json
 npx onlyharness audit-setup --json
 npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness --json
+npx onlyharness setup @acme --json
 npx onlyharness pin deep-market-researcher --json
 npx onlyharness outdated deep-market-researcher --json
 npx onlyharness update deep-market-researcher --diff --json
@@ -61,6 +62,7 @@ Core endpoints:
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled |
+| GET | `/orgs/{slug}/bundle` | Team setup bundle; requires `ORGS_ENABLED=true` and Bearer org token |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
@@ -78,6 +80,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
 - Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
+- Team `hh setup @org` uses `HH_ORG_TOKEN`; org bundles are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
 - Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.

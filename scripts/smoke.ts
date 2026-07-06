@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,6 +38,9 @@ if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error
 
 createMaliciousHarness(maliciousRoot);
 createPaidHarness(paidRoot);
+const orgsPath = path.join(smokeDataRoot, "orgs.json");
+const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
+createOrgStore(orgsPath, "smoke-org-token");
 
 const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
   cwd: root,
@@ -52,6 +56,9 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
     HARNESS_LOCAL_PAYMENTS_PATH: path.join(smokeDataRoot, "payments.json"),
     HARNESS_LOCAL_STOREFRONT_PATH: path.join(smokeDataRoot, "storefront.json"),
+    HARNESS_ORGS_PATH: orgsPath,
+    HARNESS_ORG_AUDIT_PATH: orgAuditPath,
+    ORGS_ENABLED: "true",
     HARNESS_WEBHOOK_TOKEN: "smoke-webhook-token",
     HARNESS_MANUAL_ENTITLEMENTS: "smoke-paid-token=local/smoke-paid-harness"
   }
@@ -63,7 +70,7 @@ try {
     items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   for (const item of registry.items) {
@@ -185,6 +192,20 @@ try {
   }
 
   const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
+  const setupTmp = path.join(smokeDataRoot, "acme-setup");
+  run("node", [cliBin, "setup", "@acme", "--out", setupTmp, "--token", "smoke-org-token", "--json"], { env: cliEnv });
+  run("node", [cliBin, "setup", "@acme", "--out", setupTmp, "--token", "smoke-org-token", "--json"], { env: cliEnv });
+  if (!existsSync(path.join(setupTmp, "harnesses/deep-market-researcher/harness.yaml"))) throw new Error("Org setup did not install pinned harness");
+  if (!existsSync(path.join(setupTmp, ".claude/onlyharness/acme.md"))) throw new Error("Org setup did not write config snippet");
+  if (!existsSync(path.join(setupTmp, ".harnesshub/setup.json"))) throw new Error("Org setup metadata missing");
+  if (existsSync(path.join(smokeDataRoot, "evil.md"))) throw new Error("Org setup wrote a traversal config outside the output directory");
+  const deniedOrg = await fetch("http://127.0.0.1:8799/orgs/acme/bundle", {
+    headers: { Authorization: "Bearer wrong-org-token" }
+  });
+  if (deniedOrg.status !== 403) throw new Error(`Invalid org token should be 403, got ${deniedOrg.status}`);
+  const orgAudit = existsSync(orgAuditPath) ? readFileSync(orgAuditPath, "utf8") : "";
+  if (!orgAudit.includes("bundle_read") || !orgAudit.includes("bundle_token_denied")) throw new Error(`Org setup audit log incomplete: ${orgAudit}`);
+  if (orgAudit.includes("smoke-org-token") || orgAudit.includes("wrong-org-token")) throw new Error("Org audit log leaked a raw token");
   const auditProject = path.join(smokeDataRoot, "audit-project");
   mkdirSync(path.join(auditProject, ".claude/skills/smoke"), { recursive: true });
   mkdirSync(path.join(auditProject, ".claude/skills/smoke-helper"), { recursive: true });
@@ -229,7 +250,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement, events, org setup/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -381,5 +402,45 @@ examples:
     cost_usd: 0.03,
     duration_ms: 250,
     cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
+  }, null, 2));
+}
+
+function createOrgStore(target: string, token: string) {
+  writeFileSync(target, JSON.stringify({
+    organizations: [
+      {
+        slug: "acme",
+        name: "Acme",
+        plan: "team",
+        tokens: [
+          {
+            name: "smoke",
+            hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
+            scopes: ["setup"],
+            expires_at: null
+          }
+        ],
+        bundle: {
+          version: "0.1.0",
+          harnesses: [
+            {
+              owner: "harnesses",
+              name: "deep-market-researcher",
+              version: "0.1.0"
+            }
+          ],
+          configs: [
+            {
+              path: ".claude/onlyharness/acme.md",
+              content: "# Acme OnlyHarness Setup\n\nUse pinned harnesses from this org setup bundle.\n"
+            },
+            {
+              path: "../evil.md",
+              content: "must not be written\n"
+            }
+          ]
+        }
+      }
+    ]
   }, null, 2));
 }

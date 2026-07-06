@@ -117,6 +117,22 @@ type ExtractedSkill = {
   markdownFiles: number;
   depends_on: ExtractDependency[];
 };
+type OrgBundlePayload = {
+  organization?: {
+    slug: string;
+    name: string;
+    plan: string;
+  };
+  bundle?: {
+    version: string;
+    harnesses: Array<{ owner: string; name: string; version?: string; target?: string }>;
+    configs?: Array<{ path: string; content: string }>;
+  };
+};
+type OrgSetupMetadata = {
+  organization?: { slug?: string };
+  bundleVersion?: string;
+};
 
 export const EXIT = {
   OK: 0,
@@ -224,6 +240,30 @@ program.command("pull")
       `Pulled ${owner}/${name}@${version} -> ${out} (${written} files${skipped ? `, ${skipped} skipped as too large` : ""})`,
       `Next: hh run ${out} · hh eval ${out} && hh gate --dir ${out}`
     ].join("\n") + "\n");
+  });
+
+program.command("setup")
+  .description("install a team/org bundle into a local workspace")
+  .argument("<org>", "org slug, e.g. @acme")
+  .option("--out <dir>", "output directory (default ./.harnesshub/orgs/<org>)")
+  .option("--token <token>", "org token (defaults to HH_ORG_TOKEN)")
+  .option("--force", "write into a non-empty output directory", false)
+  .option("--dry-run", "fetch and summarize without writing files", false)
+  .option("--json", "print JSON", false)
+  .action(async (org: string, options) => {
+    const result = await setupOrgBundle({
+      org,
+      out: options.out,
+      token: options.token ?? process.env.HH_ORG_TOKEN,
+      force: options.force,
+      dryRun: options.dryRun,
+      json: options.json
+    });
+    if (options.dryRun) {
+      writeStdout(options.json ? result : `Would install ${result.organization.slug}@${result.bundleVersion}: ${result.harnesses.length} harnesses, ${result.configs.length} configs\n`);
+      return;
+    }
+    writeStdout(options.json ? result : `Installed ${result.organization.slug}@${result.bundleVersion} -> ${result.out}\n`);
   });
 
 program.command("run")
@@ -771,15 +811,15 @@ async function fetchHarnessManifest(registryBase: string, owner: string, name: s
   return { version };
 }
 
-async function fetchArchive(registryBase: string, owner: string, name: string, version: string, json = false): Promise<ArchivePayload> {
-  const token = process.env.HH_TOKEN;
-  const url = `${registryBase.replace(/\/$/, "")}/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`;
+async function fetchArchive(registryBase: string, owner: string, name: string, version: string | undefined, json = false, tokenOverride?: string): Promise<ArchivePayload> {
+  const token = tokenOverride ?? process.env.HH_TOKEN;
+  const url = `${registryBase.replace(/\/$/, "")}/repos/${owner}/${name}/archive${version ? `?version=${encodeURIComponent(version)}` : ""}`;
   const response = await fetchRegistryResponse(url, json, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
-  if (response.status === 404) fail(`Harness ${owner}/${name}@${version} not found.`, EXIT.NOT_FOUND, `hh outdated`, json);
+  if (response.status === 404) fail(`Harness ${owner}/${name}${version ? `@${version}` : ""} not found.`, EXIT.NOT_FOUND, `hh outdated`, json);
   if (response.status === 402) {
     const body = await readResponseJson(response, url, json).catch(() => ({})) as PaymentRequiredBody;
     fail(
-      `Payment required for ${owner}/${name}@${version}${priceLabel(body) ? ` (${priceLabel(body)})` : ""}`,
+      `Payment required for ${owner}/${name}${version ? `@${version}` : ""}${priceLabel(body) ? ` (${priceLabel(body)})` : ""}`,
       EXIT.PAYMENT,
       paymentNext(body),
       json
@@ -787,6 +827,76 @@ async function fetchArchive(registryBase: string, owner: string, name: string, v
   }
   if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
   return readResponseJson(response, url, json) as Promise<ArchivePayload>;
+}
+
+async function setupOrgBundle(input: { org: string; out?: string; token?: string; force: boolean; dryRun: boolean; json: boolean }) {
+  const slug = cleanSetupOrg(input.org);
+  if (!slug) fail("Expected org slug, e.g. @acme", EXIT.VALIDATION, "hh setup @acme --token <org-token>", input.json);
+  if (!input.token) fail("Org token required.", EXIT.AUTH, "Set HH_ORG_TOKEN or pass --token <org-token>", input.json);
+  const bundleUrl = `${registryUrl}/orgs/${slug}/bundle`;
+  const response = await fetchRegistryResponse(bundleUrl, input.json, { headers: { Authorization: `Bearer ${input.token}` } });
+  if (response.status === 401 || response.status === 403) {
+    const body = await readResponseJson(response, bundleUrl, input.json).catch(() => ({})) as { error?: string };
+    fail(`Setup failed (${response.status}): ${body.error ?? "org authorization failed"}`, EXIT.AUTH, "Check HH_ORG_TOKEN and org membership.", input.json);
+  }
+  if (response.status === 404) fail(`Org bundle not found: @${slug}`, EXIT.NOT_FOUND, "Ask an org admin to publish a setup bundle.", input.json);
+  if (!response.ok) fail(`Registry request failed: ${bundleUrl} -> ${response.status}`, EXIT.GENERAL, undefined, input.json);
+  const payload = await readResponseJson(response, bundleUrl, input.json) as OrgBundlePayload;
+  if (!payload.organization || !payload.bundle) fail(`Org bundle response was invalid: @${slug}`, EXIT.GENERAL, undefined, input.json);
+  const out = path.resolve(input.out ?? path.join(".harnesshub", "orgs", slug));
+  const existingSetup = readJsonFile<OrgSetupMetadata>(path.join(out, ".harnesshub/setup.json"));
+  const sameManagedSetup = existingSetup?.organization?.slug === payload.organization.slug && existingSetup.bundleVersion === payload.bundle.version;
+  if (!input.dryRun && existsSync(out) && readdirSync(out).length > 0 && !input.force && !sameManagedSetup) {
+    fail(`${displayPath(out)} exists and is not an idempotent @${slug} setup.`, EXIT.VALIDATION, `hh setup @${slug} --out ${displayPath(out)} --force`, input.json);
+  }
+  const harnessReports: Array<{ owner: string; name: string; version: string; path: string; files: number; skipped: number }> = [];
+  const configReports: Array<{ path: string }> = [];
+  if (!input.dryRun) mkdirSync(out, { recursive: true });
+  for (const item of payload.bundle.harnesses ?? []) {
+    const owner = cleanRegistrySegment(item.owner);
+    const name = cleanRegistrySegment(item.name);
+    if (!owner || !name) continue;
+    const version = item.version;
+    const target = path.resolve(out, "harnesses", item.target ?? name);
+    const targetRelative = path.relative(out, target);
+    if (!targetRelative || targetRelative.startsWith("..") || path.isAbsolute(targetRelative)) continue;
+    const archive = await fetchArchive(registryUrl, owner, name, version, input.json, input.token);
+    const resolvedVersion = archive.version ?? version;
+    if (!resolvedVersion) fail(`Archive ${owner}/${name} did not include a version.`, EXIT.GENERAL, undefined, input.json);
+    const { written, skipped, paths } = input.dryRun ? { written: 0, skipped: 0, paths: [] as string[] } : writeArchiveFiles(target, archive.files ?? []);
+    if (!input.dryRun) writeSourceMetadata(target, { owner, name, version: resolvedVersion, registry: registryUrl, pulledAt: new Date().toISOString(), files: paths });
+    harnessReports.push({ owner, name, version: resolvedVersion, path: path.relative(out, target).split(path.sep).join("/"), files: written, skipped });
+  }
+  for (const config of payload.bundle.configs ?? []) {
+    const target = path.resolve(out, config.path);
+    const relative = path.relative(out, target);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    if (!input.dryRun) {
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, config.content);
+    }
+    configReports.push({ path: relative.split(path.sep).join("/") });
+  }
+  const setup = {
+    organization: payload.organization,
+    bundleVersion: payload.bundle.version,
+    registry: registryUrl,
+    out: path.relative(process.cwd(), out) || ".",
+    installedAt: new Date().toISOString(),
+    harnesses: harnessReports,
+    configs: configReports
+  };
+  if (!input.dryRun) writeJsonFile(path.join(out, ".harnesshub/setup.json"), setup);
+  return setup;
+}
+
+function cleanSetupOrg(value: string): string | undefined {
+  const cleaned = value.replace(/^@/, "");
+  return /^[a-z][a-z0-9_-]{1,48}$/.test(cleaned) ? cleaned : undefined;
+}
+
+function cleanRegistrySegment(value: string | undefined): string | undefined {
+  return value && /^[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : undefined;
 }
 
 function resolveRemoteRef(root: string, json = false): SourceMetadata | PinMetadata {

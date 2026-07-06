@@ -28,7 +28,7 @@ Supabase auth is enabled for signup/login, stars/forks, thread posts, and authen
 - Harness detail opens as its own window with Overview, Try, Thread, Evals, and Files tabs plus a plain-tone trust panel.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
-- CLI package `onlyharness` with `hh search`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh audit-setup`, `hh extract`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
+- CLI package `onlyharness` with `hh search`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh audit-setup`, `hh extract`, `hh setup @org`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
 - Agent-friendly discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), [`/server.json`](https://onlyharness.com/server.json), and `/mcp` document the HTTP/MCP surfaces so an AI agent can find and pull a harness without a browser.
 - Semantic PR review and quality gate sidecar API.
 - Docker production stack with system Caddy deployment mode for shared VPS hosts.
@@ -90,6 +90,7 @@ npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 ```
 
 ## For agents
@@ -97,6 +98,7 @@ node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my
 - Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), and MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json).
 - MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, and `publish_markdown_to_harness`.
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
+- Team setup: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle` with `HH_ORG_TOKEN` when `ORGS_ENABLED=true`; default output is `.harnesshub/orgs/acme`.
 - Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install onlyharness@onlyharness`.
 - Local validation: `npm run check:mcp-registry && claude plugin validate . && claude plugin validate plugins/onlyharness`.
 
@@ -169,4 +171,5 @@ scripts/             seed, smoke, deploy, Gitea proof scripts
 - Real `.env.local`, app env, and `infra/production.env` files are gitignored.
 - Publish requires a valid Supabase bearer token in production.
 - Internal webhook/eval endpoints require `HARNESS_WEBHOOK_TOKEN` when configured.
+- Organization setup is behind `ORGS_ENABLED`; org tokens are stored as `sha256:` hashes and audit logs must not contain raw tokens.
 - Supabase tables use RLS policies for profiles, user actions, and thread posts.
