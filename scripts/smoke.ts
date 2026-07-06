@@ -391,6 +391,10 @@ try {
     const pulled = path.join(pullTmp, "dmr");
     run("node", [cliBin, "pull", "harnesses/deep-market-researcher", "--out", pulled], { env: cliEnv });
     run("node", [cliBin, "run", pulled, "--json"], { env: cliEnv });
+    run("node", [cliBin, "eval", pulled, "--json"], { env: cliEnv });
+    run("node", [cliBin, "gate", "--dir", pulled, "--json"], { env: cliEnv });
+    const verifiedDetail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { verification?: { lastVerifiedAt?: string } };
+    if (!verifiedDetail.verification?.lastVerifiedAt) throw new Error(`Verification event did not reach detail payload: ${JSON.stringify(verifiedDetail.verification)}`);
     run("node", [cliBin, "doctor", "--harness", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "pin", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "outdated", pulled, "--json"], { env: cliEnv });
@@ -410,7 +414,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

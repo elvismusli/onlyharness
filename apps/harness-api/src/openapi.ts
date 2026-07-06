@@ -457,7 +457,7 @@ export const openapi = {
               schema: {
                 type: "object",
                 properties: {
-                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied"] },
+                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied", "eval", "gate"] },
                   owner: { type: "string" },
                   repo: { type: "string" },
                   version: { type: "string" },
@@ -571,6 +571,12 @@ export const openapi = {
           contextCost: { $ref: "#/components/schemas/ContextCost" },
           standard: { type: "string", enum: ["conformant", "partial"] },
           evalResult: { type: "object" },
+          verification: {
+            type: "object",
+            properties: {
+              lastVerifiedAt: { type: "string", format: "date-time" }
+            }
+          },
           example: { type: "object" },
           files: { type: "array", items: { type: "string" } },
           readme: { type: "string" }

@@ -1,8 +1,8 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { workspaceRoot } from "./registry.js";
 
-export const EVENT_KINDS = ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied"] as const;
+export const EVENT_KINDS = ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied", "eval", "gate"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export type EventInput = {
@@ -69,13 +69,19 @@ export async function recordEvent(input: EventInput | EventRecord): Promise<bool
   return true;
 }
 
+export async function fetchLastVerificationAt(owner: string, repo: string): Promise<string | undefined> {
+  const remote = await fetchSupabaseLastVerificationAt(owner, repo);
+  if (remote) return remote;
+  return localLastVerificationAt(owner, repo);
+}
+
 function isEventKind(value: string): value is EventKind {
   return (EVENT_KINDS as readonly string[]).includes(value);
 }
 
 function cleanSlug(value: string | null | undefined): string | null {
   if (!value) return null;
-  return /^[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : null;
+  return /^@?[a-z0-9][a-z0-9_-]{1,80}$/.test(value) ? value : null;
 }
 
 function cleanVersion(value: string | null | undefined): string | null {
@@ -104,4 +110,53 @@ function isEventRecord(input: EventInput | EventRecord): input is EventRecord {
     && ("repo" in input)
     && ("version" in input)
     && typeof input.subject === "string";
+}
+
+async function fetchSupabaseLastVerificationAt(owner: string, repo: string): Promise<string | undefined> {
+  if (!supabaseUrl || !supabaseRestKey) return undefined;
+  const params = new URLSearchParams({
+    select: "created_at",
+    owner: `eq.${owner}`,
+    repo: `eq.${repo}`,
+    kind: "in.(eval,gate)",
+    target: "eq.passed",
+    order: "created_at.desc",
+    limit: "1"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/events?${params.toString()}`, {
+      headers: {
+        apikey: supabaseRestKey,
+        authorization: `Bearer ${supabaseRestKey}`
+      }
+    });
+    if (!response.ok) return undefined;
+    const rows = await response.json() as Array<{ created_at?: string }>;
+    return rows[0]?.created_at;
+  } catch {
+    return undefined;
+  }
+}
+
+function localLastVerificationAt(owner: string, repo: string): string | undefined {
+  if (!existsSync(localEventsPath)) return undefined;
+  let latest = 0;
+  let latestIso: string | undefined;
+  for (const line of readFileSync(localEventsPath, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as EventRecord & { at?: string; created_at?: string };
+      if (row.owner !== owner || row.repo !== repo || row.target !== "passed") continue;
+      if (row.kind !== "eval" && row.kind !== "gate") continue;
+      const value = row.created_at ?? row.at;
+      const timestamp = value ? Date.parse(value) : NaN;
+      if (Number.isFinite(timestamp) && timestamp > latest) {
+        latest = timestamp;
+        latestIso = value;
+      }
+    } catch {
+      // Ignore corrupt local telemetry lines.
+    }
+  }
+  return latestIso;
 }

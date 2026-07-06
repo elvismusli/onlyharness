@@ -49,6 +49,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
 - Events: POST /events
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
   `kind=install&client=claude-code` with an authenticated subject contributes to the "works in Claude Code: N confirms" badge.
+  `kind=eval|gate&target=passed&client=hh` contributes to verification.lastVerifiedAt in harness detail.
 - Leaderboard: GET /leaderboard?limit=10
 - Publish (auth required): POST /imports/markdown-to-harness
   JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.

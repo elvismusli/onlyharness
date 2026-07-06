@@ -112,6 +112,7 @@ export type HarnessDetail = {
   security?: { verdict: "pass" | "warn" | "fail"; findings: Array<{ rule: string; file: string; excerpt: string; severity: string }>; scannedAt: string; scanner: string };
   contextCost?: ContextCost;
   standard?: "conformant" | "partial";
+  verification?: { lastVerifiedAt?: string };
   prReview: { status: string; markdown: string; diff: { riskDelta: number; riskTier: string; changes: Array<{ severity: string; area: string; message: string }> } };
   readme: string;
 };

@@ -20,6 +20,7 @@ let sawSetupArchiveToken = false;
 let sawOrgPublishToken = false;
 let sawOrgPullToken = false;
 let orgPublishedNames: string[] = [];
+let verificationEvents: Array<{ kind?: string; owner?: string; repo?: string; version?: string; target?: string; client?: string; path?: string }> = [];
 
 before(async () => {
   server = createServer((request, response) => {
@@ -32,6 +33,20 @@ before(async () => {
 
     if (request.url === "/registry") {
       response.end(JSON.stringify({ items: [{ owner: "harnesses", name: "deep-market-researcher" }] }));
+      return;
+    }
+
+    if (request.url === "/events" && request.method === "POST") {
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        verificationEvents.push(JSON.parse(raw || "{}"));
+        response.statusCode = 202;
+        response.end(JSON.stringify({ ok: true }));
+      });
       return;
     }
 
@@ -799,6 +814,39 @@ test("run --json exposes eval status for a pulled harness", async () => {
   const body = JSON.parse(result.stdout) as { eval?: { status?: string; score?: number } };
   assert.equal(body.eval?.status, "passed");
   assert.equal(typeof body.eval?.score, "number");
+});
+
+test("eval and gate record privacy-safe verification events for pulled harnesses", async () => {
+  verificationEvents = [];
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-verification-events-"));
+  try {
+    await cp(seedHarness, out, { recursive: true });
+    await mkdir(path.join(out, ".harnesshub"), { recursive: true });
+    await writeFile(path.join(out, ".harnesshub/source.json"), JSON.stringify({
+      owner: "harnesses",
+      name: "deep-market-researcher",
+      version: "0.1.0",
+      registry: registryUrl,
+      pulledAt: new Date().toISOString()
+    }, null, 2));
+
+    const evalResult = await runCli(["eval", out, "--json"], { HH_REGISTRY_URL: "http://127.0.0.1:1" });
+    assert.equal(evalResult.status, 0, evalResult.stderr);
+    const gateResult = await runCli(["gate", "--dir", out, "--json"], { HH_REGISTRY_URL: "http://127.0.0.1:1" });
+    assert.equal(gateResult.status, 0, gateResult.stderr);
+
+    assert.deepEqual(verificationEvents.map((event) => event.kind), ["eval", "gate"]);
+    for (const event of verificationEvents) {
+      assert.equal(event.owner, "harnesses");
+      assert.equal(event.repo, "deep-market-researcher");
+      assert.equal(event.version, "0.1.0");
+      assert.equal(event.target, "passed");
+      assert.equal(event.client, "hh");
+      assert.equal(event.path, undefined);
+    }
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
 });
 
 function runCli(args: string[], env: NodeJS.ProcessEnv = {}): Promise<{ status: number | null; stdout: string; stderr: string }> {

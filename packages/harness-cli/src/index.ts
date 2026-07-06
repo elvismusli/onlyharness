@@ -715,13 +715,14 @@ program.command("eval")
   .argument("[dir]", "harness directory", ".")
   .option("--ci", "CI mode", false)
   .option("--json", "print result JSON", false)
-  .action((dir, options) => {
+  .action(async (dir, options) => {
     const root = path.resolve(dir);
     const result = runLocalEval(root);
     mkdirSync(path.join(root, ".harnesshub"), { recursive: true });
     writeFileSync(path.join(root, ".harnesshub/results.json"), JSON.stringify(result, null, 2));
     writeFileSync(path.join(root, ".harnesshub/report.html"), htmlReport(result));
     writeFileSync(path.join(root, ".harnesshub/results.junit.xml"), junitReport(result));
+    if (result.status === "passed") await recordCliVerificationEvent(root, "eval");
     writeStdout(options.json ? result : evalText(result));
     process.exit(result.status === "passed" ? EXIT.OK : EXIT.VALIDATION);
   });
@@ -730,7 +731,7 @@ program.command("gate")
   .option("--results <path>", "results JSON path", ".harnesshub/results.json")
   .option("--dir <path>", "harness directory", ".")
   .option("--json", "print JSON", false)
-  .action((options) => {
+  .action(async (options) => {
     const root = path.resolve(options.dir);
     const validation = validateHarnessDir(root);
     if (!validation.manifest) {
@@ -761,6 +762,7 @@ program.command("gate")
       writeStdout(`Gate failed:\n${failures.map((failure) => `- ${failure}`).join("\n")}\n`);
       process.exit(EXIT.VALIDATION);
     }
+    await recordCliVerificationEvent(root, "gate");
     writeStdout(options.json ? payload : `Gate passed: score ${score}, risk ${validation.risk.score}, cost $${cost}\n`);
   });
 
@@ -1466,6 +1468,32 @@ function writeJsonFile(file: string, value: unknown) {
 
 function readHarnessVersion(root: string): string | undefined {
   return validateHarnessDir(root).manifest?.version;
+}
+
+async function recordCliVerificationEvent(root: string, kind: "eval" | "gate"): Promise<void> {
+  const source = readPinMetadata(root) ?? readSourceMetadata(root);
+  const validation = validateHarnessDir(root);
+  const owner = source?.owner;
+  const repo = source?.name ?? validation.manifest?.name;
+  if (!owner || !repo) return;
+  const eventUrl = `${(source?.registry ?? registryUrl).replace(/\/$/, "")}/events`;
+  const version = source?.version ?? validation.manifest?.version;
+  try {
+    await fetch(eventUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind,
+        owner,
+        repo,
+        version,
+        target: "passed",
+        client: "hh"
+      })
+    });
+  } catch {
+    // Verification telemetry is best-effort and must never change local eval/gate results.
+  }
 }
 
 function estimateContextCost(root: string): ContextCost {

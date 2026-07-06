@@ -337,6 +337,6 @@ function manifestDirectory(manifest: HarnessDetail["manifest"] | undefined): Reg
 }
 
 function lastVerifiedLabel(detail?: HarnessDetail): string {
-  if (!detail?.evalResult || detail.evalResult.status === "unknown") return "not recorded";
-  return "eval result file present";
+  if (!detail?.verification?.lastVerifiedAt) return "not recorded";
+  return relativeTime(detail.verification.lastVerifiedAt);
 }

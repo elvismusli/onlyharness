@@ -12,7 +12,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { createCommunityInviteCode, verifyCommunityInviteCode } from "./community.js";
 import { openapi } from "./openapi.js";
-import { recordEvent, sanitizeEvent } from "./events.js";
+import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, settleX402Purchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
@@ -158,6 +158,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
+  const lastVerifiedAt = await fetchLastVerificationAt(owner, repo);
   return {
     owner,
     repo,
@@ -172,6 +173,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     security,
     contextCost,
     standard,
+    verification: { lastVerifiedAt },
     readme: registry.readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root)
   };
@@ -759,6 +761,7 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
   if (!orgGate.ok) return { status: orgGate.status, error: orgGate.error };
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
+  const lastVerifiedAt = await fetchLastVerificationAt(owner, repo);
   return {
     owner,
     name: repo,
@@ -771,6 +774,7 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
     contextCost,
     standard,
     evalResult,
+    verification: { lastVerifiedAt },
     example: registry.readExample(root),
     files: registry.listHarnessFiles(root)
   };
