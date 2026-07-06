@@ -7,6 +7,7 @@ import YAML from "yaml";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler } from "./mcp.js";
+import { openapi } from "./openapi.js";
 import { fetchCountersMap } from "./social.js";
 import * as registry from "./registry.js";
 
@@ -51,6 +52,8 @@ await app.register(cors, {
 });
 
 app.get("/healthz", async () => ({ ok: true, workspaceRoot: registry.workspaceRoot }));
+
+app.get("/openapi.json", async () => openapi);
 
 app.get("/registry", async (request) => {
   const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; outcome?: string; sort?: string };

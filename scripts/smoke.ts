@@ -46,6 +46,8 @@ try {
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
     items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; heatDelta: number }>;
   };
+  const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   for (const item of registry.items) {

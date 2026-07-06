@@ -10,6 +10,8 @@ Repo guidance: https://onlyharness.com/AGENTS.md
 
 Base URL: https://onlyharness.com/api
 
+OpenAPI: https://onlyharness.com/api/openapi.json
+
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, outcome and tags.
