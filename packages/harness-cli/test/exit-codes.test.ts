@@ -77,23 +77,44 @@ before(async () => {
         }] }));
         return;
       }
-      response.end(JSON.stringify({ items: [{
-        owner: "harnesses",
-        name: "deep-market-researcher",
-        title: "Deep Market Researcher",
-        summary: "Multi-stage research pipeline.",
-        tags: ["research", "strategy"],
-        stars: 42,
-        forks: 7,
-        threads: 3,
-        evalScore: 0.9,
-        evalStatus: "passed",
-        heat: 12,
-        riskScore: 18,
-        riskTier: "LOW",
-        cliCommand: "hh install harnesses/deep-market-researcher",
-        contextCost: { approxTokens: 1800, files: 6 }
-      }] }));
+      response.end(JSON.stringify({ items: [
+        {
+          owner: "harnesses",
+          name: "deep-market-researcher",
+          title: "Deep Market Researcher",
+          summary: "Multi-stage research pipeline.",
+          tags: ["research", "strategy"],
+          stars: 42,
+          forks: 7,
+          threads: 3,
+          evalScore: 0.9,
+          evalStatus: "passed",
+          heat: 12,
+          riskScore: 18,
+          riskTier: "LOW",
+          cliCommand: "hh install harnesses/deep-market-researcher",
+          contextCost: { approxTokens: 1800, files: 6 },
+          pricing: { model: "free", currency: "USD" }
+        },
+        {
+          owner: "harnesses",
+          name: "support-triage-agent",
+          title: "Support Triage Agent",
+          summary: "Support ticket triage workflow.",
+          tags: ["support", "triage"],
+          stars: 11,
+          forks: 1,
+          threads: 2,
+          evalScore: 0.84,
+          evalStatus: "passed",
+          heat: 5,
+          riskScore: 32,
+          riskTier: "MEDIUM",
+          cliCommand: "hh install harnesses/support-triage-agent",
+          contextCost: { approxTokens: 900, files: 4 },
+          pricing: { model: "free", currency: "USD" }
+        }
+      ] }));
       return;
     }
 
@@ -667,7 +688,7 @@ test("suggest prints a trust summary and records a privacy-safe suggested event"
       name?: string;
       trust?: { eval?: string; risk?: string; security?: string; context?: string; lastVerifiedAt?: string; payment?: string; compatibility?: string[] };
     };
-    candidates?: unknown[];
+    candidates?: Array<{ rank?: number; ref?: string; trust?: { eval?: string; risk?: string; context?: string; payment?: string } }>;
   };
   assert.equal(body.suggestion?.owner, "harnesses");
   assert.equal(body.suggestion?.name, "deep-market-researcher");
@@ -678,7 +699,11 @@ test("suggest prints a trust summary and records a privacy-safe suggested event"
   assert.equal(body.suggestion?.trust?.payment, "free");
   assert.ok(body.suggestion?.trust?.compatibility?.includes("claude-code:available"));
   assert.equal(body.suggestion?.trust?.lastVerifiedAt, "2026-07-06T10:00:00.000Z");
-  assert.equal(body.candidates?.length, 1);
+  assert.equal(body.candidates?.length, 2);
+  assert.equal(body.candidates?.[0]?.rank, 1);
+  assert.equal(body.candidates?.[0]?.ref, "harnesses/deep-market-researcher");
+  assert.match(body.candidates?.[0]?.trust?.eval ?? "", /passed 0\.9/);
+  assert.match(body.candidates?.[1]?.trust?.risk ?? "", /MEDIUM/);
   assert.equal(verificationEvents.length, 1);
   assert.deepEqual(verificationEvents[0], {
     kind: "suggested",
@@ -1261,7 +1286,7 @@ test("doctor --json returns machine readable status", async () => {
   assert.equal(result.status, 0, result.stderr);
   const body = JSON.parse(result.stdout) as { ok?: boolean; indexed?: number; registry?: string };
   assert.equal(body.ok, true);
-  assert.equal(body.indexed, 1);
+  assert.equal(body.indexed, 2);
   assert.equal(body.registry, registryUrl);
 });
 

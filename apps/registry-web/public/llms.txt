@@ -121,7 +121,7 @@ For local development from the repo:
     node packages/harness-cli/dist/hh.mjs <command>
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
-- hh suggest {terms}        select a harness with detail trust summary; --apply installs through the pull archive path
+- hh suggest {terms}        return ranked candidates with trust fields plus selected detail trust summary; use --pick {rank}; --apply installs through the pull archive path
 - hh suggest {terms} --apply --target cli|claude-code|codex|cursor    run the target adapter install path before recording applied
 - hh install {owner}/{name} --target cli|claude-code|codex|cursor    primary install path; pulls files, optionally writes adapter files, then records a privacy-safe install event
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set

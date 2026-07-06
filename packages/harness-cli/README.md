@@ -53,7 +53,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 ## Agent Contract
 
 - `hh search <terms> --json` prints machine-readable registry results.
-- `hh suggest <terms> --json` searches, fetches detail, and prints a trust summary for the selected harness.
+- `hh suggest <terms> --json` searches, returns a ranked candidate shortlist with trust fields, fetches detail, and prints a full trust summary for the selected harness. Use `--pick <rank>` to inspect or apply another candidate.
 - `hh suggest <terms> --apply --out <dir>` installs through the same archive path as `hh pull`, preserves paid 402/directory 409 behavior, records `accepted` when `--apply` is chosen, and records `applied` only after files are written.
 - `hh suggest <terms> --apply --target cli|claude-code|codex|cursor` runs the full `hh install --target` adapter path before recording `applied`.
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.

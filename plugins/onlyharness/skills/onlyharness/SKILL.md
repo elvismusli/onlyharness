@@ -31,7 +31,7 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.
 ```
 
 `hh run` is sample mode only: no LLM calls and no credentials.
-Start with `hh suggest <task> --json` or `harness_detail` and read the trust summary before installing. Use `hh suggest --apply` only when the user asked to install/apply or explicitly approved the selected harness.
+Start with `hh suggest <task> --json` or `harness_detail`; read the ranked candidates plus the selected harness trust summary before installing. Use `--pick <rank>` when another candidate is a better fit. Use `hh suggest --apply` only when the user asked to install/apply or explicitly approved the selected harness.
 `hh suggest --apply` uses the same archive path as `hh pull`; paid harnesses still exit 5 until entitlement/payment, and directory entries stay link-only with open guidance.
 Use `hh suggest --apply --target claude-code|codex|cursor` when the user wants the harness installed into a concrete agent surface; this runs the same install adapter path as `hh install --target` before recording `applied`.
 `hh install` is the primary install path: it pulls files, can write local adapter instructions with `--target`, and records only privacy-safe owner/repo/version/target/client metadata.

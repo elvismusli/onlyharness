@@ -123,6 +123,23 @@ type SuggestionReport = {
     lastVerifiedAt?: string;
   };
 };
+type CandidateSummary = {
+  rank: number;
+  owner: string;
+  name: string;
+  ref: string;
+  title: string;
+  summary: string;
+  contentType: "harness" | "directory";
+  command: string;
+  openUrl?: string;
+  trust: {
+    eval: string;
+    risk: string;
+    context: string;
+    payment: string;
+  };
+};
 type PullHarnessResult = {
   owner: string;
   name: string;
@@ -479,6 +496,7 @@ program.command("suggest")
     if (pick > candidates.length) {
       fail(`Candidate ${pick} is not available; only ${candidates.length} result(s) returned.`, EXIT.VALIDATION, `hh suggest ${query} --pick 1`, options.json);
     }
+    const candidateSummaries = candidates.map((candidate, index) => buildCandidateSummary(candidate, index + 1));
     const item = candidates[pick - 1];
     const detail = await fetchHarnessDetail(registryUrl, item.owner, item.name, options.json, options.token);
     const suggestion = buildSuggestionReport(item, detail);
@@ -549,21 +567,12 @@ program.command("suggest")
         query,
         selected: pick,
         suggestion,
-        candidates: candidates.map((candidate, index) => ({
-          rank: index + 1,
-          owner: candidate.owner,
-          name: candidate.name,
-          title: candidate.title,
-          evalScore: candidate.evalScore,
-          riskTier: candidate.riskTier,
-          contextCost: candidate.contextCost,
-          command: candidate.cliCommand ?? candidateCommand(candidate)
-        })),
+        candidates: candidateSummaries,
         applied
       });
       return;
     }
-    writeStdout(suggestionText(query, pick, suggestion, applied));
+    writeStdout(suggestionText(query, pick, suggestion, applied, candidateSummaries));
   });
 
 program.command("pull")
@@ -1690,6 +1699,27 @@ function buildSuggestionReport(item: SearchItem, detail: SuggestDetail): Suggest
   };
 }
 
+function buildCandidateSummary(item: SearchItem, rank: number): CandidateSummary {
+  const contentType = item.contentType === "directory" ? "directory" : "harness";
+  return {
+    rank,
+    owner: item.owner,
+    name: item.name,
+    ref: `${item.owner}/${item.name}`,
+    title: item.title ?? item.name,
+    summary: item.summary ?? "",
+    contentType,
+    command: item.cliCommand ?? candidateCommand(item),
+    ...(item.directory?.url ? { openUrl: item.directory.url } : {}),
+    trust: {
+      eval: evalTrustLabel(item, {}),
+      risk: riskTrustLabel(item, {}),
+      context: contextCostLabel(item.contextCost),
+      payment: pricingTrustLabel(item.pricing)
+    }
+  };
+}
+
 function candidateCommand(item: SearchItem): string {
   if (item.contentType === "directory" && item.directory?.url) return `open ${item.directory.url}`;
   return `hh install ${item.owner}/${item.name}`;
@@ -1727,7 +1757,7 @@ function compatibilityLabels(detail: SuggestDetail): string[] {
     .slice(0, 5);
 }
 
-function suggestionText(query: string, pick: number, suggestion: SuggestionReport, applied: PullHarnessResult | InstallResult | undefined): string {
+function suggestionText(query: string, pick: number, suggestion: SuggestionReport, applied: PullHarnessResult | InstallResult | undefined, candidates: CandidateSummary[]): string {
   const lines = [
     `Suggestion for "${query}" (#${pick})`,
     `${suggestion.ref} - ${suggestion.title}`,
@@ -1742,6 +1772,13 @@ function suggestionText(query: string, pick: number, suggestion: SuggestionRepor
     `  payment: ${suggestion.trust.payment}`,
     `  compatibility: ${suggestion.trust.compatibility.length ? suggestion.trust.compatibility.join(", ") : "unknown"}`,
     `  last verified: ${suggestion.trust.lastVerifiedAt ?? "unknown"}`,
+    "",
+    "Top candidates:",
+    ...candidates.map((candidate) => [
+      `${candidate.rank === pick ? ">" : " "} #${candidate.rank} ${candidate.ref} - ${candidate.title}`,
+      `    eval ${candidate.trust.eval} · risk ${candidate.trust.risk} · context ${candidate.trust.context} · payment ${candidate.trust.payment}`
+    ].join("\n")),
+    `Pick another: hh suggest ${query} --pick <rank>`,
     "",
     suggestion.contentType === "directory" && suggestion.openUrl
       ? `Next: open ${suggestion.openUrl}`
