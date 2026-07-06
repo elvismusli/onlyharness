@@ -15,6 +15,7 @@ Use the CLI first when shell access is available from a cloned `harness-hub` rep
 npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs suggest market research --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs search market research
 node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target claude-code --json
 node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --json
@@ -32,6 +33,7 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.
 `hh run` is sample mode only: no LLM calls and no credentials.
 Start with `hh suggest <task> --json` or `harness_detail` and read the trust summary before installing. Use `hh suggest --apply` only when the user asked to install/apply or explicitly approved the selected harness.
 `hh suggest --apply` uses the same archive path as `hh pull`; paid harnesses still exit 5 until entitlement/payment, and directory entries stay link-only with open guidance.
+Use `hh suggest --apply --target claude-code|codex|cursor` when the user wants the harness installed into a concrete agent surface; this runs the same install adapter path as `hh install --target` before recording `applied`.
 `hh install` is the primary install path: it pulls files, can write local adapter instructions with `--target`, and records only privacy-safe owner/repo/version/target/client metadata.
 `hh gate --receipt` writes a signed gate verdict that can be verified through `POST /receipts`; it must not include local paths or prompts.
 For `pricing.model=gate_escrow`, use the signed receipt with `POST /billing/escrow/receipt`; do not treat read-only `POST /receipts` as payment settlement.

@@ -107,6 +107,7 @@ After npm publish, agents can run the CLI without cloning the repo:
     npx onlyharness search market research
     npx onlyharness suggest market research --json
     npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
+    npx onlyharness suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
     npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
     npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
     npx onlyharness run deep-market-researcher
@@ -121,6 +122,7 @@ For local development from the repo:
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
 - hh suggest {terms}        select a harness with detail trust summary; --apply installs through the pull archive path
+- hh suggest {terms} --apply --target cli|claude-code|codex|cursor    run the target adapter install path before recording applied
 - hh install {owner}/{name} --target cli|claude-code|codex|cursor    primary install path; pulls files, optionally writes adapter files, then records a privacy-safe install event
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set
 - hh pull {owner}/{name} --version <semver>    download an immutable archive snapshot and write that version to .harnesshub/source.json

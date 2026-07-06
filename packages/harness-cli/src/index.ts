@@ -457,13 +457,20 @@ program.command("suggest")
   .option("--limit <n>", "candidate count", "5")
   .option("--pick <n>", "1-based candidate to inspect/apply", "1")
   .option("--apply", "install the selected harness into --out or ./<name>", false)
+  .option("--target <target>", "when --apply is used, install adapter target cli|claude-code|codex|cursor")
   .option("--out <dir>", "output directory when --apply is used")
+  .option("--adapter-out <dir>", "output directory for generated adapter files when --target is used")
   .option("--force", "write into a non-empty output directory when --apply is used", false)
   .option("--token <token>", "access token (defaults to HH_TOKEN/HH_ORG_TOKEN)")
   .option("--pay", "pay x402-enabled 402 archive responses when --apply is used", false)
   .action(async (queryParts: string[], options) => {
     const query = queryParts.join(" ").trim();
     if (!query) fail("Expected a search query.", EXIT.VALIDATION, "hh suggest market research", options.json);
+    const applyTarget = options.target ? cleanInstallTarget(options.target) : undefined;
+    if (options.target && !applyTarget) fail("Unsupported apply target.", EXIT.VALIDATION, "Use --target cli, claude-code, codex, or cursor.", options.json);
+    if (!options.apply && (options.target || options.adapterOut)) {
+      fail("--target and --adapter-out require --apply.", EXIT.VALIDATION, `hh suggest ${query} --apply --target codex`, options.json);
+    }
     const limit = boundedPositiveInt(options.limit, 5, 25);
     const pick = positiveInt(options.pick, 1);
     const data = await fetchJson(`${registryUrl}/registry?q=${encodeURIComponent(query)}&sort=trending`, { json: options.json }) as { items?: SearchItem[] };
@@ -485,7 +492,7 @@ program.command("suggest")
       client: "hh"
     });
 
-    let applied: PullHarnessResult | undefined;
+    let applied: PullHarnessResult | InstallResult | undefined;
     if (options.apply) {
       await recordCliRegistryEvent({
         registry: registryUrl,
@@ -505,22 +512,34 @@ program.command("suggest")
         );
       }
       assertSuggestionApplyAllowed(suggestion, detail, options.json);
-      applied = await pullHarnessArchive({
-        owner: suggestion.owner,
-        name: suggestion.name,
-        out: options.out,
-        force: options.force,
-        token: options.token,
-        pay: options.pay,
-        json: options.json
-      });
+      applied = applyTarget
+        ? await installHarness({
+          owner: suggestion.owner,
+          name: suggestion.name,
+          target: applyTarget,
+          out: options.out,
+          adapterOut: options.adapterOut,
+          force: options.force,
+          token: options.token,
+          pay: options.pay,
+          json: options.json
+        })
+        : await pullHarnessArchive({
+          owner: suggestion.owner,
+          name: suggestion.name,
+          out: options.out,
+          force: options.force,
+          token: options.token,
+          pay: options.pay,
+          json: options.json
+        });
       await recordCliRegistryEvent({
         registry: registryUrl,
         kind: "applied",
         owner: applied.owner,
         repo: applied.name,
         version: applied.version,
-        target: "scoped-install",
+        target: applyTarget ?? "scoped-install",
         client: "hh"
       });
     }
@@ -1708,7 +1727,7 @@ function compatibilityLabels(detail: SuggestDetail): string[] {
     .slice(0, 5);
 }
 
-function suggestionText(query: string, pick: number, suggestion: SuggestionReport, applied: PullHarnessResult | undefined): string {
+function suggestionText(query: string, pick: number, suggestion: SuggestionReport, applied: PullHarnessResult | InstallResult | undefined): string {
   const lines = [
     `Suggestion for "${query}" (#${pick})`,
     `${suggestion.ref} - ${suggestion.title}`,
@@ -1730,6 +1749,9 @@ function suggestionText(query: string, pick: number, suggestion: SuggestionRepor
   ];
   if (applied) {
     lines.push(`Applied: ${applied.owner}/${applied.name}@${applied.version} -> ${applied.out} (${applied.files} files${applied.skipped ? `, ${applied.skipped} skipped` : ""})`);
+    if ("adapter" in applied && applied.adapter) {
+      lines.push(`Adapter: ${applied.adapter.target} -> ${applied.adapter.out}`);
+    }
   }
   return `${lines.join("\n")}\n`;
 }

@@ -726,6 +726,54 @@ test("suggest --apply records accepted before install and applied after writing 
   }
 });
 
+test("suggest --apply --target installs adapter files before recording applied", async () => {
+  verificationEvents = [];
+  const parent = await mkdtemp(path.join(os.tmpdir(), "hh-suggest-target-"));
+  const out = path.join(parent, "dmr");
+  const adapterOut = path.join(parent, "codex-adapter");
+  try {
+    const result = await runCli([
+      "suggest",
+      "market",
+      "research",
+      "--apply",
+      "--target",
+      "codex",
+      "--out",
+      out,
+      "--adapter-out",
+      adapterOut,
+      "--json"
+    ], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as {
+      applied?: {
+        owner?: string;
+        name?: string;
+        version?: string;
+        out?: string;
+        target?: string;
+        adapter?: { target?: string; out?: string; files?: string[] };
+      };
+    };
+    assert.equal(body.applied?.owner, "harnesses");
+    assert.equal(body.applied?.name, "deep-market-researcher");
+    assert.equal(body.applied?.version, "0.2.0");
+    assert.equal(body.applied?.target, "codex");
+    assert.equal(body.applied?.out, out);
+    assert.equal(body.applied?.adapter?.target, "codex");
+    assert.equal(body.applied?.adapter?.out, adapterOut);
+    assert.ok(body.applied?.adapter?.files?.includes(path.join(adapterOut, "AGENTS.md")));
+    assert.match(await readFile(path.join(adapterOut, "AGENTS.md"), "utf8"), /Deep Market Researcher/);
+    assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "accepted", "install", "applied"]);
+    assert.equal(verificationEvents[2].target, "codex");
+    assert.equal(verificationEvents[3].target, "codex");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("suggest --apply does not bypass paid archive 402", async () => {
   verificationEvents = [];
   const result = await runCli(["suggest", "paid", "workflow", "--apply", "--json"], { HH_REGISTRY_URL: registryUrl });
