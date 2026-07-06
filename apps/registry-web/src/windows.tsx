@@ -447,8 +447,13 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
   return (
     <div className="win-body">
       <div className="plate" style={{ marginBottom: 8, textAlign: "center", fontWeight: "bold" }}>
-        🤠 Week {isoWeek(new Date())} · hottest harnesses in the Wild West
+        🤠 Week {isoWeek(new Date())} · qualified harness heat
       </div>
+      {!items.length && (
+        <div className="plate" style={{ fontSize: 12 }}>
+          Leaderboard is hidden until harnesses have enough real social or verified install signals.
+        </div>
+      )}
       {items.map((item, index) => (
         <button key={`${item.owner}/${item.name}`} className={`lb-row ${index === 0 ? "top" : ""}`} onClick={() => onOpen(item)}>
           <span className="rank">{index + 1}</span>
@@ -468,13 +473,13 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
 
 export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: RegistryItem; starred: boolean; refCode?: string; onCopy: (text: string) => void; copied: boolean }) {
   const stars = item.stars + (starred ? 1 : 0);
-  const heat = item.heat + (starred ? 0.4 : 0);
+  const heat = item.heat + (item.heatQualified && starred ? 0.4 : 0);
   const isDirectory = item.contentType === "directory";
   const shareBanner = isDirectory ? "★ LOOK AT MY DIRECTORY ★" : "★ LOOK AT MY HARNESS ★";
   const shareCommand = item.cliCommand ?? (isDirectory && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`);
   const metricLine = isDirectory
-    ? `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · ${item.directory?.itemCount ?? "curated"} items · Heat ${heat.toFixed(1)}🔥`
-    : `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥`;
+    ? `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · ${item.directory?.itemCount ?? "curated"} items · ${item.heatQualified ? `Heat ${heat.toFixed(1)}🔥` : "Heat collecting signals"}`
+    : `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · ${item.heatQualified ? `Heat ${heat.toFixed(1)}🔥` : "Heat collecting signals"}`;
   const baseUrl = typeof window === "undefined" ? "https://onlyharness.com" : window.location.origin;
   const shareUrl = `${baseUrl}/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
   const brag = `${shareBanner}\n${item.title} — ${item.summary}\n${metricLine}\nWorks with: ${isDirectory ? "Open link, source review" : "CLI, MCP, HTTP archive"}\n${shareUrl}\n> ${shareCommand}`;
@@ -513,16 +518,16 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
                 <div className="win share-heat-panel" style={{ flex: 1 }}>
                   <div className="titlebar maroon"><span className="tb-text">🔥 Harness Heat</span></div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 14 }}>
-                    <div className="heat-giant">{heat.toFixed(1)}</div>
-                    <div className="share-trend">▲ +{Math.max(0, item.heatDelta).toFixed(1)} this week</div>
+                    <div className="heat-giant">{item.heatQualified ? heat.toFixed(1) : "—"}</div>
+                    <div className="share-trend">{item.heatQualified ? `▲ +${Math.max(0, item.heatDelta).toFixed(1)} this week` : "collecting signals"}</div>
                     <div className="heat-track" style={{ width: "100%", height: 26, marginTop: 14, padding: 3 }}>
-                      <div className="heat-fill" style={{ width: `${heatPct(heat)}%` }} />
+                      <div className="heat-fill" style={{ width: `${heatPct(item.heatQualified ? heat : 0)}%` }} />
                     </div>
                   </div>
                 </div>
                 <div className="share-award">
                   <span style={{ fontSize: 40 }}>🏆</span>
-                  <span>{isDirectory ? <>Curated link-only<br />directory · Wk {isoWeek(new Date())}</> : item.badge.includes("Wild") ? <>Best Harness in the<br />Wild West · Wk {isoWeek(new Date())} 🤠</> : <>Certified frontier<br />harness 🤠</>}</span>
+                  <span>{isDirectory ? <>Curated link-only<br />directory · Wk {isoWeek(new Date())}</> : item.badge.includes("Wild") ? <>Best Harness in the<br />Wild West · Wk {isoWeek(new Date())}</> : item.heatQualified ? <>Qualified frontier<br />harness</> : <>Collecting real<br />signals</>}</span>
                 </div>
               </div>
             </div>

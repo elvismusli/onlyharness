@@ -42,12 +42,12 @@ export const openapi = {
     },
     "/leaderboard": {
       get: {
-        summary: "Top harnesses by heat",
+        summary: "Top harnesses by qualified heat",
         parameters: [queryParam("limit", "Maximum result count")],
         responses: {
           "200": {
-            description: "Leaderboard results",
-            content: { "application/json": { schema: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/RegistryItem" } } }, required: ["items"] } } }
+            description: "Leaderboard results. Items appear only after enough real social or verified install signals exist.",
+            content: { "application/json": { schema: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/RegistryItem" } }, minimumSignals: { type: "integer" } }, required: ["items", "minimumSignals"] } } }
           }
         }
       }
@@ -755,6 +755,8 @@ export const openapi = {
           threads: { type: "number" },
           runs: { type: "number" },
           installConfirms: { type: "number" },
+          signalCount: { type: "number" },
+          heatQualified: { type: "boolean" },
           heat: { type: "number" },
           heatDelta: { type: "number" },
           freshness: { type: "string" },

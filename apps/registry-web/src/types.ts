@@ -32,6 +32,8 @@ export type RegistryItem = {
   threads: number;
   runs: number;
   installConfirms: number;
+  signalCount: number;
+  heatQualified: boolean;
   heat: number;
   heatDelta: number;
   freshness: string;
@@ -76,7 +78,7 @@ export type HarnessDetail = {
   repo: string;
   root: string;
   forgeUrl: string;
-  social?: Pick<RegistryItem, "stars" | "forks" | "threads" | "runs" | "installConfirms" | "heat" | "heatDelta" | "freshness" | "badge" | "cliCommand">;
+  social?: Pick<RegistryItem, "stars" | "forks" | "threads" | "runs" | "installConfirms" | "signalCount" | "heatQualified" | "heat" | "heatDelta" | "freshness" | "badge" | "cliCommand">;
   thread?: ThreadItem[];
   example?: { input: string; expected: string };
   files?: string[];

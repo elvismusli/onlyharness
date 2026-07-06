@@ -17,7 +17,7 @@ import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, hostedExecutionUnavailableBody, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { verifyGateReceipt } from "./receipts.js";
-import { fetchCountersMap } from "./social.js";
+import { fetchCountersMap, HEAT_SIGNAL_THRESHOLD } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
 
@@ -179,7 +179,8 @@ app.get("/leaderboard", async (request) => {
   const query = request.query as { limit?: string };
   const limit = Math.min(Number(query.limit ?? 10), 50);
   const counters = await fetchCountersMap();
-  return { items: registry.sortRegistry(registry.scanRegistry(counters), "heat").slice(0, limit) };
+  const items = registry.sortRegistry(registry.scanRegistry(counters).filter((item) => item.heatQualified), "heat").slice(0, limit);
+  return { items, minimumSignals: HEAT_SIGNAL_THRESHOLD };
 });
 
 app.get("/repos/:owner/:repo/harness", async (request, reply) => {

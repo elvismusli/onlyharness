@@ -49,6 +49,9 @@ test("registryItemFromDir exposes install as the primary runnable harness comman
     assert.ok(item);
     assert.equal(item.contentType, "harness");
     assert.equal(item.cliCommand, "hh install harnesses/agent-runner");
+    assert.equal(item.signalCount, 0);
+    assert.equal(item.heatQualified, false);
+    assert.equal(item.freshness, "collecting signals");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

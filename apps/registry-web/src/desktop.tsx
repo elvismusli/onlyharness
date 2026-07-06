@@ -31,8 +31,8 @@ export function AwardWindow({ leader }: { leader?: RegistryItem }) {
       <TitleBar text="🤠 Wild West Awards" maroon decor />
       <div className="award-body">
         <div className="cup">🏆</div>
-        <div className="award-title">Best Harness in the Wild West</div>
-        <div className="award-sub">Week {isoWeek(new Date())} · {leader?.title ?? "…the frontier decides"}</div>
+        <div className="award-title">{leader ? "Best Harness in the Wild West" : "Leaderboard hidden"}</div>
+        <div className="award-sub">Week {isoWeek(new Date())} · {leader?.title ?? "waiting for real signals"}</div>
       </div>
     </div>
   );
@@ -48,6 +48,7 @@ export function PaintWindow({ items }: { items: RegistryItem[] }) {
           {["✏️", "🪣", "▭", "🖌️"].map((tool) => <span key={tool} className="paint-tool">{tool}</span>)}
         </div>
         <div className="paint-canvas">
+          {!bars.length && <div style={{ fontSize: 11, color: "#404040" }}>collecting signals</div>}
           {bars.map((item, index) => (
             <div
               key={`${item.owner}/${item.name}`}

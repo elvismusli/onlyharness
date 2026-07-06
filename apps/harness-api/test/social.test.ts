@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { badgeFor, heatFor, socialFromCounters } from "../src/social.ts";
+import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
 
 test("socialFromCounters returns honest zeros when no row exists", () => {
   const social = socialFromCounters(undefined, {
@@ -14,7 +14,10 @@ test("socialFromCounters returns honest zeros when no row exists", () => {
   assert.equal(social.threads, 0);
   assert.equal(social.runs, 0);
   assert.equal(social.installConfirms, 0);
+  assert.equal(social.signalCount, 0);
+  assert.equal(social.heatQualified, false);
   assert.equal(social.heatDelta, 0);
+  assert.equal(social.freshness, "collecting signals");
 });
 
 test("heat grows from real signals and has no fake floor", () => {
@@ -36,4 +39,11 @@ test("badge reports Claude Code install confirmations from real telemetry", () =
 
 test("low-risk badge does not promise safety", () => {
   assert.equal(badgeFor("LOW", 0.7, 2.1, 1), "low-risk scan");
+});
+
+test("heat qualification requires enough real signals or a verified install confirm", () => {
+  assert.equal(HEAT_SIGNAL_THRESHOLD, 3);
+  assert.equal(qualifiesForHeat(2, 0), false);
+  assert.equal(qualifiesForHeat(3, 0), true);
+  assert.equal(qualifiesForHeat(1, 1), true);
 });

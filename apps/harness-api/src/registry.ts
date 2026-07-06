@@ -62,6 +62,8 @@ export type RegistryItem = {
   threads: number;
   runs: number;
   installConfirms: number;
+  signalCount: number;
+  heatQualified: boolean;
   heat: number;
   heatDelta: number;
   freshness: string;
@@ -166,6 +168,8 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     threads: social.threads,
     runs: social.runs,
     installConfirms: social.installConfirms,
+    signalCount: social.signalCount,
+    heatQualified: social.heatQualified,
     heat: social.heat,
     heatDelta: social.heatDelta,
     freshness: social.freshness,
@@ -181,7 +185,7 @@ export function sortRegistry(items: RegistryItem[], sort: string): RegistryItem[
   if (sort === "forks") return sorted.sort((a, b) => b.forks - a.forks);
   if (sort === "threads") return sorted.sort((a, b) => b.threads - a.threads);
   if (sort === "new") return sorted.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  return sorted.sort((a, b) => b.heat - a.heat);
+  return sorted.sort((a, b) => Number(b.heatQualified) - Number(a.heatQualified) || b.heat - a.heat || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
 export function socialFromItem(item: RegistryItem) {
@@ -191,6 +195,8 @@ export function socialFromItem(item: RegistryItem) {
     threads: item.threads,
     runs: item.runs,
     installConfirms: item.installConfirms,
+    signalCount: item.signalCount,
+    heatQualified: item.heatQualified,
     heat: item.heat,
     heatDelta: item.heatDelta,
     freshness: item.freshness,

@@ -17,7 +17,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, outcome and tags.
-  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, installConfirms, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
+  Response: { items: [{ owner, name, title, summary, tags, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Harness detail: GET /repos/{owner}/{name}/harness
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
@@ -63,6 +63,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   `kind=eval|gate&target=passed&client=hh` contributes to verification.lastVerifiedAt in harness detail.
   `kind=suggested|applied&client=hh` records CLI autopilot usage without prompts or local paths.
 - Leaderboard: GET /leaderboard?limit=10
+  Returns only heatQualified items. Cold harnesses stay out of Top 10 until enough real social signals or a verified install confirm exists.
 - Publish (auth required): POST /imports/markdown-to-harness
   JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.
 

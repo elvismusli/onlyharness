@@ -28,7 +28,9 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
 }) {
   const manifest = detail?.manifest;
   const stars = item.stars + (starred ? 1 : 0);
-  const heat = item.heat + (starred ? 0.4 : 0);
+  const heatQualified = detail?.social?.heatQualified ?? item.heatQualified;
+  const heat = item.heat + (heatQualified && starred ? 0.4 : 0);
+  const visibleHeat = heatQualified ? heat : 0;
   const permissions = manifest?.permissions ?? {};
   const grantedPermissions = Object.entries(permissions)
     .filter(([, value]) => value === true)
@@ -266,13 +268,17 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
           <div className="trust-box">
             <h4>🔥 Harness Heat</h4>
             <div className="heat-head">
-              <span className="heat-num" style={{ fontSize: 26 }}>{heat.toFixed(1)}</span>
-              <span className={`lb-delta ${item.heatDelta >= 0 ? "up" : "down"}`}>
-                {item.heatDelta >= 0 ? "▲" : "▼"} {Math.abs(item.heatDelta).toFixed(1)} this week
-              </span>
+              <span className="heat-num" style={{ fontSize: 26 }}>{heatQualified ? heat.toFixed(1) : "—"}</span>
+              {heatQualified && (
+                <span className={`lb-delta ${item.heatDelta >= 0 ? "up" : "down"}`}>
+                  {item.heatDelta >= 0 ? "▲" : "▼"} {Math.abs(item.heatDelta).toFixed(1)} this week
+                </span>
+              )}
             </div>
-            <HeatMeter heat={heat} pct={heatPct(heat)} />
-            <div style={{ fontSize: 11, marginTop: 4, color: "#404040" }}>Status: {item.freshness}</div>
+            <HeatMeter heat={visibleHeat} pct={heatPct(visibleHeat)} />
+            <div style={{ fontSize: 11, marginTop: 4, color: "#404040" }}>
+              {heatQualified ? `Status: ${item.freshness}` : "Status hidden until enough real signals arrive."}
+            </div>
             <div style={{ fontSize: 11, marginTop: 4, color: "#404040" }}>Community signals are not safety guarantees.</div>
           </div>
 

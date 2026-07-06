@@ -9,6 +9,8 @@ export type Counters = {
   installConfirms: number;
 };
 
+export const HEAT_SIGNAL_THRESHOLD = 3;
+
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY;
 const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
@@ -54,11 +56,19 @@ export function heatFor(counters: Counters, evalScore: number, riskTier: string,
 export function badgeFor(riskTier: string, evalScore: number, heat: number, totalSignals: number, installConfirms = 0): string {
   if (installConfirms > 0) return `works in Claude Code: ${installConfirms} confirms`;
   if (totalSignals === 0) return "new";
-  if (heat >= 24) return "Wild West Top 10";
+  if (qualifiesForHeat(totalSignals, installConfirms) && heat >= 24) return "Wild West Top 10";
   if (evalScore >= 0.9) return `eval ${evalScore.toFixed(2)}`;
   if (riskTier === "LOW") return "low-risk scan";
   if (riskTier === "HIGH" || riskTier === "CRITICAL") return "needs review";
   return "community pick";
+}
+
+export function signalCount(counters: Counters): number {
+  return counters.stars + counters.forks + counters.threads + counters.runs + counters.installConfirms;
+}
+
+export function qualifiesForHeat(totalSignals: number, installConfirms = 0): boolean {
+  return installConfirms > 0 || totalSignals >= HEAT_SIGNAL_THRESHOLD;
 }
 
 export function socialFromCounters(
@@ -67,13 +77,16 @@ export function socialFromCounters(
 ) {
   const realCounters = counters ?? { stars: 0, forks: 0, threads: 0, runs: 0, installConfirms: 0 };
   const heat = heatFor(realCounters, context.evalScore, context.riskTier, context.updatedAt);
-  const totalSignals = realCounters.stars + realCounters.forks + realCounters.threads + realCounters.runs + realCounters.installConfirms;
+  const totalSignals = signalCount(realCounters);
+  const heatQualified = qualifiesForHeat(totalSignals, realCounters.installConfirms);
   const daysOld = Math.max(0, (Date.now() - Date.parse(context.updatedAt)) / 86_400_000);
   return {
     ...realCounters,
+    signalCount: totalSignals,
+    heatQualified,
     heat,
     heatDelta: 0,
-    freshness: daysOld < 2 ? "warm" : daysOld < 9 ? "cooling" : "needs release",
+    freshness: heatQualified ? daysOld < 2 ? "warm" : daysOld < 9 ? "cooling" : "needs release" : "collecting signals",
     badge: badgeFor(context.riskTier, context.evalScore, heat, totalSignals, realCounters.installConfirms)
   };
 }

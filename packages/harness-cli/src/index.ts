@@ -33,6 +33,8 @@ type SearchItem = {
   evalScore: number;
   evalStatus?: string;
   heat: number;
+  heatQualified?: boolean;
+  signalCount?: number;
   riskScore?: number;
   riskTier?: string;
   cliCommand?: string;
@@ -413,7 +415,7 @@ program.command("search")
     writeStdout(items.map((item) => [
       `${item.owner}/${item.name} — ${item.title}`,
       `  ${item.summary}`,
-      `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · heat ${item.heat} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
+      `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · ${heatLabel(item)} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
       `  ${item.cliCommand ?? (item.contentType === "directory" && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`)}`
     ].join("\n")).join("\n\n") + "\n");
   });
@@ -1300,6 +1302,11 @@ function contextCostLabel(cost: { approxTokens?: number; files?: number } | unde
   if (!cost || typeof cost.approxTokens !== "number" || typeof cost.files !== "number") return "unknown";
   const tokens = cost.approxTokens >= 1000 ? `${(cost.approxTokens / 1000).toFixed(1)}k` : String(cost.approxTokens);
   return `~${tokens}/${cost.files} files`;
+}
+
+function heatLabel(item: Pick<SearchItem, "heat" | "heatQualified" | "signalCount">): string {
+  if (!item.heatQualified) return `heat collecting signals (${item.signalCount ?? 0})`;
+  return `heat ${item.heat}`;
 }
 
 function writeArchiveFiles(out: string, files: ArchiveFile[]): { written: number; skipped: number; paths: string[] } {

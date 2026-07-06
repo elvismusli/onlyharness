@@ -219,7 +219,8 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
   onFork: () => void;
 }) {
   const stars = item.stars + (starred ? 1 : 0);
-  const heat = item.heat + (starred ? 0.4 : 0);
+  const heat = item.heat + (item.heatQualified && starred ? 0.4 : 0);
+  const visibleHeat = item.heatQualified ? heat : 0;
   const isDirectory = item.contentType === "directory";
   return (
     <article className="win small hcard">
@@ -256,10 +257,12 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         <div className="heat-block">
           <div className="heat-head">
             <span className="lbl">Harness Heat</span>
-            <span className="heat-num">{heat.toFixed(1)} 🔥</span>
+            <span className="heat-num">{item.heatQualified ? `${heat.toFixed(1)} 🔥` : "—"}</span>
           </div>
-          <HeatMeter heat={heat} pct={heatPct(heat)} />
-          <div style={{ fontSize: 11, marginTop: 3, color: "#404040" }}>context: {fmtContextCost(item.contextCost)}</div>
+          <HeatMeter heat={visibleHeat} pct={heatPct(visibleHeat)} />
+          <div style={{ fontSize: 11, marginTop: 3, color: "#404040" }}>
+            {item.heatQualified ? `context: ${fmtContextCost(item.contextCost)}` : "collecting real signals"}
+          </div>
         </div>
         <div className="hcard-actions hcard-cta-grid">
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>

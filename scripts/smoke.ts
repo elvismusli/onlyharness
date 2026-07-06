@@ -78,7 +78,11 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+    items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+  };
+  const initialLeaderboard = await fetch("http://127.0.0.1:8799/leaderboard?limit=10").then((response) => response.json()) as {
+    items?: Array<{ name?: string; heatQualified?: boolean }>;
+    minimumSignals?: number;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
   if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
@@ -108,6 +112,9 @@ try {
     if (item.stars < 0 || item.forks < 0 || item.threads < 0 || item.runs < 0 || item.installConfirms < 0) {
       throw new Error(`Registry returned a negative social counter: ${JSON.stringify(item)}`);
     }
+    if (item.signalCount !== 0 || item.heatQualified) {
+      throw new Error(`Cold registry item should not qualify for heat yet: ${JSON.stringify(item)}`);
+    }
     if (item.stars >= 380 || item.forks >= 42 || item.runs >= 720) {
       throw new Error(`Registry still looks like deterministic fake social data: ${JSON.stringify(item)}`);
     }
@@ -117,6 +124,9 @@ try {
     if (item.contextCost?.status !== "estimated" || !Number.isFinite(item.contextCost.approxTokens) || !Number.isFinite(item.contextCost.files)) {
       throw new Error(`Registry item is missing context-cost estimate: ${JSON.stringify(item)}`);
     }
+  }
+  if (initialLeaderboard.items?.length || initialLeaderboard.minimumSignals !== 3) {
+    throw new Error(`Leaderboard should be hidden until real signals exist: ${JSON.stringify(initialLeaderboard)}`);
   }
   const security = await fetch("http://127.0.0.1:8799/repos/local/smoke-malicious-harness/security-report").then((response) => response.json()) as { verdict?: string; findings?: unknown[] };
   if (security.verdict !== "fail" || !security.findings?.length) throw new Error(`Malicious security report did not fail: ${JSON.stringify(security)}`);
@@ -452,11 +462,17 @@ try {
   });
   if (confirmEvent.status !== 202) throw new Error(`Claude Code confirm event failed: ${confirmEvent.status}`);
   const confirmedRegistry = await fetch("http://127.0.0.1:8799/registry?q=deep-market-researcher").then((response) => response.json()) as {
-    items?: Array<{ name?: string; installConfirms?: number; badge?: string }>;
+    items?: Array<{ name?: string; installConfirms?: number; signalCount?: number; heatQualified?: boolean; badge?: string }>;
   };
   const confirmedItem = confirmedRegistry.items?.find((item) => item.name === "deep-market-researcher");
-  if (confirmedItem?.installConfirms !== 1 || !confirmedItem.badge?.includes("works in Claude Code: 1 confirms")) {
+  if (confirmedItem?.installConfirms !== 1 || confirmedItem.signalCount !== 1 || confirmedItem.heatQualified !== true || !confirmedItem.badge?.includes("works in Claude Code: 1 confirms")) {
     throw new Error(`Claude Code install confirm did not reach registry badge: ${JSON.stringify(confirmedItem)}`);
+  }
+  const confirmedLeaderboard = await fetch("http://127.0.0.1:8799/leaderboard?limit=10").then((response) => response.json()) as {
+    items?: Array<{ name?: string; heatQualified?: boolean }>;
+  };
+  if (!confirmedLeaderboard.items?.some((item) => item.name === "deep-market-researcher" && item.heatQualified === true)) {
+    throw new Error(`Confirmed install did not qualify item for leaderboard: ${JSON.stringify(confirmedLeaderboard)}`);
   }
   const imported = await fetch("http://127.0.0.1:8799/imports/markdown-to-harness", {
     method: "POST",
