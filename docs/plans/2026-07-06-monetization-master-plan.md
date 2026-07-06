@@ -470,7 +470,7 @@ This harness is paid: $19 one-time.
   Already bought? Log on and export HH_TOKEN, then retry.
 ```
 
-Exit code 4 (needs-confirmation по таксономии agent-first плана), `--json` печатает 402-payload как есть (агент сам решает). Тест node:test на функцию форматирования. Commit.
+Exit code **5 (EXIT.PAYMENT — новый код, добавляется в таксономию Stage A2**; 4 занят NOT_FOUND — агент должен отличать «купи» от «не существует»), `--json` печатает 402-payload как есть (агент сам решает). Тест node:test на функцию форматирования. Commit.
 
 ### Task M1.5: Creator storefront + attribution в вебе
 
