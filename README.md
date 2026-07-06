@@ -11,7 +11,7 @@ A harness is a versioned agent workflow package:
 - `harness.yaml` manifest with runtime, tools, permissions, quality gates, and risk profile.
 - Prompt, examples, eval cases, and expected outputs.
 - CLI commands for validate, eval, gate, diff, import, and PR annotation.
-- Social layer: stars, fork records, threads, runs, heat, tags, outcomes, and maintainer review.
+- Social layer: stars, threads, verified gate runs, install confirms, heat, tags, outcomes, and maintainer review. The fork counter is reserved for a future real fork graph.
 
 ## Live MVP
 
@@ -24,7 +24,7 @@ Supabase auth is enabled for signup/login, stars, local remix drafts, thread pos
 ## Features
 
 - HuggingFace-style discovery for agent harnesses, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
-- Outcome filters, global search, leaderboard, Harness Heat, stars, fork-record counters, runs, and threads.
+- Outcome filters, global search, leaderboard, Harness Heat, stars, threads, verified gate-run counters, and a reserved fork counter that stays zero until the real fork graph ships.
 - Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel; Versions is backed by archive snapshot history.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
@@ -123,7 +123,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Category benchmark infrastructure is local-first: `hh benchmark <suite.yaml>` compares candidate and analog harnesses from local paths using declared eval case scores. Suites live in `benchmarks/`, smoke runs every YAML suite there, and this remains a runner/comparison layer, not an independent LLM quality measurement.
 - Agent autopilot: `hh suggest <task> --json` searches, returns ranked candidates with trust fields, fetches detail for the selected harness, prints a full trust summary, and records a privacy-safe `suggested` event. Use `--pick <rank>` to inspect/apply another candidate. `hh suggest <task> --apply --out <dir>` installs the selected harness through the same archive path as `hh pull`, records `accepted` when `--apply` is chosen, and records `applied` only after files are written. Add `--target cli|claude-code|codex|cursor` to run the full adapter install path before `applied`.
 - Versioned archives: harness detail includes `versions[]`; `hh pull owner/name --version <semver>` and `hh install owner/name --version <semver>` request the same immutable `/archive?version=` path and keep `.harnesshub/source.json` pinned to the resolved version.
-- `hh eval` and `hh gate` record privacy-safe `eval`/`gate` events for pulled harnesses when they pass; detail payloads expose `verification.lastVerifiedAt` from those events.
+- `hh eval` and `hh gate` record privacy-safe `eval`/`gate` events for pulled harnesses when they pass; detail payloads expose `verification.lastVerifiedAt` from those events. Registry `runs` are counted only from passed `gate` events, never from `hh run` sample preview.
 - `hh gate --receipt` writes a signed gate receipt with harness ref, version, `resultsHash`, verdict and timestamp. `POST /api/receipts` verifies the ed25519 signature only; it is side-effect-free and does not store prompts, local paths, payments or entitlements.
 - Gate escrow is reserved-first: `pricing.model: gate_escrow` checkout/webhook creates `reserved` plus an expiring `escrow_reserved` archive entitlement. `POST /api/billing/escrow/receipt` captures on a valid passing receipt or refunds on a valid failing receipt; `POST /api/billing/escrow/timeout` refunds after the 72h window.
 - Bounties are work-state over the same escrow rail: `/api/bounties*` supports create, claim, deliver and accept; accept verifies the delivered receipt, escrow target, amount and currency, blocks escrow reuse, and writes `paid` only after capture.

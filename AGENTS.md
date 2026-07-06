@@ -134,6 +134,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
 - `/community/invite-code` must only mint codes for the authenticated buyer after a live entitlement check. `/community/verify-code` must HMAC/TTL-check the code, re-check entitlement live, and never trust a subject typed into Telegram chat.
 - Verified-install confirms come only from privacy-safe `events` rows with `kind=install`, `client=claude-code`, and a non-anonymous subject.
+- Registry `runs` come only from privacy-safe `events` rows with `kind=gate` and `target=passed`; `hh run` sample preview must not increment social counters.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
 - Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.

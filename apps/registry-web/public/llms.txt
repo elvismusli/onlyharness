@@ -71,7 +71,7 @@ OAuth protected-resource metadata: https://onlyharness.com/.well-known/oauth-pro
 - Events: POST /events
   Body may include { kind, owner, repo, version, target, client }. The API stores only whitelisted fields; do not send prompts, paths or credentials.
   `kind=install&client=claude-code` with an authenticated subject contributes to the "works in Claude Code: N confirms" badge.
-  `kind=eval|gate&target=passed&client=hh` contributes to verification.lastVerifiedAt in harness detail.
+  `kind=eval|gate&target=passed&client=hh` contributes to verification.lastVerifiedAt in harness detail. Passed `gate` events also count as registry `runs`; `hh run` sample preview does not.
   `kind=suggested|accepted|applied&client=hh` records CLI autopilot funnel usage without prompts or local paths. `accepted` means the user chose `--apply`; `applied` is recorded only after local files are written.
 - Leaderboard: GET /leaderboard?limit=10
   Returns only heatQualified items. Cold harnesses stay out of Top 10 until enough real social signals or a verified install confirm exists.
@@ -177,7 +177,7 @@ Local development check from a repo clone:
 
 ## What is a harness
 
-A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, fork records, threads and Harness Heat.
+A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, threads, passed gate runs, reserved fork counter and Harness Heat.
 
 ## Safety notes for agents
 
