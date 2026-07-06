@@ -6,6 +6,7 @@ const compose = readFileSync(path.join(root, "infra/production-compose.yml"), "u
 const envExample = readFileSync(path.join(root, "infra/production.env.example"), "utf8");
 const gitignore = readFileSync(path.join(root, ".gitignore"), "utf8");
 const smokeCompose = readFileSync(path.join(root, "scripts/smoke-production-compose.sh"), "utf8");
+const deployProduction = readFileSync(path.join(root, "scripts/deploy-production.sh"), "utf8");
 
 const apiRuntimeEnv = [
   "SUPABASE_URL",
@@ -71,6 +72,9 @@ check(gitignore.split("\n").includes("infra/production.env"), "infra/production.
 check(smokeCompose.includes('VITE_HARNESS_API_URL="${VITE_HARNESS_API_URL:-$BASE_URL/api}"'), "production compose smoke must build the web UI against the local smoke API");
 check(smokeCompose.includes('SMOKE_AUTH_RATE_LIMIT_OK="${SMOKE_AUTH_RATE_LIMIT_OK:-1}"'), "production compose smoke must soft-skip external Supabase auth rate limits by default");
 check(smokeCompose.includes('$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "production compose smoke must verify checkout deep links fall back to the SPA");
+check(deployProduction.includes('RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"'), "deploy-production.sh must run public smoke by default");
+check(deployProduction.includes('$PUBLIC_BASE_URL/mcp'), "deploy-production.sh must smoke the public MCP endpoint");
+check(deployProduction.includes('$PUBLIC_BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "deploy-production.sh must smoke checkout deep links after deploy");
 
 console.log("Production config check passed: compose env, example env, and smoke API routing are in sync");
 

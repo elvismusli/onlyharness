@@ -153,6 +153,8 @@ The current VPS uses a shared system Caddy on ports `80/443`. OnlyHarness runs b
 SSH_TARGET=hetzner-root DEPLOY_MODE=system-caddy scripts/deploy-production.sh
 ```
 
+`scripts/deploy-production.sh` runs public smoke by default after containers reload: `/api/healthz`, `/server.json`, `/.well-known/oauth-protected-resource`, `/checkout`, and `/mcp`. Override `PUBLIC_BASE_URL` for a non-default hostname or set `RUN_DEPLOY_SMOKE=0` only for a deliberately partial deploy.
+
 Deployment artifacts:
 
 - `infra/production-compose.yml`

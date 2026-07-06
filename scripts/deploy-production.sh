@@ -9,6 +9,8 @@ ENV_FILE="${ENV_FILE:-infra/production.env}"
 ALLOW_STOP_EXISTING_CADDY="${ALLOW_STOP_EXISTING_CADDY:-0}"
 DEPLOY_MODE="${DEPLOY_MODE:-system-caddy}"
 ONLYHARNESS_WEB_PORT="${ONLYHARNESS_WEB_PORT:-8097}"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-https://onlyharness.com}"
+RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"
 COMPOSE_FILES="-f infra/production-compose.yml"
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   COMPOSE_FILES="$COMPOSE_FILES -f infra/production-system-caddy.override.yml"
@@ -122,3 +124,17 @@ fi
 
 ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES ps"
 ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch(\"http://127.0.0.1:8787/healthz\").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })'"
+
+if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
+  curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
+  curl -fsS "$PUBLIC_BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
+  curl -fsS "$PUBLIC_BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
+  curl -fsSI "$PUBLIC_BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
+  curl -fsS "$PUBLIC_BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher&version=0.2.0&provider_ref=manual_deploy_smoke" | grep -q "OnlyHarness"
+  curl -fsS -X POST "$PUBLIC_BASE_URL/mcp" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"0"}}}' \
+    | grep -Eq '"name"[[:space:]]*:[[:space:]]*"onlyharness"'
+  echo "Deploy public smoke passed at $PUBLIC_BASE_URL"
+fi
