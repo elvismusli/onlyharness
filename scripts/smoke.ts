@@ -12,6 +12,7 @@ const escrowRoot = path.join(root, "data/imports/smoke-escrow-harness");
 const hostedRoot = path.join(root, "data/imports/smoke-hosted-harness");
 const verifiedPublishRoot = path.join(root, "data/imports/smoke-verified-publish");
 const gitPublishRoot = path.join(root, "data/imports/smoke-git-publish");
+const remixRoot = path.join(root, "data/imports/smoke-deep-market-remix");
 const orgVerifiedPublishRoot = path.join(root, "data/orgs/acme/smoke-org-verified-publish");
 const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
@@ -49,6 +50,7 @@ createEscrowHarness(escrowRoot);
 createHostedHarness(hostedRoot);
 rmSync(verifiedPublishRoot, { recursive: true, force: true });
 rmSync(gitPublishRoot, { recursive: true, force: true });
+rmSync(remixRoot, { recursive: true, force: true });
 rmSync(orgVerifiedPublishRoot, { recursive: true, force: true });
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
@@ -93,7 +95,7 @@ try {
     minimumSignals?: number;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const deepMarket = registry.items.find((item) => item.owner === "harnesses" && item.name === "deep-market-researcher");
@@ -146,6 +148,67 @@ try {
   }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; pricing?: { model?: string } } }));
   if (hostedCheckout.status !== 409 || hostedCheckout.body.code !== "HOSTED_EXECUTION_NOT_AVAILABLE" || hostedCheckout.body.pricing?.model !== "per_call") {
     throw new Error(`Hosted per-call checkout should be unavailable 409: ${JSON.stringify(hostedCheckout)}`);
+  }
+  const remix = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/remixes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    body: JSON.stringify({ name: "smoke-deep-market-remix", title: "Smoke Deep Market Remix" })
+  }).then(async (response) => ({
+    status: response.status,
+    body: await response.json() as {
+      owner?: string;
+      repo?: string;
+      verified?: boolean;
+      snapshotVersion?: string;
+      item?: { owner?: string; name?: string; evalStatus?: string; forks?: number; signalCount?: number };
+      remix?: { source?: { owner?: string; repo?: string; version?: string } };
+    }
+  }));
+  const remixItem = remix.body.item;
+  const remixSource = remix.body.remix?.source;
+  if (!remixItem || !remixSource || remix.status !== 201 || remix.body.owner !== "local" || remix.body.repo !== "smoke-deep-market-remix" || remix.body.verified !== false || !remix.body.snapshotVersion || remixItem.owner !== "local" || remixItem.name !== "smoke-deep-market-remix" || remixItem.evalStatus !== "unknown" || remixItem.forks !== 0 || remixItem.signalCount !== 0 || remixSource.owner !== "harnesses" || remixSource.repo !== "deep-market-researcher" || remixSource.version !== "0.1.0") {
+    throw new Error(`Server-side remix returned wrong payload: ${JSON.stringify(remix)}`);
+  }
+  const remixDetail = await fetch("http://127.0.0.1:8799/repos/local/smoke-deep-market-remix/harness").then((response) => response.json()) as {
+    manifest?: { name?: string; pricing?: { model?: string }; source?: { vendor_policy?: string; attribution?: string }; tags?: string[] };
+    evalResult?: unknown;
+    files?: string[];
+  };
+  if (remixDetail.manifest?.name !== "smoke-deep-market-remix" || remixDetail.manifest.pricing?.model !== "free" || remixDetail.manifest.source?.vendor_policy !== "vendored" || !remixDetail.manifest.source.attribution?.includes("harnesses/deep-market-researcher@0.1.0") || !remixDetail.manifest.tags?.includes("remix") || remixDetail.evalResult || remixDetail.files?.some((file) => file.startsWith(".harnesshub/"))) {
+    throw new Error(`Server-side remix detail is not a clean unverified local draft: ${JSON.stringify(remixDetail)}`);
+  }
+  const remixArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-deep-market-remix/archive?version=0.1.0").then(async (response) => ({ status: response.status, body: await response.json() as { snapshot?: boolean; files?: Array<{ path?: string }> } }));
+  if (remixArchive.status !== 200 || remixArchive.body.snapshot !== true || !remixArchive.body.files?.some((file) => file.path === "harness.yaml") || remixArchive.body.files.some((file) => file.path?.startsWith(".harnesshub/"))) {
+    throw new Error(`Server-side remix archive leaked eval files or missed snapshot: ${JSON.stringify(remixArchive)}`);
+  }
+  const duplicateRemix = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/remixes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    body: JSON.stringify({ name: "smoke-deep-market-remix" })
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string } }));
+  if (duplicateRemix.status !== 409 || duplicateRemix.body.code !== "NAME_EXISTS") {
+    throw new Error(`Duplicate remix name should return 409 NAME_EXISTS: ${JSON.stringify(duplicateRemix)}`);
+  }
+  const directoryRemix = await fetch("http://127.0.0.1:8799/repos/directories/verified-agent-catalog-2026-07/remixes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    body: JSON.stringify({ name: "smoke-directory-remix" })
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; files?: unknown[] } }));
+  if (directoryRemix.status !== 409 || directoryRemix.body.code !== "DIRECTORY_LINK_ONLY" || directoryRemix.body.files) {
+    throw new Error(`Directory remix should fail through archive gate: ${JSON.stringify(directoryRemix)}`);
+  }
+  const paidRemix = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/remixes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    body: JSON.stringify({ name: "smoke-paid-remix" })
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; files?: unknown[] } }));
+  if (paidRemix.status !== 402 || paidRemix.body.code !== "PAYMENT_REQUIRED" || paidRemix.body.files) {
+    throw new Error(`Paid remix should fail through archive entitlement gate: ${JSON.stringify(paidRemix)}`);
+  }
+  const eventLogAfterRemix = readFileSync(path.join(smokeDataRoot, "events.jsonl"), "utf8");
+  if (!eventLogAfterRemix.includes("\"target\":\"server-remix\"")) throw new Error(`Server-side remix event missing: ${eventLogAfterRemix}`);
+  if (eventLogAfterRemix.includes("smoke-deep-market-remix/harness.yaml") || eventLogAfterRemix.includes("Smoke Deep Market Remix")) {
+    throw new Error(`Server-side remix event leaked paths or copied manifest text: ${eventLogAfterRemix}`);
   }
   for (const item of registry.items) {
     if (item.stars < 0 || item.forks < 0 || item.threads < 0 || item.runs < 0 || item.installConfirms < 0) {
@@ -777,6 +840,7 @@ try {
   rmSync(escrowRoot, { recursive: true, force: true });
   rmSync(verifiedPublishRoot, { recursive: true, force: true });
   rmSync(gitPublishRoot, { recursive: true, force: true });
+  rmSync(remixRoot, { recursive: true, force: true });
   rmSync(orgVerifiedPublishRoot, { recursive: true, force: true });
   rmSync(smokeDataRoot, { recursive: true, force: true });
 }
@@ -786,7 +850,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import/verified-directory-publish/git-publish, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/verified-publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import/remix/verified-directory-publish/git-publish, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/verified-publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

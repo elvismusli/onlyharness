@@ -47,6 +47,9 @@ type HarnessDirPublishRequest = {
 type ImportOptions = {
   orgSlug?: string;
   owner?: string;
+  eventTarget?: string;
+  stateType?: string;
+  provenance?: unknown;
 };
 
 type CheckoutRequest = {
@@ -54,6 +57,14 @@ type CheckoutRequest = {
   repo?: string;
   version?: string;
   ref?: string;
+};
+
+type RemixRequest = {
+  name?: string;
+  title?: string;
+  summary?: string;
+  sourceVersion?: string;
+  version?: string;
 };
 
 type ReceiptQuery = {
@@ -154,6 +165,14 @@ type ArchiveClientResponse = {
   headers?: Record<string, string>;
 };
 
+type ArchivePayload = {
+  owner: string;
+  repo: string;
+  version: string;
+  snapshot: boolean;
+  files: registry.ArchiveFile[];
+};
+
 type DirectoryLinkOnlyBody = {
   error: "Directory link only";
   code: "DIRECTORY_LINK_ONLY";
@@ -233,6 +252,16 @@ app.get("/repos/:owner/:repo/archive", async (request, reply) => {
     if (header) reply.header("PAYMENT-REQUIRED", header);
   }
   return reply.code(result.status).send(result.body);
+});
+
+app.post("/repos/:owner/:repo/remixes", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { owner, repo } = request.params as { owner: string; repo: string };
+  const body = request.body && typeof request.body === "object" ? request.body as RemixRequest : {};
+  const result = await remixHarnessForUser(owner, repo, body, user, headerValue(request.headers.authorization));
+  if ("error" in result) return reply.code(result.status ?? 500).send(result.body ?? { error: result.error });
+  return reply.code(201).send(result);
 });
 
 app.post("/billing/checkout", async (request, reply) => {
@@ -1181,6 +1210,174 @@ async function settleX402ArchivePayment(input: {
   };
 }
 
+async function remixHarnessForUser(owner: string, repo: string, body: RemixRequest, user: AuthUser, authorization: string | undefined) {
+  const requestedName = slugify(body.name ?? `my-${repo}`);
+  if (!requestedName || !safePublicHarnessName(requestedName)) return { status: 400, error: "remix name is not publishable" };
+  const target = path.join(registry.importRoot, requestedName);
+  if (existsSync(path.join(target, "harness.yaml"))) {
+    return { status: 409, error: "Remix name already exists", body: { error: "Remix name already exists", code: "NAME_EXISTS", owner: "local", repo: requestedName } };
+  }
+
+  const sourceVersion = body.sourceVersion ?? body.version;
+  const archive = await archiveForClient(owner, repo, sourceVersion, authorization, "api");
+  if (archive.status !== 200) {
+    return {
+      status: archive.status,
+      error: archiveError(archive.body),
+      body: archive.body
+    };
+  }
+
+  const source = archive.body as Partial<ArchivePayload>;
+  if (!Array.isArray(source.files) || typeof source.version !== "string") {
+    return { status: 500, error: "archive payload is invalid" };
+  }
+
+  const files = source.files
+    .filter((file) => file.path !== ".harnesshub/results.json" && !file.path.startsWith(".harnesshub/"))
+    .map((file) => ({ ...file }));
+  const manifestFile = files.find((file) => file.path === "harness.yaml");
+  if (!manifestFile) return { status: 500, error: "archive payload is missing harness.yaml" };
+  const rewritten = rewriteManifestForRemix(manifestFile.content, {
+    owner,
+    repo,
+    version: source.version,
+    name: requestedName,
+    title: body.title,
+    summary: body.summary
+  });
+  if ("error" in rewritten) return rewritten;
+  manifestFile.content = rewritten.content;
+
+  const temp = path.join(registry.workspaceRoot, "data", `.remix-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  try {
+    for (const file of files) {
+      const safe = safePublishFile(file);
+      if (!safe.ok) return { status: safe.status, error: safe.error };
+      const fileTarget = path.join(temp, safe.path);
+      mkdirSync(path.dirname(fileTarget), { recursive: true });
+      writeFileSync(fileTarget, safe.content);
+    }
+
+    const basics = registry.registryDetailBasics(temp);
+    const manifest = basics.inspection.manifest;
+    if (!manifest) return { status: 400, error: "remix harness.yaml is invalid" };
+    if (!basics.inspection.valid) {
+      return {
+        status: 422,
+        error: "Remix validation failed",
+        body: {
+          error: "Remix validation failed",
+          failures: basics.inspection.issues.map((issue) => `${issue.severity}: ${issue.path} ${issue.message}`)
+        }
+      };
+    }
+    if (basics.security.verdict !== "pass") {
+      return {
+        status: 422,
+        error: "Security scan must pass before remix",
+        body: {
+          error: "Security scan must pass before remix",
+          failures: basics.security.findings.map((finding) => `${finding.severity}: ${finding.rule} ${finding.file}`)
+        }
+      };
+    }
+
+    let snapshot: registry.ArchiveSnapshot;
+    try {
+      snapshot = registry.assertArchiveSnapshotWritable("local", requestedName, temp);
+    } catch (error) {
+      if (error instanceof registry.ArchiveSnapshotConflictError) {
+        return { status: 409, error: error.message, body: { error: error.message, code: "SNAPSHOT_VERSION_CONFLICT", version: error.version } };
+      }
+      throw error;
+    }
+
+    mkdirSync(path.dirname(target), { recursive: true });
+    renameSync(temp, target);
+    const writtenSnapshot = registry.writeArchiveSnapshot("local", requestedName, target, snapshot.version);
+    const item = registry.registryItemFromDir("local", target, new Map());
+    await upsertHarnessCreator("local", requestedName, user.id);
+    await recordEvent({ kind: "applied", owner: "local", repo: requestedName, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "server-remix", client: "api" });
+    appendState({ type: "remix", name: requestedName, target, userId: user.id, provenance: { owner, repo, version: source.version }, at: new Date().toISOString() });
+
+    return {
+      owner: "local",
+      repo: requestedName,
+      item,
+      snapshotVersion: writtenSnapshot?.version,
+      verified: false,
+      remix: {
+        owner: "local",
+        name: requestedName,
+        source: { owner, repo, version: source.version }
+      }
+    };
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
+function rewriteManifestForRemix(content: string, input: { owner: string; repo: string; version: string; name: string; title?: string; summary?: string }):
+  | { content: string }
+  | { status: number; error: string } {
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = YAML.parse(content) as Record<string, unknown>;
+  } catch {
+    return { status: 400, error: "source harness.yaml is invalid" };
+  }
+  if (!manifest || typeof manifest !== "object") return { status: 400, error: "source harness.yaml is invalid" };
+  const visibility = typeof manifest.visibility === "string" ? manifest.visibility : "public";
+  if (visibility === "org" || visibility === "private" || input.owner.startsWith("@")) {
+    return { status: 403, error: "Org-private harnesses cannot be remixed into the public namespace yet" };
+  }
+  const pricing = manifest.pricing && typeof manifest.pricing === "object" && !Array.isArray(manifest.pricing)
+    ? manifest.pricing as { model?: unknown }
+    : {};
+  if (pricing.model && pricing.model !== "free") {
+    return { status: 409, error: "Paid harnesses cannot be server-remixed into the public local namespace yet" };
+  }
+  const contentType = manifest.content && typeof manifest.content === "object" && !Array.isArray(manifest.content)
+    ? (manifest.content as { type?: unknown }).type
+    : "harness";
+  if (contentType === "directory") return { status: 409, error: "Directory entries are link-only and cannot be server-remixed" };
+  if (typeof manifest.license !== "string" || manifest.license.toUpperCase() === "UNSPECIFIED") {
+    return { status: 409, error: "Source license must be explicit before server remix" };
+  }
+
+  const originalTitle = typeof manifest.title === "string" ? manifest.title : input.repo;
+  const originalSummary = typeof manifest.summary === "string" ? manifest.summary : `Remix of ${input.owner}/${input.repo}.`;
+  const source = manifest.source && typeof manifest.source === "object" && !Array.isArray(manifest.source)
+    ? manifest.source as Record<string, unknown>
+    : {};
+  if (source.vendor_policy === "link-only") {
+    return { status: 409, error: "Link-only sources cannot be server-remixed into local files" };
+  }
+  const tags = Array.isArray(manifest.tags) ? manifest.tags.filter((tag): tag is string => typeof tag === "string") : [];
+
+  manifest.name = input.name;
+  manifest.title = input.title?.trim() || `${originalTitle} Remix`;
+  manifest.summary = input.summary?.trim() || `${originalSummary} Remix draft from ${input.owner}/${input.repo}@${input.version}; run eval/gate before treating it as verified.`;
+  manifest.visibility = "public";
+  manifest.pricing = { model: "free", currency: "USD" };
+  manifest.source = {
+    ...source,
+    authors: Array.isArray(source.authors) ? source.authors : [],
+    vendor_policy: "vendored",
+    attribution: `Remixed from ${input.owner}/${input.repo}@${input.version}`
+  };
+  manifest.tags = tags.includes("remix") ? tags : [...tags, "remix"];
+  delete manifest.org;
+
+  return { content: YAML.stringify(manifest) };
+}
+
+function archiveError(body: unknown): string {
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error?: unknown }).error === "string") return (body as { error: string }).error;
+  return "archive pull failed";
+}
+
 async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, options: ImportOptions = {}) {
   if (!body?.markdown || body.markdown.length < 20) {
     return { status: 400, error: "markdown must be at least 20 characters" };
@@ -1289,9 +1486,9 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
     const item = registry.registryItemFromDir(owner, target, new Map());
     const writtenSnapshot = registry.writeArchiveSnapshot(owner, name, target, snapshot.version);
     if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
-    await recordEvent({ kind: "applied", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "verified_publish", client: "api" });
+    await recordEvent({ kind: "applied", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: options.eventTarget ?? "verified_publish", client: "api" });
     await recordEvent({ kind: "gate", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "passed", client: "api" });
-    appendState({ type: options.orgSlug ? "org_verified_publish" : "verified_publish", org: options.orgSlug, name, target, userId: user.id, at: new Date().toISOString() });
+    appendState({ type: options.stateType ?? (options.orgSlug ? "org_verified_publish" : "verified_publish"), org: options.orgSlug, name, target, userId: user.id, provenance: options.provenance, at: new Date().toISOString() });
     return {
       item,
       snapshotVersion: writtenSnapshot?.version,

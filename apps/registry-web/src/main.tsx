@@ -504,13 +504,51 @@ function App() {
   async function remixHarness(item: RegistryItem) {
     const recipe = remixRecipe(item);
     const key = keyFor(item);
-    setRemixed((current) => ({ ...current, [key]: true }));
-    void copyText(recipe, `Fork/remix recipe copied for ${item.title}`, `remix:${key}`);
-    showDialog({
-      title: "Fork/remix recipe",
-      icon: "⑂",
-      body: `Server-side forks are not live yet. Use this local remix path:\n\n${recipe}\n\nPublish only after renaming, reviewing source/license, and running eval/gate.`
-    });
+    if (!session?.access_token) {
+      setRemixed((current) => ({ ...current, [key]: true }));
+      void copyText(recipe, `Local remix recipe copied for ${item.title}`, `remix:${key}`);
+      setLogon({ open: true, note: "Log on to create a server-side local remix draft. A local recipe was copied." });
+      return;
+    }
+    try {
+      const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/remixes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ name: `my-${item.name}` })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setRemixed((current) => ({ ...current, [key]: true }));
+        void copyText(recipe, `Local remix recipe copied for ${item.title}`, `remix:${key}`);
+        const next = typeof data.next === "string" ? `\n\n${data.next}` : "";
+        throw new Error(`${data.error ?? `Server-side remix failed (${response.status})`}${next}`);
+      }
+      const remixItem = data.item as RegistryItem | undefined;
+      if (remixItem) {
+        const remixKey = keyFor(remixItem);
+        setKnownItems((current) => ({ ...current, [remixKey]: remixItem }));
+        setAllItems((current) => [remixItem, ...current.filter((entry) => keyFor(entry) !== remixKey)]);
+        setRemixed((current) => ({ ...current, [key]: true, [remixKey]: true }));
+        setRefreshTick((tick) => tick + 1);
+        showDialog({
+          title: "Local remix draft created",
+          icon: "⑂",
+          body: `${remixItem.title} is available as ${remixItem.owner}/${remixItem.name}.\n\nIt starts free and unverified; edit it, then run eval/gate before treating it as production-ready.`
+        });
+        openHarness(remixItem);
+        return;
+      }
+      throw new Error("Server-side remix returned no registry item.");
+    } catch (error) {
+      showDialog({
+        title: "Fork/remix fallback",
+        icon: "⑂",
+        body: `${error instanceof Error ? error.message : "Server-side remix failed."}\n\nUse this local path instead:\n\n${recipe}`
+      });
+    }
   }
 
   async function runSample(item: RegistryItem) {
@@ -646,7 +684,7 @@ function App() {
 
   const cantClose = () => showDialog({ title: "OnlyHarness", icon: "⚠️", body: "You can't close the Wild West, partner. Your harness is still on the leaderboard." });
   const shutDown = () => showDialog({ title: "Shut Down OnlyHarness", icon: "🤠", body: "It's now safe to turn off your agent. But the harnesses keep getting warmer without you..." });
-  const binDialog = () => showDialog({ title: "Remix Bin", icon: "🗑️", body: "The bin is empty. Server-side forks are not live yet; copied remix recipes stay local." });
+  const binDialog = () => showDialog({ title: "Remix Bin", icon: "🗑️", body: "The bin is empty. Log on to create server-side local remix drafts; copied recipes stay as the fallback path." });
   const aboutDialog = () => showDialog({ title: "About OnlyHarness 98", icon: "🧷", body: "The community hub for reusable agent harnesses: discover, install, remix, eval, improve. Lovingly wrapped in Windows 98 chrome, MS Paint colours and WordArt. No harnesses were harmed." });
 
   /* ---------- taskbar ---------- */

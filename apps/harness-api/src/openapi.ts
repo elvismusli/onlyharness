@@ -97,6 +97,78 @@ export const openapi = {
         }
       }
     },
+    "/repos/{owner}/{repo}/remixes": {
+      post: {
+        summary: "Create a local server-side remix draft",
+        description: "Auth required. Pulls the source through the same archive gate, rejects paid/org/private/directory or unspecified-license sources, rewrites manifest provenance, removes eval artifacts, and writes a free public local draft with evalStatus unknown.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("owner"), pathParam("repo")],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  title: { type: "string" },
+                  summary: { type: "string" },
+                  sourceVersion: { type: "string" },
+                  version: { type: "string", deprecated: true }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Local remix draft created",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    owner: { type: "string" },
+                    repo: { type: "string" },
+                    item: { $ref: "#/components/schemas/RegistryItem" },
+                    snapshotVersion: { type: "string" },
+                    verified: { type: "boolean" },
+                    remix: {
+                      type: "object",
+                      properties: {
+                        owner: { type: "string" },
+                        name: { type: "string" },
+                        source: {
+                          type: "object",
+                          properties: {
+                            owner: { type: "string" },
+                            repo: { type: "string" },
+                            version: { type: "string" }
+                          },
+                          required: ["owner", "repo", "version"]
+                        }
+                      },
+                      required: ["owner", "name", "source"]
+                    }
+                  },
+                  required: ["owner", "repo", "item", "verified", "remix"]
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "402": {
+            description: "Payment required before reading paid source files",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentRequired" } } }
+          },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" },
+          "422": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
     "/repos/{owner}/{repo}/security-report": {
       get: {
         summary: "Static security report",
