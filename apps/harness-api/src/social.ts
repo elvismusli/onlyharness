@@ -15,16 +15,21 @@ const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY;
 const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
 const localEventsPath = path.resolve(process.env.HARNESS_EVENTS_PATH ?? path.join(workspaceRoot, "data/events.jsonl"));
+const localStatePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(workspaceRoot, "data/harness-state.json"));
 
 export async function fetchCountersMap(): Promise<Map<string, Counters>> {
   const counters = new Map<string, Counters>();
 
   if (supabaseUrl && supabaseRestKey) {
     await mergeSupabase(counters, mergeSupabaseAggregateCounters);
+    const remoteForksMerged = await mergeSupabaseForkRows(counters);
     await mergeSupabase(counters, mergeSupabaseUserActions);
     await mergeSupabase(counters, mergeSupabaseThreadPosts);
     await mergeSupabase(counters, mergeSupabaseVerificationRuns);
     await mergeSupabase(counters, mergeSupabaseInstallConfirms);
+    if (!remoteForksMerged) mergeLocalForkRows(counters);
+  } else {
+    mergeLocalForkRows(counters);
   }
 
   mergeLocalInstallConfirms(counters);
@@ -136,11 +141,54 @@ export function mergeVerificationRunRows(counters: Map<string, Counters>, rows: 
   }
 }
 
+export function mergeForkRows(counters: Map<string, Counters>, rows: ForkGraphRow[], options: { reset?: boolean } = { reset: true }): void {
+  const reset = options.reset ?? true;
+  if (reset) {
+    for (const [key, current] of counters) counters.set(key, { ...current, forks: 0 });
+  }
+
+  const forksByHarness = new Map<string, Set<string>>();
+  rows.forEach((row, index) => {
+    if (!row.source_owner || !row.source_repo) return;
+    const key = `${row.source_owner}/${row.source_repo}`;
+    const compoundId = [row.fork_owner, row.fork_repo, row.user_subject, row.created_at].filter(Boolean).join(":");
+    const id = row.id ?? (compoundId || `fork:${index}`);
+    const forks = forksByHarness.get(key) ?? new Set<string>();
+    forks.add(String(id));
+    forksByHarness.set(key, forks);
+  });
+
+  for (const [key, forks] of forksByHarness) {
+    const current = counters.get(key) ?? emptyCounters();
+    counters.set(key, { ...current, forks: (reset ? 0 : current.forks) + forks.size });
+  }
+}
+
 async function mergeSupabase(counters: Map<string, Counters>, merger: (counters: Map<string, Counters>) => Promise<void>): Promise<void> {
   try {
     await merger(counters);
   } catch {
     // Keep the registry usable when one Supabase-backed signal is temporarily unavailable.
+  }
+}
+
+async function mergeSupabaseForkRows(counters: Map<string, Counters>): Promise<boolean> {
+  if (!supabaseUrl || !supabaseRestKey) return false;
+  const params = new URLSearchParams({
+    select: "id,source_owner,source_repo,fork_owner,fork_repo,user_subject",
+    source_owner: "not.is.null",
+    source_repo: "not.is.null",
+    limit: "10000"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/harness_forks?${params.toString()}`, {
+      headers: restHeaders()
+    });
+    if (!response.ok) return false;
+    mergeForkRows(counters, await response.json() as ForkGraphRow[]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -257,6 +305,37 @@ function mergeLocalVerificationRuns(counters: Map<string, Counters>): void {
   mergeVerificationRunRows(counters, rows, { reset: false });
 }
 
+function mergeLocalForkRows(counters: Map<string, Counters>): void {
+  if (!existsSync(localStatePath)) return;
+  let state: unknown;
+  try {
+    state = JSON.parse(readFileSync(localStatePath, "utf8"));
+  } catch {
+    return;
+  }
+  if (!Array.isArray(state)) return;
+  const rows: ForkGraphRow[] = [];
+  state.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") return;
+    const row = entry as LocalForkStateRow;
+    const source = row.type === "fork" ? row.source : row.type === "remix" ? row.provenance : undefined;
+    const fork = row.type === "fork" ? row.fork : undefined;
+    const forkOwner = fork?.owner ?? (row.type === "remix" ? "local" : undefined);
+    const forkRepo = fork?.repo ?? row.name;
+    if (!source?.owner || !source.repo || !forkOwner || !forkRepo) return;
+    rows.push({
+      id: `${forkOwner}/${forkRepo}:${source.version ?? ""}:${row.userId ?? ""}:${row.at ?? index}`,
+      source_owner: source.owner,
+      source_repo: source.repo,
+      fork_owner: forkOwner,
+      fork_repo: forkRepo,
+      user_subject: row.userId ? `user:${row.userId}` : undefined,
+      created_at: row.at
+    });
+  });
+  mergeForkRows(counters, rows, { reset: false });
+}
+
 function mergeInstallConfirmRows(counters: Map<string, Counters>, rows: EventConfirmRow[]): void {
   const subjectsByHarness = new Map<string, Set<string>>();
   for (const row of rows) {
@@ -319,4 +398,36 @@ export type EventRunRow = {
   subject?: string | null;
   created_at?: string | null;
   at?: string | null;
+};
+
+export type ForkGraphRow = {
+  id?: number | string | null;
+  source_owner?: string | null;
+  source_repo?: string | null;
+  fork_owner?: string | null;
+  fork_repo?: string | null;
+  user_subject?: string | null;
+  created_at?: string | null;
+};
+
+type LocalForkStateRow = {
+  type?: string;
+  name?: string;
+  userId?: string;
+  at?: string;
+  source?: {
+    owner?: string;
+    repo?: string;
+    version?: string;
+  };
+  fork?: {
+    owner?: string;
+    repo?: string;
+    version?: string;
+  };
+  provenance?: {
+    owner?: string;
+    repo?: string;
+    version?: string;
+  };
 };

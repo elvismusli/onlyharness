@@ -1,5 +1,5 @@
--- Fork/remix clicks are currently local recipes, not server-side ownership
--- records. Keep forks reserved for a future real fork/remix table.
+-- Fork/remix clicks are not social actions. Server-side remix ownership is
+-- recorded separately in public.harness_forks by the API service role.
 
 create or replace function public.bump_harness_counter()
 returns trigger
@@ -35,7 +35,7 @@ begin
       using errcode = 'check_violation';
   end if;
   if new.action = 'fork' then
-    raise exception 'user_harness_actions.fork is deprecated; use the future server-side fork/remix flow'
+    raise exception 'user_harness_actions.fork is deprecated; use the server-side fork/remix flow'
       using errcode = 'check_violation';
   end if;
   return new;

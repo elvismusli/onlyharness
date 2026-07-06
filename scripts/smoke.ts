@@ -164,13 +164,28 @@ try {
       verified?: boolean;
       snapshotVersion?: string;
       item?: { owner?: string; name?: string; evalStatus?: string; forks?: number; signalCount?: number };
-      remix?: { source?: { owner?: string; repo?: string; version?: string } };
+    remix?: {
+      source?: { owner?: string; repo?: string; version?: string };
+      forkGraph?: {
+        recorded?: boolean;
+        source?: { owner?: string; repo?: string; version?: string };
+        fork?: { owner?: string; repo?: string; version?: string };
+      };
+    };
     }
   }));
   const remixItem = remix.body.item;
   const remixSource = remix.body.remix?.source;
-  if (!remixItem || !remixSource || remix.status !== 201 || remix.body.owner !== "local" || remix.body.repo !== "smoke-deep-market-remix" || remix.body.verified !== false || !remix.body.snapshotVersion || remixItem.owner !== "local" || remixItem.name !== "smoke-deep-market-remix" || remixItem.evalStatus !== "unknown" || remixItem.forks !== 0 || remixItem.signalCount !== 0 || remixSource.owner !== "harnesses" || remixSource.repo !== "deep-market-researcher" || remixSource.version !== "0.1.0") {
+  const remixFork = remix.body.remix?.forkGraph;
+  if (!remixItem || !remixSource || !remixFork?.recorded || remix.status !== 201 || remix.body.owner !== "local" || remix.body.repo !== "smoke-deep-market-remix" || remix.body.verified !== false || !remix.body.snapshotVersion || remixItem.owner !== "local" || remixItem.name !== "smoke-deep-market-remix" || remixItem.evalStatus !== "unknown" || remixItem.forks !== 0 || remixItem.signalCount !== 0 || remixSource.owner !== "harnesses" || remixSource.repo !== "deep-market-researcher" || remixSource.version !== "0.1.0" || remixFork.source?.owner !== "harnesses" || remixFork.source.repo !== "deep-market-researcher" || remixFork.fork?.owner !== "local" || remixFork.fork.repo !== "smoke-deep-market-remix") {
     throw new Error(`Server-side remix returned wrong payload: ${JSON.stringify(remix)}`);
+  }
+  const sourceAfterRemix = await fetch("http://127.0.0.1:8799/registry?q=deep-market-researcher").then((response) => response.json()) as {
+    items?: Array<{ owner?: string; name?: string; forks?: number; signalCount?: number; heatQualified?: boolean }>;
+  };
+  const sourceAfterRemixItem = sourceAfterRemix.items?.find((item) => item.owner === "harnesses" && item.name === "deep-market-researcher");
+  if (sourceAfterRemixItem?.forks !== 1 || sourceAfterRemixItem.signalCount !== 1 || sourceAfterRemixItem.heatQualified !== false) {
+    throw new Error(`Fork graph did not update source registry counters: ${JSON.stringify(sourceAfterRemixItem)}`);
   }
   const remixDetail = await fetch("http://127.0.0.1:8799/repos/local/smoke-deep-market-remix/harness").then((response) => response.json()) as {
     manifest?: { name?: string; pricing?: { model?: string }; source?: { vendor_policy?: string; attribution?: string }; tags?: string[] };
@@ -576,7 +591,7 @@ try {
     items?: Array<{ name?: string; installConfirms?: number; signalCount?: number; heatQualified?: boolean; badge?: string }>;
   };
   const confirmedItem = confirmedRegistry.items?.find((item) => item.name === "deep-market-researcher");
-  if (confirmedItem?.installConfirms !== 1 || confirmedItem.signalCount !== 1 || confirmedItem.heatQualified !== true || !confirmedItem.badge?.includes("works in Claude Code: 1 confirms")) {
+  if (confirmedItem?.installConfirms !== 1 || confirmedItem.signalCount !== 2 || confirmedItem.heatQualified !== true || !confirmedItem.badge?.includes("works in Claude Code: 1 confirms")) {
     throw new Error(`Claude Code install confirm did not reach registry badge: ${JSON.stringify(confirmedItem)}`);
   }
   const confirmedLeaderboard = await fetch("http://127.0.0.1:8799/leaderboard?limit=10").then((response) => response.json()) as {

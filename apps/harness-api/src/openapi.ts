@@ -100,7 +100,7 @@ export const openapi = {
     "/repos/{owner}/{repo}/remixes": {
       post: {
         summary: "Create a local server-side remix draft",
-        description: "Auth required. Pulls the source through the same archive gate, rejects paid/org/private/directory or unspecified-license sources, rewrites manifest provenance, removes eval artifacts, and writes a free public local draft with evalStatus unknown.",
+        description: "Auth required. Pulls the source through the same archive gate, rejects paid/org/private/directory or unspecified-license sources, rewrites manifest provenance, removes eval artifacts, writes a free public local draft with evalStatus unknown, and records a source -> fork graph edge.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("owner"), pathParam("repo")],
         requestBody: {
@@ -146,9 +146,34 @@ export const openapi = {
                             version: { type: "string" }
                           },
                           required: ["owner", "repo", "version"]
+                        },
+                        forkGraph: {
+                          type: "object",
+                          properties: {
+                            recorded: { type: "boolean" },
+                            source: {
+                              type: "object",
+                              properties: {
+                                owner: { type: "string" },
+                                repo: { type: "string" },
+                                version: { type: "string" }
+                              },
+                              required: ["owner", "repo", "version"]
+                            },
+                            fork: {
+                              type: "object",
+                              properties: {
+                                owner: { type: "string" },
+                                repo: { type: "string" },
+                                version: { type: "string" }
+                              },
+                              required: ["owner", "repo"]
+                            }
+                          },
+                          required: ["recorded", "source", "fork"]
                         }
                       },
-                      required: ["owner", "name", "source"]
+                      required: ["owner", "name", "source", "forkGraph"]
                     }
                   },
                   required: ["owner", "repo", "item", "verified", "remix"]

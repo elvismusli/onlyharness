@@ -11,7 +11,7 @@ A harness is a versioned agent workflow package:
 - `harness.yaml` manifest with runtime, tools, permissions, quality gates, and risk profile.
 - Prompt, examples, eval cases, and expected outputs.
 - CLI commands for validate, eval, gate, diff, import, and PR annotation.
-- Social layer: stars, threads, verified gate runs, install confirms, heat, tags, outcomes, and maintainer review. The fork counter is reserved for a future real fork graph.
+- Social layer: stars, server-side remix forks, threads, verified gate runs, install confirms, heat, tags, outcomes, and maintainer review.
 
 ## Live MVP
 
@@ -24,7 +24,7 @@ Supabase auth is enabled for signup/login, stars, local remix drafts, thread pos
 ## Features
 
 - HuggingFace-style discovery for agent harnesses, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
-- Outcome filters, global search, leaderboard, Harness Heat, stars, threads, verified gate-run counters, and a reserved fork counter that stays zero until the real fork graph ships.
+- Outcome filters, global search, leaderboard, Harness Heat, stars, server-side remix fork counters, threads, and verified gate-run counters.
 - Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel; Versions is backed by archive snapshot history.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
@@ -118,7 +118,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Maintainer publish: `hh publish <harness-dir>` requires local `.harnesshub/results.json`; `hh publish <git-url> --path <harness-dir>` clones to a temp dir, runs local eval/gate there, then publishes only if the server rechecks schema, security and gate successfully.
 - Org-private pulls use the same token path: `HH_ORG_TOKEN=<org-token> hh pull @acme/private-harness`.
 - Directory shelf entries are link-only discovery indexes under owner `directories`. They show `open <url>` in search results and `GET /api/repos/directories/{name}/archive` returns `409 DIRECTORY_LINK_ONLY` instead of runnable files.
-- Server-side remix is a local draft flow: `POST /api/repos/{owner}/{repo}/remixes` creates a free unverified `local/{name}` copy from archive files only. Paid, org/private, directory, link-only and unspecified-license sources fail closed; remix events must not increment forks or store prompts/local paths.
+- Server-side remix is a local draft flow with a real fork graph row: `POST /api/repos/{owner}/{repo}/remixes` creates a free unverified `local/{name}` copy from archive files only and records the source -> fork edge. Paid, org/private, directory, link-only and unspecified-license sources fail closed; copied fallback recipes do not increment forks or store prompts/local paths.
 - Public API payloads never expose server filesystem paths: registry/detail use public forge/upstream URLs when available, `/healthz` only returns status, and maintainer review in detail is explicitly a `local-demo` preview until a real forge PR source is connected.
 - Category benchmark infrastructure is local-first: `hh benchmark <suite.yaml>` compares candidate and analog harnesses from local paths using declared eval case scores. Suites live in `benchmarks/`, smoke runs every YAML suite there, and this remains a runner/comparison layer, not an independent LLM quality measurement.
 - Agent autopilot: `hh suggest <task> --json` searches, returns ranked candidates with trust fields, fetches detail for the selected harness, prints a full trust summary, and records a privacy-safe `suggested` event. Use `--pick <rank>` to inspect/apply another candidate. `hh suggest <task> --apply --out <dir>` installs the selected harness through the same archive path as `hh pull`, records `accepted` when `--apply` is chosen, and records `applied` only after files are written. Add `--target cli|claude-code|codex|cursor` to run the full adapter install path before `applied`.

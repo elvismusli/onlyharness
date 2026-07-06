@@ -1298,7 +1298,12 @@ async function remixHarnessForUser(owner: string, repo: string, body: RemixReque
     const item = registry.registryItemFromDir("local", target, new Map());
     await upsertHarnessCreator("local", requestedName, user.id);
     await recordEvent({ kind: "applied", owner: "local", repo: requestedName, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "server-remix", client: "api" });
-    appendState({ type: "remix", name: requestedName, target, userId: user.id, provenance: { owner, repo, version: source.version }, at: new Date().toISOString() });
+    const fork = await recordHarnessFork({
+      source: { owner, repo, version: source.version },
+      fork: { owner: "local", repo: requestedName, version: writtenSnapshot?.version },
+      userId: user.id
+    });
+    appendState({ type: "remix", name: requestedName, target, userId: user.id, provenance: { owner, repo, version: source.version }, forkStored: fork.remote, at: fork.at });
 
     return {
       owner: "local",
@@ -1309,7 +1314,12 @@ async function remixHarnessForUser(owner: string, repo: string, body: RemixReque
       remix: {
         owner: "local",
         name: requestedName,
-        source: { owner, repo, version: source.version }
+        source: { owner, repo, version: source.version },
+        forkGraph: {
+          recorded: true,
+          source: { owner, repo, version: source.version },
+          fork: { owner: "local", repo: requestedName, version: writtenSnapshot?.version }
+        }
       }
     };
   } finally {
@@ -1370,6 +1380,60 @@ function rewriteManifestForRemix(content: string, input: { owner: string; repo: 
   delete manifest.org;
 
   return { content: YAML.stringify(manifest) };
+}
+
+async function recordHarnessFork(input: {
+  source: { owner: string; repo: string; version: string };
+  fork: { owner: string; repo: string; version?: string };
+  userId: string;
+}): Promise<{ remote: boolean; at: string }> {
+  const at = new Date().toISOString();
+  const userSubject = eventSubject(input.userId);
+  const remote = await upsertSupabaseHarnessFork({
+    source_owner: input.source.owner,
+    source_repo: input.source.repo,
+    source_version: input.source.version,
+    fork_owner: input.fork.owner,
+    fork_repo: input.fork.repo,
+    fork_version: input.fork.version,
+    user_subject: userSubject
+  });
+  appendState({
+    type: "fork",
+    source: input.source,
+    fork: input.fork,
+    userId: input.userId,
+    userSubject,
+    remote,
+    at
+  });
+  return { remote, at };
+}
+
+async function upsertSupabaseHarnessFork(row: {
+  source_owner: string;
+  source_repo: string;
+  source_version: string;
+  fork_owner: string;
+  fork_repo: string;
+  fork_version?: string;
+  user_subject: string;
+}): Promise<boolean> {
+  if (!supabaseUrl || !supabaseRestKey) return false;
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/harness_forks?on_conflict=user_subject,source_owner,source_repo,fork_owner,fork_repo`, {
+      method: "POST",
+      headers: {
+        ...supabaseRestHeaders(),
+        "content-type": "application/json",
+        prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify(row)
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 function archiveError(body: unknown): string {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, mergeThreadPostRows, mergeUserActionRows, mergeVerificationRunRows, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
+import { badgeFor, heatFor, HEAT_SIGNAL_THRESHOLD, mergeForkRows, mergeThreadPostRows, mergeUserActionRows, mergeVerificationRunRows, qualifiesForHeat, socialFromCounters } from "../src/social.ts";
 
 test("socialFromCounters returns honest zeros when no row exists", () => {
   const social = socialFromCounters(undefined, {
@@ -81,6 +81,22 @@ test("passed gate events count as real runs without counting sample or eval prev
 
   assert.deepEqual(counters.get("openai/codex"), { stars: 0, forks: 0, threads: 0, runs: 1, installConfirms: 0 });
   assert.deepEqual(counters.get("new/repo"), { stars: 0, forks: 0, threads: 0, runs: 1, installConfirms: 0 });
+});
+
+test("fork graph rows replace stale aggregate forks without counting action clicks", () => {
+  const counters = new Map([
+    ["harnesses/deep-market-researcher", { stars: 0, forks: 5, threads: 0, runs: 0, installConfirms: 0 }],
+    ["stale/empty", { stars: 0, forks: 2, threads: 0, runs: 0, installConfirms: 0 }]
+  ]);
+
+  mergeForkRows(counters, [
+    { source_owner: "harnesses", source_repo: "deep-market-researcher", fork_owner: "local", fork_repo: "one", user_subject: "user:a", id: 1 },
+    { source_owner: "harnesses", source_repo: "deep-market-researcher", fork_owner: "local", fork_repo: "one", user_subject: "user:a", id: 1 },
+    { source_owner: "harnesses", source_repo: "deep-market-researcher", fork_owner: "local", fork_repo: "two", user_subject: "user:b", id: 2 }
+  ]);
+
+  assert.deepEqual(counters.get("harnesses/deep-market-researcher"), { stars: 0, forks: 2, threads: 0, runs: 0, installConfirms: 0 });
+  assert.equal(counters.get("stale/empty")?.forks, 0);
 });
 
 test("badge is new for a harness with no real signals", () => {

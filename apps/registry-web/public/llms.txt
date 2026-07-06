@@ -27,7 +27,7 @@ OAuth protected-resource metadata: https://onlyharness.com/.well-known/oauth-pro
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh install --pay` or `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
   Directory shelf entries use owner `directories` and manifest content.type=directory. They are link-only discovery indexes: search results expose `open <url>`, and archive returns HTTP 409 { code: "DIRECTORY_LINK_ONLY", url, next } instead of files.
 - Create local remix draft: POST /repos/{owner}/{name}/remixes
-  Auth required. Body { name?, title?, summary?, sourceVersion? }. Creates only a free unverified `local/{name}` copy from archive files, strips `.harnesshub/*`, and records a privacy-safe `applied` event with target `server-remix`. Paid, org/private, directory, link-only and `UNSPECIFIED` license sources fail closed.
+  Auth required. Body { name?, title?, summary?, sourceVersion? }. Creates only a free unverified `local/{name}` copy from archive files, strips `.harnesshub/*`, records a privacy-safe `applied` event with target `server-remix`, and records a source -> fork graph edge. Paid, org/private, directory, link-only and `UNSPECIFIED` license sources fail closed. Copied fallback recipes do not count as forks.
 - Security report: GET /repos/{owner}/{name}/security-report
   Read before installing/applying when detail.security is missing or failing; plugin/autopilot flows must not bypass a failed report.
 - Forge PR semantic diff: GET /prs/{owner}/{name}/{number}/semantic-diff
@@ -177,7 +177,7 @@ Local development check from a repo clone:
 
 ## What is a harness
 
-A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, threads, passed gate runs, reserved fork counter and Harness Heat.
+A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, threads, passed gate runs, server-side remix forks and Harness Heat.
 
 ## Safety notes for agents
 

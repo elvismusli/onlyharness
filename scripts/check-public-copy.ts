@@ -29,10 +29,11 @@ for (const [file, text] of Object.entries(docs)) {
 }
 
 check(docs["README.md"].includes("create local remix drafts"), "README must describe remix as local drafts");
-check(docs["README.md"].includes("Server-side remix is a local draft flow"), "README must state server-side remix is not a fork graph");
+check(docs["README.md"].includes("Server-side remix is a local draft flow with a real fork graph row"), "README must describe the server-side remix fork graph");
 check(docs["apps/registry-web/public/llms.txt"].includes("Creates only a free unverified `local/{name}` copy"), "llms.txt must keep remix draft scope explicit");
-check(docs["AGENTS.md"].includes("not a fork graph"), "AGENTS.md must state remixes are not a fork graph");
-check(docs["apps/registry-web/public/AGENTS.md"].includes("not a fork graph"), "Public AGENTS.md must state remixes are not a fork graph");
+check(docs["AGENTS.md"].includes("server-side fork graph for local remix drafts"), "AGENTS.md must scope the fork graph to local remix drafts");
+check(docs["apps/registry-web/public/AGENTS.md"].includes("server-side fork graph for local remix drafts"), "Public AGENTS.md must scope the fork graph to local remix drafts");
+check(docs["apps/registry-web/public/llms.txt"].includes("Copied fallback recipes do not count as forks"), "llms.txt must state fallback recipes do not count as forks");
 check(docs["apps/registry-web/src/explore.tsx"].includes("Remix draft"), "Explore UI must label the action as a remix draft");
 check(docs["apps/registry-web/src/detail.tsx"].includes("Remix draft"), "Detail UI must label the action as a remix draft");
 check(docs["apps/registry-web/src/main.tsx"].includes("Remix draft fallback"), "Fallback dialog must label local recipe as remix draft fallback");
