@@ -5,6 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/pro
 import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import YAML from "yaml";
 
 const HH = new URL("../dist/hh.mjs", import.meta.url).pathname;
 const seedHarness = path.resolve(import.meta.dirname, "../../../seed-harnesses/deep-market-researcher");
@@ -398,6 +399,100 @@ test("audit-setup reports local skill conflicts, stale skills and a share card w
   } finally {
     await rm(home, { recursive: true, force: true });
     await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("extract creates a valid harness with inferred depends_on and redacted source markdown", async () => {
+  const sourceRoot = await mkdtemp(path.join(os.tmpdir(), "hh-extract-source-"));
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-extract-out-"));
+  await rm(out, { recursive: true, force: true });
+  try {
+    const baseSkill = path.join(sourceRoot, ".claude/skills/base-helper/SKILL.md");
+    const mainSkillDir = path.join(sourceRoot, ".claude/skills/sales-research");
+    const mainSkill = path.join(mainSkillDir, "SKILL.md");
+    await mkdir(path.dirname(baseSkill), { recursive: true });
+    await mkdir(mainSkillDir, { recursive: true });
+    await writeFile(baseSkill, "---\ndescription: Base helper used by extracted skills.\n---\n# Base Helper\n");
+    await writeFile(mainSkill, [
+      "---",
+      "description: Use for sales research workflow extraction and buyer synthesis.",
+      "depends_on:",
+      "  - org/acme-foundation@1.0.0",
+      "---",
+      "# Sales Research",
+      "Load alongside base-helper when customer evidence is thin."
+    ].join("\n"));
+    await writeFile(path.join(mainSkillDir, "notes.md"), "token=abcdefghijklmnopqrstuvwxyz\nUse private notes carefully.\n");
+
+    const dryRun = await runCli(["extract", "sales-research", "--home-dir", sourceRoot, "--project-dir", sourceRoot, "--out", out, "--dry-run", "--json"]);
+
+    assert.equal(dryRun.status, 0, dryRun.stderr);
+    assert.doesNotMatch(dryRun.stdout, new RegExp(sourceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    await assert.rejects(readFile(path.join(out, "harness.yaml"), "utf8"));
+
+    const result = await runCli(["extract", mainSkillDir, "--out", out, "--json"]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, new RegExp(sourceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const body = JSON.parse(result.stdout) as { name?: string; markdownFiles?: number; depends_on?: Array<{ ref?: string; version?: string; optional?: boolean }> };
+    assert.equal(body.name, "sales-research");
+    assert.equal(body.markdownFiles, 2);
+    assert.ok(body.depends_on?.some((dependency) => dependency.ref === "org/acme-foundation" && dependency.version === "1.0.0" && dependency.optional === false));
+    assert.ok(body.depends_on?.some((dependency) => dependency.ref === "skill:base-helper" && dependency.optional === true));
+
+    const manifest = YAML.parse(await readFile(path.join(out, "harness.yaml"), "utf8")) as {
+      schemaVersion?: string;
+      visibility?: string;
+      depends_on?: Array<{ ref?: string; version?: string }>;
+      compatibility?: { targets?: Array<{ id?: string }> };
+    };
+    assert.equal(manifest.schemaVersion, "harness.v0.2");
+    assert.equal(manifest.visibility, "private");
+    assert.ok(manifest.depends_on?.some((dependency) => dependency.ref === "skill:base-helper"));
+    assert.ok(manifest.depends_on?.some((dependency) => dependency.ref === "org/acme-foundation" && dependency.version === "1.0.0"));
+    assert.ok(manifest.compatibility?.targets?.some((target) => target.id === "claude-code"));
+    const copiedNotes = await readFile(path.join(out, "runbooks/source/notes.md"), "utf8");
+    assert.match(copiedNotes, /token=REDACTED/);
+    const readme = await readFile(path.join(out, "README.md"), "utf8");
+    assert.doesNotMatch(readme, new RegExp(sourceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+    const validate = await runCli(["validate", out, "--strict", "--json"]);
+    assert.equal(validate.status, 0, validate.stderr);
+
+    const duplicate = await runCli(["extract", mainSkillDir, "--out", out, "--json"]);
+    assert.equal(duplicate.status, 3);
+    const duplicateBody = JSON.parse(duplicate.stderr) as { error?: string };
+    assert.match(duplicateBody.error ?? "", /not empty/);
+  } finally {
+    await rm(sourceRoot, { recursive: true, force: true });
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("extract by skill name refuses ambiguous home and project matches without writing", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "hh-extract-home-"));
+  const project = await mkdtemp(path.join(os.tmpdir(), "hh-extract-project-"));
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-extract-ambiguous-out-"));
+  await rm(out, { recursive: true, force: true });
+  try {
+    const homeSkill = path.join(home, ".claude/skills/dupe/SKILL.md");
+    const projectSkill = path.join(project, ".claude/skills/dupe/SKILL.md");
+    await mkdir(path.dirname(homeSkill), { recursive: true });
+    await mkdir(path.dirname(projectSkill), { recursive: true });
+    await writeFile(homeSkill, "---\ndescription: Home duplicate skill.\n---\n# Dupe\n");
+    await writeFile(projectSkill, "---\ndescription: Project duplicate skill.\n---\n# Dupe\n");
+
+    const result = await runCli(["extract", "dupe", "--home-dir", home, "--project-dir", project, "--out", out, "--json"]);
+
+    assert.equal(result.status, 3);
+    const body = JSON.parse(result.stderr) as { error?: string; next?: string };
+    assert.match(body.error ?? "", /ambiguous/);
+    assert.match(body.next ?? "", /Candidates/);
+    await assert.rejects(readFile(path.join(out, "harness.yaml"), "utf8"));
+  } finally {
+    await rm(home, { recursive: true, force: true });
+    await rm(project, { recursive: true, force: true });
+    await rm(out, { recursive: true, force: true });
   }
 });
 

@@ -103,6 +103,20 @@ type SetupAudit = {
   recommendations: string[];
   shareCard: string;
 };
+type ExtractDependency = {
+  ref: string;
+  version?: string;
+  optional: boolean;
+  reason: string;
+};
+type ExtractedSkill = {
+  name: string;
+  title: string;
+  out: string;
+  source: string;
+  markdownFiles: number;
+  depends_on: ExtractDependency[];
+};
 
 export const EXIT = {
   OK: 0,
@@ -583,6 +597,38 @@ program.command("annotate-pr")
     const out = path.join(root, ".harnesshub/pr-comment.md");
     writeFileSync(out, redact(parts.join("\n\n")));
     writeStdout(options.json ? { path: out, provider: options.provider, repo: options.repo, pr: Number(options.pr) } : `Wrote ${out}\n`);
+  });
+
+program.command("extract")
+  .description("extract a local Claude skill into a reviewable OnlyHarness harness scaffold")
+  .argument("<skill>", "skill name, skill directory, or SKILL.md")
+  .option("--out <dir>", "output directory (default ./<slug>)")
+  .option("--name <name>", "harness slug")
+  .option("--title <title>", "harness title")
+  .option("--home-dir <dir>", "home directory to search when skill is a name")
+  .option("--project-dir <dir>", "project directory to search when skill is a name")
+  .option("--license <license>", "declared license for extracted content", "UNSPECIFIED")
+  .option("--force", "write into a non-empty output directory", false)
+  .option("--dry-run", "resolve and summarize without writing files", false)
+  .option("--json", "print JSON", false)
+  .action((skill: string, options) => {
+    const result = extractSkillHarness({
+      skillQuery: skill,
+      out: options.out ? path.resolve(options.out) : undefined,
+      name: options.name,
+      title: options.title,
+      homeDir: path.resolve(options.homeDir ?? os.homedir()),
+      projectDir: path.resolve(options.projectDir ?? process.cwd()),
+      license: options.license,
+      force: options.force,
+      dryRun: options.dryRun,
+      json: options.json
+    });
+    if (options.dryRun) {
+      writeStdout(options.json ? result : `Would extract ${result.source} -> ${result.out}\n`);
+      return;
+    }
+    writeStdout(options.json ? result : `Extracted ${result.source} -> ${result.out}\nNext: hh validate ${result.out} --strict && hh inspect ${result.out}\n`);
   });
 
 program.command("import-md")
@@ -1341,8 +1387,316 @@ jobs:
 `;
 }
 
+function extractSkillHarness(input: {
+  skillQuery: string;
+  out?: string;
+  name?: string;
+  title?: string;
+  homeDir: string;
+  projectDir: string;
+  license: string;
+  force: boolean;
+  dryRun: boolean;
+  json: boolean;
+}): ExtractedSkill {
+  const source = resolveSkillSource(input.skillQuery, { homeDir: input.homeDir, projectDir: input.projectDir }, input.json);
+  const sourceText = readFileSync(source.skillFile, "utf8");
+  const name = slugify(input.name ?? path.basename(source.skillDir));
+  const title = input.title ?? titleize(name);
+  const out = input.out ?? path.resolve(name);
+  if (!input.dryRun && existsSync(out) && readdirSync(out).length > 0 && !input.force) {
+    fail(`${displayPath(out)} exists and is not empty.`, EXIT.VALIDATION, `hh extract ${source.displayPath} --out ${displayPath(out)} --force`, input.json);
+  }
+  const markdownFiles = markdownFilesUnder(source.skillDir);
+  const dependencies = inferSkillDependencies(source.skillDir, sourceText);
+  if (!input.dryRun) {
+    writeExtractedSkillHarness({
+      out,
+      name,
+      title,
+      source,
+      description: extractSkillDescription(sourceText),
+      license: input.license,
+      markdownFiles,
+      dependencies
+    });
+  }
+  return {
+    name,
+    title,
+    out: displayPath(out),
+    source: source.displayPath,
+    markdownFiles: markdownFiles.length,
+    depends_on: dependencies
+  };
+}
+
+function resolveSkillSource(query: string, roots: { homeDir: string; projectDir: string }, json = false): { skillDir: string; skillFile: string; displayPath: string } {
+  const pathLike = query.includes("/") || query.includes("\\") || query === "." || query.startsWith("~");
+  const expanded = query.startsWith("~/") ? path.join(os.homedir(), query.slice(2)) : query;
+  const directPath = path.resolve(expanded);
+  if (existsSync(directPath)) {
+    return skillSourceFromPath(directPath, json);
+  }
+  if (pathLike) {
+    fail(`Skill path not found: ${path.basename(query)}`, EXIT.NOT_FOUND, "hh extract <skill-name> or hh extract ~/.claude/skills/<skill-name>", json);
+  }
+  const candidates = findNamedSkillCandidates(query, roots);
+  if (!candidates.length) {
+    fail(`Skill not found: ${query}`, EXIT.NOT_FOUND, `hh audit-setup --home-dir ${displayPath(roots.homeDir)} --project-dir ${displayPath(roots.projectDir)}`, json);
+  }
+  if (candidates.length > 1) {
+    const labels = candidates.map((candidate) => candidate.displayPath).join(", ");
+    fail(`Skill name is ambiguous: ${query}`, EXIT.VALIDATION, `Use an explicit path. Candidates: ${labels}`, json);
+  }
+  return candidates[0];
+}
+
+function skillSourceFromPath(skillPath: string, json = false): { skillDir: string; skillFile: string; displayPath: string } {
+  const stat = statSync(skillPath);
+  const skillFile = stat.isDirectory() ? path.join(skillPath, "SKILL.md") : skillPath;
+  if (!existsSync(skillFile) || path.basename(skillFile) !== "SKILL.md") {
+    fail("Expected a skill directory containing SKILL.md or a SKILL.md file.", EXIT.VALIDATION, "hh extract ~/.claude/skills/<skill-name>", json);
+  }
+  return {
+    skillDir: path.dirname(skillFile),
+    skillFile,
+    displayPath: path.basename(path.dirname(skillFile))
+  };
+}
+
+function findNamedSkillCandidates(query: string, roots: { homeDir: string; projectDir: string }): Array<{ skillDir: string; skillFile: string; displayPath: string }> {
+  const normalized = slugify(query);
+  const searchRoots = [
+    { scope: "home", dir: path.join(roots.homeDir, ".claude") },
+    { scope: "project", dir: path.join(roots.projectDir, ".claude") }
+  ];
+  const candidates: Array<{ skillDir: string; skillFile: string; displayPath: string }> = [];
+  const seen = new Set<string>();
+  for (const root of searchRoots) {
+    if (!existsSync(root.dir)) continue;
+    for (const skillFile of findSkillFiles(root.dir)) {
+      const skillDir = path.dirname(skillFile);
+      const name = path.basename(skillDir);
+      if (name !== query && slugify(name) !== normalized) continue;
+      const resolved = path.resolve(skillFile);
+      if (seen.has(resolved)) continue;
+      seen.add(resolved);
+      candidates.push({
+        skillDir,
+        skillFile,
+        displayPath: `${root.scope}:${path.relative(root.dir, skillFile).split(path.sep).join("/")}`
+      });
+    }
+  }
+  return candidates.sort((left, right) => left.displayPath.localeCompare(right.displayPath));
+}
+
+function inferSkillDependencies(skillDir: string, skillText: string): ExtractDependency[] {
+  const dependencies = new Map<string, ExtractDependency>();
+  for (const dependency of explicitSkillDependencies(skillText)) {
+    if (!dependency) continue;
+    dependencies.set(dependency.ref, dependency);
+  }
+  const parent = path.dirname(skillDir);
+  const self = path.basename(skillDir);
+  if (existsSync(parent)) {
+    for (const entry of readdirSync(parent, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === self) continue;
+      if (!existsSync(path.join(parent, entry.name, "SKILL.md"))) continue;
+      const plain = entry.name;
+      const slug = slugify(plain);
+      const patterns = [
+        new RegExp(`\\b${escapeRegex(plain)}\\b`, "i"),
+        new RegExp(`\\$${escapeRegex(plain)}\\b`, "i"),
+        new RegExp(`\\b${escapeRegex(slug)}\\b`, "i")
+      ];
+      if (patterns.some((pattern) => pattern.test(skillText))) {
+        const ref = normalizeDependencyRef(`skill:${slug}`);
+        if (ref && !dependencies.has(ref)) {
+          dependencies.set(ref, { ref, optional: true, reason: "Mentioned sibling skill in source text" });
+        }
+      }
+    }
+  }
+  return [...dependencies.values()].sort((left, right) => left.ref.localeCompare(right.ref)).slice(0, 20);
+}
+
+function explicitSkillDependencies(skillText: string): ExtractDependency[] {
+  const frontmatter = skillText.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!frontmatter) return [];
+  try {
+    const parsed = YAML.parse(frontmatter[1]) as { depends_on?: unknown; dependencies?: unknown };
+    const raw = parsed?.depends_on ?? parsed?.dependencies;
+    const items = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+    return items
+      .map((item) => typeof item === "string" ? parseDependencyString(item, false, "Declared in source skill frontmatter") : parseDependencyObject(item))
+      .filter((item): item is ExtractDependency => Boolean(item));
+  } catch {
+    return [];
+  }
+  return [];
+}
+
+function parseDependencyObject(value: unknown): ExtractDependency | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const input = value as { ref?: unknown; version?: unknown; optional?: unknown; reason?: unknown };
+  if (typeof input.ref !== "string") return undefined;
+  const parsed = parseDependencyString(input.ref, Boolean(input.optional), typeof input.reason === "string" ? input.reason : "Declared in source skill frontmatter");
+  if (!parsed) return undefined;
+  if (typeof input.version === "string" && input.version.trim()) parsed.version = input.version.trim();
+  return parsed;
+}
+
+function parseDependencyString(value: string, optional: boolean, reason: string): ExtractDependency | undefined {
+  const cleaned = value.trim().replace(/^['"]|['"]$/g, "");
+  const versionSplit = splitDependencyVersion(cleaned);
+  const ref = normalizeDependencyRef(versionSplit.ref);
+  if (!ref) return undefined;
+  return {
+    ref,
+    ...(versionSplit.version ? { version: versionSplit.version } : {}),
+    optional,
+    reason
+  };
+}
+
+function splitDependencyVersion(value: string): { ref: string; version?: string } {
+  const at = value.lastIndexOf("@");
+  if (at > 0 && at < value.length - 1) {
+    return { ref: value.slice(0, at), version: value.slice(at + 1) };
+  }
+  return { ref: value };
+}
+
+function normalizeDependencyRef(value: string): string | undefined {
+  const cleaned = value.trim().replace(/^['"]|['"]$/g, "");
+  if (!/^[a-z0-9][a-z0-9_./:@-]*$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
+function writeExtractedSkillHarness(input: {
+  out: string;
+  name: string;
+  title: string;
+  source: { skillDir: string; displayPath: string };
+  description: string;
+  license: string;
+  markdownFiles: string[];
+  dependencies: ExtractDependency[];
+}) {
+  mkdirSync(input.out, { recursive: true });
+  for (const dir of ["agents", "evals/cases", "examples", "runbooks/source", ".gitea/workflows", ".harnesshub"]) {
+    mkdirSync(path.join(input.out, dir), { recursive: true });
+  }
+  const unverifiedResult = unverifiedImportResult("extract-smoke", "Extracted skill smoke");
+  const sourceSummary = input.description === "No trigger description found"
+    ? `Extracted local skill ${input.source.displayPath}.`
+    : input.description;
+  writeFileSync(path.join(input.out, "harness.yaml"), YAML.stringify({
+    schemaVersion: "harness.v0.2",
+    name: input.name,
+    title: input.title,
+    summary: `Extracted local skill harness for ${input.title}. Review dependencies and evals before publishing.`,
+    version: "0.1.0",
+    license: input.license,
+    visibility: "private",
+    pricing: { model: "free", currency: "USD" },
+    source: {
+      attribution: `Extracted from local skill ${input.source.displayPath}`,
+      authors: [],
+      vendor_policy: "original"
+    },
+    compatibility: {
+      targets: [
+        { id: "claude-code", name: "Claude Code skill", status: "available", notes: "Extracted from a Claude skill directory" },
+        { id: "onlyharness", name: "OnlyHarness harness", status: "available", notes: "Generated scaffold validates locally" }
+      ]
+    },
+    depends_on: input.dependencies,
+    content: { type: "harness" },
+    maintainers: [{ name: "Harness.Hub Local" }],
+    tags: ["extracted", "skill", "unverified"],
+    runtime: { primary: "none", adapters: [] },
+    inputs: [{ id: "request", type: "markdown", required: true }],
+    outputs: [{ id: "final_result", type: "markdown" }],
+    agents: [
+      { id: "operator", role: "run_extracted_skill", title: "Operator", prompt: "agents/operator.md", tools: [], handoffs: [] }
+    ],
+    workflow: { entrypoint: "operator", stages: [{ id: "run", agent: "operator" }] },
+    tools: { mcp_servers: [], function_tools: [], external_apis: [] },
+    permissions: {
+      network: "false",
+      network_allowlist: [],
+      filesystem: "readonly",
+      shell: false,
+      browser: false,
+      credentials: "false",
+      external_send: false,
+      money_movement: false,
+      user_data: false,
+      human_approval_required: []
+    },
+    secrets: { required: [], optional: [] },
+    evals: {
+      promptfoo_config: "evals/promptfooconfig.yaml",
+      command: "npx promptfoo@latest eval -c evals/promptfooconfig.yaml"
+    },
+    quality_gates: { min_score: 0.82, max_regression: 0.03, max_cost_usd_per_run: 1, max_risk_score: 25, required_checks: ["schema_valid", "eval_passed"] },
+    examples: [{ title: "Extracted skill smoke", input: "examples/input.md", output: "examples/expected.md" }]
+  }));
+  writeFileSync(path.join(input.out, "README.md"), `# ${input.title}\n\nExtracted from local skill \`${input.source.displayPath}\`.\n\nTrust status: unverified extraction. The scaffold copies markdown instructions only, redacts obvious token-shaped secrets, and records candidate dependencies in \`depends_on\` for human review.\n\nSource trigger:\n\n> ${sourceSummary.replace(/\n/g, " ").slice(0, 500)}\n\nBefore publishing:\n\n1. Review \`runbooks/source/\` for private context.\n2. Confirm every \`depends_on\` entry in \`harness.yaml\`.\n3. Add measured eval scores to \`evals/cases/*.yaml\`.\n4. Run \`hh validate --strict && hh eval && hh gate\`.\n`);
+  writeFileSync(path.join(input.out, "AGENTS.md"), `# ${input.title} - agent guide\n\nThis directory is an extracted OnlyHarness harness.\n\n- Validate: hh validate . --strict\n- Inspect risk/context: hh inspect . --json\n- Source markdown lives under runbooks/source/\n- Do not publish until private context and depends_on entries are reviewed.\n`);
+  writeFileSync(path.join(input.out, "agents/operator.md"), `Use the extracted skill instructions in runbooks/source/SKILL.md to satisfy the request.\n\nRules:\n- Treat the extraction as unverified until evals are measured.\n- Preserve dependency notes from harness.yaml depends_on.\n- Do not reveal private paths, credentials or local-only context.\n- Ask for human review before external sends, payments or account-changing actions.\n`);
+  for (const file of input.markdownFiles) {
+    const sourceFile = path.join(input.source.skillDir, file);
+    const target = path.join(input.out, "runbooks/source", file);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, redact(readFileSync(sourceFile, "utf8")));
+  }
+  writeFileSync(path.join(input.out, "runbooks/dependency-review.md"), dependencyReviewMarkdown(input.dependencies));
+  writeFileSync(path.join(input.out, "evals/promptfooconfig.yaml"), "description: Extracted skill smoke eval (unverified scaffold; add measured assertions before gating)\nprompts:\n  - agents/operator.md\nproviders:\n  - echo\n");
+  writeFileSync(path.join(input.out, "evals/cases/extract-smoke.yaml"), "title: Extracted skill smoke\nverification_status: unverified_extraction\nnote: Generated scaffold only; add a measured score after a real eval run.\n");
+  writeFileSync(path.join(input.out, "examples/input.md"), "# Request\n\nRun this extracted skill on a small safe task.\n");
+  writeFileSync(path.join(input.out, "examples/expected.md"), "The result follows the extracted skill, names unresolved dependencies, and does not claim verification without measured eval evidence.\n");
+  writeFileSync(path.join(input.out, ".harnesshub/results.json"), JSON.stringify(unverifiedResult, null, 2));
+  writeFileSync(path.join(input.out, ".harnesshub/report.html"), htmlReport(unverifiedResult));
+  writeFileSync(path.join(input.out, ".harnesshub/results.junit.xml"), junitReport(unverifiedResult));
+  writeFileSync(path.join(input.out, ".harnesshub/extract.json"), JSON.stringify({
+    source: input.source.displayPath,
+    extractedAt: new Date().toISOString(),
+    markdownFiles: input.markdownFiles,
+    depends_on: input.dependencies
+  }, null, 2));
+  writeFileSync(path.join(input.out, ".gitea/workflows/harness-ci.yml"), defaultWorkflow());
+}
+
+function dependencyReviewMarkdown(dependencies: ExtractDependency[]): string {
+  if (!dependencies.length) return "# Dependency Review\n\nNo candidate dependencies were detected. Review the source manually before publishing.\n";
+  return [
+    "# Dependency Review",
+    "",
+    "Candidate dependencies inferred during extraction:",
+    "",
+    ...dependencies.map((dependency) => `- \`${dependency.ref}\` (${dependency.optional ? "optional" : "required"}): ${dependency.reason}`),
+    "",
+    "Review these before publishing; this is a heuristic, not proof."
+  ].join("\n");
+}
+
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "imported-harness";
+}
+
+function displayPath(value: string): string {
+  const relative = path.relative(process.cwd(), path.resolve(value));
+  if (!relative) return ".";
+  if (!relative.startsWith("..") && !path.isAbsolute(relative)) return relative.split(path.sep).join("/");
+  return path.basename(value);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function titleize(value: string): string {

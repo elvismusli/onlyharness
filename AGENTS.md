@@ -45,6 +45,7 @@ npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json
 npx onlyharness audit-setup --json
+npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness --json
 npx onlyharness pin deep-market-researcher --json
 npx onlyharness outdated deep-market-researcher --json
 npx onlyharness update deep-market-researcher --diff --json
