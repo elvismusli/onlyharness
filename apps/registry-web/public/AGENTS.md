@@ -104,6 +104,7 @@ Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`
 `harness_detail` and `pull_instructions` include read-only access/payment state; they must not grant entitlement or return archive files. `pull_harness` and HTTP archive delivery are the file-returning entitlement gates.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
 MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
+OAuth protected-resource metadata is available at `https://onlyharness.com/.well-known/oauth-protected-resource`; Caddy must serve it as `application/json`.
 Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install onlyharness@onlyharness`.
 
 ## Conventions

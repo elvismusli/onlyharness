@@ -13,9 +13,18 @@ type ServerJson = {
   packages?: Array<{ registryType?: string; identifier?: string; version?: string; transport?: { type?: string } }>;
 };
 
+type ProtectedResourceMetadata = {
+  resource?: string;
+  authorization_servers?: string[];
+  bearer_methods_supported?: string[];
+  resource_documentation?: string;
+};
+
 const root = path.resolve(import.meta.dirname, "..");
 const rootServerPath = path.join(root, "server.json");
 const publicServerPath = path.join(root, "apps/registry-web/public/server.json");
+const protectedResourcePath = path.join(root, "apps/registry-web/public/.well-known/oauth-protected-resource");
+const caddyfilePath = path.join(root, "infra/Caddyfile");
 const cliPackagePath = path.join(root, "packages/harness-cli/package.json");
 const llmsPath = path.join(root, "apps/registry-web/public/llms.txt");
 const readmePath = path.join(root, "README.md");
@@ -28,6 +37,8 @@ const rootText = readFileSync(rootServerPath, "utf8");
 const publicText = readFileSync(publicServerPath, "utf8");
 const rootServer = JSON.parse(rootText) as ServerJson;
 const publicServer = JSON.parse(publicText) as ServerJson;
+const protectedResource = JSON.parse(readFileSync(protectedResourcePath, "utf8")) as ProtectedResourceMetadata;
+const caddyfile = readFileSync(caddyfilePath, "utf8");
 const cliPackage = JSON.parse(readFileSync(cliPackagePath, "utf8")) as { version?: string };
 const llms = readFileSync(llmsPath, "utf8");
 const readme = readFileSync(readmePath, "utf8");
@@ -49,6 +60,23 @@ check(remote?.url === expectedRemoteUrl, `server.json remote URL must be ${expec
 check(!remote?.headers?.some((header) => header.value || header.isSecret), "server.json remote must not embed secret-bearing headers");
 check(!rootServer.packages?.length, "server.json must stay remote-only until there is a real MCP package, not just the hh CLI package");
 
+check(protectedResource.resource === expectedRemoteUrl, "OAuth protected resource metadata must point at the MCP remote");
+check(protectedResource.authorization_servers?.includes("https://onlyharness.com"), "OAuth protected resource metadata must name onlyharness.com as the auth server");
+check(protectedResource.bearer_methods_supported?.includes("header"), "OAuth protected resource metadata must support Bearer header auth");
+check(protectedResource.resource_documentation === "https://onlyharness.com/llms.txt", "OAuth protected resource metadata must link llms.txt");
+check(!JSON.stringify(protectedResource).includes("127.0.0.1"), "OAuth protected resource metadata must not contain local URLs");
+check(!JSON.stringify(protectedResource).includes("localhost"), "OAuth protected resource metadata must not contain localhost URLs");
+
+const protectedResourceHandle = /handle\s+\/\.well-known\/oauth-protected-resource\s*\{[\s\S]*?file_server[\s\S]*?\}/.exec(caddyfile)?.[0] ?? "";
+const protectedResourceHandleIndex = caddyfile.indexOf("handle /.well-known/oauth-protected-resource");
+const spaFallbackIndex = caddyfile.indexOf("try_files {path} /index.html");
+check(Boolean(protectedResourceHandle), "Caddyfile must handle /.well-known/oauth-protected-resource");
+check(
+  protectedResourceHandleIndex >= 0 && spaFallbackIndex >= 0 && protectedResourceHandleIndex < spaFallbackIndex,
+  "Caddyfile must serve /.well-known/oauth-protected-resource before the SPA fallback"
+);
+check(protectedResourceHandle.includes("header Content-Type application/json"), "Caddyfile must serve the extensionless protected-resource metadata as application/json");
+
 for (const docs of [
   { name: "llms.txt", text: llms },
   { name: "README.md", text: readme }
@@ -56,6 +84,7 @@ for (const docs of [
   check(docs.text.includes("https://onlyharness.com/server.json"), `${docs.name} must link public MCP Registry metadata`);
   check(docs.text.includes(expectedRemoteUrl), `${docs.name} must link the MCP remote endpoint`);
   check(docs.text.includes("https://onlyharness.com/api/openapi.json"), `${docs.name} must link OpenAPI`);
+  check(docs.text.includes("https://onlyharness.com/.well-known/oauth-protected-resource"), `${docs.name} must link OAuth protected resource metadata`);
 }
 
 console.log("MCP Registry metadata check passed: server.json schema, remote transport, public copy, and docs links are in sync");

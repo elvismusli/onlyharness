@@ -14,6 +14,8 @@ OpenAPI: https://onlyharness.com/api/openapi.json
 
 MCP Registry metadata: https://onlyharness.com/server.json
 
+OAuth protected-resource metadata: https://onlyharness.com/.well-known/oauth-protected-resource
+
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&job={job}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, job and tags. `outcome` remains a legacy alias for the job filter.
