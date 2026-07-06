@@ -1,0 +1,22 @@
+category: trust
+title: Security And Data Quality Local Benchmark
+description: Local declared-score comparison for trust, permission and data-quality review harnesses. This suite does not call external evaluators.
+min_score: 0.82
+candidates:
+  - name: security-permission-auditor
+    label: Security Permission Auditor
+    path: ../seed-harnesses/security-permission-auditor
+    notes: Candidate for least-privilege and permission-change review.
+  - name: data-quality-sentinel
+    label: Data Quality Sentinel
+    path: ../seed-harnesses/data-quality-sentinel
+    notes: Candidate for metric-source, freshness and decision-readiness checks.
+analogs:
+  - name: finance-payment-safety-reviewer
+    label: Finance Payment Safety Reviewer
+    path: ../seed-harnesses/finance-payment-safety-reviewer
+    notes: Adjacent money-flow and ledger safety workflow.
+  - name: repo-truth-auditor
+    label: Repo Truth Auditor
+    path: ../seed-harnesses/repo-truth-auditor
+    notes: Adjacent evidence-checking workflow for repo and runtime claims.

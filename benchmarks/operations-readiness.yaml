@@ -1,0 +1,22 @@
+category: operations
+title: Operations Readiness Local Benchmark
+description: Local declared-score comparison for incident, launch and operator-readiness harnesses. This is not an externally measured quality benchmark.
+min_score: 0.82
+candidates:
+  - name: incident-rca-commander
+    label: Incident RCA Commander
+    path: ../seed-harnesses/incident-rca-commander
+    notes: Candidate for incident timeline, impact and mitigation review.
+  - name: launch-readiness-reviewer
+    label: Launch Readiness Reviewer
+    path: ../seed-harnesses/launch-readiness-reviewer
+    notes: Candidate for release gates, rollback and user-visible launch state.
+analogs:
+  - name: support-triage-agent
+    label: Support Triage Agent
+    path: ../seed-harnesses/support-triage-agent
+    notes: Adjacent support escalation and customer-response workflow.
+  - name: repo-truth-auditor
+    label: Repo Truth Auditor
+    path: ../seed-harnesses/repo-truth-auditor
+    notes: Adjacent evidence-checking workflow for runtime claims.

@@ -706,7 +706,12 @@ try {
   run("node", [cliBin, "doctor", "--json"], { env: cliEnv });
   run("node", [cliBin, "search", "research", "--json"], { env: cliEnv });
   run("node", [cliBin, "suggest", "deep", "market", "researcher", "--json"], { env: cliEnv });
-  run("node", [cliBin, "benchmark", path.join(root, "benchmarks/research-discovery.yaml"), "--json"], { env: cliEnv });
+  const benchmarkRoot = path.join(root, "benchmarks");
+  const benchmarkSuites = readdirSync(benchmarkRoot).filter((file) => file.endsWith(".yaml") || file.endsWith(".yml")).sort();
+  if (benchmarkSuites.length < 3) throw new Error(`Expected at least 3 benchmark suites, found ${benchmarkSuites.length}`);
+  for (const suite of benchmarkSuites) {
+    run("node", [cliBin, "benchmark", path.join(benchmarkRoot, suite), "--json"], { env: cliEnv });
+  }
   const pullTmp = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-"));
   try {
     run("node", [cliBin, "suggest", "deep", "market", "researcher", "--apply", "--out", path.join(pullTmp, "suggested"), "--json"], { env: cliEnv });
