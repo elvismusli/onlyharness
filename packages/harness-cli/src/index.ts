@@ -5,6 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import YAML from "yaml";
+import { x402Client, x402HTTPClient, type PaymentRequired, type PaymentRequirements } from "@x402/fetch";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
 import {
   inspectHarness,
   riskMarkdown,
@@ -61,6 +64,11 @@ type PaymentRequiredBody = {
     model?: string;
     amount_usd?: number;
     currency?: string;
+  };
+  x402?: {
+    enabled?: boolean;
+    requirements?: PaymentRequirements[];
+    paymentRequired?: PaymentRequired;
   };
 };
 type ContextCost = {
@@ -213,6 +221,7 @@ program.command("pull")
   .option("--out <dir>", "output directory (default ./<name>)")
   .option("--force", "write into a non-empty directory", false)
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .option("--pay", "pay x402-enabled 402 responses with HH_WALLET_KEY/EVM_PRIVATE_KEY", false)
   .option("--json", "print JSON", false)
   .action(async (harness: string, options) => {
     const [owner, name] = harness.split("/");
@@ -221,7 +230,8 @@ program.command("pull")
     }
     const archiveUrl = `${registryUrl}/repos/${owner}/${name}/archive`;
     const token = options.token ?? (owner.startsWith("@") ? process.env.HH_ORG_TOKEN : process.env.HH_TOKEN);
-    const response = await fetchRegistryResponse(archiveUrl, options.json, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+    const archiveInit = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    let response = await fetchRegistryResponse(archiveUrl, options.json, archiveInit);
     if (response.status === 404) {
       fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, options.json);
     }
@@ -232,17 +242,21 @@ program.command("pull")
         EXIT.AUTH,
         owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
         options.json
-        );
-      }
+      );
+    }
     if (response.status === 402) {
       const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as PaymentRequiredBody;
-      const price = priceLabel(body);
-      fail(
-        `Payment required for ${owner}/${name}${price ? ` (${price})` : ""}`,
-        EXIT.PAYMENT,
-        paymentNext(body),
-        options.json
-      );
+      if (options.pay) {
+        response = await retryWithX402Payment({ url: archiveUrl, init: archiveInit, response, body, json: options.json });
+      } else {
+        const price = priceLabel(body);
+        fail(
+          `Payment required for ${owner}/${name}${price ? ` (${price})` : ""}`,
+          EXIT.PAYMENT,
+          paymentNext(body),
+          options.json
+        );
+      }
     }
     if (!response.ok) {
       fail(`Registry request failed: ${archiveUrl} -> ${response.status}`, EXIT.GENERAL, undefined, options.json);
@@ -796,6 +810,140 @@ function priceLabel(body: PaymentRequiredBody): string {
 function paymentNext(body: PaymentRequiredBody): string | undefined {
   if (body.payments_enabled === false) return body.next;
   return body.checkout_url ? `Open ${body.checkout_url}, then retry with HH_TOKEN` : body.next;
+}
+
+async function retryWithX402Payment(input: {
+  url: string;
+  init: RequestInit | undefined;
+  response: Response;
+  body: PaymentRequiredBody;
+  json: boolean;
+}): Promise<Response> {
+  let paymentRequired: PaymentRequired;
+  const client = new x402Client();
+  const httpClient = new x402HTTPClient(client);
+  try {
+    paymentRequired = httpClient.getPaymentRequiredResponse(
+      (name) => input.response.headers.get(name),
+      input.body.x402?.paymentRequired
+    );
+  } catch {
+    fail(
+      "Registry did not offer usable x402 payment requirements.",
+      EXIT.PAYMENT,
+      paymentNext(input.body) ?? "Use checkout/manual entitlement, or retry when X402_ENABLED and X402_PAY_TO are configured server-side.",
+      input.json
+    );
+  }
+  if (!input.body.x402?.enabled || !paymentRequired.accepts.length) {
+    fail(
+      "Registry did not offer x402 payment requirements.",
+      EXIT.PAYMENT,
+      paymentNext(input.body) ?? "Use checkout/manual entitlement, or retry when x402 is enabled for this registry.",
+      input.json
+    );
+  }
+  const maxUsd = maxPayUsd(input.json);
+  const amountUsd = x402UsdAmount(input.body, paymentRequired);
+  if (amountUsd !== undefined && amountUsd > maxUsd) {
+    fail(
+      `x402 payment ${formatUsd(amountUsd)} exceeds HH_MAX_PAY_USD ${formatUsd(maxUsd)}.`,
+      EXIT.PAYMENT,
+      "Raise HH_MAX_PAY_USD only if you intentionally approve this spend.",
+      input.json
+    );
+  }
+  const privateKey = walletPrivateKey(input.json);
+  const signer = privateKeyToAccount(privateKey);
+  registerExactEvmScheme(client, { signer });
+  let paymentHeaders: Record<string, string>;
+  let paymentPayload: Awaited<ReturnType<x402HTTPClient["createPaymentPayload"]>>;
+  try {
+    paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
+    paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
+  } catch (error) {
+    fail(
+      `x402 payment signing failed: ${errorMessage(error)}`,
+      EXIT.PAYMENT,
+      "Check HH_WALLET_KEY/EVM_PRIVATE_KEY, wallet balance, allowance, and registry payment requirements.",
+      input.json
+    );
+  }
+  const paidResponse = await fetchRegistryResponse(input.url, input.json, {
+    ...input.init,
+    headers: mergeHeaders(input.init?.headers, paymentHeaders)
+  });
+  await httpClient.processPaymentResult(paymentPayload, (name) => paidResponse.headers.get(name), paidResponse.status).catch(() => undefined);
+  if (paidResponse.status === 402) {
+    const body = await readResponseJson(paidResponse, input.url, input.json).catch(() => input.body) as PaymentRequiredBody;
+    fail(
+      "x402 payment was not accepted by the registry.",
+      EXIT.PAYMENT,
+      paymentNext(body) ?? "Check wallet balance/allowance or use checkout/manual entitlement.",
+      input.json
+    );
+  }
+  return paidResponse;
+}
+
+function maxPayUsd(json: boolean): number {
+  const value = Number(process.env.HH_MAX_PAY_USD ?? 20);
+  if (!Number.isFinite(value) || value <= 0) {
+    fail("HH_MAX_PAY_USD must be a positive number.", EXIT.PAYMENT, "Set HH_MAX_PAY_USD=20 or another explicit cap.", json);
+  }
+  return value;
+}
+
+function walletPrivateKey(json: boolean): `0x${string}` {
+  const raw = process.env.HH_WALLET_KEY ?? process.env.EVM_PRIVATE_KEY;
+  if (!raw) {
+    fail(
+      "HH_WALLET_KEY or EVM_PRIVATE_KEY is required for hh pull --pay.",
+      EXIT.PAYMENT,
+      "Set HH_WALLET_KEY to an EVM private key and HH_MAX_PAY_USD to your spend cap.",
+      json
+    );
+  }
+  const normalized = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(normalized)) {
+    fail(
+      "HH_WALLET_KEY/EVM_PRIVATE_KEY must be a 32-byte hex private key.",
+      EXIT.PAYMENT,
+      "Use a dedicated low-balance agent wallet, not a primary wallet.",
+      json
+    );
+  }
+  return normalized as `0x${string}`;
+}
+
+function x402UsdAmount(body: PaymentRequiredBody, paymentRequired: PaymentRequired): number | undefined {
+  const amounts = [
+    body.pricing?.currency && body.pricing.currency !== "USD" ? undefined : finiteUsd(body.pricing?.amount_usd),
+    ...paymentRequired.accepts.map((requirement) => atomicUsdcToUsd(requirement.amount))
+  ].filter((value): value is number => value !== undefined);
+  if (!amounts.length) return undefined;
+  return Math.max(...amounts);
+}
+
+function finiteUsd(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function atomicUsdcToUsd(value: unknown): number | undefined {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return undefined;
+  const atomic = BigInt(value);
+  if (atomic > BigInt(Number.MAX_SAFE_INTEGER)) return Number.POSITIVE_INFINITY;
+  return Number(atomic) / 1_000_000;
+}
+
+function formatUsd(value: number): string {
+  return `$${value.toFixed(value >= 10 ? 2 : 4).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
+function mergeHeaders(base: HeadersInit | undefined, extra: Record<string, string>): Headers {
+  const headers = new Headers(base);
+  for (const [key, value] of Object.entries(extra)) headers.set(key, value);
+  return headers;
 }
 
 function contextCostLabel(cost: Pick<ContextCost, "approxTokens" | "files"> | undefined): string {

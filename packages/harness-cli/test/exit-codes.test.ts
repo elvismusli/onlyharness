@@ -117,6 +117,20 @@ before(async () => {
       return;
     }
 
+    if (request.url?.startsWith("/repos/harnesses/x402-no-wallet/archive")) {
+      response.statusCode = 402;
+      response.setHeader("PAYMENT-REQUIRED", x402PaymentRequiredHeader(9_000_000));
+      response.end(JSON.stringify(x402PaymentRequiredBody(9, 9_000_000)));
+      return;
+    }
+
+    if (request.url?.startsWith("/repos/harnesses/x402-expensive/archive")) {
+      response.statusCode = 402;
+      response.setHeader("PAYMENT-REQUIRED", x402PaymentRequiredHeader(25_000_000));
+      response.end(JSON.stringify(x402PaymentRequiredBody(25, 25_000_000)));
+      return;
+    }
+
     if (request.url?.startsWith("/repos/harnesses/payments-disabled/archive")) {
       response.statusCode = 402;
       response.end(JSON.stringify({
@@ -229,6 +243,41 @@ test("pull of a paid harness with disabled payments returns honest next step", a
   assert.equal(result.status, 5);
   const body = JSON.parse(result.stderr) as { next?: string };
   assert.equal(body.next, "Payments are disabled in this environment.");
+});
+
+test("pull --pay exits 5 when the registry does not offer x402 requirements", async () => {
+  const result = await runCli(["pull", "harnesses/paid-harness", "--pay", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 5);
+  const body = JSON.parse(result.stderr) as { error?: string; next?: string };
+  assert.match(body.error ?? "", /x402 payment requirements/);
+  assert.match(body.next ?? "", /checkout/);
+});
+
+test("pull --pay exits 5 before signing when wallet key is missing", async () => {
+  const result = await runCli(["pull", "harnesses/x402-no-wallet", "--pay", "--json"], {
+    HH_REGISTRY_URL: registryUrl,
+    HH_WALLET_KEY: "",
+    EVM_PRIVATE_KEY: ""
+  });
+
+  assert.equal(result.status, 5);
+  const body = JSON.parse(result.stderr) as { error?: string; next?: string };
+  assert.match(body.error ?? "", /HH_WALLET_KEY/);
+  assert.match(body.next ?? "", /HH_MAX_PAY_USD/);
+});
+
+test("pull --pay exits 5 before signing when x402 price exceeds HH_MAX_PAY_USD", async () => {
+  const result = await runCli(["pull", "harnesses/x402-expensive", "--pay", "--json"], {
+    HH_REGISTRY_URL: registryUrl,
+    HH_MAX_PAY_USD: "20",
+    HH_WALLET_KEY: "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  });
+
+  assert.equal(result.status, 5);
+  const body = JSON.parse(result.stderr) as { error?: string; next?: string };
+  assert.match(body.error ?? "", /HH_MAX_PAY_USD/);
+  assert.match(body.next ?? "", /Raise HH_MAX_PAY_USD/);
 });
 
 test("pull sends HH_TOKEN as a bearer token", async () => {
@@ -725,6 +774,47 @@ function runCli(args: string[], env: NodeJS.ProcessEnv = {}): Promise<{ status: 
 
 function titleizeTest(value: string): string {
   return value.split("-").filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
+}
+
+function x402PaymentRequiredBody(priceUsd: number, amount: number) {
+  const paymentRequired = x402PaymentRequired(priceUsd, amount);
+  return {
+    error: "Payment required",
+    code: "PAYMENT_REQUIRED",
+    checkout_url: "https://onlyharness.com/checkout?owner=harnesses&repo=x402",
+    payments_enabled: true,
+    pricing: { model: "one_time", amount_usd: priceUsd, currency: "USD" },
+    x402: {
+      enabled: true,
+      requirements: paymentRequired.accepts,
+      paymentRequired
+    }
+  };
+}
+
+function x402PaymentRequiredHeader(amount: number): string {
+  return Buffer.from(JSON.stringify(x402PaymentRequired(amount / 1_000_000, amount)), "utf8").toString("base64");
+}
+
+function x402PaymentRequired(priceUsd: number, amount: number) {
+  return {
+    x402Version: 2,
+    error: "Payment required",
+    resource: {
+      url: `http://127.0.0.1/repos/harnesses/x402/archive?version=0.1.0`,
+      description: `harnesses/x402@$${priceUsd}`,
+      mimeType: "application/json"
+    },
+    accepts: [{
+      scheme: "exact",
+      network: "eip155:8453",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      amount: String(amount),
+      payTo: "0x000000000000000000000000000000000000dEaD",
+      maxTimeoutSeconds: 300,
+      extra: { name: "harnesses/x402", version: "0.1.0" }
+    }]
+  };
 }
 
 function updatedHarnessYaml(): string {

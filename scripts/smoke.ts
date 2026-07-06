@@ -51,6 +51,11 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_API_HOST: "127.0.0.1",
     HARNESS_WORKSPACE_ROOT: root,
     PAYMENTS_ENABLED: "true",
+    X402_ENABLED: "true",
+    X402_PAY_TO: "0x000000000000000000000000000000000000dEaD",
+    X402_NETWORK: "eip155:8453",
+    X402_ASSET: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    HARNESS_PUBLIC_API_URL: "http://127.0.0.1:8799",
     HARNESS_STATE_PATH: path.join(smokeDataRoot, "harness-state.json"),
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
     HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
@@ -109,9 +114,18 @@ try {
     throw new Error(`Storefront profile read failed: ${JSON.stringify(meProfile)}`);
   }
   const paidRequired = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive");
-  const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string; payments_enabled?: boolean };
+  const paidRequiredHeader = paidRequired.headers.get("PAYMENT-REQUIRED");
+  const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string; payments_enabled?: boolean; x402?: { enabled?: boolean; requirements?: Array<{ payTo?: string; amount?: string }>; paymentRequired?: unknown } };
   if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || paidRequiredBody.payments_enabled !== true || !paidRequiredBody.checkout_url) {
     throw new Error(`Paid archive did not require payment: ${paidRequired.status} ${JSON.stringify(paidRequiredBody)}`);
+  }
+  if (!paidRequiredHeader) throw new Error("Paid archive did not include PAYMENT-REQUIRED x402 header");
+  const decodedPaymentRequired = decodeBase64Json(paidRequiredHeader) as { x402Version?: number; accepts?: Array<{ payTo?: string; amount?: string }>; resource?: { url?: string } };
+  if (decodedPaymentRequired.x402Version !== 2 || decodedPaymentRequired.accepts?.[0]?.payTo !== "0x000000000000000000000000000000000000dEaD" || decodedPaymentRequired.accepts?.[0]?.amount !== "9000000") {
+    throw new Error(`Paid archive x402 header is invalid: ${JSON.stringify(decodedPaymentRequired)}`);
+  }
+  if (paidRequiredBody.x402?.enabled !== true || paidRequiredBody.x402.requirements?.[0]?.payTo !== "0x000000000000000000000000000000000000dEaD") {
+    throw new Error(`Paid archive x402 body is invalid: ${JSON.stringify(paidRequiredBody.x402)}`);
   }
   const entitlementNoToken = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-paid-harness");
   if (entitlementNoToken.status !== 401) throw new Error(`Entitlement check without org token should be 401, got ${entitlementNoToken.status}`);
@@ -505,6 +519,10 @@ examples:
     duration_ms: 250,
     cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
   }, null, 2));
+}
+
+function decodeBase64Json(value: string): unknown {
+  return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
 }
 
 function createOrgStore(target: string, token: string) {

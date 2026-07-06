@@ -78,6 +78,12 @@ export const openapi = {
           },
           "402": {
             description: "Payment required for a paid harness archive",
+            headers: {
+              "PAYMENT-REQUIRED": {
+                description: "Base64 JSON x402 v2 PaymentRequired payload when X402_ENABLED and X402_PAY_TO are configured.",
+                schema: { type: "string" }
+              }
+            },
             content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentRequired" } } }
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
@@ -528,10 +534,67 @@ export const openapi = {
           provider: { type: "string", enum: ["manual"] },
           checkout_url: { type: "string" },
           payments_enabled: { type: "boolean" },
-          x402: { type: "object" },
+          x402: {
+            type: "object",
+            properties: {
+              enabled: { type: "boolean" },
+              requirements: {
+                type: "array",
+                items: { $ref: "#/components/schemas/X402PaymentRequirements" }
+              },
+              paymentRequired: {
+                oneOf: [
+                  { $ref: "#/components/schemas/X402PaymentRequired" },
+                  { type: "null" }
+                ]
+              }
+            },
+            required: ["enabled", "requirements", "paymentRequired"]
+          },
           next: { type: "string" }
         },
         required: ["error", "code", "owner", "repo", "version", "pricing", "provider", "checkout_url", "payments_enabled", "x402", "next"]
+      },
+      X402PaymentRequired: {
+        type: "object",
+        properties: {
+          x402Version: { type: "integer", enum: [2] },
+          error: { type: "string", enum: ["Payment required"] },
+          resource: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              description: { type: "string" },
+              mimeType: { type: "string", enum: ["application/json"] }
+            },
+            required: ["url", "description", "mimeType"]
+          },
+          accepts: {
+            type: "array",
+            items: { $ref: "#/components/schemas/X402PaymentRequirements" }
+          }
+        },
+        required: ["x402Version", "error", "resource", "accepts"]
+      },
+      X402PaymentRequirements: {
+        type: "object",
+        properties: {
+          scheme: { type: "string", enum: ["exact"] },
+          network: { type: "string" },
+          asset: { type: "string" },
+          amount: { type: "string", description: "USDC atomic units; 9000000 means $9.00 for six-decimal USDC." },
+          payTo: { type: "string" },
+          maxTimeoutSeconds: { type: "integer" },
+          extra: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              version: { type: "string" }
+            },
+            required: ["name", "version"]
+          }
+        },
+        required: ["scheme", "network", "asset", "amount", "payTo", "maxTimeoutSeconds", "extra"]
       },
       CheckoutSession: {
         type: "object",

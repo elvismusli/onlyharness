@@ -33,7 +33,7 @@ By default `hh` talks to `https://onlyharness.com/api`.
 HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 ```
 
-Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`.
+Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`. If the registry includes x402 requirements, `HH_WALLET_KEY=<evm-key> HH_MAX_PAY_USD=20 hh pull owner/name --pay` signs one x402 payment and retries; the default cap is 20 USD.
 
 Team setup, org-private pull, org publishing, repo sync, and Network Neighborhood use a separate org token. `HH_ORG_TOKEN=<org-token> hh setup @acme` installs the org bundle into `.harnesshub/orgs/acme` by default. `hh pull @acme/name`, `hh publish workflow.md --org acme`, and `hh sync <git-url-or-local-path> --org acme` use the same org token path; the web/API workspace is `GET /orgs/{slug}/workspace`.
 
@@ -50,6 +50,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh search <terms> --json` prints machine-readable registry results.
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
+- `hh pull owner/name --pay` uses `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuses to sign above `HH_MAX_PAY_USD`.
 - `hh pull @org/name` sends `HH_ORG_TOKEN` when set.
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.

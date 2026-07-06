@@ -22,7 +22,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost and file list.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
-  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement.
+  Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
 - Entitlement check: GET /entitlements/check?subject=user:{id}&harness={owner}/{name}&version={optional semver}
@@ -95,6 +95,7 @@ For local development from the repo:
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set
+- hh pull {owner}/{name} --pay    pay an x402-enabled 402 with HH_WALLET_KEY/EVM_PRIVATE_KEY, capped by HH_MAX_PAY_USD
 - hh pull @org/{name}       download an org-private harness; sends HH_ORG_TOKEN when set
 - hh run [dir]              run the bundled example locally (sample mode: no LLM calls, no credentials)
 - hh eval [dir]             score the eval cases; writes .harnesshub/results.json
@@ -112,7 +113,7 @@ For local development from the repo:
 - hh doctor                 registry connectivity check
 
 Set HH_REGISTRY_URL to target another registry (default https://onlyharness.com/api).
-Set HH_TOKEN before pulling a paid harness. Payment-required responses exit 5.
+Set HH_TOKEN before pulling a paid harness after checkout/manual entitlement. For x402, set HH_WALLET_KEY or EVM_PRIVATE_KEY plus HH_MAX_PAY_USD; payment-required failures exit 5.
 
 ## Claude Code Plugin
 

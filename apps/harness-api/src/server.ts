@@ -11,7 +11,7 @@ import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } 
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
-import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, type EntitlementSubject } from "./payments.js";
+import { checkEntitlement, createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
@@ -148,6 +148,10 @@ app.get("/repos/:owner/:repo/archive", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const query = request.query as { version?: string };
   const result = await archiveForClient(owner, repo, query.version, headerValue(request.headers.authorization), "api");
+  if (result.status === 402) {
+    const header = x402PaymentRequiredHeader(result.body as PaymentRequiredBody);
+    if (header) reply.header("PAYMENT-REQUIRED", header);
+  }
   return reply.code(result.status).send(result.body);
 });
 

@@ -45,9 +45,34 @@ export type PaymentRequiredBody = {
   payments_enabled: boolean;
   x402: {
     enabled: boolean;
-    requirements: unknown[];
+    requirements: X402PaymentRequirements[];
+    paymentRequired: X402PaymentRequired | null;
   };
   next: string;
+};
+
+export type X402PaymentRequirements = {
+  scheme: "exact";
+  network: string;
+  asset: string;
+  amount: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  extra: {
+    name: string;
+    version: string;
+  };
+};
+
+export type X402PaymentRequired = {
+  x402Version: 2;
+  error: "Payment required";
+  resource: {
+    url: string;
+    description: string;
+    mimeType: "application/json";
+  };
+  accepts: X402PaymentRequirements[];
 };
 
 export type EntitlementRow = {
@@ -96,6 +121,7 @@ export async function requireArchivePaymentAccess(input: PaymentAccessInput): Pr
   if (input.manifest.pricing.model === "free") return { allowed: true };
   if (await hasEntitlement(input)) return { allowed: true };
   const enabled = paymentsEnabled();
+  const x402PaymentRequired = enabled ? buildX402PaymentRequired(input) : undefined;
 
   return {
     allowed: false,
@@ -111,14 +137,20 @@ export async function requireArchivePaymentAccess(input: PaymentAccessInput): Pr
       checkout_url: checkoutUrl(input),
       payments_enabled: enabled,
       x402: {
-        enabled: enabled && x402Enabled(),
-        requirements: enabled && x402Enabled() ? [x402Requirement(input)] : []
+        enabled: Boolean(x402PaymentRequired),
+        requirements: x402PaymentRequired?.accepts ?? [],
+        paymentRequired: x402PaymentRequired ?? null
       },
       next: enabled
-        ? "Complete checkout or get a manual entitlement, then retry hh pull with HH_TOKEN."
+        ? "Complete checkout, get a manual entitlement, or retry hh pull --pay with HH_WALLET_KEY."
         : "Payments are disabled in this environment; no checkout can be created."
     }
   };
+}
+
+export function x402PaymentRequiredHeader(body: PaymentRequiredBody): string | undefined {
+  if (!body.x402.paymentRequired) return undefined;
+  return Buffer.from(JSON.stringify(body.x402.paymentRequired), "utf8").toString("base64");
 }
 
 export async function checkEntitlement(input: EntitlementCheckInput): Promise<EntitlementCheckResult> {
@@ -477,15 +509,50 @@ function sameEntitlement(left: StoredEntitlement, right: StoredPurchase): boolea
     && left.kind === "one_time";
 }
 
-function x402Requirement(input: PaymentAccessInput) {
+function buildX402PaymentRequired(input: PaymentAccessInput): X402PaymentRequired | undefined {
+  const requirement = x402Requirement(input);
+  if (!requirement) return undefined;
+  return {
+    x402Version: 2,
+    error: "Payment required",
+    resource: {
+      url: x402ResourceUrl(input),
+      description: `${input.owner}/${input.repo}@${input.version}`,
+      mimeType: "application/json"
+    },
+    accepts: [requirement]
+  };
+}
+
+function x402Requirement(input: PaymentAccessInput): X402PaymentRequirements | undefined {
+  if (!x402Enabled()) return undefined;
+  const payTo = process.env.X402_PAY_TO?.trim();
+  if (!payTo) return undefined;
+  const network = (process.env.X402_NETWORK ?? "eip155:8453").trim();
+  const asset = (process.env.X402_ASSET ?? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").trim();
+  if (!network || !asset) return undefined;
   return {
     scheme: "exact",
-    network: process.env.X402_NETWORK ?? "base",
-    asset: process.env.X402_ASSET ?? "USDC",
-    maxAmountRequired: String(Math.round((input.manifest.pricing.amount_usd ?? 0) * 1_000_000)),
-    resource: `/repos/${input.owner}/${input.repo}/archive?version=${encodeURIComponent(input.version)}`,
-    description: `${input.owner}/${input.repo}@${input.version}`
+    network,
+    asset,
+    amount: String(Math.round((input.manifest.pricing.amount_usd ?? 0) * 1_000_000)),
+    payTo,
+    maxTimeoutSeconds: x402MaxTimeoutSeconds(),
+    extra: {
+      name: `${input.owner}/${input.repo}`,
+      version: input.version
+    }
   };
+}
+
+function x402ResourceUrl(input: PaymentAccessInput): string {
+  const base = (process.env.HARNESS_PUBLIC_API_URL ?? "https://onlyharness.com/api").replace(/\/$/, "");
+  return `${base}/repos/${input.owner}/${input.repo}/archive?version=${encodeURIComponent(input.version)}`;
+}
+
+function x402MaxTimeoutSeconds(): number {
+  const value = Number(process.env.X402_MAX_TIMEOUT_SECONDS ?? 300);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 300;
 }
 
 function paymentsEnabled(): boolean {
