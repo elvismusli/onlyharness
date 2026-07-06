@@ -776,6 +776,7 @@ function App() {
             openInstall,
             star: toggleStar,
             remix: remixHarness,
+            share: (item) => openWin("share", keyFor(item)),
             openPublish: () => openWin("publish"),
             openCli: () => openWin("cli", topItem ? keyFor(topItem) : undefined),
             openReview,

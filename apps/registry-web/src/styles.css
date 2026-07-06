@@ -468,8 +468,15 @@ input, textarea, select { font-family: var(--font-ui); color: var(--ink); }
 
 .hcard-cta-grid {
   display: grid;
-  grid-template-columns: minmax(72px, 1fr) minmax(88px, 1.2fr) minmax(56px, .8fr) 32px;
+  grid-template-columns: minmax(42px, .8fr) minmax(72px, 1.2fr) minmax(56px, .9fr) 30px 30px;
   align-items: stretch;
+}
+
+.hcard-cta-grid .b98 {
+  min-width: 0;
+  padding-inline: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- outcome / cli strip ---------- */

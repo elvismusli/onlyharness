@@ -16,6 +16,9 @@ export type RegistryItem = {
     category?: string;
     notes?: string;
   };
+  compatibility?: {
+    targets?: CompatibilityTarget[];
+  };
   valid: boolean;
   riskScore: number;
   riskTier: string;
@@ -44,10 +47,12 @@ export type RegistryItem = {
 };
 
 export type CompatibilityTarget = {
-  name: string;
+  id?: string;
+  name?: string;
   status: "planned" | "available" | "verified";
   notes?: string;
   detail?: string;
+  last_verified_at?: string;
 };
 
 export type HarnessPricing = {

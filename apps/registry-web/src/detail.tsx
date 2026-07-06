@@ -1,5 +1,6 @@
+import { compatibilityTargetsFor, targetLabel, targetTone } from "./compat";
 import { cleanReadme, fmtContextCost, fmtK, heatPct, relativeTime } from "./format";
-import { DETAIL_TABS, type CompatibilityTarget, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "./types";
+import { DETAIL_TABS, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 const THREAD_KINDS = ["question", "recipe", "result", "proposal", "bug/risk"];
@@ -36,7 +37,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
   const grantedPermissions = Object.entries(permissions)
     .filter(([, value]) => value === true)
     .map(([key]) => key.replaceAll("_", " "));
-  const targets = compatibilityTargets(item, detail);
+  const targets = compatibilityTargetsFor(item, detail);
   const version = manifest?.version ?? "current";
   const installConfirms = detail?.social?.installConfirms ?? item.installConfirms ?? 0;
   const isDirectory = item.contentType === "directory" || manifest?.content?.type === "directory";
@@ -112,8 +113,8 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
                 <pre className="pre98">{installLoop}</pre>
                 <div className="tagrow" style={{ marginTop: 8 }}>
                   {targets.map((target) => (
-                    <span key={target.name} className={`tag98 ${target.status === "verified" || target.status === "available" ? "safe" : "warn"}`}>
-                      {target.name}: {target.status}
+                    <span key={targetLabel(target)} className={`tag98 ${targetTone(target)}`}>
+                      {targetLabel(target)}: {target.status}
                     </span>
                   ))}
                 </div>
@@ -143,7 +144,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
                   <InfoLine label="Claude Code confirms" value={installConfirms ? `${installConfirms} real install${installConfirms === 1 ? "" : "s"}` : "no confirms yet"} />
                   <InfoLine label="Context" value={fmtContextCost(detail?.contextCost ?? item.contextCost)} />
                   <div className="tagrow" style={{ marginTop: 6 }}>
-                    {targets.map((target) => <span key={target.name} className={`tag98 ${target.status === "planned" ? "warn" : "safe"}`}>{target.name}: {target.status}</span>)}
+                    {targets.map((target) => <span key={targetLabel(target)} className={`tag98 ${targetTone(target)}`}>{targetLabel(target)}: {target.status}</span>)}
                   </div>
                 </div>
                 <div className="trust-box">
@@ -287,6 +288,10 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
 
           <div className="trust-box">
             <h4>Trust &amp; safety</h4>
+            <InfoLine label="Version" value={version} />
+            <InfoLine label="Last verified" value={detail?.verification?.lastVerifiedAt ?? "no passed eval/gate event yet"} />
+            <InfoLine label="Source" value={isDirectory ? directoryUrl ?? item.forgeUrl : item.forgeUrl} />
+            <InfoLine label="Works with" value={targets.filter((target) => target.status !== "planned").slice(0, 4).map(targetLabel).join(", ") || "review required"} />
             <InfoLine label="Eval" value={detail?.evalResult ? `${detail.evalResult.score} (${detail.evalResult.status})` : item.evalStatus} />
             <InfoLine label="Risk" value={`${detail?.risk.tier ?? item.riskTier} (${detail?.risk.score ?? item.riskScore})`} />
             <InfoLine label={isDirectory ? "Content type" : "Runtime"} value={isDirectory ? "link-only directory" : manifest?.runtime.primary ?? item.runtime} />
@@ -314,27 +319,6 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
       </div>
     </div>
   );
-}
-
-function compatibilityTargets(item: RegistryItem, detail?: HarnessDetail): CompatibilityTarget[] {
-  if (item.contentType === "directory" || detail?.manifest?.content?.type === "directory") {
-    return [
-      { name: "Open link", status: "available", notes: item.directory?.url ?? detail?.manifest?.content?.directory?.url },
-      { name: "License review", status: "planned", notes: "Required before vendoring upstream content" },
-      { name: "Harness import", status: "planned", notes: "Convert selected entries only after source review" }
-    ];
-  }
-  const declared = detail?.manifest?.compatibility?.targets ?? [];
-  if (declared.length) return declared;
-  return [
-    { name: "CLI", status: "available", notes: item.cliCommand },
-    { name: "HTTP archive", status: "available" },
-    { name: "MCP pull_harness", status: "available" },
-    { name: "Claude Code adapter", status: "available", notes: "hh adapt --target claude-code" },
-    { name: "Codex adapter", status: "available", notes: "hh adapt --target codex" },
-    { name: "Cursor adapter", status: "available", notes: "hh adapt --target cursor" },
-    { name: "Team bundle", status: "available", notes: "hh setup @org" }
-  ];
 }
 
 function manifestDirectory(manifest: HarnessDetail["manifest"] | undefined): RegistryItem["directory"] | undefined {

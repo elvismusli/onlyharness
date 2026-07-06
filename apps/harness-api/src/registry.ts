@@ -46,6 +46,15 @@ export type RegistryItem = {
     category?: string;
     notes?: string;
   };
+  compatibility?: {
+    targets: Array<{
+      id?: string;
+      name?: string;
+      status: "planned" | "available" | "verified";
+      notes?: string;
+      last_verified_at?: string;
+    }>;
+  };
   valid: boolean;
   riskScore: number;
   riskTier: string;
@@ -156,6 +165,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     forgeUrl: directory?.url ?? (owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` : `file://${repoPath}`),
     contentType,
     ...(directory ? { directory } : {}),
+    compatibility: compatibilityInfo(validation.manifest, directory),
     valid: validation.valid,
     riskScore: validation.risk.score,
     riskTier: validation.risk.tier,
@@ -181,6 +191,30 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     badge: social.badge,
     cliCommand: contentType === "directory" && directory?.url ? `open ${directory.url}` : `hh install ${owner}/${validation.manifest.name}`,
     updatedAt
+  };
+}
+
+function compatibilityInfo(manifest: HarnessManifest, directory: RegistryItem["directory"]): RegistryItem["compatibility"] {
+  const declared = manifest.compatibility.targets;
+  if (declared.length) return { targets: declared };
+  if (manifest.content.type === "directory") {
+    return {
+      targets: [
+        { id: "open-link", name: "Open link", status: "available", notes: directory?.url },
+        { id: "license-review", name: "License review", status: "planned", notes: "required before vendoring upstream content" },
+        { id: "harness-import", name: "Harness import", status: "planned", notes: "convert selected entries only after source review" }
+      ]
+    };
+  }
+  return {
+    targets: [
+      { id: "claude-code", name: "Claude Code", status: "available", notes: "hh install --target claude-code" },
+      { id: "codex", name: "Codex", status: "available", notes: "hh install --target codex" },
+      { id: "cursor", name: "Cursor", status: "available", notes: "hh install --target cursor" },
+      { id: "mcp", name: "MCP", status: "available", notes: "pull_instructions + pull_harness" },
+      { id: "cli", name: "CLI", status: "available", notes: "hh install/run/eval/gate" },
+      { id: "github", name: "GitHub", status: "available", notes: "archive curl or verified git publish" }
+    ]
   };
 }
 

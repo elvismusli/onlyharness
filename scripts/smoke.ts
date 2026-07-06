@@ -86,7 +86,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ owner?: string; name: string; job?: string; outcome?: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+    items: Array<{ owner?: string; name: string; job?: string; outcome?: string; contentType?: string; directory?: { itemCount?: number; url?: string }; compatibility?: { targets?: Array<{ id?: string; status?: string }> }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const initialLeaderboard = await fetch("http://127.0.0.1:8799/leaderboard?limit=10").then((response) => response.json()) as {
     items?: Array<{ name?: string; heatQualified?: boolean }>;
@@ -96,6 +96,11 @@ try {
   if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
+  const deepMarket = registry.items.find((item) => item.owner === "harnesses" && item.name === "deep-market-researcher");
+  const compatIds = new Set((deepMarket?.compatibility?.targets ?? []).map((target) => target.id));
+  for (const id of ["claude-code", "codex", "cursor", "mcp", "cli", "github"]) {
+    if (!compatIds.has(id)) throw new Error(`Registry item missing ${id} compatibility target: ${JSON.stringify(deepMarket?.compatibility)}`);
+  }
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
   if (directoryItem?.contentType !== "directory" || directoryItem.job !== "Directory discovery" || directoryItem.directory?.itemCount !== 253 || !directoryItem.directory.url) {
     throw new Error(`Directory shelf item missing from registry payload: ${JSON.stringify(directoryItem)}`);

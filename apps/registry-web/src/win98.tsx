@@ -3,7 +3,7 @@ import type { FloatWin } from "./types";
 
 /* ---------- buttons ---------- */
 
-export function Btn({ children, onClick, strong, big, pressed, disabled, title, type = "button", className = "", style }: {
+export function Btn({ children, onClick, strong, big, pressed, disabled, title, ariaLabel, type = "button", className = "", style }: {
   children: ReactNode;
   onClick?: () => void;
   strong?: boolean;
@@ -11,13 +11,14 @@ export function Btn({ children, onClick, strong, big, pressed, disabled, title, 
   pressed?: boolean;
   disabled?: boolean;
   title?: string;
+  ariaLabel?: string;
   type?: "button" | "submit";
   className?: string;
   style?: CSSProperties;
 }) {
   const classes = ["b98", strong ? "strong" : "", big ? "big" : "", pressed ? "pressed" : "", className].filter(Boolean).join(" ");
   return (
-    <button type={type} className={classes} onClick={onClick} disabled={disabled} title={title} style={style}>
+    <button type={type} className={classes} onClick={onClick} disabled={disabled} title={title} aria-label={ariaLabel} style={style}>
       {children}
     </button>
   );

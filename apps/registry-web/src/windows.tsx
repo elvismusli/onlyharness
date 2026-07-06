@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "./compat";
 import { fmtContextCost, fmtK, heatPct, isoWeek } from "./format";
 import type { CompatibilityTarget, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
@@ -68,51 +69,18 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
 
 /* ---------- Install Center ---------- */
 
-const INSTALL_TABS = ["CLI", "MCP", "Plugin", "Planned"] as const;
+const INSTALL_TABS = ["Claude Code", "Codex", "Cursor", "MCP", "CLI", "GitHub"] as const;
 type InstallTab = (typeof INSTALL_TABS)[number];
 const LOCAL_HH = "node packages/harness-cli/dist/hh.mjs";
 
-export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: "cli" | "archive" | "mcp" | "plugin") => void; copied: boolean }) {
-  const [tab, setTab] = useState<InstallTab>("CLI");
+export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: string) => void; copied: boolean }) {
+  const [tab, setTab] = useState<InstallTab>("Claude Code");
   const target = item ? `${item.owner}/${item.name}` : "";
   const isDirectory = item?.contentType === "directory";
   const directoryUrl = item?.directory?.url ?? item?.forgeUrl;
-  const cliCommands = item && isDirectory
-    ? `open ${directoryUrl}\n# Link-only directory. Review upstream source and licensing before importing entries.`
-    : item
-    ? [
-        "# npm package pending; build the local CLI first:",
-        "npm run build -w onlyharness",
-        `${LOCAL_HH} install ${target} --target claude-code --json`,
-        `${LOCAL_HH} run ${item.name} --json`,
-        `${LOCAL_HH} eval ${item.name} --json`,
-        `${LOCAL_HH} gate --dir ${item.name} --json`
-      ].join("\n")
-    : "Select a harness to generate install commands.";
+  const shownSetup = installSetup(tab, item);
   const archive = item && isDirectory ? directoryUrl ?? "" : item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
-  const mcpConfig = item && isDirectory
-    ? `# Directory entries are link-only.\nopen ${directoryUrl}`
-    : item
-    ? `# npm package pending; build the local CLI first.\nnpm run build -w onlyharness\n${LOCAL_HH} install ${target} --json\n${LOCAL_HH} mcp-config ${item.name} --target claude-desktop --out mcp.json\nclaude mcp add onlyharness https://onlyharness.com/mcp\n# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
-    : "Select a harness to generate MCP setup.";
-  const pluginGuide = item && isDirectory
-    ? `# Plugin install is not needed for link-only directories.\nopen ${directoryUrl}`
-    : item
-    ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin exposes the OnlyHarness skill and MCP wiring guide.\n# Use: ${LOCAL_HH} suggest "${item.name.replaceAll("-", " ")}" --apply --out ${item.name} --json`
-    : "Select a harness to generate plugin setup.";
-  const targets: CompatibilityTarget[] = isDirectory ? [
-    { name: "Open link", status: "available", detail: directoryUrl },
-    { name: "License review", status: "planned", detail: "required before vendoring upstream content" },
-    { name: "Harness import", status: "planned", detail: "convert selected entries only after source review" }
-  ] : [
-    { name: "CLI", status: "available", detail: "local hh bundle; npm publish pending" },
-    { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
-    { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
-    { name: "Claude Code adapter", status: "available", detail: "hh adapt --target claude-code" },
-    { name: "Codex adapter", status: "available", detail: "hh adapt --target codex" },
-    { name: "Cursor adapter", status: "available", detail: "hh adapt --target cursor" },
-    { name: "Team bundle", status: "available", detail: "hh setup @org / hh publish --org with HH_ORG_TOKEN" }
-  ];
+  const targets: CompatibilityTarget[] = compatibilityTargetsFor(item);
 
   return (
     <div className="win-body">
@@ -126,28 +94,10 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
         <section>
           <TabStrip tabs={INSTALL_TABS} active={tab} onSelect={setTab} />
           <div className="trust-box">
-            <h4>{isDirectory ? "Directory link" : tab === "CLI" ? "Recommended install loop" : tab === "MCP" ? "MCP setup" : tab === "Plugin" ? "Plugin" : "Pending targets"}</h4>
-            {tab === "CLI" && <pre className="pre98">{cliCommands}</pre>}
-            {tab === "MCP" && <pre className="pre98">{mcpConfig}</pre>}
-            {tab === "Plugin" && <pre className="pre98">{pluginGuide}</pre>}
-            {tab === "Planned" && (
-              <div className="file-list">
-                {targets.filter((targetInfo) => targetInfo.status === "planned").map((targetInfo) => (
-                  <div className="file-row" key={targetInfo.name}>
-                    <span className="tag98 warn">planned</span>
-                    <span><b>{targetInfo.name}</b> · {targetInfo.detail}</span>
-                  </div>
-                ))}
-                {!targets.some((targetInfo) => targetInfo.status === "planned") && (
-                  <div className="file-row">
-                    <span className="tag98 safe">available</span>
-                    <span>No planned adapter targets for this harness. Use CLI, MCP, or adapter commands above.</span>
-                  </div>
-                )}
-              </div>
-            )}
+            <h4>{isDirectory ? "Directory link" : `${tab} setup`}</h4>
+            <pre className="pre98">{shownSetup}</pre>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-              <Btn strong disabled={!item} onClick={() => onCopy(tab === "MCP" ? mcpConfig : tab === "Plugin" ? pluginGuide : cliCommands, tab === "MCP" ? "mcp" : tab === "Plugin" ? "plugin" : "cli")}>{copied ? "✓ Copied" : "📋 Copy shown setup"}</Btn>
+              <Btn strong disabled={!item} onClick={() => onCopy(shownSetup, tab.toLowerCase().replaceAll(" ", "-"))}>{copied ? "✓ Copied" : "📋 Copy shown setup"}</Btn>
               <Btn disabled={!item} onClick={() => onCopy(archive, "archive")}>{isDirectory ? "🌐 Copy directory URL" : "📦 Copy archive curl"}</Btn>
             </div>
           </div>
@@ -156,11 +106,11 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
             <h4>Compatibility targets</h4>
             <div className="file-list">
               {targets.map((targetInfo) => (
-                <div className="file-row" key={targetInfo.name}>
-                  <span className={`tag98 ${targetInfo.status === "available" ? "safe" : "warn"}`}>
+                <div className="file-row" key={targetLabel(targetInfo)}>
+                  <span className={`tag98 ${targetTone(targetInfo)}`}>
                     {targetInfo.status}
                   </span>
-                  <span><b>{targetInfo.name}</b> · {targetInfo.detail}</span>
+                  <span><b>{targetLabel(targetInfo)}</b> · {targetDetail(targetInfo)}</span>
                 </div>
               ))}
             </div>
@@ -480,7 +430,7 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
   const isDirectory = item.contentType === "directory";
   const shareBanner = isDirectory ? "★ LOOK AT MY DIRECTORY ★" : "★ LOOK AT MY HARNESS ★";
   const shareCommand = item.cliCommand ?? (isDirectory && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`);
-  const worksWith = isDirectory ? ["Open link", "Source review"] : ["CLI", "MCP", "HTTP archive"];
+  const worksWith = topTargetLabels(item, undefined, 5);
   const evalLabel = isDirectory ? "link-only" : `eval ${item.evalScore ? item.evalScore.toFixed(2) : item.evalStatus}`;
   const riskLabel = `risk ${item.riskTier} ${item.riskScore}`;
   const evalClass = item.evalStatus === "passed" || isDirectory ? "safe" : "warn";
@@ -553,4 +503,38 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
       </div>
     </div>
   );
+}
+
+function installSetup(tab: InstallTab, item?: RegistryItem): string {
+  if (!item) return "Select a harness to generate install commands.";
+  const target = `${item.owner}/${item.name}`;
+  const isDirectory = item.contentType === "directory";
+  const directoryUrl = item.directory?.url ?? item.forgeUrl;
+  if (isDirectory) return `open ${directoryUrl}\n# Link-only directory. Review upstream source and licensing before importing entries.`;
+  const build = ["# npm package pending; build the local CLI first:", "npm run build -w onlyharness"];
+  if (tab === "MCP") {
+    return [
+      ...build,
+      `${LOCAL_HH} install ${target} --target cli --json`,
+      `${LOCAL_HH} mcp-config ${item.name} --target claude-desktop --out mcp.json`,
+      "claude mcp add --transport http onlyharness https://onlyharness.com/mcp",
+      `# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
+    ].join("\n");
+  }
+  if (tab === "GitHub") {
+    return [
+      `curl -s https://onlyharness.com/api/repos/${target}/archive > ${item.name}.archive.json`,
+      "# Write files[] from the archive JSON into a harness directory.",
+      "# Maintainers can publish verified git repos after eval/gate:",
+      `${LOCAL_HH} publish git@github.com:acme/harnesses.git --path harnesses/${item.name} --name ${item.name} --json`
+    ].join("\n");
+  }
+  const installTarget = tab === "Claude Code" ? "claude-code" : tab === "Codex" ? "codex" : tab === "Cursor" ? "cursor" : "cli";
+  return [
+    ...build,
+    `${LOCAL_HH} install ${target} --target ${installTarget} --json`,
+    `${LOCAL_HH} run ${item.name} --json`,
+    `${LOCAL_HH} eval ${item.name} --json`,
+    `${LOCAL_HH} gate --dir ${item.name} --json`
+  ].join("\n");
 }

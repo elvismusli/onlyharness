@@ -874,6 +874,26 @@ export const openapi = {
               notes: { type: "string" }
             }
           },
+          compatibility: {
+            type: "object",
+            properties: {
+              targets: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    name: { type: "string" },
+                    status: { type: "string", enum: ["planned", "available", "verified"] },
+                    notes: { type: "string" },
+                    last_verified_at: { type: "string", format: "date-time" }
+                  },
+                  required: ["status"]
+                }
+              }
+            },
+            required: ["targets"]
+          },
           valid: { type: "boolean" },
           riskScore: { type: "number" },
           riskTier: { type: "string" },
@@ -895,7 +915,7 @@ export const openapi = {
           cliCommand: { type: "string" },
           updatedAt: { type: "string" }
         },
-        required: ["owner", "name", "title", "summary", "tags", "contentType", "valid", "riskTier", "evalStatus", "contextCost", "standard", "cliCommand"]
+        required: ["owner", "name", "title", "summary", "tags", "contentType", "compatibility", "valid", "riskTier", "evalStatus", "contextCost", "standard", "cliCommand"]
       },
       HarnessDetail: {
         type: "object",

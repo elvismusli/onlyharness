@@ -1,4 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
+import { topTargetLabels } from "./compat";
 import { fmtContextCost, fmtK, heatPct, keyFor } from "./format";
 import type { DetailTab, RegistryItem } from "./types";
 import { Btn, GroupBox, HeatMeter, MenuBar, TitleBar } from "./win98";
@@ -17,6 +18,7 @@ export type ExploreActions = {
   openHarness: (item: RegistryItem, tab?: DetailTab) => void;
   star: (item: RegistryItem) => void;
   remix: (item: RegistryItem) => void;
+  share: (item: RegistryItem) => void;
   openInstall: (item?: RegistryItem) => void;
   openPublish: () => void;
   openCli: () => void;
@@ -170,6 +172,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
                     onOpen={(tab) => actions.openHarness(item, tab)}
                     onStar={() => actions.star(item)}
                     onFork={() => actions.remix(item)}
+                    onShare={() => actions.share(item)}
                   />
                 ))}
               </div>
@@ -210,13 +213,14 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
   );
 }
 
-export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork }: {
+export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork, onShare }: {
   item: RegistryItem;
   starred: boolean;
   remixed: boolean;
   onOpen: (tab?: DetailTab) => void;
   onStar: () => void;
   onFork: () => void;
+  onShare: () => void;
 }) {
   const stars = item.stars + (starred ? 1 : 0);
   const heat = item.heat + (item.heatQualified && starred ? 0.4 : 0);
@@ -240,13 +244,7 @@ export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork }: 
               {item.directory?.itemCount !== undefined && <span className="tag98">{item.directory.itemCount} items</span>}
               {item.directory?.category && <span className="tag98">{item.directory.category}</span>}
             </>
-          ) : (
-            <>
-              <span className="tag98 safe">CLI</span>
-              <span className="tag98 safe">MCP</span>
-              <span className="tag98 safe">HTTP archive</span>
-            </>
-          )}
+          ) : topTargetLabels(item, undefined, 5).map((label) => <span className="tag98 safe" key={label}>{label}</span>)}
         </div>
         <div className="stats-plate">
           <span>⑂ {fmtK(item.forks)}</span>
@@ -268,7 +266,8 @@ export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork }: 
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>
           <Btn strong onClick={() => isDirectory ? onOpen("Overview") : onOpen("Install")}>{isDirectory ? "🌐 Open" : "💿 Install"}</Btn>
           <Btn onClick={() => onOpen(isDirectory ? "Files" : "Try sample")}>{isDirectory ? "Source" : "Preview"}</Btn>
-          <Btn pressed={remixed} onClick={onFork} title="Fork/remix recipe">⑂ Remix</Btn>
+          <Btn onClick={onShare} title="Share card" ariaLabel="Share card">💾</Btn>
+          <Btn pressed={remixed} onClick={onFork} title="Fork/remix recipe" ariaLabel="Fork/remix recipe">⑂</Btn>
         </div>
       </div>
     </article>
