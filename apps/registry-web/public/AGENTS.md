@@ -72,10 +72,13 @@ Core endpoints:
 | GET | `/healthz` | API health |
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
+| GET | `/repos/{owner}/{name}/security-report` | Static security report for install/apply gating |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
+| POST | `/billing/checkout` | Authenticated manual checkout session for paid harnesses; manual provider only |
 | GET | `/billing/receipt?provider_ref={ref}` | Authenticated buyer receipt; read-only, never grants entitlement by itself |
 | POST | `/billing/escrow/receipt` | Authenticated buyer settles a reserved `gate_escrow` purchase with a signed gate receipt |
 | POST | `/billing/escrow/timeout` | Authenticated buyer refunds an expired reserved `gate_escrow` purchase |
+| POST | `/webhooks/payments` | Internal manual payment settlement; requires `HARNESS_WEBHOOK_TOKEN`; idempotent entitlement grant |
 | POST | `/receipts` | Verify a signed `hh gate --receipt` payload; side-effect-free, no payment or entitlement mutation |
 | GET | `/bounties` | List local bounty work-state; payment truth stays in linked purchases |
 | POST | `/bounties` | Authenticated customer creates an `open` bounty |
@@ -89,6 +92,8 @@ Core endpoints:
 | GET | `/orgs/{slug}/workspace` | Network Neighborhood payload: org-private cards, sanitized audit rows, permission/risk summary |
 | POST | `/orgs/{slug}/imports/markdown-to-harness` | Publish org-private markdown harness; requires org token with publish scope |
 | POST | `/orgs/{slug}/imports/harness-dir` | Publish verified org-private harness directory after eval/gate; requires org token with publish scope |
+| GET/PUT | `/me/storefront` | Authenticated creator storefront profile and referral code management |
+| GET | `/storefront/{handle}` | Public creator storefront with referral attribution code |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
 | POST | `/imports/harness-dir` | Publish a verified public harness directory after eval/gate; Bearer token required |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
