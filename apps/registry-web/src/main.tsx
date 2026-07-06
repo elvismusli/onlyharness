@@ -544,7 +544,7 @@ function App() {
       throw new Error("Server-side remix returned no registry item.");
     } catch (error) {
       showDialog({
-        title: "Fork/remix fallback",
+        title: "Remix draft fallback",
         icon: "⑂",
         body: `${error instanceof Error ? error.message : "Server-side remix failed."}\n\nUse this local path instead:\n\n${recipe}`
       });

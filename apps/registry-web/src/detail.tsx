@@ -327,7 +327,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
             <Btn strong onClick={onInstall}>{isDirectory ? "🌐 Open directory" : "💿 Install"}</Btn>
             <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : isDirectory ? "📋 Copy link" : ">_ Copy CLI"}</Btn>
             <Btn pressed={starred} onClick={onStar}>★ {starred ? "Starred" : "Star"}</Btn>
-            <Btn pressed={remixed} onClick={onFork}>⑂ {remixed ? "Recipe copied" : "Fork/remix"}</Btn>
+            <Btn pressed={remixed} onClick={onFork}>⑂ {remixed ? "Recipe copied" : "Remix draft"}</Btn>
             <Btn onClick={onShare}>💾 Share card</Btn>
           </div>
         </aside>

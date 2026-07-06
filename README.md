@@ -1,6 +1,6 @@
 # OnlyHarness
 
-[onlyharness.com](https://onlyharness.com) is a friendly hub for forkable AI-agent harnesses: browse workflows, try examples, read the thread, fork, star, and publish with a CLI-ready trust layer.
+[onlyharness.com](https://onlyharness.com) is a friendly hub for reusable AI-agent harnesses: browse workflows, try examples, read the thread, create local remix drafts, star, and publish with a CLI-ready trust layer.
 
 The UI ships as **OnlyHarness 98** — a deliberately playful Windows 98 / MS Paint / WordArt desktop (per `design_handoff_harness_hub_98`): every surface is a window, harnesses open as draggable windows with a taskbar, auth is a Log On dialog, and the share card is `harness_flex.exe`. Design decisions live in [docs/plans/2026-07-04-win98-redesign-design.md](docs/plans/2026-07-04-win98-redesign-design.md). Internal package names still use `@harnesshub/*`, except the public CLI workspace/package is `onlyharness`.
 
@@ -11,7 +11,7 @@ A harness is a versioned agent workflow package:
 - `harness.yaml` manifest with runtime, tools, permissions, quality gates, and risk profile.
 - Prompt, examples, eval cases, and expected outputs.
 - CLI commands for validate, eval, gate, diff, import, and PR annotation.
-- Social layer: stars, forks, threads, runs, heat, tags, outcomes, and maintainer review.
+- Social layer: stars, fork records, threads, runs, heat, tags, outcomes, and maintainer review.
 
 ## Live MVP
 
@@ -19,12 +19,12 @@ A harness is a versioned agent workflow package:
 - API health: [https://onlyharness.com/api/healthz](https://onlyharness.com/api/healthz)
 - Registry API: [https://onlyharness.com/api/registry](https://onlyharness.com/api/registry)
 
-Supabase auth is enabled for signup/login, stars/forks, thread posts, and authenticated publish.
+Supabase auth is enabled for signup/login, stars, local remix drafts, thread posts, and authenticated publish.
 
 ## Features
 
 - HuggingFace-style discovery for agent harnesses, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
-- Outcome filters, global search, leaderboard, Harness Heat, stars, forks, runs, and threads.
+- Outcome filters, global search, leaderboard, Harness Heat, stars, fork-record counters, runs, and threads.
 - Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel; Versions is backed by archive snapshot history.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.

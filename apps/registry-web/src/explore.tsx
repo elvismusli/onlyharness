@@ -86,7 +86,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
       items: [
         { icon: "▶", label: top ? `Preview "${top.title}"` : "Preview sample", onClick: () => top && actions.openHarness(top, "Try sample") },
         { icon: "💿", label: top ? `Install "${top.title}"` : "Install Center", onClick: () => actions.openInstall(top) },
-        { icon: "⑂", label: top ? `Fork/remix "${top.title}"` : "Fork/remix", onClick: () => top && actions.remix(top) },
+        { icon: "⑂", label: top ? `Remix draft "${top.title}"` : "Remix draft", onClick: () => top && actions.remix(top) },
         "sep" as const,
         { icon: "🔧", label: "Maintainer review...", onClick: actions.openReview }
       ]
@@ -119,7 +119,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
 
         <div className="toolbar">
           <Btn onClick={actions.openPublish}>📄 New harness</Btn>
-          <Btn onClick={() => top && actions.remix(top)}>⑂ Fork/remix</Btn>
+          <Btn onClick={() => top && actions.remix(top)}>⑂ Remix draft</Btn>
           <Btn onClick={() => actions.openInstall(top)}>💿 Install</Btn>
           <Btn onClick={() => top && actions.openHarness(top, "Try sample")}>▶ Preview</Btn>
           <Btn onClick={actions.openCli}>&gt;_ CLI</Btn>
@@ -269,7 +269,7 @@ export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork, on
           <Btn strong onClick={() => isDirectory ? onOpen("Overview") : onOpen("Install")}>{isDirectory ? "🌐 Open" : "💿 Install"}</Btn>
           <Btn onClick={() => onOpen(isDirectory ? "Files" : "Try sample")}>{isDirectory ? "Source" : "Preview"}</Btn>
           <Btn onClick={onShare} title="Share card" ariaLabel="Share card">💾</Btn>
-          <Btn pressed={remixed} onClick={onFork} title="Fork/remix recipe" ariaLabel="Fork/remix recipe">⑂</Btn>
+          <Btn pressed={remixed} onClick={onFork} title="Remix draft recipe" ariaLabel="Remix draft recipe">⑂</Btn>
         </div>
       </div>
     </article>
