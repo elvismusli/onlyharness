@@ -53,7 +53,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
 }) {
   const top = items[0] ?? leader;
 
-  const ticker = `★ ${fmtK(totals.stars)} stars flexed this week · ⑂ ${fmtK(totals.forks)} fork/remix records · 🔥 ${leader?.title ?? "the frontier"} is heating up · new season drops Monday · remix responsibly · onlyharness.com · `;
+  const ticker = `★ ${fmtK(totals.stars)} stars flexed this week · ⑂ ${fmtK(totals.forks)} fork records · 🔥 ${leader?.title ?? "the frontier"} is heating up · new season drops Monday · remix responsibly · onlyharness.com · `;
 
   const menus = [
     {

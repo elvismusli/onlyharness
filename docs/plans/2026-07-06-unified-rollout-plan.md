@@ -28,7 +28,7 @@
 5. **Реальные агрегаты = M0.1–M0.3** (showroom-требование тем же кодом). Плюс честная судьба heat: потребителей много (sortRegistry, badgeFor Top-10, leaderboard, PaintWindow, CLI-вывод) — heat переопределяется на реальных событиях с порогами показа, поля в payload остаются (честные нули), Top-10/freshness прячутся до достижения порогов.
 6. **Deep links**: hash-роутинг `#/h/:owner/:name` без серверных правок; делается в Ф1 (пререквизит storefront, share-URL, плагина).
 7. **`hh install` vs `pull`**: install = alias pull + `--target`-адаптеры позже; UI-копия переключается только когда команда работает. Install Center шипится с честными «Planned» (available на старте: CLI, GitHub-архив). **Update-флоу — отдельные команды** `hh pin` / `hh outdated` / `hh update --diff` (Ф2): без них модель «подписка на обновления» неполна; `hh adapt`/`hh mcp-config` появляются вместе с соответствующими табами Install Center.
-8. **Fork/remix**: настоящий server-side форк — в Ф3 на модели владения M2; до того лейбл «Fork/remix» + рецепт `pull → rename → publish`; синтетический счётчик форков умирает в Ф0.
+8. **Fork/remix**: до настоящего fork graph на модели владения M2 разрешён только безопасный local remix draft: `POST /repos/{owner}/{repo}/remixes` создаёт free/unverified `local/*` копию через archive gate, без инкремента fork-счётчика. Настоящий server-side fork graph остаётся задачей Ф3.
 9. **Честность импорта и лицензий**: авто-импорт получает `evalStatus: unverified-import`; publish-путь требует явную лицензию (или ставит `unspecified` и показывает это); лицензия каталожного контента наследуется от upstream или блокирует вендоринг (link-only). Leaked-prompt-репо (2 шт.) исключены навсегда.
 10. **Wave 3 каталога**: контент-тип `directory` (link-only, ~100 позиций) — в Ф4; поля заложены в v0.2 (реш. №3).
 11. **Showroom-endpoints `/install?target=`, `/trust-report`, `/compatibility` не строятся**: их заменяют манифест-поле compatibility (v0.2), `/security-report` (M0.6) и обогащённый detail-payload. Если Install Center упрётся в клиентскую сборку сниппетов — пересмотреть в Ф2.
@@ -96,7 +96,7 @@ flowchart LR
 | Дорожка | Задачи |
 |---|---|
 | Dev B | 3.1 **MP.2–MP.3** (автопилот с trust-сводкой и scoped-install). 3.2 **MP.4 платный флоу** (теперь видит 402 и из archive, и из MCP — блокер закрыт в 2.4). 3.3 **MP.5 телеметрия** → events + **M1.9b confirms-бейдж** («works in Claude Code: N confirms»). 3.6 **Maintainer publish** (реш. №14: публикация из git-репо, verified-бейдж только после validate+eval+gate, update-diff). |
-| Dev A | 3.4 **M2.0 → M2.1–M2.5**: orgs-миграция, org-API+токены+аудит, `hh publish --org`, бандлы + `hh setup @acme`, Network Neighborhood. 3.5 **Fork/remix** на модели владения + **`hh extract`** (custdev Н6-tooling: упаковка скила из живого сетапа с автоопределением depends_on). |
+| Dev A | 3.4 **M2.0 → M2.1–M2.5**: orgs-миграция, org-API+токены+аудит, `hh publish --org`, бандлы + `hh setup @acme`, Network Neighborhood. 3.5 **Fork graph** на модели владения + **`hh extract`** (custdev Н6-tooling: упаковка скила из живого сетапа с автоопределением depends_on); local remix draft уже покрывает безопасный pre-graph путь. |
 | Owner | 3.7 Кастдев команд 5+ → калибровка M2-фич. 3.8 Подписание анкоров, white-glove онбординг их каталогов. |
 
 **Демо Ф3:** плагин сам предлагает и ставит харнес после подтверждения; `hh setup @acme` разворачивает сетап команды; приватный харнес не отдаётся не-члену; публикация из репо с честным verified-бейджем.

@@ -281,7 +281,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
         <aside className="trust-panel">
           <div className="trust-stats">
             <div className="trust-stat"><span className="num">★ {fmtK(stars)}</span><span className="cap">stars</span></div>
-            <div className="trust-stat"><span className="num">⑂ {fmtK(item.forks)}</span><span className="cap">remixes</span></div>
+            <div className="trust-stat"><span className="num">⑂ {fmtK(item.forks)}</span><span className="cap">forks</span></div>
             <div className="trust-stat"><span className="num">💬 {item.threads}</span><span className="cap">threads</span></div>
             <div className="trust-stat"><span className="num">✓ {fmtK(installConfirms)}</span><span className="cap">confirms</span></div>
           </div>

@@ -171,7 +171,7 @@ Local development check from a repo clone:
 
 ## What is a harness
 
-A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, fork/remix records, threads and Harness Heat.
+A harness directory contains: harness.yaml (manifest: runtime, agents, workflow, tools, permissions, quality_gates), agents/*.md prompts, examples/input.md and examples/expected.md, evals/cases/*.yaml, runbooks/. Per-harness trust signals: eval score, risk tier, permissions profile, contextCost (~tokens from markdown instructions), install confirms, stars, fork records, threads and Harness Heat.
 
 ## Safety notes for agents
 
