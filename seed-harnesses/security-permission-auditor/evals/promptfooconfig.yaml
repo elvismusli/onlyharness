@@ -1,0 +1,5 @@
+description: Security Permission Auditor smoke eval
+prompts:
+  - agents/mitigation_writer.md
+providers:
+  - echo

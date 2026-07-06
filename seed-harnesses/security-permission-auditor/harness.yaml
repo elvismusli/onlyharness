@@ -1,0 +1,94 @@
+schemaVersion: harness.v0.1
+name: security-permission-auditor
+title: Security Permission Auditor
+summary: Reviews agent manifests, tool access and permission changes for
+  least-privilege violations before install or publish.
+version: 0.1.0
+license: MIT
+maintainers:
+  - name: Harness.Hub Local
+tags:
+  - security
+  - permissions
+  - review
+runtime:
+  primary: openai-agents-sdk
+  adapters:
+    - langgraph
+entrypoint:
+  command: npm run harness:run
+  cwd: .
+inputs:
+  - id: request
+    type: markdown
+    required: true
+outputs:
+  - id: final_result
+    type: markdown
+agents:
+  - id: permission_reader
+    role: read_permissions
+    title: Permission Reader
+    prompt: agents/permission_reader.md
+    tools: []
+    handoffs: []
+  - id: exploit_mapper
+    role: map_abuse_paths
+    title: Exploit Mapper
+    prompt: agents/exploit_mapper.md
+    tools: []
+    handoffs: []
+  - id: mitigation_writer
+    role: write_mitigations
+    title: Mitigation Writer
+    prompt: agents/mitigation_writer.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: permission_reader
+  stages:
+    - id: permissions
+      agent: permission_reader
+    - id: abuse_paths
+      agent: exploit_mapper
+    - id: mitigations
+      agent: mitigation_writer
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: runtime_injected
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required:
+    - external_send
+    - money_movement
+secrets:
+  required:
+    - OPENAI_API_KEY
+  optional: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o
+    .harnesshub/results.json -o .harnesshub/report.html -o
+    .harnesshub/results.junit.xml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks:
+    - schema_valid
+    - eval_passed
+    - no_high_risk_permission_delta
+examples:
+  - title: Smoke example
+    input: examples/input.md
+    output: examples/expected.md

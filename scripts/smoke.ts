@@ -27,7 +27,7 @@ function run(command: string, args: string[], options: { cwd?: string; allowFail
 }
 
 const seeds = readdirSync(seedRoot).filter((name) => existsSync(path.join(seedRoot, name, "harness.yaml")));
-if (seeds.length < 8) throw new Error(`Expected 8 seed harnesses, found ${seeds.length}`);
+if (seeds.length < 12) throw new Error(`Expected at least 12 seed harnesses, found ${seeds.length}`);
 
 run("npm", ["run", "build", "-w", "onlyharness"]);
 
@@ -110,6 +110,20 @@ try {
   };
   if (!jobFiltered.items?.some((item) => item.name === "finance-payment-safety-reviewer" && item.job === "Payment safety")) {
     throw new Error(`Job filter did not return payment safety harness: ${JSON.stringify(jobFiltered)}`);
+  }
+  const flagshipJobs = [
+    ["Incident response", "incident-rca-commander"],
+    ["Data quality", "data-quality-sentinel"],
+    ["Security review", "security-permission-auditor"],
+    ["Launch readiness", "launch-readiness-reviewer"]
+  ] as const;
+  for (const [job, name] of flagshipJobs) {
+    const filtered = await fetch(`http://127.0.0.1:8799/registry?job=${encodeURIComponent(job)}`).then((response) => response.json()) as {
+      items?: Array<{ name?: string; job?: string }>;
+    };
+    if (!filtered.items?.some((item) => item.name === name && item.job === job)) {
+      throw new Error(`Job filter did not return ${name}: ${JSON.stringify(filtered)}`);
+    }
   }
   const legacyOutcomeFiltered = await fetch("http://127.0.0.1:8799/registry?outcome=Payment%20safety").then((response) => response.json()) as {
     items?: Array<{ name?: string; job?: string }>;

@@ -1,0 +1,5 @@
+description: Incident RCA Commander smoke eval
+prompts:
+  - agents/fix_plan_writer.md
+providers:
+  - echo

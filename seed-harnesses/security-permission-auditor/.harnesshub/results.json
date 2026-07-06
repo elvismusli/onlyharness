@@ -1,0 +1,32 @@
+{
+  "runner": "harnesshub-local-eval",
+  "status": "passed",
+  "score": 0.887,
+  "verified": true,
+  "verification_status": "declared_case_scores",
+  "cost_usd": 0.09,
+  "duration_ms": 295,
+  "cases": [
+    {
+      "id": "case-1",
+      "title": "blocks broad credentials without need",
+      "score": 0.91,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-2",
+      "title": "maps abuse path before mitigation",
+      "score": 0.88,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-3",
+      "title": "recommends least privilege manifest change",
+      "score": 0.87,
+      "passed": true,
+      "verification_status": "declared_score"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+description: Data Quality Sentinel smoke eval
+prompts:
+  - agents/decision_guard.md
+providers:
+  - echo

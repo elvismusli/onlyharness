@@ -475,6 +475,10 @@ function inferJob(tags: string[]): string {
   if (set.has("gtm") || set.has("sales")) return "GTM research";
   if (set.has("research") || set.has("validation")) return "Market research";
   if (set.has("founder") || set.has("decision") || set.has("product") || set.has("strategy")) return "Product strategy";
+  if (set.has("incident") || set.has("reliability")) return "Incident response";
+  if (set.has("data") || set.has("analytics") || set.has("quality")) return "Data quality";
+  if (set.has("security") || set.has("permissions")) return "Security review";
+  if (set.has("launch") || set.has("release") || set.has("readiness")) return "Launch readiness";
   if (set.has("repo") || set.has("audit") || set.has("runtime")) return "Repo audit";
   return "Harness building";
 }

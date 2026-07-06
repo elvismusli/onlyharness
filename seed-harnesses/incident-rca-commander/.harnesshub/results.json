@@ -1,0 +1,32 @@
+{
+  "runner": "harnesshub-local-eval",
+  "status": "passed",
+  "score": 0.883,
+  "verified": true,
+  "verification_status": "declared_case_scores",
+  "cost_usd": 0.09,
+  "duration_ms": 295,
+  "cases": [
+    {
+      "id": "case-1",
+      "title": "preserves timeline and evidence gaps",
+      "score": 0.9,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-2",
+      "title": "separates impact from root cause",
+      "score": 0.88,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-3",
+      "title": "includes verification before resolved claim",
+      "score": 0.87,
+      "passed": true,
+      "verification_status": "declared_score"
+    }
+  ]
+}

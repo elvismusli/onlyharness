@@ -16,7 +16,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : undefined;
 
-const JOB_FILTERS = ["Market research", "GTM research", "Support triage", "Payment safety", "Product strategy", "Repo audit", "Harness building", "Directory discovery"];
+const JOB_FILTERS = ["Market research", "GTM research", "Support triage", "Payment safety", "Product strategy", "Incident response", "Data quality", "Security review", "Launch readiness", "Repo audit", "Harness building", "Directory discovery"];
 
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,

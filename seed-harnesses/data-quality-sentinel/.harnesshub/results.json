@@ -1,0 +1,32 @@
+{
+  "runner": "harnesshub-local-eval",
+  "status": "passed",
+  "score": 0.883,
+  "verified": true,
+  "verification_status": "declared_case_scores",
+  "cost_usd": 0.09,
+  "duration_ms": 295,
+  "cases": [
+    {
+      "id": "case-1",
+      "title": "identifies metric owner and source gaps",
+      "score": 0.89,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-2",
+      "title": "catches denominator and freshness drift",
+      "score": 0.9,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-3",
+      "title": "gives decision-safe go no-go verdict",
+      "score": 0.86,
+      "passed": true,
+      "verification_status": "declared_score"
+    }
+  ]
+}

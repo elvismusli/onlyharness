@@ -1,0 +1,5 @@
+description: Launch Readiness Reviewer smoke eval
+prompts:
+  - agents/rollout_writer.md
+providers:
+  - echo
