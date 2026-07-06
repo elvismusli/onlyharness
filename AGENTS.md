@@ -43,6 +43,9 @@ npx onlyharness pull harnesses/deep-market-researcher
 npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json
+npx onlyharness pin deep-market-researcher --json
+npx onlyharness outdated deep-market-researcher --json
+npx onlyharness update deep-market-researcher --diff --json
 ```
 
 HTTP API base: `https://onlyharness.com/api`
@@ -72,6 +75,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
 - Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
+- Pulled harnesses include `.harnesshub/source.json`; pinned versions live in `.harnesshub/pin.json`.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.
 
 ## UI Rules

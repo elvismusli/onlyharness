@@ -75,6 +75,10 @@ For local development from the repo:
 - hh eval [dir]             score the eval cases; writes .harnesshub/results.json
 - hh gate --dir [dir]       enforce the manifest quality gates
 - hh validate [dir]         schema and permission checks (--strict fails on warnings)
+- hh doctor --harness [dir] inspect registry connectivity and a local harness
+- hh pin [dir]              pin a pulled harness to its current registry version
+- hh outdated [dir]         exit 3 when a newer registry version exists
+- hh update [dir] --diff    preview semantic changes before applying an update
 - hh publish {file.md}      publish a markdown workflow (token via --token or HH_TOKEN)
 - hh doctor                 registry connectivity check
 

@@ -113,6 +113,10 @@ try {
     const pulled = path.join(pullTmp, "dmr");
     run("node", [cliBin, "pull", "harnesses/deep-market-researcher", "--out", pulled], { env: cliEnv });
     run("node", [cliBin, "run", pulled, "--json"], { env: cliEnv });
+    run("node", [cliBin, "doctor", "--harness", pulled, "--json"], { env: cliEnv });
+    run("node", [cliBin, "pin", pulled, "--json"], { env: cliEnv });
+    run("node", [cliBin, "outdated", pulled, "--json"], { env: cliEnv });
+    run("node", [cliBin, "update", pulled, "--diff", "--json"], { env: cliEnv });
   } finally {
     rmSync(pullTmp, { recursive: true, force: true });
   }
@@ -128,7 +132,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, archive versions, paid 402/entitlement, events, CLI validate/eval/gate/diff, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, archive versions, paid 402/entitlement, events, CLI validate/eval/gate/diff/update, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

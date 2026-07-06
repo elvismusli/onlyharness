@@ -17,6 +17,7 @@ npx onlyharness pull harnesses/deep-market-researcher
 npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json
+npx onlyharness update deep-market-researcher --diff --json
 ```
 
 `hh run` is sample mode only: no LLM calls and no credentials.
@@ -45,6 +46,7 @@ Generated/imported harnesses are unverified until real eval scores are added and
 | 5 | Payment required |
 
 With `--json`, failures print `{ "error", "code", "next" }` to stderr.
+For updates, use `hh pin`, `hh outdated`, then `hh update --diff`; do not overwrite a local harness until the diff is reviewed.
 
 ## HTTP Fallback
 

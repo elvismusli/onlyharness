@@ -8,6 +8,7 @@ npx onlyharness pull harnesses/deep-market-researcher
 npx onlyharness run deep-market-researcher
 npx onlyharness eval deep-market-researcher
 npx onlyharness gate --dir deep-market-researcher
+npx onlyharness update deep-market-researcher --diff
 ```
 
 Global install after npm publish:
@@ -44,6 +45,8 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.
+- `hh doctor --harness [dir]` checks a local harness plus registry connectivity.
+- `hh pin`, `hh outdated`, and `hh update --diff` use `.harnesshub/source.json` / `.harnesshub/pin.json` for safe version-aware updates.
 - Use `--json` where available, or `--format json` for risk/diff; failures print `{ "error", "code", "next" }` to stderr.
 
 ## Exit Codes

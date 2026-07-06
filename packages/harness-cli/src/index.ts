@@ -30,6 +30,23 @@ type SearchItem = {
 };
 
 type ArchiveFile = { path: string; truncated: boolean; content: string };
+type ArchivePayload = { version?: string; files?: ArchiveFile[] };
+type SourceMetadata = {
+  owner: string;
+  name: string;
+  version: string;
+  registry: string;
+  pulledAt: string;
+  files?: string[];
+};
+type PinMetadata = {
+  owner: string;
+  name: string;
+  version: string;
+  registry: string;
+  pinnedAt: string;
+  files?: string[];
+};
 type PaymentRequiredBody = {
   error?: string;
   code?: string;
@@ -131,31 +148,21 @@ program.command("pull")
     if (!response.ok) {
       fail(`Registry request failed: ${archiveUrl} -> ${response.status}`, EXIT.GENERAL, undefined, options.json);
     }
-    const data = await readResponseJson(response, archiveUrl, options.json) as { files?: ArchiveFile[] };
+    const data = await readResponseJson(response, archiveUrl, options.json) as ArchivePayload;
     const out = path.resolve(options.out ?? name);
     if (existsSync(out) && readdirSync(out).length > 0 && !options.force) {
       fail(`${out} exists and is not empty.`, EXIT.VALIDATION, `hh pull ${harness} --force`, options.json);
     }
-    let written = 0;
-    let skipped = 0;
-    for (const file of data.files ?? []) {
-      const target = path.resolve(out, file.path);
-      if (target !== out && !target.startsWith(out + path.sep)) continue;
-      if (file.truncated) {
-        skipped += 1;
-        continue;
-      }
-      mkdirSync(path.dirname(target), { recursive: true });
-      writeFileSync(target, file.content);
-      written += 1;
-    }
+    const { written, skipped, paths } = writeArchiveFiles(out, data.files ?? []);
     if (!written) fail(`No files received for ${owner}/${name}`, EXIT.GENERAL, `hh search ${name.replaceAll("-", " ")}`, options.json);
+    const version = data.version ?? readHarnessVersion(out) ?? "unknown";
+    writeSourceMetadata(out, { owner, name, version, registry: registryUrl, pulledAt: new Date().toISOString(), files: paths });
     if (options.json) {
-      writeStdout({ owner, name, out, files: written, skipped });
+      writeStdout({ owner, name, version, out, files: written, skipped });
       return;
     }
     writeStdout([
-      `Pulled ${owner}/${name} -> ${out} (${written} files${skipped ? `, ${skipped} skipped as too large` : ""})`,
+      `Pulled ${owner}/${name}@${version} -> ${out} (${written} files${skipped ? `, ${skipped} skipped as too large` : ""})`,
       `Next: hh run ${out} · hh eval ${out} && hh gate --dir ${out}`
     ].join("\n") + "\n");
   });
@@ -240,6 +247,7 @@ program.command("publish")
 
 program.command("doctor")
   .description("check registry connectivity and local setup")
+  .option("--harness [dir]", "also inspect a harness directory (default .)")
   .option("--json", "print JSON", false)
   .action(async (options) => {
     let registryOk = false;
@@ -257,23 +265,128 @@ program.command("doctor")
       ok: registryOk,
       indexed,
       node: process.version,
-      tokenSet: Boolean(process.env.HH_TOKEN)
+      tokenSet: Boolean(process.env.HH_TOKEN),
+      harness: harnessDoctorPayload(options.harness)
     };
     if (!registryOk) {
       fail(`Registry unreachable: ${registryUrl}`, EXIT.GENERAL, `check HH_REGISTRY_URL (current: ${registryUrl})`, options.json);
     }
     if (options.json) {
       writeStdout(payload);
-      return;
+      process.exit(payload.harness && !payload.harness.valid ? EXIT.VALIDATION : EXIT.OK);
     }
-    writeStdout([
+    const lines = [
       "OnlyHarness doctor",
       `  registry .......... ${registryUrl} ${registryOk ? "[OK]" : "[UNREACHABLE]"}`,
       `  harnesses indexed . ${indexed}`,
       `  node .............. ${process.version}`,
       `  token ............. ${process.env.HH_TOKEN ? "HH_TOKEN set" : "not set (only needed for hh publish)"}`
-    ].join("\n") + "\n");
-    process.exit(EXIT.OK);
+    ];
+    if (payload.harness) {
+      lines.push(
+        `  harness ........... ${payload.harness.valid ? `${payload.harness.name}@${payload.harness.version} [OK]` : "[INVALID]"}`,
+        `  source ............ ${payload.harness.source ? `${payload.harness.source.owner}/${payload.harness.source.name}@${payload.harness.source.version}` : "not pulled from registry"}`
+      );
+    }
+    writeStdout(lines.join("\n") + "\n");
+    process.exit(payload.harness && !payload.harness.valid ? EXIT.VALIDATION : EXIT.OK);
+  });
+
+program.command("pin")
+  .description("pin a pulled harness to its current registry version")
+  .argument("[dir]", "harness directory", ".")
+  .option("--owner <owner>", "registry owner when source metadata is missing")
+  .option("--version <version>", "version to pin (defaults to source or manifest version)")
+  .option("--json", "print JSON", false)
+  .action((dir, options) => {
+    const root = path.resolve(dir);
+    const source = readSourceMetadata(root);
+    const validation = validateHarnessDir(root);
+    if (!validation.manifest) {
+      fail("Cannot pin: harness.yaml is missing or invalid.", EXIT.NOT_FOUND, "hh pull <owner>/<name>", options.json);
+    }
+    const owner = options.owner ?? source?.owner;
+    if (!owner) {
+      fail("Cannot pin: registry owner is unknown.", EXIT.VALIDATION, "hh pin --owner <owner>", options.json);
+    }
+    const pin: PinMetadata = {
+      owner,
+      name: validation.manifest.name,
+      version: options.version ?? source?.version ?? validation.manifest.version,
+      registry: source?.registry ?? registryUrl,
+      pinnedAt: new Date().toISOString(),
+      files: source?.files
+    };
+    writeJsonFile(path.join(root, ".harnesshub/pin.json"), pin);
+    writeStdout(options.json ? pin : `Pinned ${pin.owner}/${pin.name}@${pin.version}\n`);
+  });
+
+program.command("outdated")
+  .description("check whether a pulled harness has a newer registry version")
+  .argument("[dir]", "harness directory", ".")
+  .option("--json", "print JSON", false)
+  .action(async (dir, options) => {
+    const root = path.resolve(dir);
+    const ref = resolveRemoteRef(root, options.json);
+    const latest = await fetchHarnessManifest(ref.registry, ref.owner, ref.name, options.json);
+    const current = ref.version;
+    const latestVersion = latest.version;
+    const payload = {
+      owner: ref.owner,
+      name: ref.name,
+      current,
+      latest: latestVersion,
+      outdated: compareVersions(current, latestVersion) < 0
+    };
+    if (options.json) {
+      writeStdout(payload);
+      process.exit(payload.outdated ? EXIT.VALIDATION : EXIT.OK);
+    }
+    writeStdout(payload.outdated
+      ? `${ref.owner}/${ref.name} is outdated: ${current} -> ${latestVersion}\nNext: hh update ${root} --diff\n`
+      : `${ref.owner}/${ref.name} is up to date at ${current}\n`);
+    process.exit(payload.outdated ? EXIT.VALIDATION : EXIT.OK);
+  });
+
+program.command("update")
+  .description("preview or apply the latest registry archive for a pulled harness")
+  .argument("[dir]", "harness directory", ".")
+  .option("--diff", "show semantic diff without writing files", false)
+  .option("--force", "apply update to the existing directory", false)
+  .option("--format <format>", "json|markdown|text", "text")
+  .option("--json", "print JSON status", false)
+  .action(async (dir, options) => {
+    const root = path.resolve(dir);
+    const ref = resolveRemoteRef(root, options.json);
+    const latest = await fetchHarnessManifest(ref.registry, ref.owner, ref.name, options.json);
+    if (compareVersions(ref.version, latest.version) === 0) {
+      const payload = { owner: ref.owner, name: ref.name, current: ref.version, latest: latest.version, changed: false };
+      writeStdout(options.json ? payload : `${ref.owner}/${ref.name} is already at ${ref.version}\n`);
+      return;
+    }
+    const archive = await fetchArchive(ref.registry, ref.owner, ref.name, latest.version, options.json);
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "hh-update-"));
+    try {
+      writeArchiveFiles(tmp, archive.files ?? []);
+      const diff = diffHarnessDirs(root, tmp);
+      if (options.diff) {
+        writeStdout(options.json ? { owner: ref.owner, name: ref.name, current: ref.version, latest: latest.version, diff } : formatDiff(diff, options.format));
+        return;
+      }
+      if (!options.force) {
+        fail("Refusing to overwrite harness files without --force.", EXIT.VALIDATION, `hh update ${root} --diff`, options.json);
+      }
+      removeManagedFiles(root, ref.files);
+      const { written, skipped, paths } = writeArchiveFiles(root, archive.files ?? []);
+      writeSourceMetadata(root, { owner: ref.owner, name: ref.name, version: latest.version, registry: ref.registry, pulledAt: new Date().toISOString(), files: paths });
+      const pin = readPinMetadata(root);
+      if (pin) writeJsonFile(path.join(root, ".harnesshub/pin.json"), { ...pin, version: latest.version, pinnedAt: new Date().toISOString() });
+      writeStdout(options.json
+        ? { owner: ref.owner, name: ref.name, previous: ref.version, version: latest.version, written, skipped }
+        : `Updated ${ref.owner}/${ref.name}: ${ref.version} -> ${latest.version} (${written} files${skipped ? `, ${skipped} skipped` : ""})\n`);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
 program.command("validate")
@@ -481,6 +594,159 @@ function priceLabel(body: PaymentRequiredBody): string {
   const currency = body.pricing?.currency ?? "USD";
   if (typeof amount === "number" && Number.isFinite(amount)) return `${amount} ${currency}`;
   return body.pricing?.model ?? "";
+}
+
+function writeArchiveFiles(out: string, files: ArchiveFile[]): { written: number; skipped: number; paths: string[] } {
+  mkdirSync(out, { recursive: true });
+  let written = 0;
+  let skipped = 0;
+  const paths: string[] = [];
+  for (const file of files) {
+    const target = path.resolve(out, file.path);
+    if (target !== out && !target.startsWith(out + path.sep)) continue;
+    if (file.truncated) {
+      skipped += 1;
+      continue;
+    }
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, file.content);
+    written += 1;
+    paths.push(path.normalize(file.path));
+  }
+  return { written, skipped, paths };
+}
+
+function harnessDoctorPayload(value: string | boolean | undefined) {
+  if (value === undefined || value === false) return undefined;
+  const root = path.resolve(value === true ? "." : value);
+  const result = validateHarnessDir(root);
+  const source = readSourceMetadata(root);
+  return {
+    dir: root,
+    valid: result.valid,
+    name: result.manifest?.name ?? null,
+    version: result.manifest?.version ?? null,
+    risk: result.risk.score,
+    issues: result.issues.length,
+    source
+  };
+}
+
+async function fetchHarnessManifest(registryBase: string, owner: string, name: string, json = false): Promise<{ version: string }> {
+  const url = `${registryBase.replace(/\/$/, "")}/repos/${owner}/${name}/harness`;
+  const response = await fetchRegistryResponse(url, json);
+  if (response.status === 404) fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, json);
+  if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
+  const data = await readResponseJson(response, url, json) as { manifest?: { version?: string } };
+  const version = data.manifest?.version;
+  if (!version) fail(`Registry detail for ${owner}/${name} did not include a version.`, EXIT.GENERAL, undefined, json);
+  return { version };
+}
+
+async function fetchArchive(registryBase: string, owner: string, name: string, version: string, json = false): Promise<ArchivePayload> {
+  const token = process.env.HH_TOKEN;
+  const url = `${registryBase.replace(/\/$/, "")}/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`;
+  const response = await fetchRegistryResponse(url, json, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+  if (response.status === 404) fail(`Harness ${owner}/${name}@${version} not found.`, EXIT.NOT_FOUND, `hh outdated`, json);
+  if (response.status === 402) {
+    const body = await readResponseJson(response, url, json).catch(() => ({})) as PaymentRequiredBody;
+    fail(
+      `Payment required for ${owner}/${name}@${version}${priceLabel(body) ? ` (${priceLabel(body)})` : ""}`,
+      EXIT.PAYMENT,
+      body.checkout_url ? `Open ${body.checkout_url}, then retry with HH_TOKEN` : body.next,
+      json
+    );
+  }
+  if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
+  return readResponseJson(response, url, json) as Promise<ArchivePayload>;
+}
+
+function resolveRemoteRef(root: string, json = false): SourceMetadata | PinMetadata {
+  const pin = readPinMetadata(root);
+  if (pin) return pin;
+  const source = readSourceMetadata(root);
+  if (source) return source;
+  fail("No registry source metadata found for this harness.", EXIT.VALIDATION, "hh pull <owner>/<name> or hh pin --owner <owner>", json);
+}
+
+function removeManagedFiles(root: string, files: string[] | undefined) {
+  for (const file of files ?? []) {
+    const target = path.resolve(root, file);
+    const relative = path.relative(root, target);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative) || relative.startsWith(".harnesshub")) continue;
+    rmSync(target, { force: true });
+  }
+}
+
+function writeSourceMetadata(root: string, source: SourceMetadata) {
+  writeJsonFile(path.join(root, ".harnesshub/source.json"), source);
+}
+
+function readSourceMetadata(root: string): SourceMetadata | undefined {
+  return readJsonFile<SourceMetadata>(path.join(root, ".harnesshub/source.json"));
+}
+
+function readPinMetadata(root: string): PinMetadata | undefined {
+  return readJsonFile<PinMetadata>(path.join(root, ".harnesshub/pin.json"));
+}
+
+function readJsonFile<T>(file: string): T | undefined {
+  if (!existsSync(file)) return undefined;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeJsonFile(file: string, value: unknown) {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function readHarnessVersion(root: string): string | undefined {
+  return validateHarnessDir(root).manifest?.version;
+}
+
+function compareVersions(left: string, right: string): number {
+  const a = parseSemver(left);
+  const b = parseSemver(right);
+  for (const key of ["major", "minor", "patch"] as const) {
+    const diff = a[key] - b[key];
+    if (diff !== 0) return diff;
+  }
+  if (!a.prerelease.length && b.prerelease.length) return 1;
+  if (a.prerelease.length && !b.prerelease.length) return -1;
+  if (a.prerelease.length && b.prerelease.length) return comparePrerelease(a.prerelease, b.prerelease);
+  return 0;
+}
+
+function parseSemver(value: string): { major: number; minor: number; patch: number; prerelease: string[] } {
+  const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
+  if (!match) return { major: 0, minor: 0, patch: 0, prerelease: [value] };
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4]?.split(".") ?? []
+  };
+}
+
+function comparePrerelease(left: string[], right: string[]): number {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const a = left[index];
+    const b = right[index];
+    if (a === undefined) return -1;
+    if (b === undefined) return 1;
+    const aNum = /^\d+$/.test(a) ? Number(a) : undefined;
+    const bNum = /^\d+$/.test(b) ? Number(b) : undefined;
+    if (aNum !== undefined && bNum !== undefined && aNum !== bNum) return aNum - bNum;
+    if (aNum !== undefined && bNum === undefined) return -1;
+    if (aNum === undefined && bNum !== undefined) return 1;
+    const lexical = a.localeCompare(b);
+    if (lexical !== 0) return lexical;
+  }
+  return 0;
 }
 
 function validationText(result: ReturnType<typeof validateHarnessDir>): string {
