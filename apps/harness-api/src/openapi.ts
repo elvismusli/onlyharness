@@ -868,7 +868,7 @@ export const openapi = {
     "/events": {
       post: {
         summary: "Record a privacy-safe registry event",
-        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials and arbitrary metadata. Authenticated install events from client=claude-code count toward the works-in-Claude-Code confirms badge; suggested/accepted/applied events power the CLI autopilot funnel.",
+        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials and arbitrary metadata. Authenticated install events from client=claude-code count toward the works-in-Claude-Code confirms badge; passed gate events count toward registry runs and verification.lastVerifiedAt; suggested/accepted/applied events power the CLI autopilot funnel.",
         requestBody: {
           required: true,
           content: {

@@ -1,5 +1,5 @@
--- Browser previews are not runtime evidence. Keep the counters.runs column reserved
--- for future verified runtime telemetry, but do not let social actions feed it.
+-- Browser previews are not runtime evidence. Keep user_harness_actions out of
+-- runs; API social counters count verified passed gate events instead.
 
 create or replace function public.bump_harness_counter()
 returns trigger
