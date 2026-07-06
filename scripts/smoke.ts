@@ -9,6 +9,7 @@ const seedRoot = path.join(root, "seed-harnesses");
 const maliciousRoot = path.join(root, "data/imports/smoke-malicious-harness");
 const paidRoot = path.join(root, "data/imports/smoke-paid-harness");
 const escrowRoot = path.join(root, "data/imports/smoke-escrow-harness");
+const hostedRoot = path.join(root, "data/imports/smoke-hosted-harness");
 const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
 
@@ -40,6 +41,7 @@ if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error
 createMaliciousHarness(maliciousRoot);
 createPaidHarness(paidRoot);
 createEscrowHarness(escrowRoot);
+createHostedHarness(hostedRoot);
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
 createOrgStore(orgsPath, "smoke-org-token");
@@ -89,6 +91,18 @@ try {
   const directoryArchive = await fetch("http://127.0.0.1:8799/repos/directories/verified-agent-catalog-2026-07/archive").then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; url?: string; files?: unknown[] } }));
   if (directoryArchive.status !== 409 || directoryArchive.body.code !== "DIRECTORY_LINK_ONLY" || directoryArchive.body.files) {
     throw new Error(`Directory archive should be link-only 409: ${JSON.stringify(directoryArchive)}`);
+  }
+  const hostedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-hosted-harness/archive").then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; files?: unknown[]; pricing?: { model?: string }; next?: string } }));
+  if (hostedArchive.status !== 409 || hostedArchive.body.code !== "HOSTED_EXECUTION_NOT_AVAILABLE" || hostedArchive.body.pricing?.model !== "per_call" || hostedArchive.body.files) {
+    throw new Error(`Hosted per-call archive should be unavailable 409: ${JSON.stringify(hostedArchive)}`);
+  }
+  const hostedCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-customer" },
+    body: JSON.stringify({ owner: "local", repo: "smoke-hosted-harness", version: "0.1.0" })
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; pricing?: { model?: string } } }));
+  if (hostedCheckout.status !== 409 || hostedCheckout.body.code !== "HOSTED_EXECUTION_NOT_AVAILABLE" || hostedCheckout.body.pricing?.model !== "per_call") {
+    throw new Error(`Hosted per-call checkout should be unavailable 409: ${JSON.stringify(hostedCheckout)}`);
   }
   for (const item of registry.items) {
     if (item.stars < 0 || item.forks < 0 || item.threads < 0 || item.runs < 0 || item.installConfirms < 0) {
@@ -648,7 +662,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -866,6 +880,84 @@ examples:
   writeFileSync(path.join(target, "README.md"), "# Smoke Escrow Harness\n");
   writeFileSync(path.join(target, "agents/operator.md"), "Return a short escrow smoke result.\n");
   writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: escrow smoke\nprompts: []\nproviders: []\n");
+  writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
+  writeFileSync(path.join(target, "examples/input.md"), "input\n");
+  writeFileSync(path.join(target, "examples/expected.md"), "expected\n");
+  writeFileSync(path.join(target, ".harnesshub/results.json"), JSON.stringify({
+    runner: "harnesshub-local-eval",
+    status: "passed",
+    score: 0.9,
+    verified: true,
+    verification_status: "declared_case_scores",
+    cost_usd: 0.03,
+    duration_ms: 250,
+    cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
+  }, null, 2));
+}
+
+function createHostedHarness(target: string) {
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(path.join(target, "agents"), { recursive: true });
+  mkdirSync(path.join(target, "evals/cases"), { recursive: true });
+  mkdirSync(path.join(target, "examples"), { recursive: true });
+  mkdirSync(path.join(target, ".harnesshub"), { recursive: true });
+  writeFileSync(path.join(target, "harness.yaml"), `schemaVersion: harness.v0.2
+name: smoke-hosted-harness
+title: Smoke Hosted Harness
+summary: Local per-call fixture used to verify hosted execution remains unavailable.
+version: 0.1.0
+license: MIT
+pricing:
+  model: per_call
+  amount_usd: 2
+  currency: USD
+tags: [smoke, hosted]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: operator
+    role: operator
+    prompt: agents/operator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: operator
+  stages:
+    - id: run
+      agent: operator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks: [schema_valid, eval_passed]
+examples:
+  - title: Smoke
+    input: examples/input.md
+    output: examples/expected.md
+`);
+  writeFileSync(path.join(target, "README.md"), "# Smoke Hosted Harness\n");
+  writeFileSync(path.join(target, "agents/operator.md"), "Return a short hosted smoke result.\n");
+  writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: hosted smoke\nprompts: []\nproviders: []\n");
   writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
   writeFileSync(path.join(target, "examples/input.md"), "input\n");
   writeFileSync(path.join(target, "examples/expected.md"), "expected\n");

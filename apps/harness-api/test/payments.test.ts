@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCheckoutSession, entitlementRowsAllow, readPurchaseReceipt, settlePaymentWebhook } from "../src/payments.ts";
+import { createCheckoutSession, entitlementRowsAllow, readPurchaseReceipt, requireArchivePaymentAccess, settlePaymentWebhook } from "../src/payments.ts";
 
 test("entitlementRowsAllow accepts repo-wide and matching version entitlements", () => {
   const now = Date.parse("2026-07-06T00:00:00Z");
@@ -56,6 +56,36 @@ test("createCheckoutSession requires PAYMENTS_ENABLED before creating purchases"
     if (previous === undefined) delete process.env.PAYMENTS_ENABLED;
     else process.env.PAYMENTS_ENABLED = previous;
   }
+});
+
+test("per_call pricing fails closed until hosted execution ships", async () => {
+  const manifest = {
+    pricing: { model: "per_call", amount_usd: 2, currency: "USD" }
+  } as never;
+
+  const archive = await requireArchivePaymentAccess({
+    owner: "harnesses",
+    repo: "hosted-harness",
+    version: "0.1.0",
+    manifest
+  });
+  assert.equal(archive.allowed, false);
+  if (!archive.allowed) {
+    assert.equal(archive.status, 409);
+    assert.equal(archive.body.code, "HOSTED_EXECUTION_NOT_AVAILABLE");
+  }
+
+  const checkout = await createCheckoutSession({
+    owner: "harnesses",
+    repo: "hosted-harness",
+    version: "0.1.0",
+    userId: "user-1",
+    manifest
+  });
+  assert.deepEqual(checkout, {
+    status: 409,
+    error: "Hosted execution is not available for per_call pricing"
+  });
 });
 
 test("readPurchaseReceipt validates provider_ref and fails closed without a payment store", async () => {

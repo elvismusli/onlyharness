@@ -22,7 +22,7 @@ Hosted endpoints change the product risk profile:
 - There is no public hosted `/run` or per-call execution endpoint.
 - `hh run` is local execution only.
 - MCP `pull_harness` and HTTP archive endpoints deliver files after entitlement; they do not execute author code server-side.
-- `pricing.model=per_call` must not be presented as live until a hosted or partner-backed execution path exists.
+- `pricing.model=per_call` returns HTTP 409 with `code=HOSTED_EXECUTION_NOT_AVAILABLE`; it must not create checkout sessions, x402 requirements, archive entitlements, or files until a hosted or partner-backed execution path exists.
 
 ## Build Trigger
 
@@ -46,4 +46,4 @@ Create a separate implementation plan before code. Minimum scope:
 
 ## Verification
 
-This slice is complete when docs and agent-facing discovery explicitly say hosted execution is not live yet.
+This slice is complete when docs and agent-facing discovery explicitly say hosted execution is not live yet, and runtime smoke proves `per_call` archive/checkout fail closed with `HOSTED_EXECUTION_NOT_AVAILABLE`.

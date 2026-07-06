@@ -164,6 +164,11 @@ type DirectoryLinkOnlyBody = {
   url?: string;
   next?: string;
 };
+type HostedExecutionUnavailableBody = {
+  error?: string;
+  code?: "HOSTED_EXECUTION_NOT_AVAILABLE";
+  next?: string;
+};
 type ContextCost = {
   approxTokens: number;
   files: number;
@@ -1360,12 +1365,20 @@ async function fetchArchive(registryBase: string, owner: string, name: string, v
     );
   }
   if (response.status === 409) {
-    const body = await readResponseJson(response, url, json).catch(() => ({})) as DirectoryLinkOnlyBody;
+    const body = await readResponseJson(response, url, json).catch(() => ({})) as DirectoryLinkOnlyBody | HostedExecutionUnavailableBody;
     if (body.code === "DIRECTORY_LINK_ONLY") {
       fail(
         `Directory ${owner}/${name}${version ? `@${version}` : ""} is link-only and cannot be pulled as a runnable harness.`,
         EXIT.VALIDATION,
         body.next ?? (body.url ? `open ${body.url}` : `hh search ${name}`),
+        json
+      );
+    }
+    if (body.code === "HOSTED_EXECUTION_NOT_AVAILABLE") {
+      fail(
+        `Hosted execution for ${owner}/${name}${version ? `@${version}` : ""} is not available yet.`,
+        EXIT.VALIDATION,
+        body.next ?? "Use hh search to choose a file-based harness.",
         json
       );
     }
@@ -1433,12 +1446,20 @@ async function pullHarnessArchive(input: {
     }
   }
   if (response.status === 409) {
-    const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as DirectoryLinkOnlyBody;
+    const body = await readResponseJson(response, archiveUrl, input.json).catch(() => ({})) as DirectoryLinkOnlyBody | HostedExecutionUnavailableBody;
     if (body.code === "DIRECTORY_LINK_ONLY") {
       fail(
         `Directory ${input.owner}/${input.name} is link-only and cannot be pulled as a runnable harness.`,
         EXIT.VALIDATION,
         body.next ?? (body.url ? `open ${body.url}` : `hh search ${input.name}`),
+        input.json
+      );
+    }
+    if (body.code === "HOSTED_EXECUTION_NOT_AVAILABLE") {
+      fail(
+        `Hosted execution for ${input.owner}/${input.name} is not available yet.`,
+        EXIT.VALIDATION,
+        body.next ?? "Use hh search to choose a file-based harness.",
         input.json
       );
     }

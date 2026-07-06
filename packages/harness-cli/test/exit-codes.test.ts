@@ -232,6 +232,20 @@ before(async () => {
       return;
     }
 
+    if (request.url?.startsWith("/repos/harnesses/hosted-only/archive")) {
+      response.statusCode = 409;
+      response.end(JSON.stringify({
+        error: "Hosted execution not available",
+        code: "HOSTED_EXECUTION_NOT_AVAILABLE",
+        owner: "harnesses",
+        repo: "hosted-only",
+        version: "0.1.0",
+        pricing: { model: "per_call", amount_usd: 2, currency: "USD" },
+        next: "Hosted per-call execution is not live yet."
+      }));
+      return;
+    }
+
     if (request.url?.startsWith("/repos/harnesses/token-required/archive")) {
       sawPullToken = request.headers.authorization === "Bearer paid-token";
       response.end(JSON.stringify({
@@ -359,6 +373,16 @@ test("pull of a link-only directory exits 3 and returns open guidance", async ()
   assert.match(body.error ?? "", /link-only/);
   assert.equal(body.code, 3);
   assert.equal(body.next, "open https://example.com/awesome-agent-directories");
+});
+
+test("pull of a hosted-only per-call harness exits 3 with honest guidance", async () => {
+  const result = await runCli(["pull", "harnesses/hosted-only", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 3);
+  const body = JSON.parse(result.stderr) as { error?: string; code?: number; next?: string };
+  assert.match(body.error ?? "", /Hosted execution/);
+  assert.equal(body.code, 3);
+  assert.equal(body.next, "Hosted per-call execution is not live yet.");
 });
 
 test("pull --pay exits 5 when the registry does not offer x402 requirements", async () => {

@@ -15,7 +15,7 @@ import { createCommunityInviteCode, verifyCommunityInviteCode } from "./communit
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
-import { checkEntitlement, createCheckoutSession, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
+import { checkEntitlement, createCheckoutSession, hostedExecutionUnavailableBody, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { verifyGateReceipt } from "./receipts.js";
 import { fetchCountersMap } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
@@ -239,6 +239,9 @@ app.post("/billing/checkout", async (request, reply) => {
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   const archive = registry.buildArchiveForVersion(owner, repo, root, body.version);
   if (!archive) return reply.code(404).send({ error: "Harness version not found" });
+  if (manifest.pricing.model === "per_call") {
+    return reply.code(409).send(hostedExecutionUnavailableBody({ owner, repo, version: archive.version, manifest, authorization: headerValue(request.headers.authorization), userId: user.id }));
+  }
   const attribution = await resolveCheckoutAttribution({
     owner,
     repo,
@@ -864,8 +867,9 @@ const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorizatio
 const pullHarnessFromMcp: PullHarnessHandler = async ({ owner, name, version }, authorization) => {
   const result = await archiveForClient(owner, name, version, authorization, "mcp");
   if (result.status === 200) return result.body;
-  const body = result.body && typeof result.body === "object" ? result.body as { error?: string } : {};
+  const body = result.body && typeof result.body === "object" ? result.body as { error?: string } & Record<string, unknown> : {};
   return {
+    ...body,
     error: body.error ?? "Pull failed",
     status: result.status,
     payment: result.status === 402 ? result.body : undefined
@@ -953,7 +957,7 @@ async function archiveForClient(owner: string, repo: string, version: string | u
     userId: auth.user?.id
   });
   if (!payment.allowed) {
-    const x402 = paymentSignature
+    const x402 = payment.status === 402 && paymentSignature
       ? await settleX402ArchivePayment({ owner, repo, version: archive.version, manifest, paymentRequired: payment.body, paymentSignature })
       : undefined;
     if (x402?.ok) {
@@ -961,7 +965,15 @@ async function archiveForClient(owner: string, repo: string, version: string | u
       await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: `wallet:${x402.payer}`, target: "archive", client });
       return { status: 200, headers: x402.headers, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
     }
-    await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
+    await recordEvent({
+      kind: payment.status === 402 ? "checkout" : "view",
+      owner,
+      repo,
+      version: archive.version,
+      subject: eventSubject(auth.user?.id),
+      target: payment.status === 402 ? "archive" : "hosted_unavailable",
+      client
+    });
     return { status: payment.status, body: payment.body };
   }
   await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });

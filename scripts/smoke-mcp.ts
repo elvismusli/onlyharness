@@ -7,11 +7,13 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const apiUrl = "http://127.0.0.1:8798";
 const paidRoot = path.join(root, "data/imports/mcp-smoke-paid-harness");
+const hostedRoot = path.join(root, "data/imports/mcp-smoke-hosted-harness");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-smoke-"));
 const orgRoot = path.join(smokeDataRoot, "org-harnesses");
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 
 createPaidHarness(paidRoot);
+createHostedHarness(hostedRoot);
 createOrgHarness(path.join(orgRoot, "acme", "mcp-private-harness"));
 createOrgStore(orgsPath, "mcp-org-token");
 
@@ -89,7 +91,16 @@ try {
     throw new Error(`MCP paid pull did not return payment requirements: ${JSON.stringify(paidPull)}`);
   }
 
-  const privateDetail = await rpc(7, "tools/call", {
+  const hostedPull = await rpc(7, "tools/call", {
+    name: "pull_harness",
+    arguments: { owner: "local", name: "mcp-smoke-hosted-harness" }
+  });
+  const hostedText = hostedPull.result?.content?.[0]?.text ?? "";
+  if (!hostedText.includes("HOSTED_EXECUTION_NOT_AVAILABLE") || hostedText.includes("\"files\"")) {
+    throw new Error(`MCP hosted per-call pull should fail closed: ${JSON.stringify(hostedPull)}`);
+  }
+
+  const privateDetail = await rpc(8, "tools/call", {
     name: "harness_detail",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   });
@@ -98,7 +109,7 @@ try {
     throw new Error(`MCP private detail leaked without org token: ${JSON.stringify(privateDetail)}`);
   }
 
-  const privateInstructions = await rpc(8, "tools/call", {
+  const privateInstructions = await rpc(9, "tools/call", {
     name: "pull_instructions",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   });
@@ -107,7 +118,7 @@ try {
     throw new Error(`MCP private pull instructions leaked without org token: ${JSON.stringify(privateInstructions)}`);
   }
 
-  const privatePull = await rpc(9, "tools/call", {
+  const privatePull = await rpc(10, "tools/call", {
     name: "pull_harness",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   });
@@ -116,7 +127,7 @@ try {
     throw new Error(`MCP private pull leaked without org token: ${JSON.stringify(privatePull)}`);
   }
 
-  const authorizedPrivateDetail = await rpc(10, "tools/call", {
+  const authorizedPrivateDetail = await rpc(11, "tools/call", {
     name: "harness_detail",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   }, { Authorization: "Bearer mcp-org-token" });
@@ -125,7 +136,7 @@ try {
     throw new Error(`MCP private detail failed with org token: ${JSON.stringify(authorizedPrivateDetail)}`);
   }
 
-  const publish = await rpc(11, "tools/call", {
+  const publish = await rpc(12, "tools/call", {
     name: "publish_markdown_to_harness",
     arguments: {
       name: "no-auth",
@@ -140,10 +151,11 @@ try {
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, pull_harness, paid pull gate, org-private gates, publish auth guard, GET 405");
+  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, pull_harness, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
 } finally {
   api.kill("SIGTERM");
   rmSync(paidRoot, { recursive: true, force: true });
+  rmSync(hostedRoot, { recursive: true, force: true });
   rmSync(smokeDataRoot, { recursive: true, force: true });
 }
 
@@ -340,6 +352,84 @@ examples:
   writeFileSync(path.join(target, "README.md"), "# MCP Smoke Paid Harness\n");
   writeFileSync(path.join(target, "agents/operator.md"), "Return a short smoke result.\n");
   writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: mcp paid smoke\nprompts: []\nproviders: []\n");
+  writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
+  writeFileSync(path.join(target, "examples/input.md"), "input\n");
+  writeFileSync(path.join(target, "examples/expected.md"), "expected\n");
+  writeFileSync(path.join(target, ".harnesshub/results.json"), JSON.stringify({
+    runner: "harnesshub-local-eval",
+    status: "passed",
+    score: 0.9,
+    verified: true,
+    verification_status: "declared_case_scores",
+    cost_usd: 0.03,
+    duration_ms: 250,
+    cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
+  }, null, 2));
+}
+
+function createHostedHarness(target: string) {
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(path.join(target, "agents"), { recursive: true });
+  mkdirSync(path.join(target, "evals/cases"), { recursive: true });
+  mkdirSync(path.join(target, "examples"), { recursive: true });
+  mkdirSync(path.join(target, ".harnesshub"), { recursive: true });
+  writeFileSync(path.join(target, "harness.yaml"), `schemaVersion: harness.v0.2
+name: mcp-smoke-hosted-harness
+title: MCP Smoke Hosted Harness
+summary: Local per-call fixture used to verify MCP hosted execution guards.
+version: 0.1.0
+license: MIT
+pricing:
+  model: per_call
+  amount_usd: 2
+  currency: USD
+tags: [smoke, hosted]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: operator
+    role: operator
+    prompt: agents/operator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: operator
+  stages:
+    - id: run
+      agent: operator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks: [schema_valid, eval_passed]
+examples:
+  - title: Smoke
+    input: examples/input.md
+    output: examples/expected.md
+`);
+  writeFileSync(path.join(target, "README.md"), "# MCP Smoke Hosted Harness\n");
+  writeFileSync(path.join(target, "agents/operator.md"), "Return a short hosted MCP smoke result.\n");
+  writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: mcp hosted smoke\nprompts: []\nproviders: []\n");
   writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
   writeFileSync(path.join(target, "examples/input.md"), "input\n");
   writeFileSync(path.join(target, "examples/expected.md"), "expected\n");

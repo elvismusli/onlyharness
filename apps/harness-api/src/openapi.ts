@@ -87,8 +87,8 @@ export const openapi = {
             content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentRequired" } } }
           },
           "409": {
-            description: "The requested item is a link-only directory, not a runnable harness archive.",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/DirectoryLinkOnly" } } }
+            description: "The requested item cannot be pulled as files: either link-only directory or hosted execution not available.",
+            content: { "application/json": { schema: { oneOf: [{ $ref: "#/components/schemas/DirectoryLinkOnly" }, { $ref: "#/components/schemas/HostedExecutionUnavailable" }] } } }
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
@@ -138,7 +138,11 @@ export const openapi = {
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" }
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": {
+            description: "The harness uses per_call pricing, but hosted execution is not live.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/HostedExecutionUnavailable" } } }
+          }
         }
       }
     },
@@ -864,6 +868,19 @@ export const openapi = {
           next: { type: "string" }
         },
         required: ["error", "code", "owner", "repo", "next"]
+      },
+      HostedExecutionUnavailable: {
+        type: "object",
+        properties: {
+          error: { type: "string", enum: ["Hosted execution not available"] },
+          code: { type: "string", enum: ["HOSTED_EXECUTION_NOT_AVAILABLE"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          pricing: { type: "object" },
+          next: { type: "string" }
+        },
+        required: ["error", "code", "owner", "repo", "version", "pricing", "next"]
       },
       X402PaymentRequired: {
         type: "object",

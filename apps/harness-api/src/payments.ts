@@ -38,7 +38,8 @@ export type EntitlementCheckResult = {
 
 export type PaymentAccessResult =
   | { allowed: true }
-  | { allowed: false; status: 402; body: PaymentRequiredBody };
+  | { allowed: false; status: 402; body: PaymentRequiredBody }
+  | { allowed: false; status: 409; body: HostedExecutionUnavailableBody };
 
 export type PaymentRequiredBody = {
   error: "Payment required";
@@ -55,6 +56,16 @@ export type PaymentRequiredBody = {
     requirements: X402PaymentRequirements[];
     paymentRequired: X402PaymentRequired | null;
   };
+  next: string;
+};
+
+export type HostedExecutionUnavailableBody = {
+  error: "Hosted execution not available";
+  code: "HOSTED_EXECUTION_NOT_AVAILABLE";
+  owner: string;
+  repo: string;
+  version: string;
+  pricing: HarnessManifest["pricing"];
   next: string;
 };
 
@@ -184,6 +195,13 @@ const localPaymentStorePath = process.env.HARNESS_LOCAL_PAYMENTS_PATH ? path.res
 
 export async function requireArchivePaymentAccess(input: PaymentAccessInput): Promise<PaymentAccessResult> {
   if (input.manifest.pricing.model === "free") return { allowed: true };
+  if (input.manifest.pricing.model === "per_call") {
+    return {
+      allowed: false,
+      status: 409,
+      body: hostedExecutionUnavailableBody(input)
+    };
+  }
   if (await hasEntitlement(input)) return { allowed: true };
   const enabled = paymentsEnabled();
   const x402PaymentRequired = enabled ? buildX402PaymentRequired(input) : undefined;
@@ -216,6 +234,18 @@ export async function requireArchivePaymentAccess(input: PaymentAccessInput): Pr
 export function x402PaymentRequiredHeader(body: PaymentRequiredBody): string | undefined {
   if (!body.x402.paymentRequired) return undefined;
   return Buffer.from(JSON.stringify(body.x402.paymentRequired), "utf8").toString("base64");
+}
+
+export function hostedExecutionUnavailableBody(input: PaymentAccessInput): HostedExecutionUnavailableBody {
+  return {
+    error: "Hosted execution not available",
+    code: "HOSTED_EXECUTION_NOT_AVAILABLE",
+    owner: input.owner,
+    repo: input.repo,
+    version: input.version,
+    pricing: input.manifest.pricing,
+    next: "Use hh pull/install only for file-based harnesses. Hosted per-call execution is not live yet."
+  };
 }
 
 export async function checkEntitlement(input: EntitlementCheckInput): Promise<EntitlementCheckResult> {
@@ -276,6 +306,9 @@ function settledEntitlements(rows: EntitlementRow[]): EntitlementRow[] {
 
 export async function createCheckoutSession(input: CheckoutInput): Promise<CheckoutSession | { error: string; status: number }> {
   if (input.manifest.pricing.model === "free") return { status: 400, error: "Free harnesses do not need checkout" };
+  if (input.manifest.pricing.model === "per_call") {
+    return { status: 409, error: "Hosted execution is not available for per_call pricing" };
+  }
   const amount = input.manifest.pricing.amount_usd ?? 0;
   if (!Number.isFinite(amount) || amount <= 0) return { status: 400, error: "Paid harness is missing a positive amount_usd" };
   if (!paymentsEnabled()) return { status: 503, error: "Payments are disabled in this environment" };
