@@ -40,6 +40,7 @@ type RegistryItem = {
     findings: number;
     scanner: StaticSecurityReport["scanner"];
   };
+  standard: "conformant" | "partial";
   forks: number;
   stars: number;
   threads: number;
@@ -111,6 +112,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const inspection = inspectHarness(root);
   const evalResult = readEvalResult(root);
   const security = securityReportFor(root, inspection.security, inspection.manifest?.permissions.network_allowlist ?? []);
+  const standard = standardLevel(Boolean(inspection.valid), inspection.manifest, security);
   const counters = await fetchCountersMap();
   const item = registryItemFromDir(owner, root, counters);
   return {
@@ -125,6 +127,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     ...inspection,
     evalResult,
     security,
+    standard,
     readme: readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root)
   };
@@ -348,6 +351,17 @@ function securityReportFor(root: string, manifestSecurity: ManifestSecurityRepor
   return scanHarnessDir(root, { manifestSecurity, networkAllowlist });
 }
 
+function standardLevel(
+  valid: boolean,
+  manifest: ReturnType<typeof validateHarnessDir>["manifest"],
+  security: StaticSecurityReport
+): "conformant" | "partial" {
+  if (!valid || !manifest) return "partial";
+  if (security.verdict !== "pass") return "partial";
+  if (!manifest.evals.promptfoo_config || !manifest.examples.length) return "partial";
+  return "conformant";
+}
+
 function scanHarnessRoot(owner: string, root: string, counters: Map<string, Counters>): RegistryItem[] {
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true })
@@ -389,6 +403,7 @@ function registryItemFromDir(owner: string, repoPath: string, counters: Map<stri
       findings: security.findings.length,
       scanner: security.scanner
     },
+    standard: standardLevel(validation.valid, validation.manifest, security),
     forks: social.forks,
     stars: social.stars,
     threads: social.threads,
@@ -472,8 +487,9 @@ function samplePrReview(root: string) {
   const head = createReviewVariant(root);
   const diff = diffHarnessDirs(base, head);
   return {
-    number: 7,
-    title: "Tighten workflow and permission profile",
+    number: 0,
+    title: "Demo: tighten workflow and permission profile",
+    demo: true,
     status: diff.status,
     markdown: semanticDiffMarkdown(diff),
     diff

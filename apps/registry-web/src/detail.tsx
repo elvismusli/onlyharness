@@ -41,6 +41,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
         <div className="promise">{item.summary}</div>
         <div className="tagrow">
           {item.tags.map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
+          {(detail?.standard ?? item.standard) === "conformant" && <span className="tag98 safe">✓ OnlyHarness Standard</span>}
           {item.badge.includes("Wild") && <span className="tag98 warn">🏆 {item.badge}</span>}
         </div>
       </div>
@@ -83,11 +84,11 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                   <pre className="pre98">{detail ? detail.example?.expected || "This harness ships without an expected output." : "Loading expected output..."}</pre>
                 </div>
                 <div className="try-run">
-                  <Btn strong onClick={onRunSample} disabled={tryState === "running"}>▶ Run sample</Btn>
-                  {tryState === "running" && <span className="run-status" style={{ color: "var(--navy)" }}>⌛ Running sample against the eval gate...</span>}
-                  {tryState === "done" && <span className="run-status">✓ Sample passed the eval gate locally.</span>}
+                  <Btn strong onClick={onRunSample} disabled={tryState === "running"}>▶ Preview sample</Btn>
+                  {tryState === "running" && <span className="run-status" style={{ color: "var(--navy)" }}>⌛ Opening bundled sample...</span>}
+                  {tryState === "done" && <span className="run-status">Sample preview recorded. Run the CLI eval before trusting it.</span>}
                   <span style={{ fontSize: 11, color: "#404040", flexBasis: "100%" }}>
-                    Runs the bundled example only. No credentials are used and nothing is sent anywhere.
+                    Shows the bundled example only. No LLM, credentials or eval gate run in this browser.
                   </span>
                 </div>
               </div>

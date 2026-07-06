@@ -432,7 +432,7 @@ function App() {
       case "harness": return { icon: "📦", title: item?.title ?? "Harness" };
       case "publish": return { icon: "📄", title: "New Harness Wizard" };
       case "cli": return { icon: "🖥️", title: "MS-DOS Prompt — hh.exe" };
-      case "review": return { icon: "🔧", title: "Maintainer Review — PR #7" };
+      case "review": return { icon: "🔧", title: "Maintainer Review — Demo" };
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
       case "share": return { icon: "💾", title: `harness_flex.exe — ${item?.title ?? ""}` };
     }

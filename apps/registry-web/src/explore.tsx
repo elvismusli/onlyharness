@@ -222,7 +222,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         <div className="promise" onClick={() => onOpen()}>{item.summary}</div>
         <div className="tagrow">
           {item.tags.slice(0, 3).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
-          {item.riskTier === "LOW" && <span className="tag98 safe">✓ safety reviewed</span>}
+          {item.standard === "conformant" && <span className="tag98 safe">✓ Standard</span>}
         </div>
         <div className="stats-plate">
           <span>⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span>

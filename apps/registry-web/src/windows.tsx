@@ -107,8 +107,8 @@ export function ReviewBody({ item, detail, onCopy, copied }: {
   return (
     <div className="win-body">
       <p style={{ margin: "0 0 10px", fontSize: 12.5 }}>
-        Semantic review of the open pull request for <b>{item?.title ?? "…"}</b>.
-        This view is for maintainers: it reports permission and workflow changes before anything merges.
+        Demo semantic review for <b>{item?.title ?? "…"}</b>.
+        This view shows the maintainer review shape using a generated local variant; it is not an open pull request.
       </p>
       <div className="review-grid">
         <section>

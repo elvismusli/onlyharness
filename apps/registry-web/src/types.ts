@@ -18,6 +18,7 @@ export type RegistryItem = {
     findings: number;
     scanner: string;
   };
+  standard: "conformant" | "partial";
   forks: number;
   stars: number;
   threads: number;
@@ -66,6 +67,7 @@ export type HarnessDetail = {
   risk: { score: number; tier: string; reasons: string[]; blocking: string[] };
   evalResult?: { status: string; score: number; cost_usd: number; cases: Array<{ id: string; title: string; score: number; passed: boolean }> };
   security?: { verdict: "pass" | "warn" | "fail"; findings: Array<{ rule: string; file: string; excerpt: string; severity: string }>; scannedAt: string; scanner: string };
+  standard?: "conformant" | "partial";
   prReview: { status: string; markdown: string; diff: { riskDelta: number; riskTier: string; changes: Array<{ severity: string; area: string; message: string }> } };
   readme: string;
 };
