@@ -182,6 +182,38 @@ export const openapi = {
         }
       }
     },
+    "/prs/{owner}/{repo}/{number}/semantic-diff": {
+      get: {
+        summary: "Forge PR semantic diff status",
+        description: "Org visibility is enforced. Real forge PR diffing is not connected yet; harness detail exposes a local maintainer-review preview under prReview instead.",
+        parameters: [pathParam("owner"), pathParam("repo"), pathParam("number")],
+        responses: {
+          "501": {
+            description: "Real forge PR semantic diff is not available yet",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string" },
+                    code: { type: "string", enum: ["PR_SEMANTIC_DIFF_NOT_AVAILABLE"] },
+                    owner: { type: "string" },
+                    repo: { type: "string" },
+                    number: { type: "string" },
+                    demo: { $ref: "#/components/schemas/MaintainerReviewPreview" },
+                    next: { type: "string" }
+                  },
+                  required: ["error", "code", "owner", "repo", "number", "next"]
+                }
+              }
+            }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/billing/checkout": {
       post: {
         summary: "Create a manual checkout session for a paid harness",
@@ -919,8 +951,7 @@ export const openapi = {
       Health: {
         type: "object",
         properties: {
-          ok: { type: "boolean" },
-          workspaceRoot: { type: "string" }
+          ok: { type: "boolean" }
         },
         required: ["ok"]
       },
@@ -936,6 +967,7 @@ export const openapi = {
           job: { type: "string" },
           outcome: { type: "string" },
           runtime: { type: "string" },
+          forgeUrl: { type: "string", description: "Public repository or upstream URL when available. Local filesystem paths are never exposed." },
           contentType: { type: "string", enum: ["harness", "directory"] },
           directory: {
             type: "object",
@@ -1011,8 +1043,45 @@ export const openapi = {
           example: { type: "object" },
           files: { type: "array", items: { type: "string" } },
           versions: { type: "array", items: { $ref: "#/components/schemas/ArchiveVersion" } },
+          prReview: { $ref: "#/components/schemas/MaintainerReviewPreview" },
           readme: { type: "string" }
         }
+      },
+      MaintainerReviewPreview: {
+        type: "object",
+        description: "Generated local maintainer-review preview. It is not evidence of an open forge pull request when demo=true.",
+        properties: {
+          owner: { type: "string" },
+          repo: { type: "string" },
+          number: { type: ["integer", "null"] },
+          title: { type: "string" },
+          source: { type: "string", enum: ["local-demo", "forge-pr"] },
+          demo: { type: "boolean" },
+          status: { type: "string", enum: ["passed", "review", "failed"] },
+          markdown: { type: "string" },
+          next: { type: "string" },
+          diff: {
+            type: "object",
+            properties: {
+              riskDelta: { type: "number" },
+              riskTier: { type: "string" },
+              changes: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    severity: { type: "string" },
+                    area: { type: "string" },
+                    message: { type: "string" }
+                  },
+                  required: ["severity", "area", "message"]
+                }
+              }
+            },
+            required: ["riskDelta", "riskTier", "changes"]
+          }
+        },
+        required: ["owner", "repo", "number", "title", "source", "demo", "status", "markdown", "next", "diff"]
       },
       ArchiveVersion: {
         type: "object",

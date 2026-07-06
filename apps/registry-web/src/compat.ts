@@ -20,7 +20,7 @@ export function compatibilityTargetsFor(item?: RegistryItem, detail?: HarnessDet
   const isDirectory = item.contentType === "directory" || detail?.manifest?.content?.type === "directory";
   if (isDirectory) {
     const url = item.directory?.url ?? detail?.manifest?.content?.directory?.url ?? item.forgeUrl;
-    return DIRECTORY_TARGETS.map((target) => target.id === "open-link" ? { ...target, detail: url } : target);
+    return DIRECTORY_TARGETS.map((target) => target.id === "open-link" ? { ...target, detail: url ?? "upstream URL unavailable" } : target);
   }
 
   const declared = detail?.manifest?.compatibility?.targets ?? item.compatibility?.targets ?? [];

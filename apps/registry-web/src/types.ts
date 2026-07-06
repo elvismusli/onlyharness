@@ -8,7 +8,7 @@ export type RegistryItem = {
   job: string;
   outcome: string;
   runtime: string;
-  forgeUrl: string;
+  forgeUrl?: string;
   contentType?: "harness" | "directory";
   directory?: {
     url?: string;
@@ -102,8 +102,7 @@ export type ArchiveVersion = {
 export type HarnessDetail = {
   owner: string;
   repo: string;
-  root: string;
-  forgeUrl: string;
+  forgeUrl?: string;
   social?: Pick<RegistryItem, "stars" | "forks" | "threads" | "runs" | "installConfirms" | "signalCount" | "heatQualified" | "heat" | "heatDelta" | "freshness" | "badge" | "cliCommand">;
   thread?: ThreadItem[];
   example?: { input: string; expected: string };
@@ -142,7 +141,18 @@ export type HarnessDetail = {
   standard?: "conformant" | "partial";
   verification?: { lastVerifiedAt?: string };
   versions?: ArchiveVersion[];
-  prReview: { status: string; markdown: string; diff: { riskDelta: number; riskTier: string; changes: Array<{ severity: string; area: string; message: string }> } };
+  prReview: {
+    owner: string;
+    repo: string;
+    number: number | null;
+    title: string;
+    source: "local-demo" | "forge-pr";
+    demo: boolean;
+    status: string;
+    markdown: string;
+    next: string;
+    diff: { riskDelta: number; riskTier: string; changes: Array<{ severity: string; area: string; message: string }> };
+  };
   readme: string;
 };
 

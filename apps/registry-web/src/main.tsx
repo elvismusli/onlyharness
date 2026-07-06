@@ -696,7 +696,7 @@ function App() {
       case "publish": return { icon: "📄", title: "New Harness Wizard" };
       case "install": return { icon: "💿", title: item ? `Install Center — ${item.title}` : "Install Center" };
       case "cli": return { icon: "🖥️", title: "MS-DOS Prompt — hh.exe" };
-      case "review": return { icon: "🔧", title: "Maintainer Review — Demo" };
+      case "review": return { icon: "🔧", title: "Maintainer Review Preview" };
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
       case "share": return { icon: "💾", title: `harness_flex.exe — ${item?.title ?? ""}` };
       case "storefront": return { icon: "🗂️", title: `@${win.hkey ?? "handle"} — My Briefcase` };
@@ -1054,7 +1054,7 @@ function remixRecipe(item: RegistryItem): string {
   if (item.contentType === "directory") {
     const url = item.directory?.url ?? item.forgeUrl;
     return [
-      `open ${url}`,
+      `open ${url ?? "<upstream-url>"}`,
       "# Link-only directory: inspect upstream source and license before vendoring.",
       "# Convert the selected workflow into remix.md, then publish with HH_TOKEN:",
       "npm run build -w onlyharness",

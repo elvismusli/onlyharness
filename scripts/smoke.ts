@@ -87,16 +87,19 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
+  const health = await fetch("http://127.0.0.1:8799/healthz").then((response) => response.json()) as { ok?: boolean; workspaceRoot?: string };
+  if (health.ok !== true || health.workspaceRoot) throw new Error(`Health endpoint leaked internal state: ${JSON.stringify(health)}`);
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ owner?: string; name: string; job?: string; outcome?: string; contentType?: string; directory?: { itemCount?: number; url?: string }; compatibility?: { targets?: Array<{ id?: string; status?: string }> }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+    items: Array<{ owner?: string; name: string; job?: string; outcome?: string; repoPath?: string; forgeUrl?: string; contentType?: string; directory?: { itemCount?: number; url?: string }; compatibility?: { targets?: Array<{ id?: string; status?: string }> }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; signalCount: number; heatQualified: boolean; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const initialLeaderboard = await fetch("http://127.0.0.1:8799/leaderboard?limit=10").then((response) => response.json()) as {
     items?: Array<{ name?: string; heatQualified?: boolean }>;
     minimumSignals?: number;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/prs/{owner}/{repo}/{number}/semantic-diff"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
+  if (registry.items.some((item) => item.repoPath || item.forgeUrl?.startsWith("file://"))) throw new Error(`Registry leaked local paths: ${JSON.stringify(registry.items.filter((item) => item.repoPath || item.forgeUrl?.startsWith("file://")))}`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const deepMarket = registry.items.find((item) => item.owner === "harnesses" && item.name === "deep-market-researcher");
   const compatIds = new Set((deepMarket?.compatibility?.targets ?? []).map((target) => target.id));
@@ -232,8 +235,13 @@ try {
   }
   const security = await fetch("http://127.0.0.1:8799/repos/local/smoke-malicious-harness/security-report").then((response) => response.json()) as { verdict?: string; findings?: unknown[] };
   if (security.verdict !== "fail" || !security.findings?.length) throw new Error(`Malicious security report did not fail: ${JSON.stringify(security)}`);
-  const detail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { manifest?: { name: string }; contextCost?: { approxTokens?: number; files?: number; status?: string } };
+  const detail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { root?: string; forgeUrl?: string; manifest?: { name: string }; contextCost?: { approxTokens?: number; files?: number; status?: string }; prReview?: { owner?: string; repo?: string; number?: number | null; source?: string; demo?: boolean; next?: string; markdown?: string; diff?: { changes?: unknown[] } } };
   if (detail.manifest?.name !== "deep-market-researcher") throw new Error("Detail endpoint returned wrong manifest");
+  if (detail.root || detail.forgeUrl?.startsWith("file://")) throw new Error(`Detail endpoint leaked local server path: ${JSON.stringify({ root: detail.root, forgeUrl: detail.forgeUrl })}`);
+  const reviewPreview = detail.prReview;
+  if (!reviewPreview || reviewPreview.owner !== "harnesses" || reviewPreview.repo !== "deep-market-researcher" || reviewPreview.number !== null || reviewPreview.source !== "local-demo" || reviewPreview.demo !== true || !reviewPreview.next?.includes("hh diff") || !reviewPreview.markdown?.includes("# Harness Review") || !reviewPreview.diff?.changes?.length) {
+    throw new Error(`Detail maintainer review preview is not explicit local-demo: ${JSON.stringify(reviewPreview)}`);
+  }
   if (detail.contextCost?.status !== "estimated" || !detail.contextCost.approxTokens || !detail.contextCost.files) {
     throw new Error(`Detail endpoint returned invalid context-cost estimate: ${JSON.stringify(detail.contextCost)}`);
   }
@@ -698,8 +706,8 @@ try {
   if (orgVerifiedArchive.files?.some((file) => file.path === ".harnesshub/results.json")) throw new Error("Org verified publish archive leaked local eval results");
   const orgSemanticDiff = await fetch("http://127.0.0.1:8799/prs/@acme/acme-private-workflow/1/semantic-diff", {
     headers: { Authorization: "Bearer smoke-org-token" }
-  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; demo?: { demo?: boolean }; next?: string } }));
-  if (orgSemanticDiff.status !== 501 || orgSemanticDiff.body.code !== "PR_SEMANTIC_DIFF_NOT_AVAILABLE" || orgSemanticDiff.body.demo?.demo !== true || !orgSemanticDiff.body.next?.includes("hh diff")) {
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; demo?: { demo?: boolean; source?: string; number?: number | null; next?: string }; next?: string } }));
+  if (orgSemanticDiff.status !== 501 || orgSemanticDiff.body.code !== "PR_SEMANTIC_DIFF_NOT_AVAILABLE" || orgSemanticDiff.body.demo?.demo !== true || orgSemanticDiff.body.demo.source !== "local-demo" || orgSemanticDiff.body.demo.number !== null || !orgSemanticDiff.body.next?.includes("hh diff")) {
     throw new Error(`PR semantic diff endpoint must be explicit demo-only 501: ${JSON.stringify(orgSemanticDiff)}`);
   }
   const orgArchive = await fetch("http://127.0.0.1:8799/repos/@acme/acme-private-workflow/archive", {

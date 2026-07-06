@@ -59,8 +59,7 @@ export type RegistryItem = {
   job: string;
   outcome: string;
   runtime: string;
-  repoPath: string;
-  forgeUrl: string;
+  forgeUrl?: string;
   contentType: "harness" | "directory";
   directory?: {
     url?: string;
@@ -183,8 +182,9 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     job,
     outcome: job,
     runtime: validation.manifest.runtime.primary,
-    repoPath,
-    forgeUrl: directory?.url ?? (owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` : `file://${repoPath}`),
+    ...(directory?.url || owner === "harnesses"
+      ? { forgeUrl: directory?.url ?? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` }
+      : {}),
     contentType,
     ...(directory ? { directory } : {}),
     compatibility: compatibilityInfo(validation.manifest, directory),

@@ -154,6 +154,7 @@ async function loadDocs(): Promise<{ source: string; text: string }> {
   if (docsCache && now - docsCache.loadedAt < 5 * 60_000) return docsCache;
 
   const source = process.env.DOCS_URL ?? path.join(registry.workspaceRoot, "apps/registry-web/public/llms.txt");
+  const publicSource = source.startsWith("http://") || source.startsWith("https://") ? source : "https://onlyharness.com/llms.txt";
   let text = "";
   if (source.startsWith("http://") || source.startsWith("https://")) {
     const response = await fetch(source);
@@ -167,7 +168,7 @@ async function loadDocs(): Promise<{ source: string; text: string }> {
     text = "# OnlyHarness\n\nDocs are temporarily unavailable. Use `hh doctor`, `hh search`, and `/api/registry` as fallbacks.\n";
   }
 
-  docsCache = { source, text, loadedAt: now };
+  docsCache = { source: publicSource, text, loadedAt: now };
   return docsCache;
 }
 

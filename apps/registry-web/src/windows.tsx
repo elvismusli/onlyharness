@@ -91,7 +91,7 @@ export function InstallBody({ item, detail, apiUrl, accessToken, refCode, onLogo
   const isDirectory = item?.contentType === "directory";
   const directoryUrl = item?.directory?.url ?? item?.forgeUrl;
   const shownSetup = installSetup(tab, item);
-  const archive = item && isDirectory ? directoryUrl ?? "" : item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
+  const archive = item && isDirectory ? directoryUrl ?? "open <upstream-url>" : item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
   const targets: CompatibilityTarget[] = compatibilityTargetsFor(item);
   const pricing = detail?.manifest?.pricing;
   const paymentState = paymentSummary(item, detail);
@@ -517,13 +517,14 @@ export function ReviewBody({ item, detail, onCopy, copied }: {
   onCopy: (text: string) => void;
   copied: boolean;
 }) {
-  const diff = detail?.prReview?.diff;
+  const review = detail?.prReview;
+  const diff = review?.diff;
   const gateCommands = `hh validate seed-harnesses/${item?.name ?? "deep-market-researcher"} --strict\nhh eval seed-harnesses/${item?.name ?? "deep-market-researcher"}\nhh gate --dir seed-harnesses/${item?.name ?? "deep-market-researcher"}`;
   return (
     <div className="win-body">
       <p style={{ margin: "0 0 10px", fontSize: 12.5 }}>
-        Demo semantic review for <b>{item?.title ?? "…"}</b>.
-        This view shows the maintainer review shape using a generated local variant; it is not an open pull request.
+        Local maintainer review preview for <b>{item?.title ?? "…"}</b>.
+        {review?.demo ? " Generated from a local variant; it is not an open pull request." : " Backed by a connected review source."}
       </p>
       <div className="review-grid">
         <section>
@@ -555,9 +556,11 @@ export function ReviewBody({ item, detail, onCopy, copied }: {
           </div>
           <div className="trust-box">
             <h4>Merge policy</h4>
+            <InfoLine label="Source" value={review?.source ?? "loading"} />
             <InfoLine label="Eval gate" value="must pass" />
             <InfoLine label="Risk" value="no new HIGH" />
             <InfoLine label="Permissions" value="reviewed by human" />
+            <InfoLine label="Next" value={review?.next ?? "loading"} />
           </div>
         </aside>
       </div>
@@ -681,7 +684,7 @@ function installSetup(tab: InstallTab, item?: RegistryItem): string {
   const target = `${item.owner}/${item.name}`;
   const isDirectory = item.contentType === "directory";
   const directoryUrl = item.directory?.url ?? item.forgeUrl;
-  if (isDirectory) return `open ${directoryUrl}\n# Link-only directory. Review upstream source and licensing before importing entries.`;
+  if (isDirectory) return `open ${directoryUrl ?? "<upstream-url>"}\n# Link-only directory. Review upstream source and licensing before importing entries.`;
   const build = ["# npm package pending; build the local CLI first:", "npm run build -w onlyharness"];
   if (tab === "MCP") {
     return [

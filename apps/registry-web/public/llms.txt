@@ -19,7 +19,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Multi-word queries AND-match against name, title, summary, job and tags. `outcome` remains a legacy alias for the job filter.
   Response: { items: [{ owner, name, title, summary, tags, job, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Harness detail: GET /repos/{owner}/{name}/harness
-  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost, file list and versions[] archive history.
+  Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost, file list, versions[] archive history and prReview. Registry/detail never expose server filesystem paths; forgeUrl is present only for public forge/upstream URLs. prReview.source=local-demo means generated preview, not an open forge PR.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
   Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh install --pay` or `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
@@ -28,6 +28,8 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Auth required. Body { name?, title?, summary?, sourceVersion? }. Creates only a free unverified `local/{name}` copy from archive files, strips `.harnesshub/*`, and records a privacy-safe `applied` event with target `server-remix`. Paid, org/private, directory, link-only and `UNSPECIFIED` license sources fail closed.
 - Security report: GET /repos/{owner}/{name}/security-report
   Read before installing/applying when detail.security is missing or failing; plugin/autopilot flows must not bypass a failed report.
+- Forge PR semantic diff: GET /prs/{owner}/{name}/{number}/semantic-diff
+  Org visibility is enforced, but real forge PR diffing is not connected yet. The endpoint returns 501 PR_SEMANTIC_DIFF_NOT_AVAILABLE with a local-demo preview and next steps; use detail.prReview only as a maintainer-review shape preview.
 - Checkout: POST /billing/checkout
   Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses. Only PAYMENT_PROVIDER unset/manual is supported; other provider config fails closed before purchase creation.
 - Receipt: GET /billing/receipt?provider_ref={ref}

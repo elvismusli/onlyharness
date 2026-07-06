@@ -46,9 +46,10 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
   const isDirectory = item.contentType === "directory" || manifest?.content?.type === "directory";
   const directory = item.directory ?? manifestDirectory(manifest);
   const directoryUrl = directory?.url ?? item.forgeUrl;
+  const sourceUrl = detail?.forgeUrl ?? item.forgeUrl;
   const installLoop = isDirectory
     ? [
-        `open ${directoryUrl}`,
+        `open ${directoryUrl ?? "<upstream-url>"}`,
         "# Link-only directory: inspect upstream source and license before importing content.",
         "# Do not treat this as a runnable harness."
       ].join("\n")
@@ -239,11 +240,13 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
                   ))}
                   {!detail?.files?.length && <div className="file-row"><span>⌛</span><span>Loading file list...</span></div>}
                 </div>
-                <div style={{ marginTop: 8 }}>
-                  <a href={detail?.forgeUrl ?? item.forgeUrl} target="_blank" rel="noreferrer" style={{ color: "var(--navy)" }}>
-                    Open repository ↗
-                  </a>
-                </div>
+                {sourceUrl && (
+                  <div style={{ marginTop: 8 }}>
+                    <a href={sourceUrl} target="_blank" rel="noreferrer" style={{ color: "var(--navy)" }}>
+                      Open repository ↗
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
@@ -307,7 +310,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread
             <h4>Trust &amp; safety</h4>
             <InfoLine label="Version" value={version} />
             <InfoLine label="Last verified" value={detail?.verification?.lastVerifiedAt ?? "no passed eval/gate event yet"} />
-            <InfoLine label="Source" value={isDirectory ? directoryUrl ?? item.forgeUrl : item.forgeUrl} />
+            <InfoLine label="Source" value={isDirectory ? directoryUrl ?? "upstream URL unavailable" : sourceUrl ?? "local registry"} />
             <InfoLine label="Works with" value={targets.filter((target) => target.status !== "planned").slice(0, 4).map(targetLabel).join(", ") || "review required"} />
             <InfoLine label="Eval" value={detail?.evalResult ? `${detail.evalResult.score} (${detail.evalResult.status})` : item.evalStatus} />
             <InfoLine label="Risk" value={`${detail?.risk.tier ?? item.riskTier} (${detail?.risk.score ?? item.riskScore})`} />

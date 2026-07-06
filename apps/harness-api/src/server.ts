@@ -193,7 +193,7 @@ await app.register(cors, {
   }
 });
 
-app.get("/healthz", async () => ({ ok: true, workspaceRoot: registry.workspaceRoot }));
+app.get("/healthz", async () => ({ ok: true }));
 
 app.get("/openapi.json", async () => openapi);
 
@@ -224,8 +224,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   return {
     owner,
     repo,
-    root,
-    forgeUrl: owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${repo}` : `file://${root}`,
+    ...(item?.forgeUrl ? { forgeUrl: item.forgeUrl } : {}),
     social: item ? registry.socialFromItem(item) : undefined,
     thread: await fetchThreadPosts(owner, repo),
     example: registry.readExample(root),
@@ -238,7 +237,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     standard,
     verification: { lastVerifiedAt },
     readme: registry.readMaybe(path.join(root, "README.md")),
-    prReview: samplePrReview(root)
+    prReview: samplePrReview(root, owner, repo)
   };
 });
 
@@ -716,7 +715,7 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
     owner,
     repo,
     number,
-    demo: samplePrReview(root),
+    demo: samplePrReview(root, owner, repo),
     next: "Use `hh diff --base-dir <base> --head-dir <head>` locally, or inspect the Maintainer Review demo in the harness detail payload."
   });
 });
@@ -1819,17 +1818,21 @@ function importCliCommand(tempSource: string, target: string, name: string) {
   };
 }
 
-function samplePrReview(root: string) {
+function samplePrReview(root: string, owner: string, repo: string) {
   const base = root;
   const head = createReviewVariant(root);
   const diff = diffHarnessDirs(base, head);
   return {
-    number: 0,
-    title: "Demo: tighten workflow and permission profile",
+    owner,
+    repo,
+    number: null,
+    title: "Local maintainer review preview",
+    source: "local-demo",
     demo: true,
     status: diff.status,
     markdown: semanticDiffMarkdown(diff),
-    diff
+    diff,
+    next: "Use `hh diff --base-dir <base> --head-dir <head>` for a real local comparison, or connect a forge PR source before treating this as a pull request."
   };
 }
 

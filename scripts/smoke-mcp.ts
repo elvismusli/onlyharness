@@ -54,6 +54,15 @@ try {
     if (!names.includes(expected)) throw new Error(`MCP tool missing: ${expected}`);
   }
 
+  const docs = await rpc(21, "tools/call", {
+    name: "search_docs",
+    arguments: { query: "Harness detail" }
+  });
+  const docsText = docs.result?.content?.[0]?.text ?? "";
+  if (!docsText.includes("\"source\": \"https://onlyharness.com/llms.txt\"") || docsText.includes(root)) {
+    throw new Error(`MCP search_docs leaked local docs source: ${JSON.stringify(docs)}`);
+  }
+
   const search = await rpc(3, "tools/call", {
     name: "search_harnesses",
     arguments: { query: "research", limit: 2 }
@@ -198,7 +207,7 @@ try {
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
+  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, search_docs public source, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
 } finally {
   api.kill("SIGTERM");
   rmSync(paidRoot, { recursive: true, force: true });
