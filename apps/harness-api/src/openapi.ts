@@ -86,6 +86,10 @@ export const openapi = {
             },
             content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentRequired" } } }
           },
+          "409": {
+            description: "The requested item is a link-only directory, not a runnable harness archive.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/DirectoryLinkOnly" } } }
+          },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" }
@@ -523,6 +527,16 @@ export const openapi = {
           tags: { type: "array", items: { type: "string" } },
           outcome: { type: "string" },
           runtime: { type: "string" },
+          contentType: { type: "string", enum: ["harness", "directory"] },
+          directory: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              itemCount: { type: "integer", minimum: 0 },
+              category: { type: "string" },
+              notes: { type: "string" }
+            }
+          },
           valid: { type: "boolean" },
           riskScore: { type: "number" },
           riskTier: { type: "string" },
@@ -542,7 +556,7 @@ export const openapi = {
           cliCommand: { type: "string" },
           updatedAt: { type: "string" }
         },
-        required: ["owner", "name", "title", "summary", "tags", "valid", "riskTier", "evalStatus", "contextCost", "standard", "cliCommand"]
+        required: ["owner", "name", "title", "summary", "tags", "contentType", "valid", "riskTier", "evalStatus", "contextCost", "standard", "cliCommand"]
       },
       HarnessDetail: {
         type: "object",
@@ -627,6 +641,21 @@ export const openapi = {
           next: { type: "string" }
         },
         required: ["error", "code", "owner", "repo", "version", "pricing", "provider", "checkout_url", "payments_enabled", "x402", "next"]
+      },
+      DirectoryLinkOnly: {
+        type: "object",
+        properties: {
+          error: { type: "string", enum: ["Directory link only"] },
+          code: { type: "string", enum: ["DIRECTORY_LINK_ONLY"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          url: { type: "string" },
+          item_count: { type: "integer", minimum: 0 },
+          category: { type: "string" },
+          notes: { type: "string" },
+          next: { type: "string" }
+        },
+        required: ["error", "code", "owner", "repo", "next"]
       },
       X402PaymentRequired: {
         type: "object",

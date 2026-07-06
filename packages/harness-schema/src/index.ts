@@ -195,6 +195,43 @@ export const harnessManifestSchema = z.object({
       });
     }
   }
+  if (manifest.content.type === "directory") {
+    if (manifest.schemaVersion !== "harness.v0.2") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["schemaVersion"],
+        message: "directory content requires schemaVersion harness.v0.2"
+      });
+    }
+    if (!manifest.content.directory?.url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["content", "directory", "url"],
+        message: "directory content requires a link-only url"
+      });
+    }
+    if (manifest.source.vendor_policy !== "link-only") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["source", "vendor_policy"],
+        message: "directory content must use source.vendor_policy link-only"
+      });
+    }
+    if (manifest.pricing.model !== "free") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pricing", "model"],
+        message: "directory content must be free link-only discovery"
+      });
+    }
+    if (manifest.permissions.external_send || manifest.permissions.money_movement) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["permissions"],
+        message: "directory content cannot request external_send or money_movement"
+      });
+    }
+  }
 });
 
 export type HarnessManifest = z.infer<typeof harnessManifestSchema>;

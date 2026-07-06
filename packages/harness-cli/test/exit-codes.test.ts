@@ -144,6 +144,19 @@ before(async () => {
       return;
     }
 
+    if (request.url?.startsWith("/repos/directories/awesome-agent-directories/archive")) {
+      response.statusCode = 409;
+      response.end(JSON.stringify({
+        error: "Directory link only",
+        code: "DIRECTORY_LINK_ONLY",
+        owner: "directories",
+        repo: "awesome-agent-directories",
+        url: "https://example.com/awesome-agent-directories",
+        next: "open https://example.com/awesome-agent-directories"
+      }));
+      return;
+    }
+
     if (request.url?.startsWith("/repos/harnesses/token-required/archive")) {
       sawPullToken = request.headers.authorization === "Bearer paid-token";
       response.end(JSON.stringify({
@@ -243,6 +256,16 @@ test("pull of a paid harness with disabled payments returns honest next step", a
   assert.equal(result.status, 5);
   const body = JSON.parse(result.stderr) as { next?: string };
   assert.equal(body.next, "Payments are disabled in this environment.");
+});
+
+test("pull of a link-only directory exits 3 and returns open guidance", async () => {
+  const result = await runCli(["pull", "directories/awesome-agent-directories", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 3);
+  const body = JSON.parse(result.stderr) as { error?: string; code?: number; next?: string };
+  assert.match(body.error ?? "", /link-only/);
+  assert.equal(body.code, 3);
+  assert.equal(body.next, "open https://example.com/awesome-agent-directories");
 });
 
 test("pull --pay exits 5 when the registry does not offer x402 requirements", async () => {

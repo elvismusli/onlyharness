@@ -63,7 +63,7 @@ Core endpoints:
 | GET | `/healthz` | API health |
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
-| GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; may include x402 `PAYMENT-REQUIRED` |
+| GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
 | GET | `/entitlements/check?subject={type:id}&harness={owner/name}` | Bot-facing entitlement check; requires org token with `entitlements:read` scope |
 | POST | `/community/invite-code` | Authenticated buyer gets a short-lived signed community gate code after entitlement is verified |
 | POST | `/community/verify-code` | Bot verifies a community gate code with a scoped org token before granting Discord/Telegram access |
@@ -87,6 +87,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
 - Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps. `hh pull --pay` may sign x402 with `HH_WALLET_KEY`/`EVM_PRIVATE_KEY`, but must enforce `HH_MAX_PAY_USD` before signing; API archive delivery requires facilitator verify/settle via `X402_FACILITATOR_URL` before wallet entitlement is written.
+- Directory shelf entries use manifest `content.type: directory` and `source.vendor_policy: link-only`; they must stay free, expose `open <url>`, and must not return archive files.
 - Team `hh setup @org`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org bundles/publishing/sync are feature-flagged by `ORGS_ENABLED` and must not log raw tokens.
 - Network Neighborhood uses the same org token path through `/orgs/{slug}/workspace`; audit rows must stay sanitized and permission summaries reuse schema risk reports.
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.

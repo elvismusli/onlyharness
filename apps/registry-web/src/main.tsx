@@ -16,7 +16,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : undefined;
 
-const OUTCOMES = ["Research", "Support", "Finance safety", "Strategy", "Engineering", "Builder tools"];
+const OUTCOMES = ["Research", "Support", "Finance safety", "Strategy", "Engineering", "Builder tools", "Directories"];
 
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
@@ -395,6 +395,12 @@ function App() {
 
   function openInstall(item?: RegistryItem) {
     const selected = item ?? topItem;
+    if (selected?.contentType === "directory" && selected.directory?.url) {
+      window.open(selected.directory.url, "_blank", "noopener,noreferrer");
+      recordHarnessEvent("copy", selected, "directory-open");
+      flashMsg(`Opened directory: ${selected.title}`);
+      return;
+    }
     if (selected) {
       const key = keyFor(selected);
       setKnownItems((current) => (current[key] ? current : { ...current, [key]: selected }));
@@ -432,6 +438,10 @@ function App() {
   }
 
   async function runSample(item: RegistryItem) {
+    if (item.contentType === "directory") {
+      flashMsg("Directory entries are link-only; open the upstream index instead.");
+      return;
+    }
     const key = keyFor(item);
     setTryStates((current) => ({ ...current, [key]: "running" }));
     if (supabase && session?.user) {

@@ -73,12 +73,20 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
 try {
   await waitForApi("http://127.0.0.1:8799/healthz");
   const registry = await fetch("http://127.0.0.1:8799/registry").then((response) => response.json()) as {
-    items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
+    items: Array<{ owner?: string; name: string; contentType?: string; directory?: { itemCount?: number; url?: string }; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
   if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
+  const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
+  if (directoryItem?.contentType !== "directory" || directoryItem.directory?.itemCount !== 255 || !directoryItem.directory.url) {
+    throw new Error(`Directory shelf item missing from registry payload: ${JSON.stringify(directoryItem)}`);
+  }
+  const directoryArchive = await fetch("http://127.0.0.1:8799/repos/directories/verified-agent-catalog-2026-07/archive").then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; url?: string; files?: unknown[] } }));
+  if (directoryArchive.status !== 409 || directoryArchive.body.code !== "DIRECTORY_LINK_ONLY" || directoryArchive.body.files) {
+    throw new Error(`Directory archive should be link-only 409: ${JSON.stringify(directoryArchive)}`);
+  }
   for (const item of registry.items) {
     if (item.stars < 0 || item.forks < 0 || item.threads < 0 || item.runs < 0 || item.installConfirms < 0) {
       throw new Error(`Registry returned a negative social counter: ${JSON.stringify(item)}`);

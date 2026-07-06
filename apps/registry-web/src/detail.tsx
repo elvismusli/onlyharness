@@ -36,12 +36,21 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
   const targets = compatibilityTargets(item, detail);
   const version = manifest?.version ?? "current";
   const installConfirms = detail?.social?.installConfirms ?? item.installConfirms ?? 0;
-  const installLoop = [
-    `npx onlyharness pull ${item.owner}/${item.name}`,
-    `npx onlyharness run ${item.name} --json`,
-    `npx onlyharness eval ${item.name} --json`,
-    `npx onlyharness gate --dir ${item.name} --json`
-  ].join("\n");
+  const isDirectory = item.contentType === "directory" || manifest?.content?.type === "directory";
+  const directory = item.directory ?? manifestDirectory(manifest);
+  const directoryUrl = directory?.url ?? item.forgeUrl;
+  const installLoop = isDirectory
+    ? [
+        `open ${directoryUrl}`,
+        "# Link-only directory: inspect upstream source and license before importing content.",
+        "# Do not treat this as a runnable harness."
+      ].join("\n")
+    : [
+        `npx onlyharness pull ${item.owner}/${item.name}`,
+        `npx onlyharness run ${item.name} --json`,
+        `npx onlyharness eval ${item.name} --json`,
+        `npx onlyharness gate --dir ${item.name} --json`
+      ].join("\n");
 
   return (
     <div className="win-body">
@@ -52,6 +61,8 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
         <div className="tagrow">
           {item.tags.map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
           {(detail?.standard ?? item.standard) === "conformant" && <span className="tag98 safe">✓ OnlyHarness Standard</span>}
+          {isDirectory && <span className="tag98 warn">link-only directory</span>}
+          {isDirectory && directory?.itemCount !== undefined && <span className="tag98">{directory.itemCount} items</span>}
           {installConfirms > 0 && <span className="tag98 safe">Claude Code: {installConfirms} confirms</span>}
           {item.badge.includes("Wild") && <span className="tag98 warn">🏆 {item.badge}</span>}
         </div>
@@ -65,6 +76,12 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
               <div>
                 <h4>What it does</h4>
                 <p style={{ margin: "0 0 10px", fontSize: 12.5 }}>{cleanReadme(detail?.readme) || item.summary}</p>
+                {isDirectory && (
+                  <div className="plate" style={{ marginBottom: 10, fontSize: 12 }}>
+                    Link-only directory. Open upstream, inspect current source state, and review licensing before importing or installing anything.
+                    {directory?.notes ? <><br />Notes: {directory.notes}</> : null}
+                  </div>
+                )}
                 <h4>Workflow</h4>
                 <div className="workflow-steps">
                   {(manifest?.workflow.stages ?? []).map((stage, index) => (
@@ -86,7 +103,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
 
             {tab === "Install" && (
               <div>
-                <h4>Install loop</h4>
+                <h4>{isDirectory ? "Directory link" : "Install loop"}</h4>
                 <pre className="pre98">{installLoop}</pre>
                 <div className="tagrow" style={{ marginTop: 8 }}>
                   {targets.map((target) => (
@@ -96,11 +113,11 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                   ))}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                  <Btn strong onClick={onInstall}>💿 Open Install Center</Btn>
-                  <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : ">_ Copy CLI"}</Btn>
+                  <Btn strong onClick={onInstall}>{isDirectory ? "🌐 Open directory" : "💿 Open Install Center"}</Btn>
+                  <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : isDirectory ? "📋 Copy link" : ">_ Copy CLI"}</Btn>
                 </div>
                 <div className="plate" style={{ marginTop: 8, fontSize: 11 }}>
-                  Planned targets are visible but do not imply adapter support. Use available targets for automation.
+                  {isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Planned targets are visible but do not imply adapter support. Use available targets for automation."}
                 </div>
               </div>
             )}
@@ -116,7 +133,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                 </div>
                 <div className="trust-box">
                   <h4>2. Works in my setup?</h4>
-                  <InfoLine label="Runtime" value={manifest?.runtime.primary ?? item.runtime} />
+                  <InfoLine label={isDirectory ? "Content type" : "Runtime"} value={isDirectory ? "link-only directory" : manifest?.runtime.primary ?? item.runtime} />
                   <InfoLine label="Adapters" value={manifest?.runtime.adapters?.length ? manifest.runtime.adapters.join(", ") : "none declared"} />
                   <InfoLine label="Claude Code confirms" value={installConfirms ? `${installConfirms} real install${installConfirms === 1 ? "" : "s"}` : "no confirms yet"} />
                   <InfoLine label="Context" value={fmtContextCost(detail?.contextCost ?? item.contextCost)} />
@@ -152,11 +169,11 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                   <pre className="pre98">{detail ? detail.example?.expected || "This harness ships without an expected output." : "Loading expected output..."}</pre>
                 </div>
                 <div className="try-run">
-                  <Btn strong onClick={onRunSample} disabled={tryState === "running"}>▶ Preview sample</Btn>
+                  <Btn strong onClick={onRunSample} disabled={tryState === "running" || isDirectory}>{isDirectory ? "Link-only" : "▶ Preview sample"}</Btn>
                   {tryState === "running" && <span className="run-status" style={{ color: "var(--navy)" }}>⌛ Opening bundled sample...</span>}
                   {tryState === "done" && <span className="run-status">Sample preview recorded. Run the CLI eval before trusting it.</span>}
                   <span style={{ fontSize: 11, color: "#404040", flexBasis: "100%" }}>
-                    Shows the bundled example only. No LLM, credentials or eval gate run in this browser.
+                    {isDirectory ? "Directory entries do not run samples. Open upstream and inspect current source state." : "Shows the bundled example only. No LLM, credentials or eval gate run in this browser."}
                   </span>
                 </div>
               </div>
@@ -262,7 +279,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
             <h4>Trust &amp; safety</h4>
             <InfoLine label="Eval" value={detail?.evalResult ? `${detail.evalResult.score} (${detail.evalResult.status})` : item.evalStatus} />
             <InfoLine label="Risk" value={`${detail?.risk.tier ?? item.riskTier} (${detail?.risk.score ?? item.riskScore})`} />
-            <InfoLine label="Runtime" value={manifest?.runtime.primary ?? item.runtime} />
+            <InfoLine label={isDirectory ? "Content type" : "Runtime"} value={isDirectory ? "link-only directory" : manifest?.runtime.primary ?? item.runtime} />
             <InfoLine label="Context" value={fmtContextCost(detail?.contextCost ?? item.contextCost)} />
             <InfoLine label="Eval gate" value={manifest ? `score ≥ ${manifest.quality_gates.min_score}` : "…"} />
             <InfoLine label="Permissions" value={grantedPermissions.length ? grantedPermissions.join(", ") : "conservative"} />
@@ -272,8 +289,8 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
           </div>
 
           <div className="trust-actions">
-            <Btn strong onClick={onInstall}>💿 Install</Btn>
-            <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : ">_ Copy CLI"}</Btn>
+            <Btn strong onClick={onInstall}>{isDirectory ? "🌐 Open directory" : "💿 Install"}</Btn>
+            <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : isDirectory ? "📋 Copy link" : ">_ Copy CLI"}</Btn>
             <Btn pressed={starred} onClick={onStar}>★ {starred ? "Starred" : "Star"}</Btn>
             <Btn pressed={forked} onClick={onFork}>⑂ {forked ? "Forked" : "Fork"}</Btn>
             <Btn onClick={onShare}>💾 Share card</Btn>
@@ -290,6 +307,13 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
 }
 
 function compatibilityTargets(item: RegistryItem, detail?: HarnessDetail): CompatibilityTarget[] {
+  if (item.contentType === "directory" || detail?.manifest?.content?.type === "directory") {
+    return [
+      { name: "Open link", status: "available", notes: item.directory?.url ?? detail?.manifest?.content?.directory?.url },
+      { name: "License review", status: "planned", notes: "Required before vendoring upstream content" },
+      { name: "Harness import", status: "planned", notes: "Convert selected entries only after source review" }
+    ];
+  }
   const declared = detail?.manifest?.compatibility?.targets ?? [];
   if (declared.length) return declared;
   return [
@@ -299,6 +323,17 @@ function compatibilityTargets(item: RegistryItem, detail?: HarnessDetail): Compa
     { name: "Cursor adapter", status: "planned" },
     { name: "Team bundle", status: "planned" }
   ];
+}
+
+function manifestDirectory(manifest: HarnessDetail["manifest"] | undefined): RegistryItem["directory"] | undefined {
+  const directory = manifest?.content?.directory;
+  if (!directory) return undefined;
+  return {
+    ...(directory.url ? { url: directory.url } : {}),
+    ...(directory.item_count !== undefined ? { itemCount: directory.item_count } : {}),
+    ...(directory.category ? { category: directory.category } : {}),
+    ...(directory.notes ? { notes: directory.notes } : {})
+  };
 }
 
 function lastVerifiedLabel(detail?: HarnessDetail): string {

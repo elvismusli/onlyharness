@@ -8,6 +8,13 @@ export type RegistryItem = {
   outcome: string;
   runtime: string;
   forgeUrl: string;
+  contentType?: "harness" | "directory";
+  directory?: {
+    url?: string;
+    itemCount?: number;
+    category?: string;
+    notes?: string;
+  };
   valid: boolean;
   riskScore: number;
   riskTier: string;
@@ -86,6 +93,15 @@ export type HarnessDetail = {
     permissions: Record<string, unknown>;
     quality_gates: { min_score: number; max_cost_usd_per_run: number; max_risk_score: number };
     pricing?: HarnessPricing;
+    content?: {
+      type?: "harness" | "directory";
+      directory?: {
+        url?: string;
+        item_count?: number;
+        category?: string;
+        notes?: string;
+      };
+    };
     compatibility?: {
       targets?: CompatibilityTarget[];
     };

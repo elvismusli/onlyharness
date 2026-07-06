@@ -30,6 +30,12 @@ type SearchItem = {
   threads: number;
   evalScore: number;
   heat: number;
+  cliCommand?: string;
+  contentType?: "harness" | "directory";
+  directory?: {
+    url?: string;
+    itemCount?: number;
+  };
   contextCost?: {
     approxTokens: number;
     files: number;
@@ -70,6 +76,12 @@ type PaymentRequiredBody = {
     requirements?: PaymentRequirements[];
     paymentRequired?: PaymentRequired;
   };
+};
+type DirectoryLinkOnlyBody = {
+  error?: string;
+  code?: "DIRECTORY_LINK_ONLY";
+  url?: string;
+  next?: string;
 };
 type ContextCost = {
   approxTokens: number;
@@ -211,7 +223,7 @@ program.command("search")
       `${item.owner}/${item.name} — ${item.title}`,
       `  ${item.summary}`,
       `  ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · heat ${item.heat} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
-      `  hh pull ${item.owner}/${item.name}`
+      `  ${item.cliCommand ?? (item.contentType === "directory" && item.directory?.url ? `open ${item.directory.url}` : `hh pull ${item.owner}/${item.name}`)}`
     ].join("\n")).join("\n\n") + "\n");
   });
 
@@ -254,6 +266,17 @@ program.command("pull")
           `Payment required for ${owner}/${name}${price ? ` (${price})` : ""}`,
           EXIT.PAYMENT,
           paymentNext(body),
+          options.json
+        );
+      }
+    }
+    if (response.status === 409) {
+      const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as DirectoryLinkOnlyBody;
+      if (body.code === "DIRECTORY_LINK_ONLY") {
+        fail(
+          `Directory ${owner}/${name} is link-only and cannot be pulled as a runnable harness.`,
+          EXIT.VALIDATION,
+          body.next ?? (body.url ? `open ${body.url}` : `hh search ${name}`),
           options.json
         );
       }
@@ -1013,6 +1036,17 @@ async function fetchArchive(registryBase: string, owner: string, name: string, v
       paymentNext(body),
       json
     );
+  }
+  if (response.status === 409) {
+    const body = await readResponseJson(response, url, json).catch(() => ({})) as DirectoryLinkOnlyBody;
+    if (body.code === "DIRECTORY_LINK_ONLY") {
+      fail(
+        `Directory ${owner}/${name}${version ? `@${version}` : ""} is link-only and cannot be pulled as a runnable harness.`,
+        EXIT.VALIDATION,
+        body.next ?? (body.url ? `open ${body.url}` : `hh search ${name}`),
+        json
+      );
+    }
   }
   if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
   return readResponseJson(response, url, json) as Promise<ArchivePayload>;

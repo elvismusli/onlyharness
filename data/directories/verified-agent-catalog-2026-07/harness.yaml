@@ -1,0 +1,62 @@
+schemaVersion: harness.v0.2
+name: verified-agent-catalog-2026-07
+title: Verified Agent Catalog July 2026
+summary: Link-only directory of 255 verified agent harnesses, skills, workflows and MCP resources.
+version: 0.1.0
+license: UNSPECIFIED
+content:
+  type: directory
+  directory:
+    url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
+    item_count: 255
+    category: catalog
+    notes: Verified by GitHub API on 2026-07-05; entries remain link-only until licensing is reviewed.
+source:
+  upstream_url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
+  upstream_license: UNSPECIFIED
+  attribution: OnlyHarness research catalog, July 2026.
+  vendor_policy: link-only
+tags: [directory, catalog, research]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: curator
+    role: directory_curator
+    title: Directory Curator
+    prompt: agents/curator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: curator
+  stages:
+    - id: inspect
+      agent: curator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.8
+  max_regression: 0.03
+  max_cost_usd_per_run: 1
+  max_risk_score: 39
+  required_checks: [schema_valid]
+examples:
+  - title: Directory lookup
+    input: examples/input.md
+    output: examples/expected.md

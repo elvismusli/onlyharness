@@ -6,6 +6,7 @@ import { socialFromCounters, type Counters } from "./social.js";
 
 export const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
 export const seedRoot = path.join(workspaceRoot, "seed-harnesses");
+export const directoryRoot = path.join(workspaceRoot, "data/directories");
 export const importRoot = path.join(workspaceRoot, "data/imports");
 export const orgRoot = path.resolve(process.env.HARNESS_ORG_ROOT ?? path.join(workspaceRoot, "data/orgs"));
 export const versionRoot = path.resolve(process.env.HARNESS_VERSION_ROOT ?? path.join(workspaceRoot, "data/harness-versions"));
@@ -37,6 +38,13 @@ export type RegistryItem = {
   runtime: string;
   repoPath: string;
   forgeUrl: string;
+  contentType: "harness" | "directory";
+  directory?: {
+    url?: string;
+    itemCount?: number;
+    category?: string;
+    notes?: string;
+  };
   valid: boolean;
   riskScore: number;
   riskTier: string;
@@ -81,6 +89,7 @@ export type RegistryQuery = {
 export function scanRegistry(counters: Map<string, Counters>): RegistryItem[] {
   return [
     ...scanHarnessRoot("harnesses", seedRoot, counters),
+    ...scanHarnessRoot("directories", directoryRoot, counters),
     ...scanHarnessRoot("local", importRoot, counters)
   ];
 }
@@ -90,7 +99,7 @@ export function searchRegistry(query: RegistryQuery, counters: Map<string, Count
   if (query.q) {
     const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
     items = items.filter((item) => {
-      const haystack = `${item.name} ${item.title} ${item.summary} ${item.outcome} ${item.tags.join(" ")}`.toLowerCase();
+      const haystack = `${item.name} ${item.title} ${item.summary} ${item.outcome} ${item.tags.join(" ")} ${item.directory?.category ?? ""} ${item.directory?.notes ?? ""}`.toLowerCase();
       return terms.every((term) => haystack.includes(term));
     });
   }
@@ -120,6 +129,8 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
   const security = securityReportFor(repoPath, validation.security, validation.manifest.permissions.network_allowlist);
   const contextCost = estimateContextCost(repoPath);
   if (security.verdict === "fail") return undefined;
+  const contentType = validation.manifest.content.type;
+  const directory = directoryInfo(validation.manifest);
   const social = socialFromCounters(counters.get(`${owner}/${validation.manifest.name}`), {
     riskTier: validation.risk.tier,
     evalScore: evalResult?.score ?? 0,
@@ -127,15 +138,17 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
   });
   return {
     owner,
-    ownerLabel: owner === "harnesses" ? "onlyharness" : owner.startsWith("@") ? owner : "local",
+    ownerLabel: owner === "harnesses" ? "onlyharness" : owner === "directories" ? "directory shelf" : owner.startsWith("@") ? owner : "local",
     name: validation.manifest.name,
     title: validation.manifest.title,
     summary: validation.manifest.summary,
     tags: validation.manifest.tags,
-    outcome: inferOutcome(validation.manifest.tags),
+    outcome: contentType === "directory" ? "Directories" : inferOutcome(validation.manifest.tags),
     runtime: validation.manifest.runtime.primary,
     repoPath,
-    forgeUrl: owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` : `file://${repoPath}`,
+    forgeUrl: directory?.url ?? (owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` : `file://${repoPath}`),
+    contentType,
+    ...(directory ? { directory } : {}),
     valid: validation.valid,
     riskScore: validation.risk.score,
     riskTier: validation.risk.tier,
@@ -157,7 +170,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     heatDelta: social.heatDelta,
     freshness: social.freshness,
     badge: social.badge,
-    cliCommand: `hh pull ${owner}/${validation.manifest.name}`,
+    cliCommand: contentType === "directory" && directory?.url ? `open ${directory.url}` : `hh pull ${owner}/${validation.manifest.name}`,
     updatedAt
   };
 }
@@ -189,12 +202,14 @@ export function socialFromItem(item: RegistryItem) {
 export function resolveHarnessPath(owner: string, repo: string): string | undefined {
   const orgSlug = owner.startsWith("@") ? cleanOrgOwner(owner) : undefined;
   const roots = orgSlug
-    ? [orgImportRoot(orgSlug)]
+      ? [orgImportRoot(orgSlug)]
     : owner === "local"
       ? [importRoot]
+      : owner === "directories"
+        ? [directoryRoot]
       : owner === "harnesses"
         ? [seedRoot]
-        : [seedRoot, importRoot];
+        : [seedRoot, directoryRoot, importRoot];
   for (const root of roots) {
     const candidate = path.join(root, repo);
     if (existsSync(path.join(candidate, "harness.yaml"))) return candidate;
@@ -353,6 +368,16 @@ function inferOutcome(tags: string[]): string {
   if (set.has("founder") || set.has("decision") || set.has("product") || set.has("strategy")) return "Strategy";
   if (set.has("repo") || set.has("audit") || set.has("runtime")) return "Engineering";
   return "Builder tools";
+}
+
+function directoryInfo(manifest: HarnessManifest): RegistryItem["directory"] | undefined {
+  if (manifest.content.type !== "directory") return undefined;
+  return {
+    ...(manifest.content.directory?.url ? { url: manifest.content.directory.url } : {}),
+    ...(manifest.content.directory?.item_count !== undefined ? { itemCount: manifest.content.directory.item_count } : {}),
+    ...(manifest.content.directory?.category ? { category: manifest.content.directory.category } : {}),
+    ...(manifest.content.directory?.notes ? { notes: manifest.content.directory.notes } : {})
+  };
 }
 
 function collectFiles(root: string, dir: string, files: string[]) {

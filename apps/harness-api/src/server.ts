@@ -112,6 +112,18 @@ type ArchiveClientResponse = {
   headers?: Record<string, string>;
 };
 
+type DirectoryLinkOnlyBody = {
+  error: "Directory link only";
+  code: "DIRECTORY_LINK_ONLY";
+  owner: string;
+  repo: string;
+  url?: string;
+  item_count?: number;
+  category?: string;
+  notes?: string;
+  next: string;
+};
+
 const app = Fastify({ logger: true });
 await app.register(cors, {
   origin: (origin, callback) => {
@@ -714,6 +726,17 @@ const harnessDetailFromMcp = async ({ owner, name }: { owner: string; name: stri
 const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: string }, authorization?: string) => {
   const detail = await harnessDetailPayload(owner, name, authorization);
   if ("error" in detail) return detail;
+  if (detail.manifest?.content?.type === "directory") {
+    const directory = detail.manifest.content.directory;
+    return {
+      command: directory?.url ? `open ${directory.url}` : `hh search ${name}`,
+      archiveUrl: null,
+      contentType: "directory",
+      directory,
+      payment: { required: false },
+      next: ["Open the upstream directory", "Review source state and licensing before importing entries"]
+    };
+  }
   const version = detail.manifest?.version ?? "current";
   const pricing = detail.manifest?.pricing;
   return {
@@ -760,6 +783,9 @@ async function archiveForClient(owner: string, repo: string, version: string | u
   if (!manifest) return { status: 500, body: { error: "Harness manifest unavailable" } };
   const orgGate = gateOrgVisibility(owner, manifest, authorization, "archive");
   if (!orgGate.ok) return { status: orgGate.status, body: { error: orgGate.error } };
+  if (manifest.content.type === "directory") {
+    return { status: 409, body: directoryLinkOnlyBody(owner, repo, manifest) };
+  }
   const archive = registry.buildArchiveForVersion(owner, repo, root, version);
   if (!archive) return { status: 404, body: { error: "Harness version not found" } };
   const auth = authorization ? await userFromAuthorization(authorization) : {};
@@ -785,6 +811,23 @@ async function archiveForClient(owner: string, repo: string, version: string | u
   }
   await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
   return { status: 200, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
+}
+
+function directoryLinkOnlyBody(owner: string, repo: string, manifest: HarnessManifest): DirectoryLinkOnlyBody {
+  const directory = manifest.content.directory;
+  return {
+    error: "Directory link only",
+    code: "DIRECTORY_LINK_ONLY",
+    owner,
+    repo,
+    ...(directory?.url ? { url: directory.url } : {}),
+    ...(directory?.item_count !== undefined ? { item_count: directory.item_count } : {}),
+    ...(directory?.category ? { category: directory.category } : {}),
+    ...(directory?.notes ? { notes: directory.notes } : {}),
+    next: directory?.url
+      ? `Open ${directory.url} and review upstream source/licensing before importing entries.`
+      : "Open the upstream directory and review source/licensing before importing entries."
+  };
 }
 
 async function settleX402ArchivePayment(input: {

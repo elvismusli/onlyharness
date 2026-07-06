@@ -220,6 +220,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
 }) {
   const stars = item.stars + (starred ? 1 : 0);
   const heat = item.heat + (starred ? 0.4 : 0);
+  const isDirectory = item.contentType === "directory";
   return (
     <article className="win small hcard">
       <TitleBar text={item.title} decor onClick={() => onOpen()} />
@@ -227,13 +228,24 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         <div className="promise" onClick={() => onOpen()}>{item.summary}</div>
         <div className="tagrow">
           {item.tags.slice(0, 3).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
+          {isDirectory && <span className="tag98 warn">link-only directory</span>}
           {item.standard === "conformant" && <span className="tag98 safe">✓ Standard</span>}
           {item.installConfirms > 0 && <span className="tag98 safe">Claude Code: {item.installConfirms}</span>}
         </div>
         <div className="compat-chiprow">
-          <span className="tag98 safe">CLI</span>
-          <span className="tag98 safe">MCP</span>
-          <span className="tag98 safe">HTTP archive</span>
+          {isDirectory ? (
+            <>
+              <span className="tag98 safe">Open link</span>
+              {item.directory?.itemCount !== undefined && <span className="tag98">{item.directory.itemCount} items</span>}
+              {item.directory?.category && <span className="tag98">{item.directory.category}</span>}
+            </>
+          ) : (
+            <>
+              <span className="tag98 safe">CLI</span>
+              <span className="tag98 safe">MCP</span>
+              <span className="tag98 safe">HTTP archive</span>
+            </>
+          )}
         </div>
         <div className="stats-plate">
           <span>⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span>
@@ -251,8 +263,8 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         </div>
         <div className="hcard-actions hcard-cta-grid">
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>
-          <Btn strong onClick={() => onOpen("Install")}>💿 Install</Btn>
-          <Btn onClick={() => onOpen("Try sample")}>Try</Btn>
+          <Btn strong onClick={() => isDirectory ? onOpen("Overview") : onOpen("Install")}>{isDirectory ? "🌐 Open" : "💿 Install"}</Btn>
+          <Btn onClick={() => onOpen(isDirectory ? "Files" : "Try sample")}>{isDirectory ? "Source" : "Try"}</Btn>
           <Btn pressed={forked} onClick={onFork} title="Fork">⑂</Btn>
         </div>
       </div>

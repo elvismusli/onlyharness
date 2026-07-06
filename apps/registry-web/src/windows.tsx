@@ -74,7 +74,11 @@ type InstallTab = (typeof INSTALL_TABS)[number];
 export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: "cli" | "archive" | "mcp" | "plugin") => void; copied: boolean }) {
   const [tab, setTab] = useState<InstallTab>("CLI");
   const target = item ? `${item.owner}/${item.name}` : "";
-  const cliCommands = item
+  const isDirectory = item?.contentType === "directory";
+  const directoryUrl = item?.directory?.url ?? item?.forgeUrl;
+  const cliCommands = item && isDirectory
+    ? `open ${directoryUrl}\n# Link-only directory. Review upstream source and licensing before importing entries.`
+    : item
     ? [
         `npx onlyharness pull ${target}`,
         `npx onlyharness run ${item.name} --json`,
@@ -82,14 +86,22 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
         `npx onlyharness gate --dir ${item.name} --json`
       ].join("\n")
     : "Select a harness to generate install commands.";
-  const archive = item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
-  const mcpConfig = item
+  const archive = item && isDirectory ? directoryUrl ?? "" : item ? `curl -s https://onlyharness.com/api/repos/${target}/archive` : "";
+  const mcpConfig = item && isDirectory
+    ? `# Directory entries are link-only.\nopen ${directoryUrl}`
+    : item
     ? `claude mcp add onlyharness https://onlyharness.com/mcp\n# then call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
     : "Select a harness to generate MCP setup.";
-  const pluginGuide = item
+  const pluginGuide = item && isDirectory
+    ? `# Plugin install is not needed for link-only directories.\nopen ${directoryUrl}`
+    : item
     ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin v0.1 exposes the OnlyHarness skill and MCP wiring guide.\n# Use: npx onlyharness pull ${target}`
     : "Select a harness to generate plugin setup.";
-  const targets: CompatibilityTarget[] = [
+  const targets: CompatibilityTarget[] = isDirectory ? [
+    { name: "Open link", status: "available", detail: directoryUrl },
+    { name: "License review", status: "planned", detail: "required before vendoring upstream content" },
+    { name: "Harness import", status: "planned", detail: "convert selected entries only after source review" }
+  ] : [
     { name: "CLI", status: "available", detail: "npx onlyharness pull/run/eval/gate" },
     { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
     { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
@@ -101,7 +113,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
   return (
     <div className="win-body">
       <div className="detail-head">
-        <div className="owner-line">Install Center</div>
+        <div className="owner-line">{isDirectory ? "Directory Shelf" : "Install Center"}</div>
         <h2>{item?.title ?? "Pick a harness"}</h2>
         <div className="promise">{item?.summary ?? "No harness selected."}</div>
       </div>
@@ -110,7 +122,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
         <section>
           <TabStrip tabs={INSTALL_TABS} active={tab} onSelect={setTab} />
           <div className="trust-box">
-            <h4>{tab === "CLI" ? "Recommended install loop" : tab === "MCP" ? "MCP setup" : tab === "Plugin" ? "Plugin v0.1" : "Planned adapters"}</h4>
+            <h4>{isDirectory ? "Directory link" : tab === "CLI" ? "Recommended install loop" : tab === "MCP" ? "MCP setup" : tab === "Plugin" ? "Plugin v0.1" : "Planned adapters"}</h4>
             {tab === "CLI" && <pre className="pre98">{cliCommands}</pre>}
             {tab === "MCP" && <pre className="pre98">{mcpConfig}</pre>}
             {tab === "Plugin" && <pre className="pre98">{pluginGuide}</pre>}
@@ -126,7 +138,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               <Btn strong disabled={!item} onClick={() => onCopy(tab === "MCP" ? mcpConfig : tab === "Plugin" ? pluginGuide : cliCommands, tab === "MCP" ? "mcp" : tab === "Plugin" ? "plugin" : "cli")}>{copied ? "✓ Copied" : "📋 Copy shown setup"}</Btn>
-              <Btn disabled={!item} onClick={() => onCopy(archive, "archive")}>📦 Copy archive curl</Btn>
+              <Btn disabled={!item} onClick={() => onCopy(archive, "archive")}>{isDirectory ? "🌐 Copy directory URL" : "📦 Copy archive curl"}</Btn>
             </div>
           </div>
 
@@ -147,13 +159,13 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
 
         <aside className="trust-panel">
           <div className="trust-box">
-            <h4>Trust before install</h4>
+            <h4>{isDirectory ? "Trust before import" : "Trust before install"}</h4>
             <InfoLine label="Eval" value={item ? `${item.evalScore ? item.evalScore.toFixed(2) : "unknown"} (${item.evalStatus})` : "select a harness"} />
             <InfoLine label="Risk" value={item ? `${item.riskTier} (${item.riskScore})` : "select a harness"} />
             <InfoLine label="Context" value={item ? fmtContextCost(item.contextCost) : "select a harness"} />
             <InfoLine label="Standard" value={item?.standard ?? "select a harness"} />
           </div>
-          <div className="plate" style={{ fontSize: 11 }}>Cursor adapter and team bundle are not shipped yet.</div>
+          <div className="plate" style={{ fontSize: 11 }}>{isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Cursor adapter and team bundle are not shipped yet."}</div>
         </aside>
       </div>
     </div>
@@ -330,15 +342,26 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
 
 export function CliBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string) => void; copied: boolean }) {
   const pull = item?.cliCommand ?? "hh pull harnesses/deep-market-researcher";
-  const commands = `${pull}\nhh run --input examples/input.md\nhh eval && hh gate\nhh publish`;
+  const isDirectory = item?.contentType === "directory";
+  const commands = isDirectory
+    ? `${pull}\n# link-only directory: review upstream source and licensing before importing entries`
+    : `${pull}\nhh run --input examples/input.md\nhh eval && hh gate\nhh publish`;
   return (
     <div className="win-body">
       <div className="term">
         <span className="dim">OnlyHarness CLI [Version 0.98]{"\n"}(C) Season 4 — Wild West. Fork responsibly.{"\n\n"}</span>
         C:\hub&gt; {pull}{"\n"}
-        C:\hub&gt; hh run --input examples/input.md{"\n"}
-        C:\hub&gt; hh eval &amp;&amp; hh gate{"\n"}
-        C:\hub&gt; hh publish{"\n\n"}
+        {isDirectory ? (
+          <>
+            <span className="dim">{"  "}link-only directory: no run/eval/gate loop{"\n\n"}</span>
+          </>
+        ) : (
+          <>
+            C:\hub&gt; hh run --input examples/input.md{"\n"}
+            C:\hub&gt; hh eval &amp;&amp; hh gate{"\n"}
+            C:\hub&gt; hh publish{"\n\n"}
+          </>
+        )}
         C:\hub&gt; hh doctor{"\n"}
         <span className="dim">
           {"  "}registry ui ....... http://127.0.0.1:5177 [OK]{"\n"}
@@ -439,9 +462,15 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
 export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: RegistryItem; starred: boolean; refCode?: string; onCopy: (text: string) => void; copied: boolean }) {
   const stars = item.stars + (starred ? 1 : 0);
   const heat = item.heat + (starred ? 0.4 : 0);
+  const isDirectory = item.contentType === "directory";
+  const shareBanner = isDirectory ? "★ LOOK AT MY DIRECTORY ★" : "★ LOOK AT MY HARNESS ★";
+  const shareCommand = item.cliCommand ?? (isDirectory && item.directory?.url ? `open ${item.directory.url}` : `hh pull ${item.owner}/${item.name}`);
+  const metricLine = isDirectory
+    ? `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · ${item.directory?.itemCount ?? "curated"} items · Heat ${heat.toFixed(1)}🔥`
+    : `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥`;
   const baseUrl = typeof window === "undefined" ? "https://onlyharness.com" : window.location.origin;
   const shareUrl = `${baseUrl}/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-  const brag = `★ LOOK AT MY HARNESS ★\n${item.title} — ${item.summary}\n★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · Heat ${heat.toFixed(1)}🔥\nWorks with: CLI, MCP, HTTP archive\n${shareUrl}\n> ${item.cliCommand}`;
+  const brag = `${shareBanner}\n${item.title} — ${item.summary}\n${metricLine}\nWorks with: ${isDirectory ? "Open link, source review" : "CLI, MCP, HTTP archive"}\n${shareUrl}\n> ${shareCommand}`;
   return (
     <div className="win-body">
       <div className="share-stage">
@@ -453,7 +482,7 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
             </div>
             <div style={{ flex: 1, display: "flex", gap: 22, padding: 24, minHeight: 0 }}>
               <div style={{ flex: 1.5, display: "flex", flexDirection: "column", minWidth: 0 }}>
-                <div className="share-banner">★ LOOK AT MY HARNESS ★</div>
+                <div className="share-banner">{shareBanner}</div>
                 <div className="share-title-box">
                   <div className="wordart">{item.title}</div>
                 </div>
@@ -461,16 +490,16 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
                 <div className="share-tags">
                   {item.tags.slice(0, 2).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
                   {item.riskTier === "LOW" && <span className="tag98 safe">✓ safety reviewed</span>}
-                  <span className="tag98 safe">CLI</span>
-                  <span className="tag98 safe">MCP</span>
+                  <span className="tag98 safe">{isDirectory ? "Open link" : "CLI"}</span>
+                  <span className="tag98 safe">{isDirectory ? "Source review" : "MCP"}</span>
                 </div>
                 <div style={{ flex: 1 }} />
                 <div className="share-stats">
                   <div className="share-stat"><div className="num">★ {fmtK(stars)}</div><div className="cap">stars</div></div>
                   <div className="share-stat"><div className="num">⑂ {fmtK(item.forks)}</div><div className="cap">forks</div></div>
                   <div className="share-stat"><div className="num">💬 {item.threads}</div><div className="cap">threads</div></div>
-                  <div className="share-stat"><div className="num ok">{item.evalScore ? item.evalScore.toFixed(2) : "—"}</div><div className="cap">eval</div></div>
-                  <div className="share-stat"><div className="num">{fmtK(item.contextCost.approxTokens)}</div><div className="cap">ctx tokens</div></div>
+                  <div className="share-stat"><div className="num ok">{isDirectory ? item.directory?.itemCount ?? "—" : item.evalScore ? item.evalScore.toFixed(2) : "—"}</div><div className="cap">{isDirectory ? "items" : "eval"}</div></div>
+                  <div className="share-stat"><div className="num">{isDirectory ? item.directory?.category ?? "index" : fmtK(item.contextCost.approxTokens)}</div><div className="cap">{isDirectory ? "category" : "ctx tokens"}</div></div>
                 </div>
               </div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -486,12 +515,12 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
                 </div>
                 <div className="share-award">
                   <span style={{ fontSize: 40 }}>🏆</span>
-                  <span>{item.badge.includes("Wild") ? <>Best Harness in the<br />Wild West · Wk {isoWeek(new Date())} 🤠</> : <>Certified frontier<br />harness 🤠</>}</span>
+                  <span>{isDirectory ? <>Curated link-only<br />directory · Wk {isoWeek(new Date())}</> : item.badge.includes("Wild") ? <>Best Harness in the<br />Wild West · Wk {isoWeek(new Date())} 🤠</> : <>Certified frontier<br />harness 🤠</>}</span>
                 </div>
               </div>
             </div>
             <div className="share-footer">
-              <span>&gt; {item.cliCommand}</span>
+              <span>&gt; {shareCommand}</span>
               <span className="site">onlyharness.com 🌐</span>
             </div>
           </div>

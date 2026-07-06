@@ -1,0 +1,62 @@
+schemaVersion: harness.v0.2
+name: awesome-agent-directories
+title: Awesome Agent Directories
+summary: Link-only shelf for awesome lists and catalogs of agent skills, MCP servers and AI workflows.
+version: 0.1.0
+license: UNSPECIFIED
+content:
+  type: directory
+  directory:
+    url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
+    item_count: 24
+    category: catalog
+    notes: Section 2 of the verified catalog; use as discovery only, not vendored content.
+source:
+  upstream_url: https://github.com/elvismusli/onlyharness/blob/main/docs/research/verified-catalog-2026-07.md
+  upstream_license: UNSPECIFIED
+  attribution: OnlyHarness verified catalog section 2.
+  vendor_policy: link-only
+tags: [directory, awesome, catalog]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: curator
+    role: directory_curator
+    title: Directory Curator
+    prompt: agents/curator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: curator
+  stages:
+    - id: inspect
+      agent: curator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.8
+  max_regression: 0.03
+  max_cost_usd_per_run: 1
+  max_risk_score: 39
+  required_checks: [schema_valid]
+examples:
+  - title: Directory lookup
+    input: examples/input.md
+    output: examples/expected.md
