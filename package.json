@@ -18,10 +18,11 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run check:mcp-registry && npm run check:plugin && npm run check:public-copy && npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present && npm run test:scripts",
+    "check": "npm run check:mcp-registry && npm run check:plugin && npm run check:public-copy && npm run check:production-config && npm run typecheck --workspaces --if-present && npm run test --workspaces --if-present && npm run test:scripts",
     "check:mcp-registry": "tsx scripts/check-mcp-registry.ts",
     "check:plugin": "tsx scripts/check-claude-plugin.ts",
     "check:public-copy": "tsx scripts/check-public-copy.ts",
+    "check:production-config": "tsx scripts/check-production-config.ts",
     "dev": "node scripts/dev.mjs",
     "gitea:bootstrap": "tsx scripts/bootstrap-gitea.ts",
     "gitea:proof": "tsx scripts/proof-gitea-loop.ts",

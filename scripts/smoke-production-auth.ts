@@ -14,6 +14,7 @@ const email = `qa+publish-${suffix}@onlyharness.com`;
 const password = `OnlyHarnessSmoke-${suffix}!`;
 const name = `qa-publish-${suffix}`;
 const expectEmailConfirmation = process.env.SMOKE_EXPECT_EMAIL_CONFIRMATION === "1";
+const authRateLimitOk = process.env.SMOKE_AUTH_RATE_LIMIT_OK === "1";
 
 const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
   email,
@@ -24,7 +25,13 @@ const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
   }
 });
 
-if (signUpError) throw new Error(`Supabase signUp failed: ${signUpError.message}`);
+if (signUpError) {
+  if (authRateLimitOk && /rate limit/i.test(signUpError.message)) {
+    console.warn(`Production auth confirmation smoke skipped: Supabase signup rate limited (${signUpError.message})`);
+    process.exit(0);
+  }
+  throw new Error(`Supabase signUp failed: ${signUpError.message}`);
+}
 
 if (expectEmailConfirmation) {
   if (signUpData.session?.access_token) {
