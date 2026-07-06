@@ -24,6 +24,7 @@ export type ExploreActions = {
   openCli: () => void;
   openReview: () => void;
   openLeaderboard: () => void;
+  openProfile: () => void;
   openLogon: () => void;
   logOff: () => void;
   cantClose: () => void;
@@ -96,6 +97,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
       items: [
         { icon: "💬", label: top ? `Thread: ${top.title}` : "Threads", onClick: () => top && actions.openHarness(top, "Thread") },
         { icon: "🏆", label: "Wild West leaderboard", onClick: actions.openLeaderboard },
+        { icon: "🗂️", label: "My Briefcase...", onClick: actions.openProfile },
         { icon: "★", label: "My starred harnesses", onClick: () => setJobFilter("starred") }
       ]
     },

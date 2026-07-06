@@ -135,6 +135,11 @@ export type StorefrontPage = {
   items: RegistryItem[];
 };
 
+export type StorefrontProfile = StorefrontPage["profile"] & {
+  user_id: string;
+  referral_code: string;
+};
+
 export type OrgAuditEntry = {
   slug: string;
   action: string;
@@ -173,7 +178,7 @@ export type OrgWorkspace = {
 export const DETAIL_TABS = ["Overview", "Install", "Trust", "Try sample", "Thread", "Files", "Versions"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
-export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share" | "storefront" | "network";
+export type WinKind = "harness" | "publish" | "install" | "cli" | "review" | "leaderboard" | "share" | "storefront" | "profile" | "network";
 
 /* stacking order = position in the wins array (last = top); z-index derives from it */
 export type FloatWin = {

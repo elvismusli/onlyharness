@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "./compat";
 import { fmtContextCost, fmtK, heatPct, isoWeek } from "./format";
-import type { CompatibilityTarget, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage } from "./types";
+import type { CompatibilityTarget, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "./types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 /* ---------- New Harness Wizard (publish) ---------- */
@@ -179,6 +179,92 @@ export function StorefrontBody({ page, handle, referrer, onOpen, onCopy, copied 
             </div>
           </div>
           <div className="plate" style={{ fontSize: 11 }}>Referral attribution is applied at checkout; it does not grant free access.</div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+export function StorefrontEditorBody({ loggedIn, profile, handle, setHandle, displayName, setDisplayName, bio, setBio, status, busy, onSave, onOpenPublic, onLogon }: {
+  loggedIn: boolean;
+  profile?: StorefrontProfile;
+  handle: string;
+  setHandle: (value: string) => void;
+  displayName: string;
+  setDisplayName: (value: string) => void;
+  bio: string;
+  setBio: (value: string) => void;
+  status: string;
+  busy: boolean;
+  onSave: () => void;
+  onOpenPublic: () => void;
+  onLogon: () => void;
+}) {
+  if (!loggedIn) {
+    return (
+      <div className="win-body">
+        <div className="detail-head">
+          <div className="owner-line">My Briefcase</div>
+          <h2>Create your @handle</h2>
+          <div className="promise">Log on before publishing a public creator storefront.</div>
+        </div>
+        <div className="trust-box">
+          <Btn strong onClick={onLogon}>🔑 Log on</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const publicHandle = profile?.handle ?? handle.trim().replace(/^@/, "").toLowerCase();
+  const publicUrl = publicHandle ? `${typeof window === "undefined" ? "https://onlyharness.com" : window.location.origin}/#/@${encodeURIComponent(publicHandle)}` : "";
+
+  return (
+    <div className="win-body">
+      <div className="detail-head">
+        <div className="owner-line">My Briefcase</div>
+        <h2>{profile ? `@${profile.handle}` : "Create your @handle"}</h2>
+        <div className="promise">{profile?.bio || "Claim a public handle before sharing creator ref-links."}</div>
+        <div className="tagrow">
+          {profile?.referral_code && <span className="tag98 safe">ref {profile.referral_code}</span>}
+          <span className="tag98">public safe profile</span>
+        </div>
+      </div>
+
+      <div className="detail-grid">
+        <section>
+          <div className="trust-box">
+            <h4>Profile</h4>
+            <div className="form-grid">
+              <label>
+                <span>Handle</span>
+                <div className="field98"><input value={handle} onChange={(event) => setHandle(event.target.value)} placeholder="founder-tools" autoComplete="nickname" /></div>
+              </label>
+              <label>
+                <span>Display name</span>
+                <div className="field98"><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Founder Tools" autoComplete="name" /></div>
+              </label>
+              <label>
+                <span>Bio</span>
+                <div className="field98"><textarea rows={4} value={bio} onChange={(event) => setBio(event.target.value)} placeholder="Reusable agent harnesses for operator workflows." /></div>
+              </label>
+            </div>
+            <div className="tagrow">
+              <span className="tag98">3-32 chars</span>
+              <span className="tag98">lowercase letters, numbers, hyphens</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <Btn strong onClick={onSave} disabled={busy}>{busy ? "⌛ Saving..." : profile ? "💾 Save profile" : "🗂️ Claim handle"}</Btn>
+              <Btn onClick={onOpenPublic} disabled={!profile}>🌐 Open public page</Btn>
+            </div>
+            {status && <p className="logon-status">{status}</p>}
+          </div>
+        </section>
+        <aside className="trust-panel">
+          <div className="trust-box">
+            <h4>Public URL</h4>
+            <pre className="pre98" style={{ maxHeight: 86 }}>{publicUrl || "Save a handle to create a public URL."}</pre>
+          </div>
+          <div className="plate" style={{ fontSize: 11 }}>Email, auth identity and private harnesses stay out of the public storefront.</div>
         </aside>
       </div>
     </div>

@@ -257,6 +257,22 @@ input, textarea, select { font-family: var(--font-ui); color: var(--ink); }
 .tag98.safe { background: var(--safe-bg); color: var(--safe-ink); font-weight: bold; }
 .tag98.warn { background: var(--warn-bg); color: var(--maroon); font-weight: bold; }
 
+.form-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.form-grid .field98 {
+  font-weight: normal;
+}
+
 .plate {
   background: var(--light);
   box-shadow: var(--bevel-thin);

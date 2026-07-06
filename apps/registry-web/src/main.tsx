@@ -6,8 +6,8 @@ import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu,
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
 import { clockLabel, keyFor, relativeTime } from "./format";
-import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, ThreadItem, WinKind } from "./types";
-import { CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody } from "./windows";
+import type { DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
+import { CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
 
@@ -27,6 +27,7 @@ const WIN_WIDTHS: Record<WinKind, number> = {
   leaderboard: 460,
   share: 660,
   storefront: 860,
+  profile: 660,
   network: 900
 };
 
@@ -58,6 +59,12 @@ function App() {
   const [authStatus, setAuthStatus] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [myHandle, setMyHandle] = useState("");
+  const [myStorefront, setMyStorefront] = useState<StorefrontProfile | undefined>();
+  const [storefrontHandle, setStorefrontHandle] = useState("");
+  const [storefrontDisplayName, setStorefrontDisplayName] = useState("");
+  const [storefrontBio, setStorefrontBio] = useState("");
+  const [storefrontStatus, setStorefrontStatus] = useState("");
+  const [storefrontBusy, setStorefrontBusy] = useState(false);
 
   /* publish */
   const [importName, setImportName] = useState("customer-research-pipeline");
@@ -133,6 +140,11 @@ function App() {
       setStarred({});
       setRemixed({});
       setMyHandle("");
+      setMyStorefront(undefined);
+      setStorefrontHandle("");
+      setStorefrontDisplayName("");
+      setStorefrontBio("");
+      setStorefrontStatus("");
       return;
     }
     supabase
@@ -154,8 +166,18 @@ function App() {
     fetch(`${apiUrl}/me/storefront`, {
       headers: { Authorization: `Bearer ${session.access_token}` }
     })
-      .then((response) => response.ok ? response.json() : undefined)
-      .then((profile: { handle?: string } | undefined) => setMyHandle(profile?.handle ?? ""))
+      .then(async (response) => {
+        if (response.status === 404) return undefined;
+        if (!response.ok) throw new Error(`Storefront profile failed (${response.status})`);
+        return await response.json() as StorefrontProfile;
+      })
+      .then((profile) => {
+        setMyStorefront(profile);
+        setMyHandle(profile?.handle ?? "");
+        setStorefrontHandle(profile?.handle ?? "");
+        setStorefrontDisplayName(profile?.display_name ?? "");
+        setStorefrontBio(profile?.bio ?? "");
+      })
       .catch(() => undefined);
   }, [session]);
 
@@ -391,6 +413,60 @@ function App() {
     openWin("storefront", clean);
   }
 
+  function openMyBriefcase() {
+    if (!session?.user) {
+      setAuthStatus("");
+      setLogon({ open: true, note: "Log on to create your creator @handle." });
+      return;
+    }
+    setStorefrontStatus("");
+    openWin("profile");
+  }
+
+  async function saveMyStorefront() {
+    if (!session?.access_token) {
+      openMyBriefcase();
+      return;
+    }
+    setStorefrontBusy(true);
+    setStorefrontStatus("");
+    const previousHandle = myStorefront?.handle;
+    try {
+      const response = await fetch(`${apiUrl}/me/storefront`, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          handle: storefrontHandle,
+          display_name: storefrontDisplayName,
+          bio: storefrontBio
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Storefront save failed (${response.status})`);
+      const profile = data as StorefrontProfile;
+      setMyStorefront(profile);
+      setMyHandle(profile.handle);
+      setStorefrontHandle(profile.handle);
+      setStorefrontDisplayName(profile.display_name);
+      setStorefrontBio(profile.bio);
+      setStorefronts((current) => {
+        const next = { ...current };
+        if (previousHandle) delete next[previousHandle];
+        delete next[profile.handle];
+        return next;
+      });
+      setStorefrontStatus(`Saved @${profile.handle}`);
+      flashMsg(`Saved @${profile.handle}`);
+    } catch (error) {
+      setStorefrontStatus(error instanceof Error ? error.message : "Storefront save failed");
+    } finally {
+      setStorefrontBusy(false);
+    }
+  }
+
   function openInstall(item?: RegistryItem) {
     const selected = item ?? topItem;
     if (selected?.contentType === "directory" && selected.directory?.url) {
@@ -586,6 +662,7 @@ function App() {
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
       case "share": return { icon: "💾", title: `harness_flex.exe — ${item?.title ?? ""}` };
       case "storefront": return { icon: "🗂️", title: `@${win.hkey ?? "handle"} — My Briefcase` };
+      case "profile": return { icon: "🗂️", title: "My Briefcase — Creator Profile" };
       case "network": return { icon: "🌐", title: "Network Neighborhood" };
     }
   }
@@ -621,7 +698,7 @@ function App() {
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
     { icon: "🌐", label: "Network Neighborhood", onClick: () => openWin("network") },
     { icon: "💿", label: "Install Center", onClick: () => openInstall(topItem) },
-    ...(myHandle ? [{ icon: "🗂️", label: `@${myHandle}`, onClick: () => openStorefront(myHandle) }] : []),
+    { icon: "🗂️", label: myHandle ? `My Briefcase (@${myHandle})` : "My Briefcase...", onClick: openMyBriefcase },
     { icon: "📄", label: "New harness...", onClick: () => openWin("publish") },
     { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", topItem ? keyFor(topItem) : undefined) },
     { icon: "🔧", label: "Maintainer Review", onClick: () => openReview() },
@@ -718,6 +795,24 @@ function App() {
         const handle = win.hkey ?? "";
         return <StorefrontBody page={storefronts[handle]} handle={handle} referrer={refCode} onOpen={(entry) => openHarness(entry)} onCopy={(text) => copyText(text, "Ref-link copied", `storefront:${handle}`)} copied={copiedTag === `storefront:${handle}`} />;
       }
+      case "profile":
+        return (
+          <StorefrontEditorBody
+            loggedIn={Boolean(session?.user)}
+            profile={myStorefront}
+            handle={storefrontHandle}
+            setHandle={setStorefrontHandle}
+            displayName={storefrontDisplayName}
+            setDisplayName={setStorefrontDisplayName}
+            bio={storefrontBio}
+            setBio={setStorefrontBio}
+            status={storefrontStatus}
+            busy={storefrontBusy}
+            onSave={saveMyStorefront}
+            onOpenPublic={() => myStorefront && openStorefront(myStorefront.handle)}
+            onLogon={() => { setAuthStatus(""); setLogon({ open: true, note: "Log on to create your creator @handle." }); }}
+          />
+        );
       case "network":
         return (
           <NetworkBody
@@ -781,6 +876,7 @@ function App() {
             openCli: () => openWin("cli", topItem ? keyFor(topItem) : undefined),
             openReview,
             openLeaderboard: () => openWin("leaderboard"),
+            openProfile: openMyBriefcase,
             openLogon: () => { setAuthStatus(""); setLogon({ open: true, note: "" }); },
             logOff,
             cantClose,
