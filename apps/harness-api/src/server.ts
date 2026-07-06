@@ -216,7 +216,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
-  const orgGate = gateOrgVisibility(owner, inspection.manifest, headerValue(request.headers.authorization), "detail");
+  const orgGate = await gateOrgVisibility(owner, inspection.manifest, headerValue(request.headers.authorization), "detail");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
@@ -274,7 +274,7 @@ app.post("/billing/checkout", async (request, reply) => {
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
   if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
-  const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "checkout");
+  const orgGate = await gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "checkout");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   const archive = registry.buildArchiveForVersion(owner, repo, root, body.version);
   if (!archive) return reply.code(404).send({ error: "Harness version not found" });
@@ -343,9 +343,9 @@ app.post("/billing/escrow/timeout", async (request, reply) => {
 app.get("/entitlements/check", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Entitlement checks are not enabled" });
   const token = orgTokenFromRequest(request);
-  const auth = authorizeAnyOrgToken(token, ["entitlements:read"]);
+  const auth = await authorizeAnyOrgToken(token, ["entitlements:read"]);
   if (!auth.ok) {
-    appendOrgAudit({ slug: auth.slug ?? "unknown", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "entitlements_check" });
+    await appendOrgAudit({ slug: auth.slug ?? "unknown", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "entitlements_check" });
     return reply.code(auth.status).send({ error: auth.error });
   }
 
@@ -361,7 +361,7 @@ app.get("/entitlements/check", async (request, reply) => {
   if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
   const orgGate = gateEntitlementCheckVisibility(harness.owner, manifest, auth.org.slug);
   if (!orgGate.ok) {
-    appendOrgAudit({ slug: auth.org.slug, action: orgGate.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${harness.owner}/${harness.repo}` });
+    await appendOrgAudit({ slug: auth.org.slug, action: orgGate.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${harness.owner}/${harness.repo}` });
     return reply.code(orgGate.status).send({ error: orgGate.error });
   }
 
@@ -374,7 +374,7 @@ app.get("/entitlements/check", async (request, reply) => {
     manifest,
     subject
   });
-  appendOrgAudit({ slug: auth.org.slug, action: "entitlement_check_read", tokenName: auth.tokenName, subject: `${subject.type}:${subject.id}`, target: `${harness.owner}/${harness.repo}@${archive.version}` });
+  await appendOrgAudit({ slug: auth.org.slug, action: "entitlement_check_read", tokenName: auth.tokenName, subject: `${subject.type}:${subject.id}`, target: `${harness.owner}/${harness.repo}@${archive.version}` });
   return {
     ok: true,
     entitled: result.entitled,
@@ -448,9 +448,9 @@ app.post("/community/invite-code", async (request, reply) => {
 app.post("/community/verify-code", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Community code verification is not enabled" });
   const token = orgTokenFromRequest(request);
-  const auth = authorizeAnyOrgToken(token, ["entitlements:read"]);
+  const auth = await authorizeAnyOrgToken(token, ["entitlements:read"]);
   if (!auth.ok) {
-    appendOrgAudit({ slug: auth.slug ?? "unknown", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "community_code" });
+    await appendOrgAudit({ slug: auth.slug ?? "unknown", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "community_code" });
     return reply.code(auth.status).send({ error: auth.error });
   }
   const secret = communityInviteSecret();
@@ -459,7 +459,7 @@ app.post("/community/verify-code", async (request, reply) => {
   if (!body.code) return reply.code(400).send({ error: "code is required" });
   const verified = verifyCommunityInviteCode({ code: body.code, secret });
   if (!verified.ok) {
-    appendOrgAudit({ slug: auth.org.slug, action: verified.status === 410 ? "community_code_expired" : "community_code_denied", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "community_code" });
+    await appendOrgAudit({ slug: auth.org.slug, action: verified.status === 410 ? "community_code_expired" : "community_code_denied", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "community_code" });
     return reply.code(verified.status).send({ error: verified.error });
   }
 
@@ -470,13 +470,13 @@ app.post("/community/verify-code", async (request, reply) => {
   if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
   const orgGate = gateEntitlementCheckVisibility(owner, manifest, auth.org.slug);
   if (!orgGate.ok) {
-    appendOrgAudit({ slug: auth.org.slug, action: orgGate.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${owner}/${repo}` });
+    await appendOrgAudit({ slug: auth.org.slug, action: orgGate.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${owner}/${repo}` });
     return reply.code(orgGate.status).send({ error: orgGate.error });
   }
   const archive = registry.buildArchiveForVersion(owner, repo, root, version);
   if (!archive) return reply.code(404).send({ error: "Harness version not found" });
   const entitlement = await checkEntitlement({ owner, repo, version: archive.version, manifest, subject });
-  appendOrgAudit({ slug: auth.org.slug, action: "community_code_verified", tokenName: auth.tokenName, subject: `${subject.type}:${subject.id}`, target: `${owner}/${repo}@${archive.version}` });
+  await appendOrgAudit({ slug: auth.org.slug, action: "community_code_verified", tokenName: auth.tokenName, subject: `${subject.type}:${subject.id}`, target: `${owner}/${repo}@${archive.version}` });
   return {
     ok: true,
     allowed: entitlement.entitled,
@@ -603,12 +603,12 @@ app.get("/orgs/:slug/bundle", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Org setup is not enabled" });
   const { slug } = request.params as { slug: string };
   const token = orgTokenFromRequest(request);
-  const result = readOrgBundle(slug, token);
+  const result = await readOrgBundle(slug, token);
   if (!result.ok) {
-    appendOrgAudit({ slug: result.slug ?? "invalid", action: result.auditAction, tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
+    await appendOrgAudit({ slug: result.slug ?? "invalid", action: result.auditAction, tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
     return reply.code(result.status).send({ error: result.error });
   }
-  appendOrgAudit({ slug: result.org.slug, action: "bundle_read", tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
+  await appendOrgAudit({ slug: result.org.slug, action: "bundle_read", tokenName: result.tokenName, subject: eventSubject(undefined), target: "setup" });
   await recordEvent({ kind: "install", owner: result.org.slug, repo: "bundle", version: result.bundle.version, subject: eventSubject(undefined), target: "org_setup", client: "api" });
   return {
     organization: {
@@ -624,15 +624,15 @@ app.get("/orgs/:slug/workspace", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Org workspace is not enabled" });
   const { slug } = request.params as { slug: string };
   const token = orgTokenFromRequest(request);
-  const auth = authorizeOrgToken(slug, token, ["read", "setup", "publish"]);
+  const auth = await authorizeOrgToken(slug, token, ["read", "setup", "publish"]);
   if (!auth.ok) {
-    appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "workspace" });
+    await appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "workspace" });
     return reply.code(auth.status).send({ error: auth.error });
   }
   const counters = await fetchCountersMap();
   const owner = `@${auth.org.slug}`;
   const items = registry.sortRegistry(registry.scanHarnessRoot(owner, registry.orgImportRoot(auth.org.slug), counters), "new");
-  appendOrgAudit({ slug: auth.org.slug, action: "workspace_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "network_neighborhood" });
+  await appendOrgAudit({ slug: auth.org.slug, action: "workspace_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "network_neighborhood" });
   return {
     organization: {
       slug: auth.org.slug,
@@ -641,7 +641,7 @@ app.get("/orgs/:slug/workspace", async (request, reply) => {
     },
     items,
     permissions: orgWorkspacePermissionsSummary(items),
-    audit: readOrgAudit(auth.org.slug, 80)
+    audit: await readOrgAudit(auth.org.slug, 80)
   };
 });
 
@@ -649,15 +649,15 @@ app.post("/orgs/:slug/imports/markdown-to-harness", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Org publishing is not enabled" });
   const { slug } = request.params as { slug: string };
   const token = orgTokenFromRequest(request);
-  const auth = authorizeOrgToken(slug, token, ["publish"]);
+  const auth = await authorizeOrgToken(slug, token, ["publish"]);
   if (!auth.ok) {
-    appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "publish" });
+    await appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "publish" });
     return reply.code(auth.status).send({ error: auth.error });
   }
   const body = request.body as ImportRequest;
   const result = await importMarkdownToHarness(body, { id: `org:${auth.org.slug}` }, { orgSlug: auth.org.slug, owner: `@${auth.org.slug}` });
   if ("error" in result) return reply.code(result.status ?? 500).send({ error: result.error });
-  appendOrgAudit({ slug: auth.org.slug, action: "publish_import", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
+  await appendOrgAudit({ slug: auth.org.slug, action: "publish_import", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
   return result;
 });
 
@@ -665,9 +665,9 @@ app.post("/orgs/:slug/imports/harness-dir", async (request, reply) => {
   if (!orgsEnabled) return reply.code(404).send({ error: "Org publishing is not enabled" });
   const { slug } = request.params as { slug: string };
   const token = orgTokenFromRequest(request);
-  const auth = authorizeOrgToken(slug, token, ["publish"]);
+  const auth = await authorizeOrgToken(slug, token, ["publish"]);
   if (!auth.ok) {
-    appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "verified_publish" });
+    await appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "verified_publish" });
     return reply.code(auth.status).send({ error: auth.error });
   }
   const body = request.body && typeof request.body === "object" ? request.body as HarnessDirPublishRequest : {};
@@ -675,10 +675,10 @@ app.post("/orgs/:slug/imports/harness-dir", async (request, reply) => {
   if ("error" in result) {
     const payload: { error: string; failures?: string[] } = { error: result.error ?? "Publish failed" };
     if ("failures" in result && result.failures) payload.failures = result.failures;
-    appendOrgAudit({ slug: auth.org.slug, action: "verified_publish_rejected", tokenName: auth.tokenName, subject: eventSubject(undefined), target: body.name });
+    await appendOrgAudit({ slug: auth.org.slug, action: "verified_publish_rejected", tokenName: auth.tokenName, subject: eventSubject(undefined), target: body.name });
     return reply.code(result.status ?? 500).send(payload);
   }
-  appendOrgAudit({ slug: auth.org.slug, action: "verified_publish", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
+  await appendOrgAudit({ slug: auth.org.slug, action: "verified_publish", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
   return result;
 });
 
@@ -687,7 +687,7 @@ app.get("/repos/:owner/:repo/thread", async (request, reply) => {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
-  const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "thread");
+  const orgGate = await gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "thread");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   return { items: await fetchThreadPosts(owner, repo) };
 });
@@ -697,7 +697,7 @@ app.get("/repos/:owner/:repo/security-report", async (request, reply) => {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const { inspection, security } = registry.registryDetailBasics(root);
-  const orgGate = gateOrgVisibility(owner, inspection.manifest, headerValue(request.headers.authorization), "security");
+  const orgGate = await gateOrgVisibility(owner, inspection.manifest, headerValue(request.headers.authorization), "security");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   return security;
 });
@@ -707,7 +707,7 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
-  const orgGate = gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "semantic_diff");
+  const orgGate = await gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "semantic_diff");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   return reply.code(501).send({
     error: "Real forge PR semantic diff is not available yet",
@@ -996,7 +996,7 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
   const { inspection, evalResult, security, contextCost, standard } = registry.registryDetailBasics(root);
   const manifest = inspection.manifest;
   if (!manifest) return { status: 500, error: "Harness manifest unavailable" };
-  const orgGate = gateOrgVisibility(owner, manifest, authorization, "detail");
+  const orgGate = await gateOrgVisibility(owner, manifest, authorization, "detail");
   if (!orgGate.ok) return { status: orgGate.status, error: orgGate.error };
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
@@ -1086,7 +1086,7 @@ async function archiveForClient(owner: string, repo: string, version: string | u
   if (!root) return { status: 404, body: { error: "Harness not found" } };
   const manifest = registry.registryDetailBasics(root).inspection.manifest;
   if (!manifest) return { status: 500, body: { error: "Harness manifest unavailable" } };
-  const orgGate = gateOrgVisibility(owner, manifest, authorization, "archive");
+  const orgGate = await gateOrgVisibility(owner, manifest, authorization, "archive");
   if (!orgGate.ok) return { status: orgGate.status, body: { error: orgGate.error } };
   if (manifest.content.type === "directory") {
     return { status: 409, body: directoryLinkOnlyBody(owner, repo, manifest) };
@@ -1687,21 +1687,22 @@ function orgTokenFromAuthorization(authorization: string | undefined): string | 
   return authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
 }
 
-function gateOrgVisibility(owner: string, manifest: HarnessManifest | undefined, authorization: string | undefined, target: string):
+async function gateOrgVisibility(owner: string, manifest: HarnessManifest | undefined, authorization: string | undefined, target: string): Promise<
   | { ok: true }
-  | { ok: false; status: number; error: string } {
+  | { ok: false; status: number; error: string }
+> {
   if (owner.startsWith("@") && manifest?.visibility !== "org") return { ok: false, status: 403, error: "Org harness visibility mismatch" };
   if (manifest?.visibility === "private") return { ok: false, status: 403, error: "Private harness is not available through this API" };
   if (manifest?.visibility !== "org") return { ok: true };
   if (!orgsEnabled) return { ok: false, status: 404, error: "Org access is not enabled" };
   const slug = manifest.org;
   if (!slug || owner !== `@${slug}`) return { ok: false, status: 403, error: "Org harness owner mismatch" };
-  const auth = authorizeOrgToken(slug, orgTokenFromAuthorization(authorization), ["read", "setup", "publish"]);
+  const auth = await authorizeOrgToken(slug, orgTokenFromAuthorization(authorization), ["read", "setup", "publish"]);
   if (!auth.ok) {
-    appendOrgAudit({ slug: auth.slug ?? slug, action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target });
+    await appendOrgAudit({ slug: auth.slug ?? slug, action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target });
     return { ok: false, status: auth.status, error: auth.error };
   }
-  appendOrgAudit({ slug: auth.org.slug, action: `${target}_read`, tokenName: auth.tokenName, subject: eventSubject(undefined), target: manifest.name });
+  await appendOrgAudit({ slug: auth.org.slug, action: `${target}_read`, tokenName: auth.tokenName, subject: eventSubject(undefined), target: manifest.name });
   return { ok: true };
 }
 
