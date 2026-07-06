@@ -171,7 +171,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                 <div className="try-run">
                   <Btn strong onClick={onRunSample} disabled={tryState === "running" || isDirectory}>{isDirectory ? "Link-only" : "▶ Preview sample"}</Btn>
                   {tryState === "running" && <span className="run-status" style={{ color: "var(--navy)" }}>⌛ Opening bundled sample...</span>}
-                  {tryState === "done" && <span className="run-status">Sample preview recorded. Run the CLI eval before trusting it.</span>}
+                  {tryState === "done" && <span className="run-status">Sample preview opened. Run the CLI eval before trusting it.</span>}
                   <span style={{ fontSize: 11, color: "#404040", flexBasis: "100%" }}>
                     {isDirectory ? "Directory entries do not run samples. Open upstream and inspect current source state." : "Shows the bundled example only. No LLM, credentials or eval gate run in this browser."}
                   </span>
@@ -260,7 +260,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
             <div className="trust-stat"><span className="num">★ {fmtK(stars)}</span><span className="cap">stars</span></div>
             <div className="trust-stat"><span className="num">⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span><span className="cap">forks</span></div>
             <div className="trust-stat"><span className="num">💬 {item.threads}</span><span className="cap">threads</span></div>
-            <div className="trust-stat"><span className="num">▶ {fmtK(item.runs)}</span><span className="cap">runs</span></div>
+            <div className="trust-stat"><span className="num">✓ {fmtK(installConfirms)}</span><span className="cap">confirms</span></div>
           </div>
 
           <div className="trust-box">

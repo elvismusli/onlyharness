@@ -19,16 +19,16 @@ export async function fetchCountersMap(): Promise<Map<string, Counters>> {
 
   if (supabaseUrl && supabaseRestKey) {
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/harness_counters?select=owner,repo,stars,forks,threads,runs`, {
+      const response = await fetch(`${supabaseUrl}/rest/v1/harness_counters?select=owner,repo,stars,forks,threads`, {
         headers: restHeaders()
       });
       if (response.ok) {
-        for (const row of await response.json() as Array<Omit<Counters, "installConfirms"> & { owner: string; repo: string }>) {
+        for (const row of await response.json() as Array<Omit<Counters, "installConfirms" | "runs"> & { owner: string; repo: string }>) {
           counters.set(`${row.owner}/${row.repo}`, {
             stars: Number(row.stars) || 0,
             forks: Number(row.forks) || 0,
             threads: Number(row.threads) || 0,
-            runs: Number(row.runs) || 0,
+            runs: 0,
             installConfirms: 0
           });
         }

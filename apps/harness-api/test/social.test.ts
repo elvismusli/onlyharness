@@ -20,7 +20,7 @@ test("socialFromCounters returns honest zeros when no row exists", () => {
 test("heat grows from real signals and has no fake floor", () => {
   const now = new Date().toISOString();
   const cold = heatFor({ stars: 0, forks: 0, threads: 0, runs: 0, installConfirms: 0 }, 0, "LOW", now);
-  const warm = heatFor({ stars: 50, forks: 10, threads: 5, runs: 400, installConfirms: 2 }, 0.9, "LOW", now);
+  const warm = heatFor({ stars: 50, forks: 10, threads: 5, runs: 0, installConfirms: 2 }, 0.9, "LOW", now);
 
   assert.equal(cold, 0);
   assert.ok(warm > cold);

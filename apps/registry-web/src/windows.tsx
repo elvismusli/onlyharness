@@ -458,7 +458,7 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
         </button>
       ))}
       <div style={{ fontSize: 11, color: "#404040", marginTop: 6 }}>
-        Heat grows with stars, forks, runs and thread replies — and cools down when a harness sits idle.
+        Heat uses stars, forks, thread replies, verified run telemetry and Claude Code install confirms. Browser previews do not count.
       </div>
     </div>
   );

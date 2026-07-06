@@ -264,7 +264,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
         <div className="hcard-actions hcard-cta-grid">
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>
           <Btn strong onClick={() => isDirectory ? onOpen("Overview") : onOpen("Install")}>{isDirectory ? "🌐 Open" : "💿 Install"}</Btn>
-          <Btn onClick={() => onOpen(isDirectory ? "Files" : "Try sample")}>{isDirectory ? "Source" : "Try"}</Btn>
+          <Btn onClick={() => onOpen(isDirectory ? "Files" : "Try sample")}>{isDirectory ? "Source" : "Preview"}</Btn>
           <Btn pressed={forked} onClick={onFork} title="Fork">⑂</Btn>
         </div>
       </div>
