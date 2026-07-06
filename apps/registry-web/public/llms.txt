@@ -27,11 +27,19 @@ End-to-end example:
 
 ## CLI (hh)
 
-Not yet published to npm; run from the repo:
+After npm publish, agents can run the CLI without cloning the repo:
 
-    git clone https://github.com/elvismusli/onlyharness
-    cd onlyharness && npm install && npm run build
-    npm exec -w @harnesshub/cli -- hh <command>
+    npx onlyharness search market research
+    npx onlyharness pull harnesses/deep-market-researcher
+    npx onlyharness run deep-market-researcher
+    npm i -g onlyharness   # installs the hh command
+
+Local status: this branch prepares the onlyharness npm bundle but does not publish it.
+For local development from the repo:
+
+    npm install
+    npm run build -w onlyharness
+    node packages/harness-cli/dist/hh.mjs <command>
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
 - hh pull {owner}/{name}    download a harness into ./{name}

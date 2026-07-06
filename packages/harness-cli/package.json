@@ -1,25 +1,46 @@
 {
-  "name": "@harnesshub/cli",
-  "version": "0.1.0",
-  "private": true,
+  "name": "onlyharness",
+  "version": "0.2.0",
+  "description": "OnlyHarness CLI (hh) — find, pull, run, eval, gate and publish AI-agent harnesses from onlyharness.com",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "license": "MIT",
+  "homepage": "https://onlyharness.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elvismusli/onlyharness.git",
+    "directory": "packages/harness-cli"
+  },
+  "keywords": [
+    "ai-agents",
+    "harness",
+    "mcp",
+    "cli",
+    "agent-workflows"
+  ],
   "bin": {
-    "hh": "./src/index.ts"
+    "hh": "./dist/hh.mjs",
+    "onlyharness": "./dist/hh.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@harnesshub/schema": "0.1.0",
-    "@harnesshub/semantic-diff": "0.1.0",
-    "commander": "^14.0.0",
-    "yaml": "^2.8.0"
+    "build": "tsc -p tsconfig.json --noEmit && npm run bundle",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/hh.mjs && node -e \"const fs=require('node:fs');const p='dist/hh.mjs';let s=fs.readFileSync(p,'utf8');s=s.replace('#!/usr/bin/env node\\n','#!/usr/bin/env node\\nimport { createRequire } from ' + JSON.stringify('node:module') + ';const require = createRequire(import.meta.url);\\n');fs.writeFileSync(p,s);\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@harnesshub/schema": "0.1.0",
+    "@harnesshub/semantic-diff": "0.1.0",
     "@types/node": "^24.0.10",
-    "typescript": "^5.8.3"
+    "commander": "^14.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.3",
+    "yaml": "^2.8.0"
   }
 }

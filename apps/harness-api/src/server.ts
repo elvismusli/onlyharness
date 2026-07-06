@@ -1,57 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
-import { inspectHarness, validateHarnessDir, type SecurityReport as ManifestSecurityReport } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
-import { scanHarnessDir, type SecurityReport as StaticSecurityReport } from "./security-scan.js";
-import { fetchCountersMap, socialFromCounters, type Counters } from "./social.js";
+import { fetchCountersMap } from "./social.js";
+import * as registry from "./registry.js";
 
-const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
-const seedRoot = path.join(workspaceRoot, "seed-harnesses");
-const importRoot = path.join(workspaceRoot, "data/imports");
-const statePath = path.join(workspaceRoot, "data/harness-state.json");
+const statePath = path.join(registry.workspaceRoot, "data/harness-state.json");
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey;
 const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
-
-type RegistryItem = {
-  owner: string;
-  ownerLabel: string;
-  name: string;
-  title: string;
-  summary: string;
-  tags: string[];
-  outcome: string;
-  runtime: string;
-  repoPath: string;
-  forgeUrl: string;
-  valid: boolean;
-  riskScore: number;
-  riskTier: string;
-  evalStatus: string;
-  evalScore: number;
-  security: {
-    verdict: StaticSecurityReport["verdict"];
-    findings: number;
-    scanner: StaticSecurityReport["scanner"];
-  };
-  standard: "conformant" | "partial";
-  forks: number;
-  stars: number;
-  threads: number;
-  runs: number;
-  heat: number;
-  heatDelta: number;
-  freshness: string;
-  badge: string;
-  cliCommand: string;
-  updatedAt: string;
-};
 
 type ImportRequest = {
   name?: string;
@@ -77,97 +39,71 @@ await app.register(cors, {
   }
 });
 
-app.get("/healthz", async () => ({ ok: true, workspaceRoot }));
+app.get("/healthz", async () => ({ ok: true, workspaceRoot: registry.workspaceRoot }));
 
 app.get("/registry", async (request) => {
   const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; outcome?: string; sort?: string };
   const counters = await fetchCountersMap();
-  let items = scanRegistry(counters);
-  if (query.q) {
-    const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
-    items = items.filter((item) => {
-      const haystack = `${item.name} ${item.title} ${item.summary} ${item.outcome} ${item.tags.join(" ")}`.toLowerCase();
-      return terms.every((term) => haystack.includes(term));
-    });
-  }
-  if (query.risk && query.risk !== "all") items = items.filter((item) => item.riskTier === query.risk);
-  if (query.eval && query.eval !== "all") items = items.filter((item) => item.evalStatus === query.eval);
-  if (query.runtime && query.runtime !== "all") items = items.filter((item) => item.runtime === query.runtime);
-  if (query.outcome && query.outcome !== "all") items = items.filter((item) => item.outcome === query.outcome);
-  items = sortRegistry(items, query.sort ?? "trending");
-  return { items };
+  return { items: registry.searchRegistry(query, counters) };
 });
 
 app.get("/leaderboard", async (request) => {
   const query = request.query as { limit?: string };
   const limit = Math.min(Number(query.limit ?? 10), 50);
   const counters = await fetchCountersMap();
-  return { items: sortRegistry(scanRegistry(counters), "heat").slice(0, limit) };
+  return { items: registry.sortRegistry(registry.scanRegistry(counters), "heat").slice(0, limit) };
 });
 
 app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
-  const root = resolveHarnessPath(owner, repo);
+  const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const inspection = inspectHarness(root);
-  const evalResult = readEvalResult(root);
-  const security = securityReportFor(root, inspection.security, inspection.manifest?.permissions.network_allowlist ?? []);
-  const standard = standardLevel(Boolean(inspection.valid), inspection.manifest, security);
+  const { inspection, evalResult, security, standard } = registry.registryDetailBasics(root);
   const counters = await fetchCountersMap();
-  const item = registryItemFromDir(owner, root, counters);
+  const item = registry.registryItemFromDir(owner, root, counters);
   return {
     owner,
     repo,
     root,
     forgeUrl: owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${repo}` : `file://${root}`,
-    social: item ? socialFromItem(item) : undefined,
+    social: item ? registry.socialFromItem(item) : undefined,
     thread: await fetchThreadPosts(owner, repo),
-    example: readExample(root),
-    files: listHarnessFiles(root),
+    example: registry.readExample(root),
+    files: registry.listHarnessFiles(root),
     ...inspection,
     evalResult,
     security,
     standard,
-    readme: readMaybe(path.join(root, "README.md")),
+    readme: registry.readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root)
   };
 });
 
-const MAX_ARCHIVE_FILE_BYTES = 256 * 1024;
-
 app.get("/repos/:owner/:repo/archive", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
-  const root = resolveHarnessPath(owner, repo);
+  const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const files = listHarnessFiles(root).map((file) => {
-    const full = path.join(root, file);
-    const size = statSafe(full) ? statSync(full).size : 0;
-    if (size > MAX_ARCHIVE_FILE_BYTES) {
-      return { path: file, truncated: true, content: "" };
-    }
-    return { path: file, truncated: false, content: readMaybe(full) };
-  });
+  const { files } = registry.buildArchive(root);
   return { owner, repo, files };
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
-  const root = resolveHarnessPath(owner, repo);
+  const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   return { items: await fetchThreadPosts(owner, repo) };
 });
 
 app.get("/repos/:owner/:repo/security-report", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
-  const root = resolveHarnessPath(owner, repo);
+  const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const inspection = inspectHarness(root);
-  return securityReportFor(root, inspection.security, inspection.manifest?.permissions.network_allowlist ?? []);
+  return registry.registryDetailBasics(root).security;
 });
 
 app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string; number: string };
-  const root = resolveHarnessPath(owner, repo);
+  const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   return samplePrReview(root);
 });
@@ -180,18 +116,19 @@ app.post("/imports/markdown-to-harness", async (request, reply) => {
     return reply.code(400).send({ error: "markdown must be at least 20 characters" });
   }
   const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
-  const target = path.join(importRoot, name);
+  const target = path.join(registry.importRoot, name);
   mkdirSync(path.dirname(target), { recursive: true });
-  const tempSource = path.join(workspaceRoot, "data", `${name}.source.md`);
+  const tempSource = path.join(registry.workspaceRoot, "data", `${name}.source.md`);
   writeFileSync(tempSource, body.markdown);
-  const cli = spawnSync("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "import-md", tempSource, "--out", target, "--name", name], {
-    cwd: workspaceRoot,
+  const cliCommand = importCliCommand(tempSource, target, name);
+  const cli = spawnSync(cliCommand.command, cliCommand.args, {
+    cwd: registry.workspaceRoot,
     encoding: "utf8"
   });
   if (cli.status !== 0) {
     return reply.code(500).send({ error: cli.stderr || cli.stdout || "import failed" });
   }
-  const item = registryItemFromDir("local", target, new Map());
+  const item = registry.registryItemFromDir("local", target, new Map());
   appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
   return { item, output: cli.stdout };
 });
@@ -211,13 +148,6 @@ app.post("/internal/eval-result", async (request, reply) => {
 const port = Number(process.env.HARNESS_API_PORT ?? 8787);
 const host = process.env.HARNESS_API_HOST ?? "127.0.0.1";
 await app.listen({ port, host });
-
-function scanRegistry(counters: Map<string, Counters>): RegistryItem[] {
-  return [
-    ...scanHarnessRoot("harnesses", seedRoot, counters),
-    ...scanHarnessRoot("local", importRoot, counters)
-  ];
-}
 
 function parseCsv(value: string | undefined): Set<string> {
   return new Set((value ?? "").split(",").map((origin) => origin.trim()).filter(Boolean));
@@ -347,139 +277,15 @@ function supabaseRestHeaders() {
   };
 }
 
-function securityReportFor(root: string, manifestSecurity: ManifestSecurityReport | undefined, networkAllowlist: string[]) {
-  return scanHarnessDir(root, { manifestSecurity, networkAllowlist });
-}
-
-function standardLevel(
-  valid: boolean,
-  manifest: ReturnType<typeof validateHarnessDir>["manifest"],
-  security: StaticSecurityReport
-): "conformant" | "partial" {
-  if (!valid || !manifest) return "partial";
-  if (security.verdict !== "pass") return "partial";
-  if (!manifest.evals.promptfoo_config || !manifest.examples.length) return "partial";
-  return "conformant";
-}
-
-function scanHarnessRoot(owner: string, root: string, counters: Map<string, Counters>): RegistryItem[] {
-  if (!existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => registryItemFromDir(owner, path.join(root, entry.name), counters))
-    .filter(Boolean) as RegistryItem[];
-}
-
-function registryItemFromDir(owner: string, repoPath: string, counters: Map<string, Counters>): RegistryItem | undefined {
-  const validation = validateHarnessDir(repoPath);
-  if (!validation.manifest) return undefined;
-  const evalResult = readEvalResult(repoPath);
-  const updatedAt = statDate(repoPath);
-  const security = securityReportFor(repoPath, validation.security, validation.manifest.permissions.network_allowlist);
-  if (security.verdict === "fail") return undefined;
-  const social = socialFromCounters(counters.get(`${owner}/${validation.manifest.name}`), {
-    riskTier: validation.risk.tier,
-    evalScore: evalResult?.score ?? 0,
-    updatedAt
-  });
-  return {
-    owner,
-    ownerLabel: owner === "harnesses" ? "onlyharness" : "local",
-    name: validation.manifest.name,
-    title: validation.manifest.title,
-    summary: validation.manifest.summary,
-    tags: validation.manifest.tags,
-    outcome: inferOutcome(validation.manifest.tags),
-    runtime: validation.manifest.runtime.primary,
-    repoPath,
-    forgeUrl: owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${validation.manifest.name}` : `file://${repoPath}`,
-    valid: validation.valid,
-    riskScore: validation.risk.score,
-    riskTier: validation.risk.tier,
-    evalStatus: evalResult?.status ?? "unknown",
-    evalScore: evalResult?.score ?? 0,
-    security: {
-      verdict: security.verdict,
-      findings: security.findings.length,
-      scanner: security.scanner
-    },
-    standard: standardLevel(validation.valid, validation.manifest, security),
-    forks: social.forks,
-    stars: social.stars,
-    threads: social.threads,
-    runs: social.runs,
-    heat: social.heat,
-    heatDelta: social.heatDelta,
-    freshness: social.freshness,
-    badge: social.badge,
-    cliCommand: `hh pull ${owner}/${validation.manifest.name}`,
-    updatedAt
-  };
-}
-
-function sortRegistry(items: RegistryItem[], sort: string): RegistryItem[] {
-  const sorted = [...items];
-  if (sort === "stars") return sorted.sort((a, b) => b.stars - a.stars);
-  if (sort === "forks") return sorted.sort((a, b) => b.forks - a.forks);
-  if (sort === "threads") return sorted.sort((a, b) => b.threads - a.threads);
-  if (sort === "new") return sorted.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  return sorted.sort((a, b) => b.heat - a.heat);
-}
-
-function socialFromItem(item: RegistryItem) {
-  return {
-    stars: item.stars,
-    forks: item.forks,
-    threads: item.threads,
-    runs: item.runs,
-    heat: item.heat,
-    heatDelta: item.heatDelta,
-    freshness: item.freshness,
-    badge: item.badge,
-    cliCommand: item.cliCommand
-  };
-}
-
-function inferOutcome(tags: string[]): string {
-  const set = new Set(tags.map((tag) => tag.toLowerCase()));
-  if (set.has("finance") || set.has("payments") || set.has("safety")) return "Finance safety";
-  if (set.has("support") || set.has("triage")) return "Support";
-  if (set.has("research") || set.has("validation") || set.has("gtm")) return "Research";
-  if (set.has("founder") || set.has("decision") || set.has("product") || set.has("strategy")) return "Strategy";
-  if (set.has("repo") || set.has("audit") || set.has("runtime")) return "Engineering";
-  return "Builder tools";
-}
-
-function readExample(root: string) {
-  return {
-    input: readMaybe(path.join(root, "examples/input.md")),
-    expected: readMaybe(path.join(root, "examples/expected.md"))
-  };
-}
-
-function listHarnessFiles(root: string) {
-  const files: string[] = [];
-  collectFiles(root, root, files);
-  return files.slice(0, 80);
-}
-
-function collectFiles(root: string, dir: string, files: string[]) {
-  if (!existsSync(dir)) return;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === ".harnesshub" || entry.name === "node_modules") continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) collectFiles(root, full, files);
-    else files.push(path.relative(root, full));
+function importCliCommand(tempSource: string, target: string, name: string) {
+  const bundledCli = path.join(registry.workspaceRoot, "packages/harness-cli/dist/hh.mjs");
+  if (existsSync(bundledCli)) {
+    return { command: "node", args: [bundledCli, "import-md", tempSource, "--out", target, "--name", name] };
   }
-}
-
-function resolveHarnessPath(owner: string, repo: string): string | undefined {
-  const roots = owner === "local" ? [importRoot] : owner === "harnesses" ? [seedRoot] : [seedRoot, importRoot];
-  for (const root of roots) {
-    const candidate = path.join(root, repo);
-    if (existsSync(path.join(candidate, "harness.yaml"))) return candidate;
-  }
-  return undefined;
+  return {
+    command: "npm",
+    args: ["exec", "--", "tsx", "packages/harness-cli/src/index.ts", "import-md", tempSource, "--out", target, "--name", name]
+  };
 }
 
 function samplePrReview(root: string) {
@@ -497,7 +303,7 @@ function samplePrReview(root: string) {
 }
 
 function createReviewVariant(root: string): string {
-  const temp = path.join(workspaceRoot, "data", ".review-variant");
+  const temp = path.join(registry.workspaceRoot, "data", ".review-variant");
   rmDir(temp);
   copyDir(root, temp);
   const manifestPath = path.join(temp, "harness.yaml");
@@ -511,40 +317,11 @@ function createReviewVariant(root: string): string {
   return temp;
 }
 
-function readEvalResult(root: string) {
-  const file = path.join(root, ".harnesshub/results.json");
-  if (!existsSync(file)) return undefined;
-  try {
-    return JSON.parse(readFileSync(file, "utf8"));
-  } catch {
-    return undefined;
-  }
-}
-
-function readMaybe(file: string): string {
-  return existsSync(file) ? readFileSync(file, "utf8") : "";
-}
-
 function appendState(event: unknown) {
   mkdirSync(path.dirname(statePath), { recursive: true });
   const current = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : [];
   current.push(event);
   writeFileSync(statePath, JSON.stringify(current.slice(-200), null, 2));
-}
-
-function statDate(root: string): string {
-  return new Date(readdirSync(root).reduce((latest, file) => {
-    const mtime = statSafe(path.join(root, file));
-    return Math.max(latest, mtime);
-  }, 0)).toISOString();
-}
-
-function statSafe(file: string): number {
-  try {
-    return statSync(file).mtimeMs;
-  } catch {
-    return 0;
-  }
 }
 
 function relativeTime(value: string): string {

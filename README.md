@@ -2,7 +2,7 @@
 
 [onlyharness.com](https://onlyharness.com) is a friendly hub for forkable AI-agent harnesses: browse workflows, try examples, read the thread, fork, star, and publish with a CLI-ready trust layer.
 
-The UI ships as **OnlyHarness 98** — a deliberately playful Windows 98 / MS Paint / WordArt desktop (per `design_handoff_harness_hub_98`): every surface is a window, harnesses open as draggable windows with a taskbar, auth is a Log On dialog, and the share card is `harness_flex.exe`. Design decisions live in [docs/plans/2026-07-04-win98-redesign-design.md](docs/plans/2026-07-04-win98-redesign-design.md). Internal package names still use `@harnesshub/*`.
+The UI ships as **OnlyHarness 98** — a deliberately playful Windows 98 / MS Paint / WordArt desktop (per `design_handoff_harness_hub_98`): every surface is a window, harnesses open as draggable windows with a taskbar, auth is a Log On dialog, and the share card is `harness_flex.exe`. Design decisions live in [docs/plans/2026-07-04-win98-redesign-design.md](docs/plans/2026-07-04-win98-redesign-design.md). Internal package names still use `@harnesshub/*`, except the public CLI workspace/package is `onlyharness`.
 
 ## What is a harness?
 
@@ -28,7 +28,7 @@ Supabase auth is enabled for signup/login, stars/forks, thread posts, and authen
 - Harness detail opens as its own window with Overview, Try, Thread, Evals, and Files tabs plus a plain-tone trust panel.
 - Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
-- CLI package with `hh search`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
+- CLI package `onlyharness` with `hh search`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
 - Agent-friendly discovery: [`/llms.txt`](https://onlyharness.com/llms.txt) documents the HTTP API (`/api/registry?q=`, `/api/repos/:owner/:name/archive`) so an AI agent can find and pull a harness without a browser.
 - Semantic PR review and quality gate sidecar API.
 - Docker production stack with system Caddy deployment mode for shared VPS hosts.
@@ -61,6 +61,23 @@ Open:
 - UI: `http://127.0.0.1:5177`
 - API: `http://127.0.0.1:8787/healthz`
 - Local Gitea forge: `http://127.0.0.1:3000`
+
+## CLI
+
+After the npm package is published:
+
+```bash
+npx onlyharness search market research
+npx onlyharness pull harnesses/deep-market-researcher
+npm i -g onlyharness   # installs the `hh` command
+```
+
+This local branch prepares the `onlyharness` npm bundle but does not publish it. For local development, build the workspace bundle and run it directly:
+
+```bash
+npm run build -w onlyharness
+node packages/harness-cli/dist/hh.mjs doctor
+```
 
 Create local env from the examples:
 

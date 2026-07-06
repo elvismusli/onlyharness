@@ -1,13 +1,15 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const seedRoot = path.join(root, "seed-harnesses");
 const maliciousRoot = path.join(root, "data/imports/smoke-malicious-harness");
+const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 
-function run(command: string, args: string[], options: { cwd?: string; allowFailure?: boolean } = {}) {
-  const result = spawnSync(command, args, { cwd: options.cwd ?? root, encoding: "utf8" });
+function run(command: string, args: string[], options: { cwd?: string; allowFailure?: boolean; env?: NodeJS.ProcessEnv } = {}) {
+  const result = spawnSync(command, args, { cwd: options.cwd ?? root, encoding: "utf8", env: options.env ?? process.env });
   if (!options.allowFailure && result.status !== 0) {
     throw new Error(`Command failed: ${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
   }
@@ -17,16 +19,18 @@ function run(command: string, args: string[], options: { cwd?: string; allowFail
 const seeds = readdirSync(seedRoot).filter((name) => existsSync(path.join(seedRoot, name, "harness.yaml")));
 if (seeds.length < 8) throw new Error(`Expected 8 seed harnesses, found ${seeds.length}`);
 
+run("npm", ["run", "build", "-w", "onlyharness"]);
+
 for (const seed of seeds) {
   const dir = path.join(seedRoot, seed);
-  run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "validate", dir, "--strict"]);
-  run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "eval", dir]);
-  run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "gate", "--dir", dir]);
+  run("node", [cliBin, "validate", dir, "--strict"]);
+  run("node", [cliBin, "eval", dir]);
+  run("node", [cliBin, "gate", "--dir", dir]);
 }
 
 const base = path.join(seedRoot, "deep-market-researcher");
 const head = path.join(seedRoot, "support-triage-agent");
-run("npm", ["exec", "-w", "@harnesshub/cli", "--", "hh", "diff", "--base-dir", base, "--head-dir", head, "--format", "json", "--out", path.join(root, ".harnesshub-smoke-diff.json")], { allowFailure: true });
+run("node", [cliBin, "diff", "--base-dir", base, "--head-dir", head, "--format", "json", "--out", path.join(root, ".harnesshub-smoke-diff.json")], { allowFailure: true });
 if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error("Diff output missing");
 
 createMaliciousHarness(maliciousRoot);
@@ -65,6 +69,18 @@ try {
     body: JSON.stringify({ name: "smoke-imported-harness", markdown: "# Smoke Imported Harness\n\nResearch, synthesize, critique and produce a memo." })
   }).then((response) => response.json()) as { item?: { name: string } };
   if (imported.item?.name !== "smoke-imported-harness") throw new Error(`Import endpoint failed: ${JSON.stringify(imported)}`);
+
+  const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
+  run("node", [cliBin, "doctor"], { env: cliEnv });
+  run("node", [cliBin, "search", "research", "--json"], { env: cliEnv });
+  const pullTmp = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-"));
+  try {
+    const pulled = path.join(pullTmp, "dmr");
+    run("node", [cliBin, "pull", "harnesses/deep-market-researcher", "--out", pulled], { env: cliEnv });
+    run("node", [cliBin, "run", pulled], { env: cliEnv });
+  } finally {
+    rmSync(pullTmp, { recursive: true, force: true });
+  }
 } finally {
   api.kill("SIGTERM");
   rmSync(maliciousRoot, { recursive: true, force: true });
@@ -73,7 +89,7 @@ try {
 const importedPath = path.join(root, "data/imports/smoke-imported-harness/harness.yaml");
 if (!existsSync(importedPath)) throw new Error("Imported harness manifest missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, CLI validate/eval/gate/diff`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, CLI validate/eval/gate/diff, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

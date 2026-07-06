@@ -11,7 +11,7 @@ COPY templates ./templates
 COPY data ./data
 
 RUN npm ci
-RUN npm run build -w @harnesshub/api -w @harnesshub/schema -w @harnesshub/semantic-diff
+RUN npm run build -w @harnesshub/api -w @harnesshub/schema -w @harnesshub/semantic-diff -w onlyharness
 
 FROM node:24-alpine AS runtime
 

@@ -36,7 +36,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, pull, run, eval and publish agent harnesses (onlyharness.com)")
-  .version("0.1.0");
+  .version("0.2.0");
 
 program.command("search")
   .description("search the OnlyHarness registry")
@@ -568,7 +568,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install -g @harnesshub/cli
+      - run: npm install -g onlyharness
       - run: hh validate --strict --json > .harnesshub/validation.json
       - run: hh risk --format markdown --out .harnesshub/risk.md
       - run: hh diff origin/main...HEAD --format markdown --out .harnesshub/semantic-diff.md
