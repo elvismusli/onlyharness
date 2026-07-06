@@ -1,4 +1,4 @@
-description: Harness template smoke eval
+description: Harness template smoke eval (unverified scaffold; add measured assertions before gating)
 prompts:
   - agents/operator.md
 providers:

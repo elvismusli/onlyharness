@@ -1,13 +1,14 @@
 schemaVersion: harness.v0.1
 name: harness-template
 title: Harness Template
-summary: Template repository for creating eval-gated agent harnesses in Harness.Hub.
+summary: Unverified template repository for creating eval-gated agent harnesses in Harness.Hub.
 version: 0.1.0
-license: MIT
+license: UNSPECIFIED
 maintainers:
   - name: Harness.Hub Local
 tags:
   - template
+  - unverified
 runtime:
   primary: openai-agents-sdk
   adapters: []

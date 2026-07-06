@@ -253,28 +253,6 @@ function App() {
         .then((data) => setDetails((current) => ({ ...current, [key]: data })))
         .catch(() => undefined);
     }
-    /* thread posts refetch on every open; "you" is resolved at render time */
-    if (supabase) {
-      supabase
-        .from("harness_thread_posts")
-        .select("id,user_id,kind,body,created_at")
-        .eq("owner", item.owner)
-        .eq("repo", item.name)
-        .order("created_at", { ascending: true })
-        .then(({ data }) => {
-          const posts: ThreadItem[] = (data ?? []).map((post) => ({
-            id: post.id,
-            author: `user-${String(post.user_id).slice(0, 6)}`,
-            userId: post.user_id,
-            role: "member",
-            kind: post.kind,
-            body: post.body,
-            likes: 0,
-            at: relativeTime(post.created_at)
-          }));
-          setRemotePosts((current) => ({ ...current, [key]: posts }));
-        });
-    }
   }
 
   function openHarness(item: RegistryItem, tab?: DetailTab) {

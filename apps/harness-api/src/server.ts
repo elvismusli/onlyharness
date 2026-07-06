@@ -4,8 +4,10 @@ import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
-import { inspectHarness, validateHarnessDir } from "@harnesshub/schema";
+import { inspectHarness, validateHarnessDir, type SecurityReport as ManifestSecurityReport } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
+import { scanHarnessDir, type SecurityReport as StaticSecurityReport } from "./security-scan.js";
+import { fetchCountersMap, socialFromCounters, type Counters } from "./social.js";
 
 const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
 const seedRoot = path.join(workspaceRoot, "seed-harnesses");
@@ -13,6 +15,7 @@ const importRoot = path.join(workspaceRoot, "data/imports");
 const statePath = path.join(workspaceRoot, "data/harness-state.json");
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey;
 const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
 
@@ -32,6 +35,11 @@ type RegistryItem = {
   riskTier: string;
   evalStatus: string;
   evalScore: number;
+  security: {
+    verdict: StaticSecurityReport["verdict"];
+    findings: number;
+    scanner: StaticSecurityReport["scanner"];
+  };
   forks: number;
   stars: number;
   threads: number;
@@ -49,6 +57,17 @@ type ImportRequest = {
   markdown: string;
 };
 
+type ThreadItem = {
+  id: string;
+  author: string;
+  userId?: string;
+  role: string;
+  kind: string;
+  body: string;
+  likes: number;
+  at: string;
+};
+
 const app = Fastify({ logger: true });
 await app.register(cors, {
   origin: (origin, callback) => {
@@ -61,7 +80,8 @@ app.get("/healthz", async () => ({ ok: true, workspaceRoot }));
 
 app.get("/registry", async (request) => {
   const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; outcome?: string; sort?: string };
-  let items = scanRegistry();
+  const counters = await fetchCountersMap();
+  let items = scanRegistry(counters);
   if (query.q) {
     const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
     items = items.filter((item) => {
@@ -80,7 +100,8 @@ app.get("/registry", async (request) => {
 app.get("/leaderboard", async (request) => {
   const query = request.query as { limit?: string };
   const limit = Math.min(Number(query.limit ?? 10), 50);
-  return { items: sortRegistry(scanRegistry(), "heat").slice(0, limit) };
+  const counters = await fetchCountersMap();
+  return { items: sortRegistry(scanRegistry(counters), "heat").slice(0, limit) };
 });
 
 app.get("/repos/:owner/:repo/harness", async (request, reply) => {
@@ -89,18 +110,21 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   if (!root) return reply.code(404).send({ error: "Harness not found" });
   const inspection = inspectHarness(root);
   const evalResult = readEvalResult(root);
-  const item = registryItemFromDir(owner, root);
+  const security = securityReportFor(root, inspection.security, inspection.manifest?.permissions.network_allowlist ?? []);
+  const counters = await fetchCountersMap();
+  const item = registryItemFromDir(owner, root, counters);
   return {
     owner,
     repo,
     root,
     forgeUrl: owner === "harnesses" ? `${process.env.GITEA_BASE_URL ?? "http://127.0.0.1:3000"}/${owner}/${repo}` : `file://${root}`,
     social: item ? socialFromItem(item) : undefined,
-    thread: threadFor(repo, inspection.manifest?.title ?? repo, inspection.manifest?.tags ?? []),
+    thread: await fetchThreadPosts(owner, repo),
     example: readExample(root),
     files: listHarnessFiles(root),
     ...inspection,
     evalResult,
+    security,
     readme: readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root)
   };
@@ -127,8 +151,15 @@ app.get("/repos/:owner/:repo/thread", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const root = resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
+  return { items: await fetchThreadPosts(owner, repo) };
+});
+
+app.get("/repos/:owner/:repo/security-report", async (request, reply) => {
+  const { owner, repo } = request.params as { owner: string; repo: string };
+  const root = resolveHarnessPath(owner, repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
   const inspection = inspectHarness(root);
-  return { items: threadFor(repo, inspection.manifest?.title ?? repo, inspection.manifest?.tags ?? []) };
+  return securityReportFor(root, inspection.security, inspection.manifest?.permissions.network_allowlist ?? []);
 });
 
 app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
@@ -157,7 +188,7 @@ app.post("/imports/markdown-to-harness", async (request, reply) => {
   if (cli.status !== 0) {
     return reply.code(500).send({ error: cli.stderr || cli.stdout || "import failed" });
   }
-  const item = registryItemFromDir("local", target);
+  const item = registryItemFromDir("local", target, new Map());
   appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
   return { item, output: cli.stdout };
 });
@@ -178,10 +209,10 @@ const port = Number(process.env.HARNESS_API_PORT ?? 8787);
 const host = process.env.HARNESS_API_HOST ?? "127.0.0.1";
 await app.listen({ port, host });
 
-function scanRegistry(): RegistryItem[] {
+function scanRegistry(counters: Map<string, Counters>): RegistryItem[] {
   return [
-    ...scanHarnessRoot("harnesses", seedRoot),
-    ...scanHarnessRoot("local", importRoot)
+    ...scanHarnessRoot("harnesses", seedRoot, counters),
+    ...scanHarnessRoot("local", importRoot, counters)
   ];
 }
 
@@ -246,20 +277,97 @@ function safeHeaders(headers: FastifyRequest["headers"]) {
   return safe;
 }
 
-function scanHarnessRoot(owner: string, root: string): RegistryItem[] {
+async function fetchThreadPosts(owner: string, repo: string): Promise<ThreadItem[]> {
+  if (!supabaseUrl || !supabaseRestKey) return [];
+
+  try {
+    const params = new URLSearchParams({
+      select: "id,user_id,kind,body,created_at",
+      owner: `eq.${owner}`,
+      repo: `eq.${repo}`,
+      order: "created_at.desc",
+      limit: "50"
+    });
+    const response = await fetch(`${supabaseUrl}/rest/v1/harness_thread_posts?${params.toString()}`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return [];
+
+    const rows = await response.json() as Array<{
+      id: string;
+      user_id: string;
+      kind: string;
+      body: string;
+      created_at: string;
+    }>;
+    const profiles = await fetchProfiles(rows.map((row) => row.user_id));
+
+    return rows.reverse().map((row) => ({
+      id: row.id,
+      author: profiles.get(row.user_id) ?? `user-${row.user_id.slice(0, 6)}`,
+      userId: row.user_id,
+      role: "member",
+      kind: row.kind,
+      body: row.body,
+      likes: 0,
+      at: relativeTime(row.created_at)
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchProfiles(userIds: string[]): Promise<Map<string, string>> {
+  const profiles = new Map<string, string>();
+  const ids = Array.from(new Set(userIds)).filter(Boolean);
+  if (!ids.length || !supabaseUrl || !supabaseRestKey) return profiles;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/profiles?select=id,display_name&id=in.(${ids.join(",")})`, {
+      headers: supabaseRestHeaders()
+    });
+    if (!response.ok) return profiles;
+    for (const row of await response.json() as Array<{ id: string; display_name?: string }>) {
+      if (row.display_name) profiles.set(row.id, row.display_name);
+    }
+  } catch {
+    return profiles;
+  }
+
+  return profiles;
+}
+
+function supabaseRestHeaders() {
+  return {
+    apikey: supabaseRestKey ?? "",
+    authorization: `Bearer ${supabaseRestKey ?? ""}`
+  };
+}
+
+function securityReportFor(root: string, manifestSecurity: ManifestSecurityReport | undefined, networkAllowlist: string[]) {
+  return scanHarnessDir(root, { manifestSecurity, networkAllowlist });
+}
+
+function scanHarnessRoot(owner: string, root: string, counters: Map<string, Counters>): RegistryItem[] {
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => registryItemFromDir(owner, path.join(root, entry.name)))
+    .map((entry) => registryItemFromDir(owner, path.join(root, entry.name), counters))
     .filter(Boolean) as RegistryItem[];
 }
 
-function registryItemFromDir(owner: string, repoPath: string): RegistryItem | undefined {
+function registryItemFromDir(owner: string, repoPath: string, counters: Map<string, Counters>): RegistryItem | undefined {
   const validation = validateHarnessDir(repoPath);
   if (!validation.manifest) return undefined;
   const evalResult = readEvalResult(repoPath);
   const updatedAt = statDate(repoPath);
-  const social = computeSocial(validation.manifest.name, validation.manifest.title, validation.manifest.tags, validation.risk.tier, evalResult?.score ?? 0, updatedAt);
+  const security = securityReportFor(repoPath, validation.security, validation.manifest.permissions.network_allowlist);
+  if (security.verdict === "fail") return undefined;
+  const social = socialFromCounters(counters.get(`${owner}/${validation.manifest.name}`), {
+    riskTier: validation.risk.tier,
+    evalScore: evalResult?.score ?? 0,
+    updatedAt
+  });
   return {
     owner,
     ownerLabel: owner === "harnesses" ? "onlyharness" : "local",
@@ -276,6 +384,11 @@ function registryItemFromDir(owner: string, repoPath: string): RegistryItem | un
     riskTier: validation.risk.tier,
     evalStatus: evalResult?.status ?? "unknown",
     evalScore: evalResult?.score ?? 0,
+    security: {
+      verdict: security.verdict,
+      findings: security.findings.length,
+      scanner: security.scanner
+    },
     forks: social.forks,
     stars: social.stars,
     threads: social.threads,
@@ -283,7 +396,7 @@ function registryItemFromDir(owner: string, repoPath: string): RegistryItem | un
     heat: social.heat,
     heatDelta: social.heatDelta,
     freshness: social.freshness,
-    badge: badgeFor(validation.risk.tier, evalResult?.score ?? 0, social.heat),
+    badge: social.badge,
     cliCommand: `hh pull ${owner}/${validation.manifest.name}`,
     updatedAt
   };
@@ -312,33 +425,6 @@ function socialFromItem(item: RegistryItem) {
   };
 }
 
-function computeSocial(name: string, title: string, tags: string[], riskTier: string, evalScore: number, updatedAt: string) {
-  const hash = checksum(`${name}:${title}:${tags.join(",")}`);
-  const stars = 380 + (hash % 1500);
-  const forks = 42 + (Math.floor(hash / 7) % 320);
-  const threads = 9 + (Math.floor(hash / 11) % 70);
-  const runs = 720 + (Math.floor(hash / 13) % 6800);
-  const daysOld = Math.max(0, (Date.now() - Date.parse(updatedAt)) / 86_400_000);
-  const decay = Math.min(3.8, daysOld * 0.08);
-  const riskPenalty = riskTier === "CRITICAL" ? 4.2 : riskTier === "HIGH" ? 2.3 : riskTier === "MEDIUM" ? 0.9 : 0;
-  const heat = Math.max(4.2, Math.min(42, stars / 115 + forks / 28 + threads / 7 + runs / 1200 + evalScore * 4.8 - riskPenalty - decay));
-  return {
-    stars,
-    forks,
-    threads,
-    runs,
-    heat: Number(heat.toFixed(1)),
-    heatDelta: Number((((hash % 38) - 8) / 10).toFixed(1)),
-    freshness: daysOld < 2 ? "warm" : daysOld < 9 ? "cooling" : "needs release"
-  };
-}
-
-function checksum(value: string): number {
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return hash;
-}
-
 function inferOutcome(tags: string[]): string {
   const set = new Set(tags.map((tag) => tag.toLowerCase()));
   if (set.has("finance") || set.has("payments") || set.has("safety")) return "Finance safety";
@@ -347,48 +433,6 @@ function inferOutcome(tags: string[]): string {
   if (set.has("founder") || set.has("decision") || set.has("product") || set.has("strategy")) return "Strategy";
   if (set.has("repo") || set.has("audit") || set.has("runtime")) return "Engineering";
   return "Builder tools";
-}
-
-function badgeFor(riskTier: string, evalScore: number, heat: number): string {
-  if (heat >= 24) return "Wild West Top 10";
-  if (evalScore >= 0.9) return `eval ${evalScore.toFixed(2)}`;
-  if (riskTier === "LOW") return "safe to try";
-  if (riskTier === "HIGH" || riskTier === "CRITICAL") return "needs review";
-  return "community pick";
-}
-
-function threadFor(repo: string, title: string, tags: string[]) {
-  const tag = tags[0] ?? "agent";
-  const hash = checksum(repo);
-  return [
-    {
-      id: `${repo}-recipe`,
-      author: "mira",
-      role: "builder",
-      kind: "recipe",
-      body: `Tried ${title} with a messy ${tag} brief. The best part is that it marks unresolved fields instead of pretending everything is known.`,
-      likes: 8 + (hash % 34),
-      at: "2h ago"
-    },
-    {
-      id: `${repo}-question`,
-      author: "alex",
-      role: "operator",
-      kind: "question",
-      body: "Can someone share the smallest input that still passes eval? I want to fork this for an internal workflow.",
-      likes: 3 + (hash % 12),
-      at: "yesterday"
-    },
-    {
-      id: `${repo}-maintainer`,
-      author: "onlyharness",
-      role: "maintainer",
-      kind: "maintainer note",
-      body: "CLI path is stable: pull, run examples, then eval and gate before you remix.",
-      likes: 12 + (hash % 41),
-      at: "3d ago"
-    }
-  ];
 }
 
 function readExample(root: string) {
@@ -485,6 +529,16 @@ function statSafe(file: string): number {
   } catch {
     return 0;
   }
+}
+
+function relativeTime(value: string): string {
+  const diff = Date.now() - Date.parse(value);
+  if (!Number.isFinite(diff) || diff < 60_000) return "now";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function firstHeading(markdown: string): string | undefined {

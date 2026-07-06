@@ -1,2 +1,3 @@
 title: Template smoke case
-score: 0.86
+verification_status: unverified_scaffold
+note: Template scaffold only; add a measured score after a real eval run.

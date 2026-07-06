@@ -13,6 +13,11 @@ export type RegistryItem = {
   riskTier: string;
   evalStatus: string;
   evalScore: number;
+  security: {
+    verdict: "pass" | "warn" | "fail";
+    findings: number;
+    scanner: string;
+  };
   forks: number;
   stars: number;
   threads: number;
@@ -60,6 +65,7 @@ export type HarnessDetail = {
   valid: boolean;
   risk: { score: number; tier: string; reasons: string[]; blocking: string[] };
   evalResult?: { status: string; score: number; cost_usd: number; cases: Array<{ id: string; title: string; score: number; passed: boolean }> };
+  security?: { verdict: "pass" | "warn" | "fail"; findings: Array<{ rule: string; file: string; excerpt: string; severity: string }>; scannedAt: string; scanner: string };
   prReview: { status: string; markdown: string; diff: { riskDelta: number; riskTier: string; changes: Array<{ severity: string; area: string; message: string }> } };
   readme: string;
 };

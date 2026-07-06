@@ -6,14 +6,17 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 
 const idSchema = z.string().min(2).regex(/^[a-z][a-z0-9_-]*$/);
 const pathSchema = z.string().min(1).refine((value) => !path.isAbsolute(value), "Paths must be relative to the harness root");
+const dependencyRefSchema = z.string().min(2).regex(/^[a-z0-9][a-z0-9_./:@-]*$/);
+const networkPermissionSchema = z.preprocess((value) => value === false ? "false" : value, z.enum(["false", "allowlist", "unrestricted"]));
+const credentialPermissionSchema = z.preprocess((value) => value === false ? "false" : value, z.enum(["false", "runtime_injected", "persistent"]));
 
 const permissionSchema = z.object({
-  network: z.enum(["false", "allowlist", "unrestricted"]).default("false"),
+  network: networkPermissionSchema.default("false"),
   network_allowlist: z.array(z.string().min(1)).default([]),
   filesystem: z.enum(["none", "readonly", "workspace-write", "unrestricted"]).default("readonly"),
   shell: z.boolean().default(false),
   browser: z.boolean().default(false),
-  credentials: z.enum(["false", "runtime_injected", "persistent"]).default("false"),
+  credentials: credentialPermissionSchema.default("false"),
   external_send: z.boolean().default(false),
   money_movement: z.boolean().default(false),
   user_data: z.boolean().default(false),
@@ -56,13 +59,62 @@ const toolSchema = z.object({
   }).strict()).default([])
 }).strict();
 
+const pricingSchema = z.object({
+  model: z.enum(["free", "one_time", "subscription", "per_call", "gate_escrow"]).default("free"),
+  amount_usd: z.number().positive().optional(),
+  period: z.enum(["month", "year"]).optional(),
+  currency: z.string().length(3).default("USD")
+}).strict();
+
+const sourceSchema = z.object({
+  upstream_url: z.string().url().optional(),
+  upstream_license: z.string().min(2).optional(),
+  attribution: z.string().min(2).optional(),
+  authors: z.array(z.string().min(1)).default([]),
+  vendor_policy: z.enum(["original", "vendored", "link-only"]).default("original")
+}).strict();
+
+const compatibilitySchema = z.object({
+  targets: z.array(z.object({
+    id: idSchema,
+    name: z.string().min(1).optional(),
+    status: z.enum(["planned", "available", "verified"]),
+    notes: z.string().min(1).optional(),
+    last_verified_at: z.string().datetime({ offset: true }).optional()
+  }).strict()).default([])
+}).strict();
+
+const dependencySchema = z.object({
+  ref: dependencyRefSchema,
+  version: z.string().min(1).optional(),
+  optional: z.boolean().default(false),
+  reason: z.string().min(2).optional()
+}).strict();
+
+const contentSchema = z.object({
+  type: z.enum(["harness", "directory"]).default("harness"),
+  directory: z.object({
+    url: z.string().url().optional(),
+    item_count: z.number().int().nonnegative().optional(),
+    category: idSchema.optional(),
+    notes: z.string().min(1).optional()
+  }).strict().optional()
+}).strict();
+
 export const harnessManifestSchema = z.object({
-  schemaVersion: z.literal("harness.v0.1"),
+  schemaVersion: z.enum(["harness.v0.1", "harness.v0.2"]),
   name: idSchema,
   title: z.string().min(2),
   summary: z.string().min(12),
   version: z.string().regex(/^\d+\.\d+\.\d+(-[a-z0-9.-]+)?$/),
   license: z.string().min(2),
+  visibility: z.enum(["public", "org", "private"]).default("public"),
+  pricing: pricingSchema.default({ model: "free", currency: "USD" }),
+  org: idSchema.optional(),
+  source: sourceSchema.default({ authors: [], vendor_policy: "original" }),
+  compatibility: compatibilitySchema.default({ targets: [] }),
+  depends_on: z.array(dependencySchema).default([]),
+  content: contentSchema.default({ type: "harness" }),
   maintainers: z.array(z.object({
     name: z.string().min(2),
     url: z.string().url().optional()
@@ -112,7 +164,38 @@ export const harnessManifestSchema = z.object({
     input: pathSchema,
     output: pathSchema
   }).strict()).default([])
-}).strict();
+}).strict().superRefine((manifest, ctx) => {
+  if (manifest.visibility === "org" && !manifest.org) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["org"],
+      message: "org is required when visibility is org"
+    });
+  }
+  if (manifest.pricing.model !== "free" && manifest.pricing.model !== "subscription" && !manifest.pricing.amount_usd) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pricing", "amount_usd"],
+      message: "amount_usd is required for paid pricing models"
+    });
+  }
+  if (manifest.pricing.model === "subscription") {
+    if (!manifest.pricing.amount_usd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pricing", "amount_usd"],
+        message: "amount_usd is required for subscription pricing"
+      });
+    }
+    if (!manifest.pricing.period) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pricing", "period"],
+        message: "period is required for subscription pricing"
+      });
+    }
+  }
+});
 
 export type HarnessManifest = z.infer<typeof harnessManifestSchema>;
 
@@ -127,6 +210,7 @@ export type ValidationResult = {
   manifest?: HarnessManifest;
   issues: ValidationIssue[];
   risk: RiskReport;
+  security: SecurityReport;
 };
 
 export type RiskTier = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -138,7 +222,31 @@ export type RiskReport = {
   blocking: string[];
 };
 
-export const harnessJsonSchema = zodToJsonSchema(harnessManifestSchema, "HarnessManifestV0_1");
+export type SecurityFindingSeverity = "info" | "warning" | "error" | "blocking";
+
+export type SecurityFindingCategory = "secrets" | "permissions" | "tools" | "money" | "validation";
+
+export type SecurityFinding = {
+  id: string;
+  category: SecurityFindingCategory;
+  severity: SecurityFindingSeverity;
+  path: string;
+  message: string;
+  recommendation?: string;
+};
+
+export type SecurityReport = {
+  status: "passed" | "review" | "blocked";
+  findings: SecurityFinding[];
+  summary: {
+    info: number;
+    warning: number;
+    error: number;
+    blocking: number;
+  };
+};
+
+export const harnessJsonSchema = zodToJsonSchema(harnessManifestSchema, "HarnessManifestV0_2");
 
 export function parseManifestText(text: string): HarnessManifest {
   const parsed = YAML.parse(text);
@@ -161,14 +269,16 @@ export function validateHarnessDir(rootDir: string): ValidationResult {
   const filePath = manifestPath(rootDir);
   if (!existsSync(filePath)) {
     issues.push({ path: "harness.yaml", message: "Missing harness.yaml", severity: "error" });
-    return { valid: false, issues, risk: emptyRisk() };
+    return { valid: false, issues, risk: emptyRisk(), security: emptySecurityReport() };
   }
 
+  let raw = "";
   try {
-    manifest = readManifest(rootDir);
+    raw = readFileSync(filePath, "utf8");
+    manifest = parseManifestText(raw);
   } catch (error) {
     issues.push({ path: "harness.yaml", message: error instanceof Error ? error.message : String(error), severity: "error" });
-    return { valid: false, issues, risk: emptyRisk() };
+    return { valid: false, issues, risk: emptyRisk(), security: emptySecurityReport(issues) };
   }
 
   const agentIds = new Set(manifest.agents.map((agent) => agent.id));
@@ -202,19 +312,15 @@ export function validateHarnessDir(rootDir: string): ValidationResult {
     assertRelativeFile(rootDir, example.output, `examples.${example.title}.output`, issues);
   }
 
-  for (const server of manifest.tools.mcp_servers) {
-    if (!server.pinned) {
-      issues.push({ path: `tools.mcp_servers.${server.id}`, message: "MCP servers must be pinned for verified registry status", severity: "error" });
+  const security = scanManifestSecurity(manifest, { manifestText: raw });
+  for (const finding of security.findings) {
+    if (finding.severity === "error" || finding.severity === "blocking") {
+      issues.push({ path: finding.path, message: finding.message, severity: "error" });
     }
   }
 
-  const raw = readFileSync(filePath, "utf8");
-  if (containsSecretLookingValue(raw)) {
-    issues.push({ path: "harness.yaml", message: "Manifest appears to contain a literal secret value", severity: "error" });
-  }
-
   const risk = scoreRisk(manifest, issues);
-  return { valid: issues.every((issue) => issue.severity !== "error") && risk.blocking.length === 0, manifest, issues, risk };
+  return { valid: issues.every((issue) => issue.severity !== "error") && risk.blocking.length === 0, manifest, issues, risk, security };
 }
 
 export function inspectHarness(rootDir: string) {
@@ -232,8 +338,98 @@ export function inspectHarness(rootDir: string) {
       tools: allToolIds(manifest).size,
       examples: manifest.examples.length,
       requiredSecrets: manifest.secrets.required.length
-    } : undefined
+    } : undefined,
+    security: validation.security
   };
+}
+
+export function scanManifestSecurity(
+  manifest: HarnessManifest,
+  options: { manifestText?: string } = {}
+): SecurityReport {
+  const findings: SecurityFinding[] = [];
+  const add = (finding: SecurityFinding) => findings.push(finding);
+
+  if (options.manifestText && containsSecretLookingValue(options.manifestText)) {
+    add({
+      id: "literal-secret",
+      category: "secrets",
+      severity: "blocking",
+      path: "harness.yaml",
+      message: "Manifest appears to contain a literal secret value",
+      recommendation: "Replace literal secret values with entries under secrets.required or secrets.optional."
+    });
+  }
+
+  if (manifest.permissions.money_movement) {
+    add({
+      id: "money-movement",
+      category: "money",
+      severity: "blocking",
+      path: "permissions.money_movement",
+      message: "Harness requests money/card/ledger movement capability",
+      recommendation: "Require explicit security review and human approval before public listing."
+    });
+  }
+
+  if (manifest.permissions.filesystem === "unrestricted") {
+    add({
+      id: "unrestricted-filesystem",
+      category: "permissions",
+      severity: "blocking",
+      path: "permissions.filesystem",
+      message: "Harness requests unrestricted filesystem access",
+      recommendation: "Scope filesystem access to readonly or workspace-write."
+    });
+  }
+
+  const highRiskPermissions: Array<[boolean, string, string, SecurityFindingSeverity, string]> = [
+    [manifest.permissions.network === "unrestricted", "unrestricted-network", "permissions.network", "warning", "Harness requests unrestricted network access"],
+    [manifest.permissions.shell, "shell-access", "permissions.shell", "warning", "Harness requests shell access"],
+    [manifest.permissions.browser, "browser-automation", "permissions.browser", "warning", "Harness requests browser automation"],
+    [manifest.permissions.credentials === "persistent", "persistent-credentials", "permissions.credentials", "warning", "Harness requests persistent credentials"],
+    [manifest.permissions.external_send, "external-send", "permissions.external_send", "warning", "Harness can send data to external systems"],
+    [manifest.permissions.user_data, "user-data", "permissions.user_data", "warning", "Harness handles user data"]
+  ];
+  for (const [enabled, id, issuePath, severity, message] of highRiskPermissions) {
+    if (enabled) {
+      add({
+        id,
+        category: "permissions",
+        severity,
+        path: issuePath,
+        message,
+        recommendation: "Keep the permission disabled unless the harness cannot work without it."
+      });
+    }
+  }
+
+  for (const server of manifest.tools.mcp_servers) {
+    if (!server.pinned) {
+      add({
+        id: "unpinned-mcp-server",
+        category: "tools",
+        severity: "error",
+        path: `tools.mcp_servers.${server.id}`,
+        message: `MCP server '${server.id}' is not pinned`,
+        recommendation: "Pin MCP server package/version before verified registry use."
+      });
+    }
+  }
+  for (const tool of manifest.tools.function_tools) {
+    if (!tool.pinned) {
+      add({
+        id: "unpinned-function-tool",
+        category: "tools",
+        severity: "error",
+        path: `tools.function_tools.${tool.id}`,
+        message: `Function tool '${tool.id}' is not pinned`,
+        recommendation: "Pin function tools before verified registry use."
+      });
+    }
+  }
+
+  return summarizeSecurity(findings);
 }
 
 export function scoreRisk(manifest: HarnessManifest, issues: ValidationIssue[] = []): RiskReport {
@@ -322,4 +518,28 @@ function containsSecretLookingValue(text: string): boolean {
 
 function emptyRisk(): RiskReport {
   return { score: 0, tier: "LOW", reasons: [], blocking: [] };
+}
+
+function summarizeSecurity(findings: SecurityFinding[]): SecurityReport {
+  const summary = {
+    info: findings.filter((finding) => finding.severity === "info").length,
+    warning: findings.filter((finding) => finding.severity === "warning").length,
+    error: findings.filter((finding) => finding.severity === "error").length,
+    blocking: findings.filter((finding) => finding.severity === "blocking").length
+  };
+  return {
+    status: summary.blocking > 0 || summary.error > 0 ? "blocked" : summary.warning > 0 ? "review" : "passed",
+    findings,
+    summary
+  };
+}
+
+function emptySecurityReport(issues: ValidationIssue[] = []): SecurityReport {
+  return summarizeSecurity(issues.map((issue) => ({
+    id: "schema-validation-error",
+    category: "validation",
+    severity: issue.severity === "error" ? "error" : "warning",
+    path: issue.path,
+    message: issue.message
+  })));
 }

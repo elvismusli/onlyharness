@@ -12,6 +12,7 @@ services:
       GITEA_BASE_URL: ${GITEA_BASE_URL:-https://git.onlyharness.com}
       SUPABASE_URL: ${VITE_SUPABASE_URL}
       SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       HARNESS_WEBHOOK_TOKEN: ${HARNESS_WEBHOOK_TOKEN:?HARNESS_WEBHOOK_TOKEN is required}
     volumes:
       - onlyharness_data:/app/data

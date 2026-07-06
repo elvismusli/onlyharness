@@ -423,19 +423,25 @@ function runLocalEval(root: string) {
   const files = existsSync(casesDir) ? readdirSync(casesDir).filter((file) => file.endsWith(".yaml") || file.endsWith(".yml")) : [];
   const cases = files.map((file) => {
     const parsed = YAML.parse(readFileSync(path.join(casesDir, file), "utf8")) ?? {};
-    const score = typeof parsed.score === "number" ? parsed.score : 0.85;
+    const hasMeasuredScore = typeof parsed.score === "number" && Number.isFinite(parsed.score);
+    const score = hasMeasuredScore ? parsed.score : 0;
     return {
       id: path.basename(file, path.extname(file)),
       title: parsed.title ?? path.basename(file),
       score,
-      passed: score >= 0.8
+      passed: hasMeasuredScore && score >= 0.8,
+      verification_status: hasMeasuredScore ? "declared_score" : "unverified_missing_score",
+      ...(hasMeasuredScore ? {} : { note: "No measured case score declared; counted as unverified instead of inferred." })
     };
   });
   const score = cases.length ? Number((cases.reduce((sum, item) => sum + item.score, 0) / cases.length).toFixed(3)) : 0;
+  const unverifiedCases = cases.filter((item) => item.verification_status !== "declared_score").length;
   return {
     runner: "harnesshub-local-eval",
-    status: score >= 0.8 ? "passed" : "failed",
+    status: !cases.length || unverifiedCases ? "unverified" : score >= 0.8 ? "passed" : "failed",
     score,
+    verified: Boolean(cases.length) && unverifiedCases === 0,
+    verification_status: !cases.length ? "no_eval_cases" : unverifiedCases ? "unverified_missing_case_scores" : "declared_case_scores",
     cost_usd: Number((cases.length * 0.03).toFixed(2)),
     duration_ms: 250 + cases.length * 15,
     cases
@@ -446,13 +452,14 @@ function evalText(result: ReturnType<typeof runLocalEval>): string {
   return [
     `Eval ${result.status}`,
     `Score: ${result.score}`,
+    `Verification: ${result.verification_status}`,
     `Cost: $${result.cost_usd}`,
-    ...result.cases.map((item) => `- ${item.passed ? "PASS" : "FAIL"} ${item.id}: ${item.score}`)
+    ...result.cases.map((item) => `- ${item.passed ? "PASS" : "FAIL"} ${item.id}: ${item.score} (${item.verification_status})`)
   ].join("\n") + "\n";
 }
 
 function htmlReport(result: ReturnType<typeof runLocalEval>): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Harness Eval</title><style>body{font-family:Inter,system-ui,sans-serif;padding:32px;color:#17202a}table{border-collapse:collapse}td,th{border:1px solid #d8dee8;padding:8px 12px}</style></head><body><h1>Harness Eval</h1><p>Status: ${result.status}</p><p>Score: ${result.score}</p><table><thead><tr><th>Case</th><th>Score</th><th>Status</th></tr></thead><tbody>${result.cases.map((item) => `<tr><td>${item.title}</td><td>${item.score}</td><td>${item.passed ? "PASS" : "FAIL"}</td></tr>`).join("")}</tbody></table></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Harness Eval</title><style>body{font-family:Inter,system-ui,sans-serif;padding:32px;color:#17202a}table{border-collapse:collapse}td,th{border:1px solid #d8dee8;padding:8px 12px}</style></head><body><h1>Harness Eval</h1><p>Status: ${result.status}</p><p>Score: ${result.score}</p><p>Verification: ${result.verification_status}</p><table><thead><tr><th>Case</th><th>Score</th><th>Status</th><th>Verification</th></tr></thead><tbody>${result.cases.map((item) => `<tr><td>${item.title}</td><td>${item.score}</td><td>${item.passed ? "PASS" : "FAIL"}</td><td>${item.verification_status}</td></tr>`).join("")}</tbody></table></body></html>`;
 }
 
 function junitReport(result: ReturnType<typeof runLocalEval>): string {
@@ -461,19 +468,20 @@ function junitReport(result: ReturnType<typeof runLocalEval>): string {
 
 function createHarnessFromMarkdown(text: string, out: string, name: string, sourcePath: string) {
   mkdirSync(out, { recursive: true });
-  for (const dir of ["agents", "prompts", "tools", "gates", "evals/cases", "examples", "runbooks", ".gitea/workflows"]) {
+  for (const dir of ["agents", "prompts", "tools", "gates", "evals/cases", "examples", "runbooks", ".gitea/workflows", ".harnesshub"]) {
     mkdirSync(path.join(out, dir), { recursive: true });
   }
   const title = titleize(name);
+  const unverifiedResult = unverifiedImportResult("smoke", "Imported workflow smoke");
   writeFileSync(path.join(out, "harness.yaml"), YAML.stringify({
     schemaVersion: "harness.v0.1",
     name,
     title,
-    summary: `Imported harness scaffold for ${title}. Review unresolved notes before publishing.`,
+    summary: `Unverified imported harness scaffold for ${title}. Add real eval scores before publishing.`,
     version: "0.1.0",
-    license: "MIT",
+    license: "UNSPECIFIED",
     maintainers: [{ name: "Harness.Hub Local" }],
-    tags: ["imported"],
+    tags: ["imported", "unverified"],
     runtime: { primary: "openai-agents-sdk", adapters: [] },
     entrypoint: { command: "npm run harness:run", cwd: "." },
     inputs: [{ id: "request", type: "markdown", required: true }],
@@ -503,14 +511,39 @@ function createHarnessFromMarkdown(text: string, out: string, name: string, sour
     quality_gates: { min_score: 0.82, max_regression: 0.03, max_cost_usd_per_run: 3, max_risk_score: 39, required_checks: ["schema_valid", "eval_passed", "no_high_risk_permission_delta"] },
     examples: [{ title: "Imported workflow smoke", input: "examples/input.md", output: "examples/expected.md" }]
   }));
-  writeFileSync(path.join(out, "README.md"), `# ${title}\n\nImported from \`${sourcePath}\`.\n\nThis scaffold is intentionally conservative. Review \`runbooks/source-import.md\` and replace unresolved workflow notes before publishing.\n`);
-  writeFileSync(path.join(out, "agents/operator.md"), `You run the imported workflow exactly as specified.\n\nRules:\n- Preserve the source intent.\n- Mark missing data as needs_resolution.\n- Do not invent tools, permissions or external sends.\n`);
-  writeFileSync(path.join(out, "evals/promptfooconfig.yaml"), "description: Imported harness smoke eval\nprompts:\n  - agents/operator.md\nproviders:\n  - echo\n");
-  writeFileSync(path.join(out, "evals/cases/smoke.yaml"), "title: Imported workflow smoke\nscore: 0.86\n");
+  writeFileSync(path.join(out, "README.md"), `# ${title}\n\nImported from \`${sourcePath}\`.\n\nTrust status: unverified import. This scaffold has no measured eval score yet; \`.harnesshub/results.json\` intentionally records score \`0\` until a real eval run supplies evidence.\n\nBefore publishing:\n\n1. Review \`runbooks/source-import.md\` against the original source.\n2. Replace unresolved workflow notes.\n3. Add measured eval scores to \`evals/cases/*.yaml\` or wire a real evaluator.\n4. Run \`hh validate --strict && hh eval && hh gate\`.\n`);
+  writeFileSync(path.join(out, "agents/operator.md"), `You run the imported workflow exactly as specified.\n\nTrust status: unverified import. Treat source gaps as unresolved until a human verifies them.\n\nRules:\n- Preserve the source intent.\n- Mark missing data as needs_resolution.\n- Do not invent tools, permissions, eval scores or external sends.\n`);
+  writeFileSync(path.join(out, "evals/promptfooconfig.yaml"), "description: Imported harness smoke eval (unverified scaffold; add measured assertions before gating)\nprompts:\n  - agents/operator.md\nproviders:\n  - echo\n");
+  writeFileSync(path.join(out, "evals/cases/smoke.yaml"), "title: Imported workflow smoke\nverification_status: unverified_import\nnote: Generated scaffold only; add a measured score after a real eval run.\n");
   writeFileSync(path.join(out, "examples/input.md"), "# Request\n\nRun the imported workflow on a small test case.\n");
-  writeFileSync(path.join(out, "examples/expected.md"), "The result preserves the source workflow and marks unresolved fields as needs_resolution.\n");
+  writeFileSync(path.join(out, "examples/expected.md"), "The result preserves the source workflow, marks unresolved fields as needs_resolution, and does not claim verification without a measured eval.\n");
   writeFileSync(path.join(out, "runbooks/source-import.md"), text);
+  writeFileSync(path.join(out, ".harnesshub/results.json"), JSON.stringify(unverifiedResult, null, 2));
+  writeFileSync(path.join(out, ".harnesshub/report.html"), htmlReport(unverifiedResult));
+  writeFileSync(path.join(out, ".harnesshub/results.junit.xml"), junitReport(unverifiedResult));
   writeFileSync(path.join(out, ".gitea/workflows/harness-ci.yml"), defaultWorkflow());
+}
+
+function unverifiedImportResult(id: string, title: string) {
+  return {
+    runner: "harnesshub-local-eval",
+    status: "unverified",
+    score: 0,
+    verified: false,
+    verification_status: "unverified_import_scaffold",
+    cost_usd: 0,
+    duration_ms: 0,
+    cases: [
+      {
+        id,
+        title,
+        score: 0,
+        passed: false,
+        verification_status: "unverified_import",
+        note: "Generated scaffold only; add a measured eval score before gating."
+      }
+    ]
+  };
 }
 
 function defaultWorkflow(): string {
