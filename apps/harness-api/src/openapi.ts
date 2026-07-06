@@ -655,6 +655,72 @@ export const openapi = {
         }
       }
     },
+    "/orgs/{slug}/imports/harness-dir": {
+      post: {
+        summary: "Publish a verified harness directory into an organization namespace",
+        description: "Requires ORGS_ENABLED=true and a Bearer org token with publish scope. Accepts the same bounded hh publish <dir> payload as /imports/harness-dir, then marks the manifest visibility: org before server-side validation, security scan, eval and gate checks.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  files: {
+                    type: "array",
+                    maxItems: 120,
+                    items: {
+                      type: "object",
+                      properties: {
+                        path: { type: "string" },
+                        content: { type: "string" },
+                        truncated: { type: "boolean" }
+                      },
+                      required: ["path", "content"]
+                    }
+                  }
+                },
+                required: ["files"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Verified org-private harness",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    item: { $ref: "#/components/schemas/RegistryItem" },
+                    snapshotVersion: { type: "string" },
+                    verified: { type: "boolean" },
+                    gate: {
+                      type: "object",
+                      properties: {
+                        score: { type: "number" },
+                        risk: { type: "number" },
+                        cost: { type: "number" },
+                        failures: { type: "array", items: { type: "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
     "/webhooks/payments": {
       post: {
         summary: "Settle a manual payment webhook",

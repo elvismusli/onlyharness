@@ -704,10 +704,9 @@ program.command("publish")
     try {
       const sourceStats = statSync(source.path);
       if (sourceStats.isDirectory()) {
-        if (orgSlug) fail("Verified directory publish for orgs is not live yet.", EXIT.VALIDATION, "Use hh sync <repo> --org <slug> for org-private markdown imports.", options.json);
         const name = options.name ? slugify(options.name) : undefined;
         if (options.name && !name) fail("Invalid harness slug.", EXIT.VALIDATION, "Use --name my-harness", options.json);
-        const result = await publishHarnessDir({ token, name, root: source.path, json: options.json, autoEval: source.autoEval });
+        const result = await publishHarnessDir({ org: orgSlug, token, name, root: source.path, json: options.json, autoEval: source.autoEval });
         if (options.json) {
           writeStdout({
             title: result.title,
@@ -1862,9 +1861,9 @@ async function publishPublicMarkdown(input: { token?: string; name: string; mark
   };
 }
 
-async function publishHarnessDir(input: { token?: string; name?: string; root: string; json: boolean; autoEval?: boolean }): Promise<OrgImportResult> {
+async function publishHarnessDir(input: { org?: string; token?: string; name?: string; root: string; json: boolean; autoEval?: boolean }): Promise<OrgImportResult> {
   const payload = buildHarnessDirPublishPayload(input.root, input.name, input.json, input.autoEval === true);
-  const publishUrl = `${registryUrl}/imports/harness-dir`;
+  const publishUrl = input.org ? `${registryUrl}/orgs/${input.org}/imports/harness-dir` : `${registryUrl}/imports/harness-dir`;
   const response = await fetchRegistryResponse(publishUrl, input.json, {
     method: "POST",
     headers: {
@@ -1886,7 +1885,7 @@ async function publishHarnessDir(input: { token?: string; name?: string; root: s
       fail(
         `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
         EXIT.AUTH,
-        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.org ? "Check HH_ORG_TOKEN and org publish scope." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
         input.json
       );
     }
@@ -1896,7 +1895,7 @@ async function publishHarnessDir(input: { token?: string; name?: string; root: s
   return {
     title: body.item?.title ?? input.name ?? path.basename(input.root),
     name: body.item?.name ?? input.name ?? path.basename(input.root),
-    owner: body.item?.owner ?? "local",
+    owner: body.item?.owner ?? (input.org ? `@${input.org}` : "local"),
     snapshotVersion: body.snapshotVersion,
     verified: body.verified === true,
     gate: body.gate

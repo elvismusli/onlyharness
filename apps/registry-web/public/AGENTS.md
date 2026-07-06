@@ -54,6 +54,7 @@ node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.ya
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness --json
 node packages/harness-cli/dist/hh.mjs setup @acme --json
 node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
+node packages/harness-cli/dist/hh.mjs publish ./team-harness --org acme --name team-harness --json
 node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme --json
 node packages/harness-cli/dist/hh.mjs pin deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs outdated deep-market-researcher --json
@@ -85,6 +86,7 @@ Core endpoints:
 | GET | `/orgs/{slug}/bundle` | Team setup bundle; requires `ORGS_ENABLED=true` and Bearer org token |
 | GET | `/orgs/{slug}/workspace` | Network Neighborhood payload: org-private cards, sanitized audit rows, permission/risk summary |
 | POST | `/orgs/{slug}/imports/markdown-to-harness` | Publish org-private markdown harness; requires org token with publish scope |
+| POST | `/orgs/{slug}/imports/harness-dir` | Publish verified org-private harness directory after eval/gate; requires org token with publish scope |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
 | POST | `/imports/harness-dir` | Publish a verified public harness directory after eval/gate; Bearer token required |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |

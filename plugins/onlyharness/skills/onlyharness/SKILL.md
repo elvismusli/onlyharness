@@ -9,23 +9,24 @@ OnlyHarness is a registry for reusable AI-agent harnesses: manifests, prompts, e
 
 ## Fast Path
 
-Use the CLI first when shell access is available:
+Use the CLI first when shell access is available from a cloned `harness-hub` repo. The `onlyharness` npm package is not published yet; do not run `npx onlyharness` until npm publish is complete. If the repo is not present, use the HTTP/MCP fallback below.
 
 ```bash
-npx onlyharness suggest market research --json
-npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
-npx onlyharness search market research
-npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
-npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
-npx onlyharness run deep-market-researcher --json
-npx onlyharness eval deep-market-researcher --json
-npx onlyharness gate --dir deep-market-researcher --json
-npx onlyharness gate --dir deep-market-researcher --receipt --json
-npx onlyharness update deep-market-researcher --diff --json
-npx onlyharness audit-setup --json
-npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness --json
-HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme --json
-HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name team-workflow --json
+npm run build -w onlyharness
+node packages/harness-cli/dist/hh.mjs suggest market research --json
+node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs search market research
+node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target claude-code --json
+node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --json
+node packages/harness-cli/dist/hh.mjs run deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs eval deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs gate --dir deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs gate --dir deep-market-researcher --receipt --json
+node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --json
+node packages/harness-cli/dist/hh.mjs audit-setup --json
+node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness --json
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme --json
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
 ```
 
 `hh run` is sample mode only: no LLM calls and no credentials.
@@ -43,7 +44,7 @@ Publishing needs an OnlyHarness account token:
 
 ```bash
 export HH_TOKEN=<access-token>
-npx onlyharness publish workflow.md --name my-harness --json
+node packages/harness-cli/dist/hh.mjs publish workflow.md --name my-harness --json
 ```
 
 Generated/imported harnesses are unverified until real eval scores are added and `hh gate` passes.

@@ -19,6 +19,7 @@ let sawUpdateToken = false;
 let sawSetupBundleToken = false;
 let sawSetupArchiveToken = false;
 let sawOrgPublishToken = false;
+let sawOrgHarnessDirPublishToken = false;
 let sawOrgPullToken = false;
 let sawHarnessDirPublishToken = false;
 let sawClaudeInstallToken = false;
@@ -139,6 +140,44 @@ before(async () => {
         response.end(JSON.stringify({
           item: { owner: "@acme", name, title: titleizeTest(name) },
           snapshotVersion: "0.1.0"
+        }));
+      });
+      return;
+    }
+
+    if (request.url === "/orgs/acme/imports/harness-dir" && request.method === "POST") {
+      if (request.headers.authorization !== "Bearer org-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid org token" }));
+        return;
+      }
+      sawOrgHarnessDirPublishToken = true;
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { name?: string; files?: Array<{ path?: string; content?: string; truncated?: boolean }> };
+        const paths = (body.files ?? []).map((file) => file.path);
+        if (!paths.includes("harness.yaml") || !paths.includes(".harnesshub/results.json")) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "missing required publish files", paths }));
+          return;
+        }
+        const evalFile = body.files?.find((file) => file.path === ".harnesshub/results.json");
+        const evalResult = JSON.parse(evalFile?.content ?? "{}") as { status?: string; verified?: boolean };
+        if (evalResult.status !== "passed" || evalResult.verified !== true) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "eval result is not verified passed", evalResult }));
+          return;
+        }
+        const name = body.name ?? "verified-team-dir";
+        response.end(JSON.stringify({
+          item: { owner: "@acme", name, title: titleizeTest(name) },
+          snapshotVersion: "0.1.0",
+          verified: true,
+          gate: { score: 0.9, risk: 10, cost: 0.03, failures: [] }
         }));
       });
       return;
@@ -732,6 +771,36 @@ test("publish sends a verified harness directory with eval results", async () =>
     assert.equal(body.verified, true);
     assert.equal(body.snapshotVersion, "0.1.0");
     assert.deepEqual(body.gate?.failures, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publish --org sends a verified harness directory to the org endpoint", async () => {
+  sawOrgHarnessDirPublishToken = false;
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-org-dir-publish-"));
+  const source = path.join(root, "verified-team");
+  try {
+    await cp(seedHarness, source, { recursive: true });
+    await rm(path.join(source, ".harnesshub"), { recursive: true, force: true });
+
+    const evalResult = await runCli(["eval", source, "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(evalResult.status, 0, evalResult.stderr);
+    const result = await runCli(["publish", source, "--name", "verified-team-dir", "--org", "acme", "--org-token", "org-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawOrgHarnessDirPublishToken, true);
+    assert.doesNotMatch(result.stdout, /org-token/);
+    const body = JSON.parse(result.stdout) as { owner?: string; name?: string; verified?: boolean; snapshotVersion?: string; gate?: { failures?: string[] } };
+    assert.equal(body.owner, "@acme");
+    assert.equal(body.name, "verified-team-dir");
+    assert.equal(body.verified, true);
+    assert.equal(body.snapshotVersion, "0.1.0");
+    assert.deepEqual(body.gate?.failures, []);
+
+    const denied = await runCli(["publish", source, "--name", "verified-team-dir", "--org", "acme", "--org-token", "bad-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(denied.status, 2);
+    assert.doesNotMatch(denied.stderr, /bad-token/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

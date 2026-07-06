@@ -22,7 +22,7 @@
     "onlyharness": "./dist/hh.mjs"
   },
   "files": [
-    "dist",
+    "dist/hh.mjs",
     "README.md"
   ],
   "engines": {

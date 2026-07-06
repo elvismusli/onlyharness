@@ -73,6 +73,15 @@ try {
     throw new Error(`MCP harness_detail did not include context cost: ${JSON.stringify(detail)}`);
   }
 
+  const instructions = await rpc(41, "tools/call", {
+    name: "pull_instructions",
+    arguments: { owner: "harnesses", name: "deep-market-researcher" }
+  });
+  const instructionsText = instructions.result?.content?.[0]?.text ?? "";
+  if (!instructionsText.includes("node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher") || instructionsText.includes("npx onlyharness")) {
+    throw new Error(`MCP pull_instructions returned a non-local CLI command: ${JSON.stringify(instructions)}`);
+  }
+
   const pull = await rpc(5, "tools/call", {
     name: "pull_harness",
     arguments: { owner: "harnesses", name: "deep-market-researcher" }

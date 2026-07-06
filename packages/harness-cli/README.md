@@ -3,31 +3,30 @@
 `onlyharness` installs the `hh` command for agent harness discovery, local sample runs, evals and quality gates.
 
 ```bash
-npx onlyharness search market research
-npx onlyharness suggest market research --json
-npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
-npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
-npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
-npx onlyharness run deep-market-researcher
-npx onlyharness eval deep-market-researcher
-npx onlyharness gate --dir deep-market-researcher
-npx onlyharness update deep-market-researcher --diff
-npx onlyharness audit-setup
-npx onlyharness benchmark benchmarks/research-discovery.yaml --json
-npx onlyharness extract ~/.claude/skills/my-skill --out my-skill-harness
-HH_ORG_TOKEN=<org-token> npx onlyharness setup @acme
-HH_ORG_TOKEN=<org-token> npx onlyharness publish workflow.md --org acme --name team-workflow
-HH_ORG_TOKEN=<org-token> npx onlyharness sync git@github.com:acme/skills.git --org acme
+npm run build -w onlyharness
+node packages/harness-cli/dist/hh.mjs search market research
+node packages/harness-cli/dist/hh.mjs suggest market research --json
+node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target claude-code --json
+node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --json
+node packages/harness-cli/dist/hh.mjs run deep-market-researcher
+node packages/harness-cli/dist/hh.mjs eval deep-market-researcher
+node packages/harness-cli/dist/hh.mjs gate --dir deep-market-researcher
+node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff
+node packages/harness-cli/dist/hh.mjs audit-setup
+node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
+node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow
+HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
 ```
 
-Global install after npm publish:
+This local branch only prepares the npm bundle; it does not publish the package. Global install after npm publish:
 
 ```bash
 npm i -g onlyharness
 hh doctor
 ```
-
-This local branch only prepares the npm bundle; it does not publish the package.
 
 ## Registry
 

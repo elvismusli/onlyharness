@@ -632,6 +632,27 @@ app.post("/orgs/:slug/imports/markdown-to-harness", async (request, reply) => {
   return result;
 });
 
+app.post("/orgs/:slug/imports/harness-dir", async (request, reply) => {
+  if (!orgsEnabled) return reply.code(404).send({ error: "Org publishing is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = orgTokenFromRequest(request);
+  const auth = authorizeOrgToken(slug, token, ["publish"]);
+  if (!auth.ok) {
+    appendOrgAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "verified_publish" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as HarnessDirPublishRequest : {};
+  const result = await importVerifiedHarnessDir(body, { id: `org:${auth.org.slug}` }, { orgSlug: auth.org.slug, owner: `@${auth.org.slug}` });
+  if ("error" in result) {
+    const payload: { error: string; failures?: string[] } = { error: result.error ?? "Publish failed" };
+    if ("failures" in result && result.failures) payload.failures = result.failures;
+    appendOrgAudit({ slug: auth.org.slug, action: "verified_publish_rejected", tokenName: auth.tokenName, subject: eventSubject(undefined), target: body.name });
+    return reply.code(result.status ?? 500).send(payload);
+  }
+  appendOrgAudit({ slug: auth.org.slug, action: "verified_publish", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
+  return result;
+});
+
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const root = registry.resolveHarnessPath(owner, repo);
@@ -927,15 +948,17 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
   }
   const version = detail.manifest?.version ?? "current";
   const pricing = detail.manifest?.pricing;
+  const localCommand = `node packages/harness-cli/dist/hh.mjs install ${owner}/${name}`;
   return {
-    command: `npx onlyharness install ${owner}/${name}`,
-    localCommand: `node packages/harness-cli/dist/hh.mjs install ${owner}/${name}`,
+    command: localCommand,
+    localCommand,
+    npmStatus: "pending_publish",
     archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
     contextCost: detail.contextCost,
     payment: pricing && pricing.model !== "free"
       ? { required: true, pricing, tokenEnv: "HH_TOKEN", paymentExitCode: 5 }
       : { required: false },
-    next: [`hh run ${name} --json`, `hh eval ${name} --json`, `hh gate --dir ${name} --json`]
+    next: ["npm run build -w onlyharness", `node packages/harness-cli/dist/hh.mjs run ${name} --json`, `node packages/harness-cli/dist/hh.mjs eval ${name} --json`, `node packages/harness-cli/dist/hh.mjs gate --dir ${name} --json`]
   };
 };
 
@@ -1121,7 +1144,7 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
   return { item, output: cli.stdout, snapshotVersion: snapshot?.version };
 }
 
-async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: AuthUser) {
+async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: AuthUser, options: ImportOptions = {}) {
   const files = Array.isArray(body.files) ? body.files : [];
   if (!files.length) return { status: 400, error: "files are required" };
   if (files.length > 120) return { status: 400, error: "too many files" };
@@ -1140,6 +1163,7 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
     }
 
     if (requestedName) rewriteManifestName(temp, requestedName);
+    if (options.orgSlug) applyOrgManifest(temp, options.orgSlug);
 
     const basics = registry.registryDetailBasics(temp);
     const manifest = basics.inspection.manifest;
@@ -1166,16 +1190,18 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
     }
 
     const name = manifest.name;
-    const target = path.join(registry.importRoot, name);
+    const owner = options.owner ?? "local";
+    const targetRoot = options.orgSlug ? registry.orgImportRoot(options.orgSlug) : registry.importRoot;
+    const target = path.join(targetRoot, name);
     rmSync(target, { recursive: true, force: true });
     mkdirSync(path.dirname(target), { recursive: true });
     renameSync(temp, target);
-    const item = registry.registryItemFromDir("local", target, new Map());
-    const snapshot = registry.writeArchiveSnapshot("local", name, target);
-    await upsertHarnessCreator("local", name, user.id);
-    await recordEvent({ kind: "applied", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "verified_publish", client: "api" });
-    await recordEvent({ kind: "gate", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "passed", client: "api" });
-    appendState({ type: "verified_publish", name, target, userId: user.id, at: new Date().toISOString() });
+    const item = registry.registryItemFromDir(owner, target, new Map());
+    const snapshot = registry.writeArchiveSnapshot(owner, name, target);
+    if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
+    await recordEvent({ kind: "applied", owner, repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "verified_publish", client: "api" });
+    await recordEvent({ kind: "gate", owner, repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "passed", client: "api" });
+    appendState({ type: options.orgSlug ? "org_verified_publish" : "verified_publish", org: options.orgSlug, name, target, userId: user.id, at: new Date().toISOString() });
     return {
       item,
       snapshotVersion: snapshot?.version,

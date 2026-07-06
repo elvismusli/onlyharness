@@ -12,6 +12,7 @@ const escrowRoot = path.join(root, "data/imports/smoke-escrow-harness");
 const hostedRoot = path.join(root, "data/imports/smoke-hosted-harness");
 const verifiedPublishRoot = path.join(root, "data/imports/smoke-verified-publish");
 const gitPublishRoot = path.join(root, "data/imports/smoke-git-publish");
+const orgVerifiedPublishRoot = path.join(root, "data/orgs/acme/smoke-org-verified-publish");
 const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
 const verifiedPublishSource = path.join(smokeDataRoot, "verified-publish-source");
@@ -48,6 +49,7 @@ createEscrowHarness(escrowRoot);
 createHostedHarness(hostedRoot);
 rmSync(verifiedPublishRoot, { recursive: true, force: true });
 rmSync(gitPublishRoot, { recursive: true, force: true });
+rmSync(orgVerifiedPublishRoot, { recursive: true, force: true });
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
 createOrgStore(orgsPath, "smoke-org-token");
@@ -91,7 +93,7 @@ try {
     minimumSignals?: number;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   const directoryItem = registry.items.find((item) => item.owner === "directories" && item.name === "verified-agent-catalog-2026-07");
@@ -585,6 +587,33 @@ try {
     headers: { Authorization: "Bearer smoke-org-token" }
   }).then((response) => response.json()) as { manifest?: { visibility?: string; org?: string } };
   if (orgDetail.manifest?.visibility !== "org" || orgDetail.manifest.org !== "acme") throw new Error(`Org detail did not preserve org visibility: ${JSON.stringify(orgDetail.manifest)}`);
+  const orgVerifiedSource = path.join(smokeDataRoot, "org-verified-publish-source");
+  cpSync(path.join(seedRoot, "support-triage-agent"), orgVerifiedSource, { recursive: true });
+  rmSync(path.join(orgVerifiedSource, ".harnesshub"), { recursive: true, force: true });
+  run("node", [cliBin, "eval", orgVerifiedSource, "--json"], { env: cliEnv });
+  run("node", [cliBin, "gate", "--dir", orgVerifiedSource, "--json"], { env: cliEnv });
+  const orgVerifiedPublish = run("node", [cliBin, "publish", orgVerifiedSource, "--name", "smoke-org-verified-publish", "--org", "acme", "--org-token", "smoke-org-token", "--json"], { env: cliEnv });
+  const orgVerifiedPublishBody = JSON.parse(orgVerifiedPublish.stdout) as { owner?: string; name?: string; snapshotVersion?: string; verified?: boolean; gate?: { failures?: string[] } };
+  if (orgVerifiedPublishBody.owner !== "@acme" || orgVerifiedPublishBody.name !== "smoke-org-verified-publish" || orgVerifiedPublishBody.verified !== true || !orgVerifiedPublishBody.snapshotVersion || orgVerifiedPublishBody.gate?.failures?.length) {
+    throw new Error(`Org verified directory publish returned wrong payload: ${orgVerifiedPublish.stdout}`);
+  }
+  const publicRegistryAfterOrgDirPublish = await fetch("http://127.0.0.1:8799/registry?q=smoke-org-verified-publish").then((response) => response.json()) as { items?: Array<{ owner?: string; name?: string }> };
+  if (publicRegistryAfterOrgDirPublish.items?.some((item) => item.name === "smoke-org-verified-publish")) {
+    throw new Error(`Org-private verified harness leaked into public registry: ${JSON.stringify(publicRegistryAfterOrgDirPublish)}`);
+  }
+  const orgVerifiedDetail = await fetch("http://127.0.0.1:8799/repos/@acme/smoke-org-verified-publish/harness", {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { manifest?: { visibility?: string; org?: string }; verification?: { lastVerifiedAt?: string } };
+  if (orgVerifiedDetail.manifest?.visibility !== "org" || orgVerifiedDetail.manifest.org !== "acme" || !orgVerifiedDetail.verification?.lastVerifiedAt) {
+    throw new Error(`Org verified detail did not preserve org verification: ${JSON.stringify(orgVerifiedDetail)}`);
+  }
+  const orgVerifiedArchive = await fetch(`http://127.0.0.1:8799/repos/@acme/smoke-org-verified-publish/archive?version=${orgVerifiedPublishBody.snapshotVersion}`, {
+    headers: { Authorization: "Bearer smoke-org-token" }
+  }).then((response) => response.json()) as { owner?: string; repo?: string; snapshot?: boolean; files?: Array<{ path?: string }> };
+  if (orgVerifiedArchive.owner !== "@acme" || orgVerifiedArchive.repo !== "smoke-org-verified-publish" || !orgVerifiedArchive.snapshot || !orgVerifiedArchive.files?.some((file) => file.path === "harness.yaml")) {
+    throw new Error(`Org verified archive unavailable: ${JSON.stringify(orgVerifiedArchive)}`);
+  }
+  if (orgVerifiedArchive.files?.some((file) => file.path === ".harnesshub/results.json")) throw new Error("Org verified publish archive leaked local eval results");
   const orgSemanticDiff = await fetch("http://127.0.0.1:8799/prs/@acme/acme-private-workflow/1/semantic-diff", {
     headers: { Authorization: "Bearer smoke-org-token" }
   }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; demo?: { demo?: boolean }; next?: string } }));
@@ -620,7 +649,7 @@ try {
     permissions?: { totalHarnesses?: number; riskMarkdown?: string };
     audit?: Array<{ action?: string; token_name?: string | null }>;
   };
-  if (orgWorkspace.organization?.slug !== "acme" || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "acme-private-workflow") || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "smoke-sync")) {
+  if (orgWorkspace.organization?.slug !== "acme" || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "acme-private-workflow") || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "smoke-org-verified-publish") || !orgWorkspace.items?.some((item) => item.owner === "@acme" && item.name === "smoke-sync")) {
     throw new Error(`Org workspace did not return org-private catalog: ${JSON.stringify(orgWorkspace)}`);
   }
   if (!orgWorkspace.permissions?.totalHarnesses || !orgWorkspace.permissions.riskMarkdown?.includes("# Harness Risk")) {
@@ -724,6 +753,7 @@ try {
   rmSync(escrowRoot, { recursive: true, force: true });
   rmSync(verifiedPublishRoot, { recursive: true, force: true });
   rmSync(gitPublishRoot, { recursive: true, force: true });
+  rmSync(orgVerifiedPublishRoot, { recursive: true, force: true });
   rmSync(smokeDataRoot, { recursive: true, force: true });
 }
 
@@ -732,7 +762,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import/verified-directory-publish/git-publish, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import/verified-directory-publish/git-publish, storefront ref attribution, archive versions, paid 402/checkout/receipt/webhook/entitlement/check/community-code, hosted per-call unavailable guard, gate escrow reserve/capture/refund/timeout, signed gate receipt verification, Claude Code install confirms, eval/gate verification events, events, org setup/publish/verified-publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/install/adapt/mcp-config, local CLI doctor/search/suggest/install/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
