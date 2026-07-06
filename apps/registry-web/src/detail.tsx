@@ -117,7 +117,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
                   <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : isDirectory ? "📋 Copy link" : ">_ Copy CLI"}</Btn>
                 </div>
                 <div className="plate" style={{ marginTop: 8, fontSize: 11 }}>
-                  {isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Planned targets are visible but do not imply adapter support. Use available targets for automation."}
+                  {isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Adapter targets generate local instruction files. Use eval and gate before real work."}
                 </div>
               </div>
             )}
@@ -320,8 +320,10 @@ function compatibilityTargets(item: RegistryItem, detail?: HarnessDetail): Compa
     { name: "CLI", status: "available", notes: item.cliCommand },
     { name: "HTTP archive", status: "available" },
     { name: "MCP pull_harness", status: "available" },
-    { name: "Cursor adapter", status: "planned" },
-    { name: "Team bundle", status: "planned" }
+    { name: "Claude Code adapter", status: "available", notes: "hh adapt --target claude-code" },
+    { name: "Codex adapter", status: "available", notes: "hh adapt --target codex" },
+    { name: "Cursor adapter", status: "available", notes: "hh adapt --target cursor" },
+    { name: "Team bundle", status: "available", notes: "hh setup @org" }
   ];
 }
 

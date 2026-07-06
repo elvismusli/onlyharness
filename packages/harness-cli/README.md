@@ -7,6 +7,8 @@ npx onlyharness search market research
 npx onlyharness suggest market research --json
 npx onlyharness suggest market research --apply --out deep-market-researcher --json
 npx onlyharness pull harnesses/deep-market-researcher
+npx onlyharness adapt deep-market-researcher --target claude-code --json
+npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
 npx onlyharness run deep-market-researcher
 npx onlyharness eval deep-market-researcher
 npx onlyharness gate --dir deep-market-researcher
@@ -57,6 +59,8 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
 - `hh pull owner/name --pay` uses `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuses to sign above `HH_MAX_PAY_USD`.
 - `hh pull @org/name` sends `HH_ORG_TOKEN` when set.
+- `hh adapt [dir] --target claude-code|codex|cursor` writes local adapter instruction files and refuses to overwrite without `--force`.
+- `hh mcp-config [dir] --target claude-desktop|claude-code|cursor` generates package-backed MCP client JSON from `tools.mcp_servers`.
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.

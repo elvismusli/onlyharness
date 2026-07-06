@@ -634,6 +634,54 @@ test("inspect --json includes local context cost", async () => {
   assert.equal(typeof body.contextCost?.files, "number");
 });
 
+test("adapt generates target adapter files without overwriting by default", async () => {
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-adapt-"));
+  try {
+    const result = await runCli(["adapt", seedHarness, "--target", "claude-code", "--out", out, "--json"]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as { target?: string; harness?: string; files?: string[]; next?: string[] };
+    assert.equal(body.target, "claude-code");
+    assert.equal(body.harness, "deep-market-researcher");
+    assert.ok(body.files?.some((file) => file.endsWith("SKILL.md")));
+    assert.ok(body.next?.some((step) => step.includes("hh gate")));
+    const skill = await readFile(path.join(out, "SKILL.md"), "utf8");
+    assert.match(skill, /Deep Market Researcher/);
+    assert.match(skill, /hh eval/);
+
+    const duplicate = await runCli(["adapt", seedHarness, "--target", "claude-code", "--out", out, "--json"]);
+    assert.equal(duplicate.status, 3);
+    const duplicateBody = JSON.parse(duplicate.stderr) as { error?: string; next?: string };
+    assert.match(duplicateBody.error ?? "", /already exists/);
+    assert.match(duplicateBody.next ?? "", /--force/);
+
+    const overwrite = await runCli(["adapt", seedHarness, "--target", "claude-code", "--out", out, "--force", "--json"]);
+    assert.equal(overwrite.status, 0, overwrite.stderr);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test("mcp-config writes package-backed MCP client config", async () => {
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-mcp-config-"));
+  const configPath = path.join(out, "mcp.json");
+  try {
+    const result = await runCli(["mcp-config", seedHarness, "--target", "claude-desktop", "--out", configPath, "--json"]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as { target?: string; harness?: string; servers?: Array<{ id?: string; package?: string }>; config?: { mcpServers?: Record<string, { command?: string; args?: string[] }> } };
+    assert.equal(body.target, "claude-desktop");
+    assert.equal(body.harness, "deep-market-researcher");
+    assert.ok(body.servers?.some((server) => server.id === "web_search" && server.package === "@modelcontextprotocol/server-web-search"));
+    assert.equal(body.config?.mcpServers?.web_search?.command, "npx");
+    assert.deepEqual(body.config?.mcpServers?.web_search?.args, ["-y", "@modelcontextprotocol/server-web-search"]);
+    const written = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers?: Record<string, { command?: string; args?: string[] }> };
+    assert.deepEqual(written, body.config);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
 test("pin writes pin metadata and outdated exits 3 for newer registry version", async () => {
   const out = await mkdtemp(path.join(os.tmpdir(), "hh-outdated-"));
   try {

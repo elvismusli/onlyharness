@@ -82,6 +82,8 @@ After the npm package is published:
 npx onlyharness search market research
 npx onlyharness suggest market research --json
 npx onlyharness pull harnesses/deep-market-researcher
+npx onlyharness adapt deep-market-researcher --target claude-code --json
+npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
 npm i -g onlyharness   # installs the `hh` command
 ```
 
@@ -92,6 +94,8 @@ npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs adapt deep-market-researcher --target codex --json
+node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --out mcp.json
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme

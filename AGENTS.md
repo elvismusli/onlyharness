@@ -43,6 +43,8 @@ npx onlyharness search market research
 npx onlyharness suggest market research --json
 npx onlyharness suggest market research --apply --out deep-market-researcher --json
 npx onlyharness pull harnesses/deep-market-researcher
+npx onlyharness adapt deep-market-researcher --target claude-code --json
+npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
 npx onlyharness run deep-market-researcher --json
 npx onlyharness eval deep-market-researcher --json
 npx onlyharness gate --dir deep-market-researcher --json

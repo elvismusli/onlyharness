@@ -81,6 +81,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
     : item
     ? [
         `npx onlyharness pull ${target}`,
+        `npx onlyharness adapt ${item.name} --target claude-code --json`,
         `npx onlyharness run ${item.name} --json`,
         `npx onlyharness eval ${item.name} --json`,
         `npx onlyharness gate --dir ${item.name} --json`
@@ -90,12 +91,12 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
   const mcpConfig = item && isDirectory
     ? `# Directory entries are link-only.\nopen ${directoryUrl}`
     : item
-    ? `claude mcp add onlyharness https://onlyharness.com/mcp\n# then call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
+    ? `npx onlyharness pull ${target}\nnpx onlyharness mcp-config ${item.name} --target claude-desktop --out mcp.json\nclaude mcp add onlyharness https://onlyharness.com/mcp\n# For registry pulls, call pull_harness with { "owner": "${item.owner}", "name": "${item.name}" }`
     : "Select a harness to generate MCP setup.";
   const pluginGuide = item && isDirectory
     ? `# Plugin install is not needed for link-only directories.\nopen ${directoryUrl}`
     : item
-    ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin v0.1 exposes the OnlyHarness skill and MCP wiring guide.\n# Use: npx onlyharness pull ${target}`
+    ? `cp -R plugins/onlyharness ~/.codex/plugins/onlyharness\n# plugin exposes the OnlyHarness skill and MCP wiring guide.\n# Use: npx onlyharness suggest "${item.name.replaceAll("-", " ")}" --apply --out ${item.name} --json`
     : "Select a harness to generate plugin setup.";
   const targets: CompatibilityTarget[] = isDirectory ? [
     { name: "Open link", status: "available", detail: directoryUrl },
@@ -105,8 +106,9 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
     { name: "CLI", status: "available", detail: "npx onlyharness pull/run/eval/gate" },
     { name: "HTTP archive", status: "available", detail: "/api/repos/{owner}/{name}/archive" },
     { name: "MCP", status: "available", detail: "pull_instructions + harness_detail" },
-    { name: "Claude Code plugin", status: "available", detail: "skill + .mcp.json" },
-    { name: "Cursor adapter", status: "planned", detail: "adapter command not shipped yet" },
+    { name: "Claude Code adapter", status: "available", detail: "hh adapt --target claude-code" },
+    { name: "Codex adapter", status: "available", detail: "hh adapt --target codex" },
+    { name: "Cursor adapter", status: "available", detail: "hh adapt --target cursor" },
     { name: "Team bundle", status: "available", detail: "hh setup @org / hh publish --org with HH_ORG_TOKEN" }
   ];
 
@@ -122,7 +124,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
         <section>
           <TabStrip tabs={INSTALL_TABS} active={tab} onSelect={setTab} />
           <div className="trust-box">
-            <h4>{isDirectory ? "Directory link" : tab === "CLI" ? "Recommended install loop" : tab === "MCP" ? "MCP setup" : tab === "Plugin" ? "Plugin v0.1" : "Planned adapters"}</h4>
+            <h4>{isDirectory ? "Directory link" : tab === "CLI" ? "Recommended install loop" : tab === "MCP" ? "MCP setup" : tab === "Plugin" ? "Plugin" : "Pending targets"}</h4>
             {tab === "CLI" && <pre className="pre98">{cliCommands}</pre>}
             {tab === "MCP" && <pre className="pre98">{mcpConfig}</pre>}
             {tab === "Plugin" && <pre className="pre98">{pluginGuide}</pre>}
@@ -134,6 +136,12 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
                     <span><b>{targetInfo.name}</b> · {targetInfo.detail}</span>
                   </div>
                 ))}
+                {!targets.some((targetInfo) => targetInfo.status === "planned") && (
+                  <div className="file-row">
+                    <span className="tag98 safe">available</span>
+                    <span>No planned adapter targets for this harness. Use CLI, MCP, or adapter commands above.</span>
+                  </div>
+                )}
               </div>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -165,7 +173,7 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
             <InfoLine label="Context" value={item ? fmtContextCost(item.contextCost) : "select a harness"} />
             <InfoLine label="Standard" value={item?.standard ?? "select a harness"} />
           </div>
-          <div className="plate" style={{ fontSize: 11 }}>{isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Cursor adapter and team bundle are not shipped yet."}</div>
+          <div className="plate" style={{ fontSize: 11 }}>{isDirectory ? "Directory entries are discovery indexes, not runnable harnesses." : "Adapter files are local instructions. Run eval and gate before real use."}</div>
         </aside>
       </div>
     </div>

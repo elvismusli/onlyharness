@@ -392,6 +392,8 @@ try {
     run("node", [cliBin, "suggest", "deep", "market", "researcher", "--apply", "--out", path.join(pullTmp, "suggested"), "--json"], { env: cliEnv });
     const pulled = path.join(pullTmp, "dmr");
     run("node", [cliBin, "pull", "harnesses/deep-market-researcher", "--out", pulled], { env: cliEnv });
+    run("node", [cliBin, "adapt", pulled, "--target", "codex", "--out", path.join(pullTmp, "codex-adapter"), "--json"], { env: cliEnv });
+    run("node", [cliBin, "mcp-config", pulled, "--target", "claude-desktop", "--out", path.join(pullTmp, "mcp.json"), "--json"], { env: cliEnv });
     run("node", [cliBin, "run", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "eval", pulled, "--json"], { env: cliEnv });
     run("node", [cliBin, "gate", "--dir", pulled, "--json"], { env: cliEnv });
@@ -416,7 +418,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest, local CLI doctor/search/suggest/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, eval/gate verification events, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract/benchmark/suggest/adapt/mcp-config, local CLI doctor/search/suggest/pull/adapt/mcp-config/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;

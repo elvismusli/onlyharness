@@ -9,6 +9,7 @@ import { x402Client, x402HTTPClient, type PaymentRequired, type PaymentRequireme
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import {
+  type HarnessManifest,
   inspectHarness,
   riskMarkdown,
   validateHarnessDir
@@ -315,6 +316,26 @@ type BenchmarkResult = {
   rows: BenchmarkRow[];
   notes: string[];
 };
+type AdaptTarget = "claude-code" | "codex" | "cursor";
+type McpConfigTarget = "claude-desktop" | "claude-code" | "cursor";
+type AdapterResult = {
+  target: AdaptTarget;
+  harness: string;
+  root: string;
+  out: string;
+  files: string[];
+  next: string[];
+};
+type McpConfigResult = {
+  target: McpConfigTarget;
+  harness: string;
+  root: string;
+  out?: string;
+  servers: Array<{ id: string; package: string; required: boolean }>;
+  config: {
+    mcpServers: Record<string, { command: string; args: string[] }>;
+  };
+};
 
 export const EXIT = {
   OK: 0,
@@ -601,6 +622,45 @@ program.command("publish")
       return;
     }
     writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://onlyharness.com\n`);
+  });
+
+program.command("adapt")
+  .description("generate local adapter files for an installed harness")
+  .argument("[dir]", "harness directory", ".")
+  .requiredOption("--target <target>", "claude-code|codex|cursor")
+  .option("--out <dir>", "output directory (default target-specific path)")
+  .option("--force", "overwrite existing generated files", false)
+  .option("--json", "print JSON", false)
+  .action((dir: string, options) => {
+    const target = cleanAdaptTarget(options.target);
+    if (!target) fail("Unsupported adapter target.", EXIT.VALIDATION, "Use --target claude-code, codex, or cursor.", options.json);
+    const result = adaptHarness({
+      root: path.resolve(dir),
+      target,
+      out: options.out,
+      force: options.force,
+      json: options.json
+    });
+    writeStdout(options.json ? result : adapterText(result));
+  });
+
+program.command("mcp-config")
+  .description("generate MCP client config from a harness manifest")
+  .argument("[dir]", "harness directory", ".")
+  .option("--target <target>", "claude-desktop|claude-code|cursor", "claude-desktop")
+  .option("--out <path>", "write JSON config to a file")
+  .option("--json", "print JSON payload", false)
+  .action((dir: string, options) => {
+    const target = cleanMcpConfigTarget(options.target);
+    if (!target) fail("Unsupported MCP config target.", EXIT.VALIDATION, "Use --target claude-desktop, claude-code, or cursor.", options.json);
+    const result = mcpConfigForHarness({
+      root: path.resolve(dir),
+      target,
+      out: options.out,
+      json: options.json
+    });
+    if (options.json) writeStdout(result);
+    else writeStdout(options.out ? `Wrote ${result.out}\n` : `${JSON.stringify(result.config, null, 2)}\n`);
   });
 
 program.command("doctor")
@@ -2318,6 +2378,205 @@ function formatDiff(diff: ReturnType<typeof diffHarnessDirs>, format: OutputForm
   if (format === "json") return JSON.stringify(diff, null, 2);
   if (format === "markdown") return semanticDiffMarkdown(diff);
   return semanticDiffMarkdown(diff);
+}
+
+function adaptHarness(input: { root: string; target: AdaptTarget; out?: string; force: boolean; json: boolean }): AdapterResult {
+  const manifest = validManifest(input.root, input.json);
+  const out = path.resolve(input.out ?? defaultAdapterOut(input.target, manifest));
+  const content = adapterContent(input.target, manifest, input.root);
+  const files: string[] = [];
+  if (input.target === "claude-code") {
+    const file = path.join(out, "SKILL.md");
+    writeGeneratedFile(file, content, input.force, input.json);
+    files.push(file);
+  } else if (input.target === "codex") {
+    const file = path.join(out, "AGENTS.md");
+    writeGeneratedFile(file, content, input.force, input.json);
+    files.push(file);
+  } else {
+    const file = path.join(out, `${manifest.name}.mdc`);
+    writeGeneratedFile(file, content, input.force, input.json);
+    files.push(file);
+  }
+  return {
+    target: input.target,
+    harness: manifest.name,
+    root: input.root,
+    out,
+    files,
+    next: adapterNextSteps(input.target, input.root)
+  };
+}
+
+function mcpConfigForHarness(input: { root: string; target: McpConfigTarget; out?: string; json: boolean }): McpConfigResult {
+  const manifest = validManifest(input.root, input.json);
+  const missingPackage = manifest.tools.mcp_servers.find((server) => !server.package);
+  if (missingPackage) {
+    fail(
+      `MCP server ${missingPackage.id} has no package field.`,
+      EXIT.VALIDATION,
+      "Add tools.mcp_servers[].package before generating client config.",
+      input.json
+    );
+  }
+  const servers = manifest.tools.mcp_servers
+    .filter((server): server is typeof server & { package: string } => Boolean(server.package))
+    .map((server) => ({ id: server.id, package: server.package, required: server.required }));
+  if (!servers.length) {
+    fail("No package-backed MCP servers declared in this harness.", EXIT.VALIDATION, "Inspect tools.mcp_servers in harness.yaml.", input.json);
+  }
+  const config = {
+    mcpServers: Object.fromEntries(servers.map((server) => [
+      server.id,
+      { command: "npx", args: ["-y", server.package] }
+    ]))
+  };
+  const result: McpConfigResult = {
+    target: input.target,
+    harness: manifest.name,
+    root: input.root,
+    ...(input.out ? { out: path.resolve(input.out) } : {}),
+    servers,
+    config
+  };
+  if (input.out) writeJsonFile(path.resolve(input.out), config);
+  return result;
+}
+
+function validManifest(root: string, json: boolean): HarnessManifest {
+  const validation = validateHarnessDir(root);
+  if (!validation.manifest || !validation.valid) {
+    fail("Invalid harness manifest.", EXIT.VALIDATION, `hh validate ${displayPath(root)} --strict`, json);
+  }
+  return validation.manifest;
+}
+
+function cleanAdaptTarget(value: string | undefined): AdaptTarget | undefined {
+  return value === "claude-code" || value === "codex" || value === "cursor" ? value : undefined;
+}
+
+function cleanMcpConfigTarget(value: string | undefined): McpConfigTarget | undefined {
+  return value === "claude-desktop" || value === "claude-code" || value === "cursor" ? value : undefined;
+}
+
+function defaultAdapterOut(target: AdaptTarget, manifest: HarnessManifest): string {
+  if (target === "claude-code") return path.join(".claude", "skills", manifest.name);
+  if (target === "codex") return path.join(".codex", "harnesses", manifest.name);
+  return path.join(".cursor", "rules");
+}
+
+function adapterContent(target: AdaptTarget, manifest: HarnessManifest, root: string): string {
+  if (target === "claude-code") return claudeSkillAdapter(manifest, root);
+  if (target === "codex") return codexAdapter(manifest, root);
+  return cursorAdapter(manifest, root);
+}
+
+function claudeSkillAdapter(manifest: HarnessManifest, root: string): string {
+  return [
+    "---",
+    `name: ${manifest.name}`,
+    `description: "Use this local OnlyHarness harness for ${escapeFrontmatter(manifest.summary)}"`,
+    "---",
+    "",
+    `# ${manifest.title}`,
+    "",
+    manifest.summary,
+    "",
+    `Harness root: \`${displayPath(root)}\``,
+    "",
+    "## Commands",
+    "",
+    "```bash",
+    `hh inspect ${shellQuote(displayPath(root))} --json`,
+    `hh run ${shellQuote(displayPath(root))} --json`,
+    `hh eval ${shellQuote(displayPath(root))} --json`,
+    `hh gate --dir ${shellQuote(displayPath(root))} --json`,
+    "```",
+    "",
+    "Do not enable external_send, money_movement or new credentials beyond the manifest without explicit approval.",
+    ""
+  ].join("\n");
+}
+
+function codexAdapter(manifest: HarnessManifest, root: string): string {
+  return [
+    `# ${manifest.title}`,
+    "",
+    "This directory is a local OnlyHarness adapter for Codex.",
+    "",
+    `Harness root: \`${displayPath(root)}\``,
+    `Summary: ${manifest.summary}`,
+    "",
+    "Use this loop before relying on the harness:",
+    "",
+    "```bash",
+    `hh inspect ${shellQuote(displayPath(root))} --json`,
+    `hh run ${shellQuote(displayPath(root))} --json`,
+    `hh eval ${shellQuote(displayPath(root))} --json`,
+    `hh gate --dir ${shellQuote(displayPath(root))} --json`,
+    "```",
+    "",
+    "Keep runtime credentials injected at execution time; do not copy secrets into this adapter.",
+    ""
+  ].join("\n");
+}
+
+function cursorAdapter(manifest: HarnessManifest, root: string): string {
+  return [
+    "---",
+    `description: ${JSON.stringify(`Use ${manifest.title} OnlyHarness workflow`)}`,
+    "alwaysApply: false",
+    "---",
+    "",
+    `# ${manifest.title}`,
+    "",
+    manifest.summary,
+    "",
+    `Harness root: \`${displayPath(root)}\``,
+    "",
+    "Before using this workflow, run:",
+    "",
+    "```bash",
+    `hh inspect ${shellQuote(displayPath(root))} --json`,
+    `hh eval ${shellQuote(displayPath(root))} --json`,
+    `hh gate --dir ${shellQuote(displayPath(root))} --json`,
+    "```",
+    ""
+  ].join("\n");
+}
+
+function adapterNextSteps(target: AdaptTarget, root: string): string[] {
+  const displayed = displayPath(root);
+  if (target === "claude-code") return [`hh mcp-config ${displayed} --target claude-code --out .mcp.json`, `hh eval ${displayed} --json`, `hh gate --dir ${displayed} --json`];
+  if (target === "codex") return [`hh eval ${displayed} --json`, `hh gate --dir ${displayed} --json`];
+  return [`hh mcp-config ${displayed} --target cursor`, `hh eval ${displayed} --json`, `hh gate --dir ${displayed} --json`];
+}
+
+function adapterText(result: AdapterResult): string {
+  return [
+    `Adapted ${result.harness} for ${result.target} -> ${displayPath(result.out)}`,
+    ...result.files.map((file) => `- ${displayPath(file)}`),
+    "Next:",
+    ...result.next.map((step) => `- ${step}`),
+    ""
+  ].join("\n");
+}
+
+function writeGeneratedFile(file: string, content: string, force: boolean, json: boolean) {
+  if (existsSync(file) && !force) {
+    fail(`${displayPath(file)} already exists.`, EXIT.VALIDATION, "Pass --force to overwrite generated adapter files.", json);
+  }
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, content);
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_./:@-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function escapeFrontmatter(value: string): string {
+  return value.replace(/["\\]/g, "\\$&").replace(/\s+/g, " ").slice(0, 240);
 }
 
 function writeOutput(output: string, out?: string) {
