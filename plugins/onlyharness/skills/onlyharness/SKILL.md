@@ -70,6 +70,7 @@ Tools:
 - `search_harnesses`: search by task, outcome or tags.
 - `harness_detail`: inspect manifest, trust, examples and files.
 - `pull_instructions`: get CLI and archive commands.
+- `pull_harness`: get archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - `search_docs`: search OnlyHarness agent docs.
 - `publish_markdown_to_harness`: publish markdown; Bearer token required.
 

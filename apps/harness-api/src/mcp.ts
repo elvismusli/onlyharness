@@ -11,9 +11,11 @@ type PublishMarkdownInput = {
 };
 
 export type PublishMarkdownHandler = (input: PublishMarkdownInput, authorization?: string) => Promise<unknown>;
+export type PullHarnessHandler = (input: { owner: string; name: string; version?: string }, authorization?: string) => Promise<unknown>;
 
 type BuildMcpServerOptions = {
   publishMarkdown: PublishMarkdownHandler;
+  pullHarness: PullHarnessHandler;
 };
 
 let docsCache: { source: string; text: string; loadedAt: number } | undefined;
@@ -96,6 +98,23 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
           : { required: false },
         next: [`hh run ${name} --json`, `hh eval ${name} --json`, `hh gate --dir ${name} --json`]
       });
+    }
+  );
+
+  server.registerTool(
+    "pull_harness",
+    {
+      title: "Pull harness",
+      description: "Return archive files for a harness. Paid harnesses return payment requirements unless the Bearer token is entitled.",
+      inputSchema: {
+        owner: z.string().default("harnesses"),
+        name: z.string(),
+        version: z.string().optional()
+      }
+    },
+    async ({ owner, name, version }, extra) => {
+      const authorization = headerValue(extra.requestInfo?.headers.authorization);
+      return json(await options.pullHarness({ owner, name, version }, authorization));
     }
   );
 

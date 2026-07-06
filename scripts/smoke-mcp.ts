@@ -1,8 +1,14 @@
 import { spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const apiUrl = "http://127.0.0.1:8798";
+const paidRoot = path.join(root, "data/imports/mcp-smoke-paid-harness");
+const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-smoke-"));
+
+createPaidHarness(paidRoot);
 
 const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
   cwd: root,
@@ -12,6 +18,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_API_PORT: "8798",
     HARNESS_API_HOST: "127.0.0.1",
     HARNESS_WORKSPACE_ROOT: root,
+    HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
     DOCS_URL: path.join(root, "apps/registry-web/public/llms.txt")
   }
 });
@@ -30,7 +37,7 @@ try {
 
   const tools = await rpc(2, "tools/list", {});
   const names = tools.result?.tools?.map((tool: { name: string }) => tool.name) ?? [];
-  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "search_docs", "publish_markdown_to_harness"]) {
+  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness"]) {
     if (!names.includes(expected)) throw new Error(`MCP tool missing: ${expected}`);
   }
 
@@ -43,7 +50,25 @@ try {
     throw new Error(`MCP search_harnesses returned wrong content: ${JSON.stringify(search)}`);
   }
 
-  const publish = await rpc(4, "tools/call", {
+  const pull = await rpc(4, "tools/call", {
+    name: "pull_harness",
+    arguments: { owner: "harnesses", name: "deep-market-researcher" }
+  });
+  const pullText = pull.result?.content?.[0]?.text ?? "";
+  if (!pullText.includes("\"files\"") || !pullText.includes("harness.yaml")) {
+    throw new Error(`MCP pull_harness returned wrong content: ${JSON.stringify(pull)}`);
+  }
+
+  const paidPull = await rpc(5, "tools/call", {
+    name: "pull_harness",
+    arguments: { owner: "local", name: "mcp-smoke-paid-harness" }
+  });
+  const paidText = paidPull.result?.content?.[0]?.text ?? "";
+  if (!paidText.includes("PAYMENT_REQUIRED") || paidText.includes("\"files\"")) {
+    throw new Error(`MCP paid pull did not return payment requirements: ${JSON.stringify(paidPull)}`);
+  }
+
+  const publish = await rpc(6, "tools/call", {
     name: "publish_markdown_to_harness",
     arguments: {
       name: "no-auth",
@@ -58,9 +83,11 @@ try {
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, publish auth guard, GET 405");
+  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, pull_harness, paid pull gate, publish auth guard, GET 405");
 } finally {
   api.kill("SIGTERM");
+  rmSync(paidRoot, { recursive: true, force: true });
+  rmSync(smokeDataRoot, { recursive: true, force: true });
 }
 
 async function rpc(id: number, method: string, params: unknown) {
@@ -100,4 +127,82 @@ async function waitForApi(url: string) {
     }
   }
   throw new Error(`API did not become ready: ${url}`);
+}
+
+function createPaidHarness(target: string) {
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(path.join(target, "agents"), { recursive: true });
+  mkdirSync(path.join(target, "evals/cases"), { recursive: true });
+  mkdirSync(path.join(target, "examples"), { recursive: true });
+  mkdirSync(path.join(target, ".harnesshub"), { recursive: true });
+  writeFileSync(path.join(target, "harness.yaml"), `schemaVersion: harness.v0.2
+name: mcp-smoke-paid-harness
+title: MCP Smoke Paid Harness
+summary: Local paid fixture used to verify MCP entitlement gates.
+version: 0.1.0
+license: MIT
+pricing:
+  model: one_time
+  amount_usd: 7
+  currency: USD
+tags: [smoke, paid]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: operator
+    role: operator
+    prompt: agents/operator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: operator
+  stages:
+    - id: run
+      agent: operator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks: [schema_valid, eval_passed]
+examples:
+  - title: Smoke
+    input: examples/input.md
+    output: examples/expected.md
+`);
+  writeFileSync(path.join(target, "README.md"), "# MCP Smoke Paid Harness\n");
+  writeFileSync(path.join(target, "agents/operator.md"), "Return a short smoke result.\n");
+  writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: mcp paid smoke\nprompts: []\nproviders: []\n");
+  writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
+  writeFileSync(path.join(target, "examples/input.md"), "input\n");
+  writeFileSync(path.join(target, "examples/expected.md"), "expected\n");
+  writeFileSync(path.join(target, ".harnesshub/results.json"), JSON.stringify({
+    runner: "harnesshub-local-eval",
+    status: "passed",
+    score: 0.9,
+    verified: true,
+    verification_status: "declared_case_scores",
+    cost_usd: 0.03,
+    duration_ms: 250,
+    cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
+  }, null, 2));
 }

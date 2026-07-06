@@ -6,7 +6,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import YAML from "yaml";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { buildMcpServer, type PublishMarkdownHandler } from "./mcp.js";
+import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
 import { requireArchivePaymentAccess } from "./payments.js";
@@ -98,28 +98,8 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
 app.get("/repos/:owner/:repo/archive", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
   const query = request.query as { version?: string };
-  const root = registry.resolveHarnessPath(owner, repo);
-  if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const archive = registry.buildArchiveForVersion(owner, repo, root, query.version);
-  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
-  const manifest = registry.registryDetailBasics(root).inspection.manifest;
-  if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
-  const authorization = headerValue(request.headers.authorization);
-  const auth = authorization ? await userFromAuthorization(authorization) : {};
-  const payment = await requireArchivePaymentAccess({
-    owner,
-    repo,
-    version: archive.version,
-    manifest,
-    authorization,
-    userId: auth.user?.id
-  });
-  if (!payment.allowed) {
-    await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client: "api" });
-    return reply.code(payment.status).send(payment.body);
-  }
-  await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client: "api" });
-  return { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files };
+  const result = await archiveForClient(owner, repo, query.version, headerValue(request.headers.authorization), "api");
+  return reply.code(result.status).send(result.body);
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
@@ -144,7 +124,7 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
 });
 
 app.post("/mcp", async (request, reply) => {
-  const server = buildMcpServer({ publishMarkdown: publishMarkdownFromMcp });
+  const server = buildMcpServer({ publishMarkdown: publishMarkdownFromMcp, pullHarness: pullHarnessFromMcp });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
   reply.raw.on("close", () => {
@@ -275,6 +255,40 @@ const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorizatio
   const result = await importMarkdownToHarness(body, auth.user);
   return "error" in result ? result : result;
 };
+
+const pullHarnessFromMcp: PullHarnessHandler = async ({ owner, name, version }, authorization) => {
+  const result = await archiveForClient(owner, name, version, authorization, "mcp");
+  if (result.status === 200) return result.body;
+  return {
+    error: result.body.error ?? "Pull failed",
+    status: result.status,
+    payment: result.status === 402 ? result.body : undefined
+  };
+};
+
+async function archiveForClient(owner: string, repo: string, version: string | undefined, authorization: string | undefined, client: "api" | "mcp") {
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return { status: 404, body: { error: "Harness not found" } };
+  const archive = registry.buildArchiveForVersion(owner, repo, root, version);
+  if (!archive) return { status: 404, body: { error: "Harness version not found" } };
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  if (!manifest) return { status: 500, body: { error: "Harness manifest unavailable" } };
+  const auth = authorization ? await userFromAuthorization(authorization) : {};
+  const payment = await requireArchivePaymentAccess({
+    owner,
+    repo,
+    version: archive.version,
+    manifest,
+    authorization,
+    userId: auth.user?.id
+  });
+  if (!payment.allowed) {
+    await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
+    return { status: payment.status, body: payment.body };
+  }
+  await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
+  return { status: 200, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
+}
 
 async function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
   if (!body?.markdown || body.markdown.length < 20) {

@@ -127,7 +127,7 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, search_docs, publish_markdown_to_harness.",
+        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness.",
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream" }
         }

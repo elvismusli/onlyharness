@@ -43,6 +43,7 @@ Tools:
 - search_harnesses: search registry items by task/outcome/tag.
 - harness_detail: inspect manifest, trust signals, examples and files.
 - pull_instructions: return CLI and archive commands for a harness.
+- pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
 
