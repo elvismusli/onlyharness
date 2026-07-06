@@ -39,6 +39,9 @@ docker compose \
 
 wait_for "$BASE_URL/api/healthz"
 curl -fsS "$BASE_URL/api/leaderboard?limit=1" | grep -q '"items"'
+curl -fsS "$BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
+curl -fsS "$BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
+curl -fsSI "$BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
 curl -fsS "$BASE_URL/" | grep -q "OnlyHarness"
 (
   cd "$ROOT"

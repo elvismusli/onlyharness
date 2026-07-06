@@ -24,7 +24,10 @@ const root = path.resolve(import.meta.dirname, "..");
 const rootServerPath = path.join(root, "server.json");
 const publicServerPath = path.join(root, "apps/registry-web/public/server.json");
 const protectedResourcePath = path.join(root, "apps/registry-web/public/.well-known/oauth-protected-resource");
-const caddyfilePath = path.join(root, "infra/Caddyfile");
+const caddyfilePaths = [
+  path.join(root, "infra/Caddyfile"),
+  path.join(root, "infra/Caddyfile.local-smoke")
+];
 const cliPackagePath = path.join(root, "packages/harness-cli/package.json");
 const llmsPath = path.join(root, "apps/registry-web/public/llms.txt");
 const readmePath = path.join(root, "README.md");
@@ -38,7 +41,7 @@ const publicText = readFileSync(publicServerPath, "utf8");
 const rootServer = JSON.parse(rootText) as ServerJson;
 const publicServer = JSON.parse(publicText) as ServerJson;
 const protectedResource = JSON.parse(readFileSync(protectedResourcePath, "utf8")) as ProtectedResourceMetadata;
-const caddyfile = readFileSync(caddyfilePath, "utf8");
+const caddyfiles = caddyfilePaths.map((file) => ({ file, text: readFileSync(file, "utf8") }));
 const cliPackage = JSON.parse(readFileSync(cliPackagePath, "utf8")) as { version?: string };
 const llms = readFileSync(llmsPath, "utf8");
 const readme = readFileSync(readmePath, "utf8");
@@ -67,15 +70,18 @@ check(protectedResource.resource_documentation === "https://onlyharness.com/llms
 check(!JSON.stringify(protectedResource).includes("127.0.0.1"), "OAuth protected resource metadata must not contain local URLs");
 check(!JSON.stringify(protectedResource).includes("localhost"), "OAuth protected resource metadata must not contain localhost URLs");
 
-const protectedResourceHandle = /handle\s+\/\.well-known\/oauth-protected-resource\s*\{[\s\S]*?file_server[\s\S]*?\}/.exec(caddyfile)?.[0] ?? "";
-const protectedResourceHandleIndex = caddyfile.indexOf("handle /.well-known/oauth-protected-resource");
-const spaFallbackIndex = caddyfile.indexOf("try_files {path} /index.html");
-check(Boolean(protectedResourceHandle), "Caddyfile must handle /.well-known/oauth-protected-resource");
-check(
-  protectedResourceHandleIndex >= 0 && spaFallbackIndex >= 0 && protectedResourceHandleIndex < spaFallbackIndex,
-  "Caddyfile must serve /.well-known/oauth-protected-resource before the SPA fallback"
-);
-check(protectedResourceHandle.includes("header Content-Type application/json"), "Caddyfile must serve the extensionless protected-resource metadata as application/json");
+for (const { file, text } of caddyfiles) {
+  const name = path.relative(root, file);
+  const protectedResourceHandle = /handle\s+\/\.well-known\/oauth-protected-resource\s*\{[\s\S]*?file_server[\s\S]*?\}/.exec(text)?.[0] ?? "";
+  const protectedResourceHandleIndex = text.indexOf("handle /.well-known/oauth-protected-resource");
+  const spaFallbackIndex = text.indexOf("try_files {path} /index.html");
+  check(Boolean(protectedResourceHandle), `${name} must handle /.well-known/oauth-protected-resource`);
+  check(
+    protectedResourceHandleIndex >= 0 && spaFallbackIndex >= 0 && protectedResourceHandleIndex < spaFallbackIndex,
+    `${name} must serve /.well-known/oauth-protected-resource before the SPA fallback`
+  );
+  check(protectedResourceHandle.includes("header Content-Type application/json"), `${name} must serve the extensionless protected-resource metadata as application/json`);
+}
 
 for (const docs of [
   { name: "llms.txt", text: llms },
