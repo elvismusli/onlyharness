@@ -110,6 +110,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 ## Conventions
 
 - Run `npm run check` and `npm run smoke` before commits that change runtime behavior.
+- Run `npm run smoke:mcp` for MCP/tool changes and `npm run smoke:x402` for x402/payment-signing changes.
 - Use `corepack` only if the repo switches package manager; this repo currently uses npm workspaces.
 - Keep docs, `/llms.txt`, API behavior, and CLI behavior synchronized.
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.

@@ -183,6 +183,8 @@ Current verification gates:
 npm run build
 npm run check
 npm run smoke
+npm run smoke:mcp
+npm run smoke:x402
 scripts/smoke-production-compose.sh
 ```
 
