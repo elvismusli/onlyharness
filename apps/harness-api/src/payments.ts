@@ -8,6 +8,8 @@ const ESCROW_WINDOW_MS = 72 * 60 * 60 * 1000;
 type PricingModel = HarnessManifest["pricing"]["model"];
 type PurchaseStatus = "pending" | "paid" | "reserved" | "captured" | "refunded" | "failed";
 type EntitlementKind = "one_time" | "subscription" | "escrow_reserved";
+type CheckoutProviderId = "manual";
+type PurchaseProviderId = CheckoutProviderId | "x402";
 
 export type PaymentAccessInput = {
   owner: string;
@@ -110,7 +112,7 @@ export type CheckoutInput = {
 };
 
 export type CheckoutSession = {
-  provider: "manual";
+  provider: CheckoutProviderId;
   provider_ref: string;
   checkout_url: string;
   status: "pending";
@@ -119,6 +121,19 @@ export type CheckoutSession = {
   version: string;
   pricing: HarnessManifest["pricing"];
   next: string;
+};
+
+type PaymentProviderCheckoutInput = CheckoutInput & {
+  amountUsd: number;
+  currency: string;
+};
+
+type PaymentProviderCheckoutSession = Pick<CheckoutSession, "provider" | "provider_ref" | "checkout_url" | "status" | "next">;
+
+type PaymentProvider = {
+  id: CheckoutProviderId;
+  createCheckoutSession(input: PaymentProviderCheckoutInput): PaymentProviderCheckoutSession;
+  settleWebhook(input: { providerRef: string; status?: string }): Promise<PaymentWebhookResult>;
 };
 
 export type PaymentWebhookInput = {
@@ -160,7 +175,7 @@ export type EscrowSettlementResult =
 export type PurchaseReceipt = {
   receipt_id: string;
   purchase_id: string;
-  provider: "manual" | "x402";
+  provider: PurchaseProviderId;
   provider_ref: string;
   status: PurchaseStatus;
   owner: string;
@@ -312,6 +327,10 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
   const amount = input.manifest.pricing.amount_usd ?? 0;
   if (!Number.isFinite(amount) || amount <= 0) return { status: 400, error: "Paid harness is missing a positive amount_usd" };
   if (!paymentsEnabled()) return { status: 503, error: "Payments are disabled in this environment" };
+  const provider = configuredPaymentProvider();
+  if (!provider) return { status: 503, error: unsupportedPaymentProviderError(configuredPaymentProviderId()) };
+  const currency = input.manifest.pricing.currency ?? "USD";
+  const providerSession = provider.createCheckoutSession({ ...input, amountUsd: amount, currency });
   const purchase = {
     id: crypto.randomUUID(),
     subject_type: "user",
@@ -320,9 +339,9 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
     repo: input.repo,
     version: input.version,
     amount_usd: amount,
-    currency: input.manifest.pricing.currency ?? "USD",
-    provider: "manual",
-    provider_ref: `manual_${crypto.randomUUID()}`,
+    currency,
+    provider: providerSession.provider,
+    provider_ref: providerSession.provider_ref,
     referral_code: input.referralCode,
     creator_user_id: input.creatorUserId ?? null,
     pricing_model: input.manifest.pricing.model,
@@ -332,27 +351,20 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
   } satisfies StoredPurchase;
   const persisted = await persistPendingPurchase(purchase);
   if ("error" in persisted) return persisted;
-  const checkout = new URL(checkoutUrl({ owner: input.owner, repo: input.repo, version: input.version, manifest: input.manifest, userId: input.userId }));
-  checkout.searchParams.set("provider_ref", purchase.provider_ref);
-  if (input.referralCode) checkout.searchParams.set("ref", input.referralCode);
   return {
-    provider: "manual",
-    provider_ref: purchase.provider_ref,
-    checkout_url: checkout.toString(),
-    status: "pending",
+    ...providerSession,
     owner: input.owner,
     repo: input.repo,
     version: input.version,
-    pricing: input.manifest.pricing,
-    next: "Manual provider pending. After payment confirmation, retry hh install with HH_TOKEN."
+    pricing: input.manifest.pricing
   };
 }
 
 export async function settlePaymentWebhook(input: PaymentWebhookInput): Promise<PaymentWebhookResult> {
-  if (input.provider && input.provider !== "manual") return { ok: false, status: 400, error: "Unsupported payment provider" };
-  if (input.status && !["paid", "succeeded"].includes(input.status)) return { ok: false, status: 400, error: "Unsupported payment status" };
+  const provider = paymentProviderFor(input.provider ?? "manual");
+  if (!provider) return { ok: false, status: 400, error: unsupportedPaymentProviderError(input.provider ?? "manual") };
   if (!input.provider_ref) return { ok: false, status: 400, error: "provider_ref is required" };
-  return settlePurchase(input.provider_ref);
+  return provider.settleWebhook({ providerRef: input.provider_ref, status: input.status });
 }
 
 export async function settleX402Purchase(input: X402SettlementInput): Promise<PaymentWebhookResult> {
@@ -543,11 +555,11 @@ async function persistPendingPurchase(purchase: StoredPurchase): Promise<{ ok: t
   return { ok: true };
 }
 
-async function settlePurchase(providerRef: string): Promise<PaymentWebhookResult> {
-  if (supabaseUrl && supabaseRestKey) return settleSupabasePurchase(providerRef);
+async function settlePurchase(provider: CheckoutProviderId, providerRef: string): Promise<PaymentWebhookResult> {
+  if (supabaseUrl && supabaseRestKey) return settleSupabasePurchase(provider, providerRef);
   if (!localPaymentStorePath) return { ok: false, status: 503, error: "Payment store unavailable" };
   const state = readLocalPaymentState();
-  const purchase = state.purchases.find((row) => row.provider === "manual" && row.provider_ref === providerRef);
+  const purchase = state.purchases.find((row) => row.provider === provider && row.provider_ref === providerRef);
   if (!purchase) return { ok: false, status: 404, error: "Purchase not found" };
   if (purchase.pricing_model === "gate_escrow") {
     const result = reserveLocalEscrowPurchase(state, purchase);
@@ -572,10 +584,10 @@ async function settlePurchase(providerRef: string): Promise<PaymentWebhookResult
   };
 }
 
-async function settleSupabasePurchase(providerRef: string): Promise<PaymentWebhookResult> {
+async function settleSupabasePurchase(provider: CheckoutProviderId, providerRef: string): Promise<PaymentWebhookResult> {
   const params = new URLSearchParams({
     select: storedPurchaseSelect(),
-    provider: "eq.manual",
+    provider: `eq.${provider}`,
     provider_ref: `eq.${providerRef}`,
     limit: "1"
   });
@@ -1293,6 +1305,52 @@ function x402ProviderRef(network: string, transaction: string): string {
   return `x402:${network}:${transaction}`;
 }
 
+const manualPaymentProvider: PaymentProvider = {
+  id: "manual",
+  createCheckoutSession(input) {
+    const providerRef = `manual_${crypto.randomUUID()}`;
+    const checkout = new URL(checkoutUrl({
+      owner: input.owner,
+      repo: input.repo,
+      version: input.version,
+      manifest: input.manifest,
+      userId: input.userId
+    }));
+    checkout.searchParams.set("provider_ref", providerRef);
+    if (input.referralCode) checkout.searchParams.set("ref", input.referralCode);
+    return {
+      provider: "manual",
+      provider_ref: providerRef,
+      checkout_url: checkout.toString(),
+      status: "pending",
+      next: "Manual provider pending. After payment confirmation, retry hh install with HH_TOKEN."
+    };
+  },
+  settleWebhook(input) {
+    if (input.status && !["paid", "succeeded"].includes(input.status)) {
+      return Promise.resolve({ ok: false, status: 400, error: "Unsupported payment status" });
+    }
+    return settlePurchase("manual", input.providerRef);
+  }
+};
+
+function configuredPaymentProvider(): PaymentProvider | undefined {
+  return paymentProviderFor(configuredPaymentProviderId());
+}
+
+function configuredPaymentProviderId(): string {
+  return (process.env.PAYMENT_PROVIDER ?? "manual").trim() || "manual";
+}
+
+function paymentProviderFor(provider: string): PaymentProvider | undefined {
+  if (provider === manualPaymentProvider.id) return manualPaymentProvider;
+  return undefined;
+}
+
+function unsupportedPaymentProviderError(provider: string): string {
+  return `Unsupported payment provider: ${provider}. Only manual is enabled.`;
+}
+
 function paymentsEnabled(): boolean {
   return process.env.PAYMENTS_ENABLED === "true";
 }
@@ -1331,7 +1389,7 @@ type StoredPurchase = {
   version: string;
   amount_usd: number;
   currency: string;
-  provider: "manual" | "x402";
+  provider: PurchaseProviderId;
   provider_ref: string;
   referral_code?: string;
   creator_user_id?: string | null;

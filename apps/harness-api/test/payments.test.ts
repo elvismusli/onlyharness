@@ -21,7 +21,7 @@ test("settlePaymentWebhook rejects malformed manual payloads before touching sto
   assert.deepEqual(await settlePaymentWebhook({ provider: "paddle", provider_ref: "p1" }), {
     ok: false,
     status: 400,
-    error: "Unsupported payment provider"
+    error: "Unsupported payment provider: paddle. Only manual is enabled."
   });
   assert.deepEqual(await settlePaymentWebhook({ provider: "manual", provider_ref: "p1", status: "refunded" }), {
     ok: false,
@@ -33,6 +33,33 @@ test("settlePaymentWebhook rejects malformed manual payloads before touching sto
     status: 400,
     error: "provider_ref is required"
   });
+});
+
+test("createCheckoutSession fails closed for unsupported checkout providers", async () => {
+  const previousEnabled = process.env.PAYMENTS_ENABLED;
+  const previousProvider = process.env.PAYMENT_PROVIDER;
+  process.env.PAYMENTS_ENABLED = "true";
+  process.env.PAYMENT_PROVIDER = "paddle";
+  try {
+    const result = await createCheckoutSession({
+      owner: "harnesses",
+      repo: "paid-harness",
+      version: "0.1.0",
+      userId: "user-1",
+      manifest: {
+        pricing: { model: "one_time", amount_usd: 12, currency: "USD" }
+      } as never
+    });
+    assert.deepEqual(result, {
+      status: 503,
+      error: "Unsupported payment provider: paddle. Only manual is enabled."
+    });
+  } finally {
+    if (previousEnabled === undefined) delete process.env.PAYMENTS_ENABLED;
+    else process.env.PAYMENTS_ENABLED = previousEnabled;
+    if (previousProvider === undefined) delete process.env.PAYMENT_PROVIDER;
+    else process.env.PAYMENT_PROVIDER = previousProvider;
+  }
 });
 
 test("createCheckoutSession requires PAYMENTS_ENABLED before creating purchases", async () => {

@@ -113,7 +113,7 @@ export const openapi = {
     "/billing/checkout": {
       post: {
         summary: "Create a manual checkout session for a paid harness",
-        description: "Auth required. Creates a pending purchase through the configured payment provider. Free harnesses return 400.",
+        description: "Auth required. Creates a pending purchase through the manual checkout provider. Free harnesses return 400.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

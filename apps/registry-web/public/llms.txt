@@ -25,7 +25,7 @@ MCP Registry metadata: https://onlyharness.com/server.json
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh install --pay` or `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
   Directory shelf entries use owner `directories` and manifest content.type=directory. They are link-only discovery indexes: search results expose `open <url>`, and archive returns HTTP 409 { code: "DIRECTORY_LINK_ONLY", url, next } instead of files.
 - Checkout: POST /billing/checkout
-  Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses.
+  Auth required. Body { owner, repo, version?, ref? }. Requires PAYMENTS_ENABLED=true and creates a pending manual checkout session for paid harnesses. Only PAYMENT_PROVIDER unset/manual is supported; other provider config fails closed before purchase creation.
 - Receipt: GET /billing/receipt?provider_ref={ref}
   Auth required. Returns the caller's own pending/paid purchase status, amount, harness ref and entitlement flag. Read-only only: this endpoint must not settle payments or grant access.
 - Gate receipt verification: POST /receipts

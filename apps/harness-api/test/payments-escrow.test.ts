@@ -26,6 +26,9 @@ test("gate escrow reserves, captures, refunds and times out through local paymen
 
     const checkout = await createCheckoutSession({ owner: "local", repo: "escrow-harness", version: "0.1.0", manifest, userId });
     assert.equal(checkout.status, "pending");
+    assert.equal(checkout.provider, "manual");
+    assert.match(checkout.provider_ref, /^manual_/);
+    assert.equal(new URL(checkout.checkout_url).searchParams.get("provider_ref"), checkout.provider_ref);
     const reserved = await settlePaymentWebhook({ provider: "manual", provider_ref: checkout.provider_ref, status: "paid" });
     assert.equal(reserved.status, "reserved");
     let state = JSON.parse(readFileSync(${JSON.stringify(store)}, "utf8"));
