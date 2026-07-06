@@ -9,7 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
-import { requireArchivePaymentAccess } from "./payments.js";
+import { createCheckoutSession, requireArchivePaymentAccess, settlePaymentWebhook } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import * as registry from "./registry.js";
 
@@ -24,6 +24,13 @@ const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected
 type ImportRequest = {
   name?: string;
   markdown: string;
+};
+
+type CheckoutRequest = {
+  owner?: string;
+  repo?: string;
+  version?: string;
+  ref?: string;
 };
 
 type ThreadItem = {
@@ -101,6 +108,32 @@ app.get("/repos/:owner/:repo/archive", async (request, reply) => {
   const query = request.query as { version?: string };
   const result = await archiveForClient(owner, repo, query.version, headerValue(request.headers.authorization), "api");
   return reply.code(result.status).send(result.body);
+});
+
+app.post("/billing/checkout", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as CheckoutRequest : {};
+  const owner = body.owner;
+  const repo = body.repo;
+  if (!owner || !repo) return reply.code(400).send({ error: "owner and repo are required" });
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const archive = registry.buildArchiveForVersion(owner, repo, root, body.version);
+  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const session = await createCheckoutSession({
+    owner,
+    repo,
+    version: archive.version,
+    manifest,
+    userId: user.id,
+    referralCode: body.ref
+  });
+  if ("error" in session) return reply.code(session.status).send({ error: session.error });
+  await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(user.id), target: "billing", client: "api" });
+  return reply.code(201).send(session);
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
@@ -183,6 +216,19 @@ app.post("/webhooks/gitea", async (request, reply) => {
   if (!requireInternalToken(request, reply)) return;
   appendState({ type: "webhook", headers: safeHeaders(request.headers), payload: request.body, at: new Date().toISOString() });
   return { ok: true, mode: "recorded-local-webhook" };
+});
+
+app.post("/webhooks/payments", async (request, reply) => {
+  if (!requirePaymentWebhookToken(request, reply)) return;
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const result = await settlePaymentWebhook({
+    provider: typeof body.provider === "string" ? body.provider : "manual",
+    provider_ref: typeof body.provider_ref === "string" ? body.provider_ref : undefined,
+    status: typeof body.status === "string" ? body.status : "paid"
+  });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error });
+  await recordEvent({ kind: "purchase", owner: result.owner, repo: result.repo, version: result.version, subject: eventSubject(result.subject_id), target: "webhook", client: "api" });
+  return result;
 });
 
 app.post("/internal/eval-result", async (request, reply) => {
@@ -325,6 +371,18 @@ function requireInternalToken(request: FastifyRequest, reply: FastifyReply): boo
   const token = Array.isArray(value) ? value[0] : value;
   if (token === webhookToken) return true;
   reply.code(401).send({ error: "Invalid internal token" });
+  return false;
+}
+
+function requirePaymentWebhookToken(request: FastifyRequest, reply: FastifyReply): boolean {
+  if (!webhookToken) {
+    reply.code(503).send({ error: "Payment webhook token is not configured" });
+    return false;
+  }
+  const value = request.headers["x-harness-token"];
+  const token = Array.isArray(value) ? value[0] : value;
+  if (token === webhookToken) return true;
+  reply.code(401).send({ error: "Invalid payment webhook token" });
   return false;
 }
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { entitlementRowsAllow } from "../src/payments.ts";
+import { entitlementRowsAllow, settlePaymentWebhook } from "../src/payments.ts";
 
 test("entitlementRowsAllow accepts repo-wide and matching version entitlements", () => {
   const now = Date.parse("2026-07-06T00:00:00Z");
@@ -15,4 +15,22 @@ test("entitlementRowsAllow rejects expired rows", () => {
 
   assert.equal(entitlementRowsAllow([{ version: null, expires_at: "2026-07-05T23:59:59Z" }], "0.1.0", now), false);
   assert.equal(entitlementRowsAllow([{ version: null, expires_at: "2026-07-06T00:00:01Z" }], "0.1.0", now), true);
+});
+
+test("settlePaymentWebhook rejects malformed manual payloads before touching storage", async () => {
+  assert.deepEqual(await settlePaymentWebhook({ provider: "paddle", provider_ref: "p1" }), {
+    ok: false,
+    status: 400,
+    error: "Unsupported payment provider"
+  });
+  assert.deepEqual(await settlePaymentWebhook({ provider: "manual", provider_ref: "p1", status: "refunded" }), {
+    ok: false,
+    status: 400,
+    error: "Unsupported payment status"
+  });
+  assert.deepEqual(await settlePaymentWebhook({ provider: "manual" }), {
+    ok: false,
+    status: 400,
+    error: "provider_ref is required"
+  });
 });

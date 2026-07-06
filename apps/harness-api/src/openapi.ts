@@ -95,6 +95,39 @@ export const openapi = {
         }
       }
     },
+    "/billing/checkout": {
+      post: {
+        summary: "Create a manual checkout session for a paid harness",
+        description: "Auth required. Creates a pending purchase through the configured payment provider. Free harnesses return 400.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  owner: { type: "string" },
+                  repo: { type: "string" },
+                  version: { type: "string" },
+                  ref: { type: "string" }
+                },
+                required: ["owner", "repo"]
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Checkout session created",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CheckoutSession" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/imports/markdown-to-harness": {
       post: {
         summary: "Publish markdown as an unverified harness scaffold",
@@ -121,6 +154,37 @@ export const openapi = {
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/webhooks/payments": {
+      post: {
+        summary: "Settle a manual payment webhook",
+        description: "Requires HARNESS_WEBHOOK_TOKEN via x-harness-token. Marks the purchase paid and grants entitlement idempotently.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  provider: { type: "string", enum: ["manual"] },
+                  provider_ref: { type: "string" },
+                  status: { type: "string", enum: ["paid", "succeeded"] }
+                },
+                required: ["provider_ref"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Payment settled",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentWebhookResult" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }
         }
       }
     },
@@ -296,6 +360,34 @@ export const openapi = {
           next: { type: "string" }
         },
         required: ["error", "code", "owner", "repo", "version", "pricing", "provider", "checkout_url", "x402", "next"]
+      },
+      CheckoutSession: {
+        type: "object",
+        properties: {
+          provider: { type: "string", enum: ["manual"] },
+          provider_ref: { type: "string" },
+          checkout_url: { type: "string" },
+          status: { type: "string", enum: ["pending"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          pricing: { type: "object" },
+          next: { type: "string" }
+        },
+        required: ["provider", "provider_ref", "checkout_url", "status", "owner", "repo", "version", "pricing", "next"]
+      },
+      PaymentWebhookResult: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+          status: { type: "string", enum: ["paid", "already_paid"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          subject_id: { type: "string" },
+          purchase_id: { type: "string" }
+        },
+        required: ["ok", "status", "owner", "repo", "version", "subject_id"]
       },
       SecurityReport: {
         type: "object",

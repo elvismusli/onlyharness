@@ -48,6 +48,8 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_WORKSPACE_ROOT: root,
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
     HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
+    HARNESS_LOCAL_PAYMENTS_PATH: path.join(smokeDataRoot, "payments.json"),
+    HARNESS_WEBHOOK_TOKEN: "smoke-webhook-token",
     HARNESS_MANUAL_ENTITLEMENTS: "smoke-paid-token=local/smoke-paid-harness"
   }
 });
@@ -87,6 +89,42 @@ try {
   if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || !paidRequiredBody.checkout_url) {
     throw new Error(`Paid archive did not require payment: ${paidRequired.status} ${JSON.stringify(paidRequiredBody)}`);
   }
+  const unpaidBuyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-buyer-token" }
+  });
+  if (unpaidBuyerArchive.status !== 402) throw new Error(`Buyer token should not pull before checkout webhook, got ${unpaidBuyerArchive.status}`);
+  const checkout = await fetch("http://127.0.0.1:8799/billing/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ owner: "local", repo: "smoke-paid-harness", version: "0.1.0", ref: "SMOKE" })
+  }).then((response) => response.json()) as { provider_ref?: string; checkout_url?: string; status?: string };
+  if (!checkout.provider_ref || checkout.status !== "pending" || !checkout.checkout_url?.includes("ref=SMOKE")) {
+    throw new Error(`Checkout session failed: ${JSON.stringify(checkout)}`);
+  }
+  const unauthenticatedWebhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "manual", provider_ref: checkout.provider_ref, status: "paid" })
+  });
+  if (unauthenticatedWebhook.status !== 401) throw new Error(`Payment webhook without token should be 401, got ${unauthenticatedWebhook.status}`);
+  const webhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_ref: checkout.provider_ref, status: "paid" })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string };
+  if (!webhook.ok || webhook.status !== "paid") throw new Error(`Payment webhook failed: ${JSON.stringify(webhook)}`);
+  const idempotentWebhook = await fetch("http://127.0.0.1:8799/webhooks/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_ref: checkout.provider_ref, status: "paid" })
+  }).then((response) => response.json()) as { ok?: boolean; status?: string };
+  if (!idempotentWebhook.ok || idempotentWebhook.status !== "already_paid") {
+    throw new Error(`Payment webhook should be idempotent: ${JSON.stringify(idempotentWebhook)}`);
+  }
+  const buyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-buyer-token" }
+  }).then((response) => response.json()) as { version?: string; files?: unknown[] };
+  if (buyerArchive.version !== "0.1.0" || !buyerArchive.files?.length) throw new Error(`Checkout/webhook entitlement failed: ${JSON.stringify(buyerArchive)}`);
   const paidArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
     headers: { Authorization: "Bearer smoke-paid-token" }
   }).then((response) => response.json()) as { version?: string; files?: unknown[] };
@@ -138,7 +176,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, archive versions, paid 402/entitlement, events, CLI validate/eval/gate/diff/update, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, archive versions, paid 402/checkout/webhook/entitlement, events, CLI validate/eval/gate/diff/update, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
