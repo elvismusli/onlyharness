@@ -64,7 +64,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh install @org/name` and `hh pull @org/name` send `HH_ORG_TOKEN` when set.
 - `hh adapt [dir] --target claude-code|codex|cursor` writes local adapter instruction files and refuses to overwrite without `--force`.
 - `hh mcp-config [dir] --target claude-desktop|claude-code|cursor` generates package-backed MCP client JSON from `tools.mcp_servers`.
-- `hh run` is sample mode only: no LLM calls, no credentials.
+- `hh run` is sample mode only: no LLM calls, no credentials, and no verified gate claim.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.
 - `hh gate --receipt` writes a signed gate receipt to `.harnesshub/gate-receipt.json` by default. The receipt includes harness ref, version, `resultsHash`, verdict and timestamp, signed with the local ed25519 install key at `~/.onlyharness/key`.

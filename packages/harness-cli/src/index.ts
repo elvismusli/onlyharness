@@ -704,27 +704,27 @@ program.command("run")
     const expectedPath = path.join(root, "examples/expected.md");
     const result = runLocalEval(root);
     const payload = {
+      mode: "sample",
       title: validation.manifest.title,
       input: existsSync(inputPath) ? inputPath : null,
       expected: existsSync(expectedPath) ? expectedPath : null,
       eval: {
         status: result.status,
         score: result.score,
-        minScore: validation.manifest.quality_gates.min_score
-      }
+        minScore: validation.manifest.quality_gates.min_score,
+        verified: result.verified,
+        verificationStatus: result.verification_status
+      },
+      next: result.status === "passed" ? [] : [`hh eval ${root} --json`, `hh gate --dir ${root} --json`]
     };
     const text = [
       `Running ${validation.manifest.title} — local sample mode (no LLM calls, no credentials)`,
       `Input: ${existsSync(inputPath) ? inputPath : "none bundled"}`,
       `Expected output: ${existsSync(expectedPath) ? expectedPath : "none bundled"}`,
-      `Eval: ${result.status} · score ${result.score} (gate needs ≥ ${validation.manifest.quality_gates.min_score})`,
-      `Real runtime entrypoint: ${validation.manifest.entrypoint?.command ?? "not declared"}`
+      `Eval preview: ${result.status} · score ${result.score} · ${result.verification_status} (gate needs ≥ ${validation.manifest.quality_gates.min_score})`,
+      `Real runtime entrypoint: ${validation.manifest.entrypoint?.command ?? "not declared"}`,
+      ...(result.status === "passed" ? [] : [`Next: hh eval ${root} --json && hh gate --dir ${root} --json`])
     ].join("\n") + "\n";
-    if (result.status !== "passed") {
-      if (options.json) fail(`Eval ${result.status}: score ${result.score}`, EXIT.VALIDATION, `hh eval ${root} && hh gate --dir ${root}`, true);
-      writeStdout(text);
-      process.exit(EXIT.VALIDATION);
-    }
     writeStdout(options.json ? payload : text);
     process.exit(EXIT.OK);
   });

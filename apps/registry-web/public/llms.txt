@@ -142,7 +142,7 @@ For local development from the repo:
 - hh pull {owner}/{name} --pay    low-level archive download with the same x402 payment behavior
 - hh install @org/{name}    download an org-private harness; sends HH_ORG_TOKEN when set
 - hh pull @org/{name}       low-level org-private archive download; sends HH_ORG_TOKEN when set
-- hh run [dir]              run the bundled example locally (sample mode: no LLM calls, no credentials)
+- hh run [dir]              run the bundled example locally (sample preview only: no LLM calls, no credentials, no gate claim)
 - hh eval [dir]             score the eval cases; writes .harnesshub/results.json
 - hh gate --dir [dir]       enforce the manifest quality gates
 - hh gate --dir [dir] --receipt    write a signed gate receipt for POST /receipts verification
@@ -181,7 +181,7 @@ A harness directory contains: harness.yaml (manifest: runtime, agents, workflow,
 
 ## Safety notes for agents
 
-- hh run is sample mode only: it never calls an LLM and never touches credentials.
+- hh run is sample mode only: it never calls an LLM, never touches credentials, and never proves gate success. Use hh eval and hh gate for verification.
 - Community stats and Harness Heat are not safety guarantees. Inspect security, risk, permissions and gates before using a harness for real work.
 - Inspect manifest.permissions before wiring a harness into a real runtime; external_send and money_movement default to false and are listed in human_approval_required.
 - Quality gates (min eval score, max cost, max risk) live in harness.yaml under quality_gates; hh gate enforces them.

@@ -1280,6 +1280,33 @@ test("run outside a harness dir exits 4", async () => {
   assert.match(result.stderr, /hh install/);
 });
 
+test("run treats unverified imports as sample preview instead of eval gate success", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-run-unverified-"));
+  const source = path.join(root, "workflow.md");
+  const out = path.join(root, "imported");
+  try {
+    await writeFile(source, "# Workflow\n\nSummarize a request and mark missing evidence as needs_resolution.\n");
+    const imported = await runCli(["import-md", source, "--out", out, "--name", "run-unverified", "--json"]);
+    assert.equal(imported.status, 0, imported.stderr);
+
+    const result = await runCli(["run", out, "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(result.stdout) as {
+      mode?: string;
+      eval?: { status?: string; score?: number; verified?: boolean; verificationStatus?: string };
+      next?: string[];
+    };
+    assert.equal(body.mode, "sample");
+    assert.equal(body.eval?.status, "unverified");
+    assert.equal(body.eval?.score, 0);
+    assert.equal(body.eval?.verified, false);
+    assert.equal(body.eval?.verificationStatus, "unverified_missing_case_scores");
+    assert.ok(body.next?.some((step) => step.includes("hh eval")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("doctor --json returns machine readable status", async () => {
   const result = await runCli(["doctor", "--json"], { HH_REGISTRY_URL: registryUrl });
 
