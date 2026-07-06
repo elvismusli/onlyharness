@@ -172,6 +172,79 @@ export const openapi = {
         }
       }
     },
+    "/community/invite-code": {
+      post: {
+        summary: "Create a short-lived community gate code",
+        description: "Auth required. Verifies the current user's entitlement before minting a signed short-lived code that can be pasted into a Discord or Telegram gate bot.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  harness: { type: "string", description: "Harness ref as owner/name." },
+                  owner: { type: "string" },
+                  repo: { type: "string" },
+                  version: { type: "string" },
+                  ttl_seconds: { type: "integer", minimum: 60, maximum: 3600 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Community invite code minted",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CommunityInviteCode" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "402": {
+            description: "The authenticated user is not entitled to this paid harness",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+          },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/community/verify-code": {
+      post: {
+        summary: "Verify a community gate code",
+        description: "Bot-facing verification. Requires ORGS_ENABLED=true and a Bearer org token with entitlements:read scope. The code is HMAC verified, checked for expiry, then entitlement is checked live before the bot grants access.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  code: { type: "string" }
+                },
+                required: ["code"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Community code decision",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CommunityVerifyCode" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "410": {
+            description: "Community code expired",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
     "/imports/markdown-to-harness": {
       post: {
         summary: "Publish markdown as an unverified harness scaffold",
@@ -638,6 +711,37 @@ export const openapi = {
           pricing: { type: "object" }
         },
         required: ["ok", "entitled", "status", "owner", "repo", "version", "subject_type", "subject_id", "pricing"]
+      },
+      CommunityInviteCode: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+          code: { type: "string" },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          subject_type: { type: "string", enum: ["user"] },
+          subject_id: { type: "string" },
+          expires_at: { type: "string", format: "date-time" },
+          next: { type: "string" }
+        },
+        required: ["ok", "code", "owner", "repo", "version", "subject_type", "subject_id", "expires_at", "next"]
+      },
+      CommunityVerifyCode: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+          allowed: { type: "boolean" },
+          entitled: { type: "boolean" },
+          status: { type: "string", enum: ["free", "entitled", "payment_required"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          subject_type: { type: "string", enum: ["user", "wallet", "org"] },
+          subject_id: { type: "string" },
+          pricing: { type: "object" }
+        },
+        required: ["ok", "allowed", "entitled", "status", "owner", "repo", "version", "subject_type", "subject_id", "pricing"]
       },
       StorefrontProfile: {
         type: "object",

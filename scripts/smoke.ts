@@ -64,6 +64,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_ORGS_PATH: orgsPath,
     HARNESS_ORG_AUDIT_PATH: orgAuditPath,
     ORGS_ENABLED: "true",
+    COMMUNITY_INVITE_SECRET: "smoke-community-invite-secret-32-bytes",
     HARNESS_WEBHOOK_TOKEN: "smoke-webhook-token",
     HARNESS_MANUAL_ENTITLEMENTS: "smoke-paid-token=local/smoke-paid-harness"
   }
@@ -75,7 +76,7 @@ try {
     items: Array<{ name: string; stars: number; forks: number; threads: number; runs: number; installConfirms: number; heatDelta: number; contextCost?: { approxTokens?: number; files?: number; status?: string } }>;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/entitlements/check"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
   for (const item of registry.items) {
@@ -135,6 +136,12 @@ try {
   if (entitlementBefore.entitled !== false || entitlementBefore.status !== "payment_required" || entitlementBefore.pricing?.model !== "one_time") {
     throw new Error(`Entitlement check should deny before checkout webhook: ${JSON.stringify(entitlementBefore)}`);
   }
+  const communityCodeBefore = await fetch("http://127.0.0.1:8799/community/invite-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ harness: "local/smoke-paid-harness", version: "0.1.0" })
+  });
+  if (communityCodeBefore.status !== 402) throw new Error(`Community invite code before entitlement should be 402, got ${communityCodeBefore.status}`);
   const unpaidBuyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
     headers: { Authorization: "Bearer smoke-buyer-token" }
   });
@@ -183,6 +190,34 @@ try {
   }).then((response) => response.json()) as { entitled?: boolean; status?: string; version?: string };
   if (entitlementAfter.entitled !== true || entitlementAfter.status !== "entitled" || entitlementAfter.version !== "0.1.0") {
     throw new Error(`Entitlement check should allow after checkout webhook: ${JSON.stringify(entitlementAfter)}`);
+  }
+  const communityCode = await fetch("http://127.0.0.1:8799/community/invite-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    body: JSON.stringify({ harness: "local/smoke-paid-harness", version: "0.1.0", ttl_seconds: 120 })
+  }).then((response) => response.json()) as { ok?: boolean; code?: string; owner?: string; repo?: string; version?: string; subject_id?: string };
+  if (!communityCode.ok || !communityCode.code?.startsWith("ohc_") || communityCode.owner !== "local" || communityCode.repo !== "smoke-paid-harness" || communityCode.version !== "0.1.0" || communityCode.subject_id !== "local-dev") {
+    throw new Error(`Community invite code was not created after entitlement: ${JSON.stringify(communityCode)}`);
+  }
+  const communityVerifyNoToken = await fetch("http://127.0.0.1:8799/community/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: communityCode.code })
+  });
+  if (communityVerifyNoToken.status !== 401) throw new Error(`Community verify without org token should be 401, got ${communityVerifyNoToken.status}`);
+  const communityVerifyTampered = await fetch("http://127.0.0.1:8799/community/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-org-token" },
+    body: JSON.stringify({ code: tamperLastChar(communityCode.code) })
+  });
+  if (communityVerifyTampered.status !== 400) throw new Error(`Tampered community code should be 400, got ${communityVerifyTampered.status}`);
+  const communityVerify = await fetch("http://127.0.0.1:8799/community/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-org-token" },
+    body: JSON.stringify({ code: communityCode.code })
+  }).then((response) => response.json()) as { ok?: boolean; allowed?: boolean; status?: string; owner?: string; repo?: string; version?: string };
+  if (!communityVerify.ok || communityVerify.allowed !== true || communityVerify.status !== "entitled" || communityVerify.owner !== "local" || communityVerify.repo !== "smoke-paid-harness" || communityVerify.version !== "0.1.0") {
+    throw new Error(`Community verify should allow after entitlement: ${JSON.stringify(communityVerify)}`);
   }
   const paidArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
     headers: { Authorization: "Bearer smoke-paid-token" }
@@ -366,7 +401,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check, Claude Code install confirms, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, storefront ref attribution, archive versions, paid 402/checkout/webhook/entitlement/check/community-code, Claude Code install confirms, events, org setup/publish/sync/private archive/audit, CLI validate/eval/gate/diff/update/audit-setup/extract, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -523,6 +558,11 @@ examples:
 
 function decodeBase64Json(value: string): unknown {
   return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+}
+
+function tamperLastChar(value: string): string {
+  const replacement = value.endsWith("x") ? "y" : "x";
+  return `${value.slice(0, -1)}${replacement}`;
 }
 
 function createOrgStore(target: string, token: string) {

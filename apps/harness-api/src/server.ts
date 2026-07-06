@@ -10,6 +10,7 @@ import { decodePaymentSignatureHeader, encodePaymentResponseHeader, HTTPFacilita
 import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from "@x402/core/types";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
+import { createCommunityInviteCode, verifyCommunityInviteCode } from "./community.js";
 import { openapi } from "./openapi.js";
 import { recordEvent, sanitizeEvent } from "./events.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
@@ -42,6 +43,18 @@ type CheckoutRequest = {
   repo?: string;
   version?: string;
   ref?: string;
+};
+
+type CommunityInviteRequest = {
+  owner?: string;
+  repo?: string;
+  harness?: string;
+  version?: string;
+  ttl_seconds?: number;
+};
+
+type CommunityVerifyRequest = {
+  code?: string;
 };
 
 type EntitlementCheckQuery = {
@@ -240,6 +253,109 @@ app.get("/entitlements/check", async (request, reply) => {
     status: result.status,
     owner: harness.owner,
     repo: harness.repo,
+    version: archive.version,
+    subject_type: subject.type,
+    subject_id: subject.id,
+    pricing: manifest.pricing
+  };
+});
+
+app.post("/community/invite-code", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as CommunityInviteRequest : {};
+  const harness = body.harness ? parseHarnessRef(body.harness) : parseHarnessRef(`${body.owner ?? ""}/${body.repo ?? ""}`);
+  if (!harness) return reply.code(400).send({ error: "harness must be owner/name, or owner and repo are required" });
+  const root = registry.resolveHarnessPath(harness.owner, harness.repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const communityGate = gateCommunityCodeVisibility(harness.owner, manifest);
+  if (!communityGate.ok) return reply.code(communityGate.status).send({ error: communityGate.error });
+  const archive = registry.buildArchiveForVersion(harness.owner, harness.repo, root, body.version);
+  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
+  const entitlement = await checkEntitlement({
+    owner: harness.owner,
+    repo: harness.repo,
+    version: archive.version,
+    manifest,
+    subject: { type: "user", id: user.id }
+  });
+  if (!entitlement.entitled) {
+    return reply.code(402).send({
+      error: "Payment required",
+      code: "PAYMENT_REQUIRED",
+      owner: harness.owner,
+      repo: harness.repo,
+      version: archive.version,
+      status: entitlement.status,
+      pricing: manifest.pricing,
+      next: "Complete checkout before creating a community invite code."
+    });
+  }
+  const secret = communityInviteSecret();
+  if (!secret) return reply.code(503).send({ error: "Community invite codes are not configured" });
+  const code = createCommunityInviteCode({
+    subject: { type: "user", id: user.id },
+    owner: harness.owner,
+    repo: harness.repo,
+    version: archive.version,
+    ttlSeconds: typeof body.ttl_seconds === "number" ? body.ttl_seconds : undefined,
+    secret
+  });
+  if (!code.ok) return reply.code(503).send({ error: code.error });
+  return reply.code(201).send({
+    ok: true,
+    code: code.code,
+    owner: harness.owner,
+    repo: harness.repo,
+    version: archive.version,
+    subject_type: code.payload.subject.type,
+    subject_id: code.payload.subject.id,
+    expires_at: new Date(code.payload.exp * 1000).toISOString(),
+    next: "Paste this short-lived code into the creator's Telegram gate bot."
+  });
+});
+
+app.post("/community/verify-code", async (request, reply) => {
+  if (!orgsEnabled) return reply.code(404).send({ error: "Community code verification is not enabled" });
+  const token = orgTokenFromRequest(request);
+  const auth = authorizeAnyOrgToken(token, ["entitlements:read"]);
+  if (!auth.ok) {
+    appendOrgAudit({ slug: auth.slug ?? "unknown", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "community_code" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const secret = communityInviteSecret();
+  if (!secret) return reply.code(503).send({ error: "Community invite codes are not configured" });
+  const body = request.body && typeof request.body === "object" ? request.body as CommunityVerifyRequest : {};
+  if (!body.code) return reply.code(400).send({ error: "code is required" });
+  const verified = verifyCommunityInviteCode({ code: body.code, secret });
+  if (!verified.ok) {
+    appendOrgAudit({ slug: auth.org.slug, action: verified.status === 410 ? "community_code_expired" : "community_code_denied", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "community_code" });
+    return reply.code(verified.status).send({ error: verified.error });
+  }
+
+  const { owner, repo, version, subject } = verified.payload;
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const orgGate = gateEntitlementCheckVisibility(owner, manifest, auth.org.slug);
+  if (!orgGate.ok) {
+    appendOrgAudit({ slug: auth.org.slug, action: orgGate.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${owner}/${repo}` });
+    return reply.code(orgGate.status).send({ error: orgGate.error });
+  }
+  const archive = registry.buildArchiveForVersion(owner, repo, root, version);
+  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
+  const entitlement = await checkEntitlement({ owner, repo, version: archive.version, manifest, subject });
+  appendOrgAudit({ slug: auth.org.slug, action: "community_code_verified", tokenName: auth.tokenName, subject: `${subject.type}:${subject.id}`, target: `${owner}/${repo}@${archive.version}` });
+  return {
+    ok: true,
+    allowed: entitlement.entitled,
+    entitled: entitlement.entitled,
+    status: entitlement.status,
+    owner,
+    repo,
     version: archive.version,
     subject_type: subject.type,
     subject_id: subject.id,
@@ -502,6 +618,20 @@ function gateEntitlementCheckVisibility(owner: string, manifest: HarnessManifest
     return { ok: false, status: 403, error: "Org token cannot check this harness", auditAction: "entitlement_check_org_denied" };
   }
   return { ok: true };
+}
+
+function gateCommunityCodeVisibility(owner: string, manifest: HarnessManifest | undefined):
+  | { ok: true }
+  | { ok: false; status: number; error: string } {
+  if (owner.startsWith("@") && manifest?.visibility !== "org") return { ok: false, status: 403, error: "Org harness visibility mismatch" };
+  if (manifest?.visibility === "private") return { ok: false, status: 403, error: "Private harness is not available for community invite codes" };
+  if (manifest?.visibility === "org") return { ok: false, status: 403, error: "Org-private harness community invite codes require a dedicated org flow" };
+  return { ok: true };
+}
+
+function communityInviteSecret(): string | undefined {
+  const secret = process.env.COMMUNITY_INVITE_SECRET?.trim() || process.env.HARNESS_COMMUNITY_INVITE_SECRET?.trim();
+  return secret && secret.length >= 24 ? secret : undefined;
 }
 
 function parseCsv(value: string | undefined): Set<string> {

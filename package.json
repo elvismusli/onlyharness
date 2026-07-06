@@ -30,6 +30,7 @@
     "smoke:x402": "tsx scripts/smoke-x402.ts",
     "smoke:prod-auth": "tsx scripts/smoke-production-auth.ts",
     "payout:report": "tsx scripts/payout-report.ts",
+    "telegram:gate-bot": "tsx scripts/telegram-community-gate-bot.ts",
     "test:scripts": "tsx --test scripts/*.test.ts",
     "start:api": "npm run dev -w @harnesshub/api",
     "start:web": "npm run dev -w @harnesshub/registry-web",
