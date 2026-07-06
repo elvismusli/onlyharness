@@ -356,7 +356,7 @@ export function CliBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy:
   return (
     <div className="win-body">
       <div className="term">
-        <span className="dim">OnlyHarness CLI [Version 0.98]{"\n"}(C) Season 4 — Wild West. Fork responsibly.{"\n\n"}</span>
+        <span className="dim">OnlyHarness CLI [Version 0.98]{"\n"}(C) Season 4 — Wild West. Remix responsibly.{"\n\n"}</span>
         C:\hub&gt; {pull}{"\n"}
         {isDirectory ? (
           <>
@@ -463,7 +463,7 @@ export function LeaderboardBody({ items, onOpen }: { items: RegistryItem[]; onOp
         </button>
       ))}
       <div style={{ fontSize: 11, color: "#404040", marginTop: 6 }}>
-        Heat blends eval, risk, freshness, stars, forks, thread replies, verified run telemetry and Claude Code install confirms. Community signals are not safety guarantees.
+        Heat blends eval, risk, freshness, stars, fork/remix records, thread replies, verified run telemetry and Claude Code install confirms. Community signals are not safety guarantees.
       </div>
     </div>
   );
@@ -508,7 +508,7 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
                 <div style={{ flex: 1 }} />
                 <div className="share-stats">
                   <div className="share-stat"><div className="num">★ {fmtK(stars)}</div><div className="cap">stars</div></div>
-                  <div className="share-stat"><div className="num">⑂ {fmtK(item.forks)}</div><div className="cap">forks</div></div>
+                  <div className="share-stat"><div className="num">⑂ {fmtK(item.forks)}</div><div className="cap">remixes</div></div>
                   <div className="share-stat"><div className="num">💬 {item.threads}</div><div className="cap">threads</div></div>
                   <div className="share-stat"><div className="num ok">{isDirectory ? item.directory?.itemCount ?? "—" : item.evalScore ? item.evalScore.toFixed(2) : "—"}</div><div className="cap">{isDirectory ? "items" : "eval"}</div></div>
                   <div className="share-stat"><div className="num">{isDirectory ? item.directory?.category ?? "index" : fmtK(item.contextCost.approxTokens)}</div><div className="cap">{isDirectory ? "category" : "ctx tokens"}</div></div>

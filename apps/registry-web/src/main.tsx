@@ -46,7 +46,7 @@ function App() {
 
   /* social state */
   const [starred, setStarred] = useState<Record<string, boolean>>({});
-  const [forked, setForked] = useState<Record<string, boolean>>({});
+  const [remixed, setRemixed] = useState<Record<string, boolean>>({});
   const [remotePosts, setRemotePosts] = useState<Record<string, ThreadItem[]>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [kinds, setKinds] = useState<Record<string, string>>({});
@@ -131,7 +131,7 @@ function App() {
   useEffect(() => {
     if (!supabase || !session?.user) {
       setStarred({});
-      setForked({});
+      setRemixed({});
       setMyHandle("");
       return;
     }
@@ -140,14 +140,12 @@ function App() {
       .select("owner,repo,action")
       .then(({ data }) => {
         const nextStars: Record<string, boolean> = {};
-        const nextForks: Record<string, boolean> = {};
         for (const action of data ?? []) {
           const key = `${action.owner}/${action.repo}`;
           if (action.action === "star") nextStars[key] = true;
-          if (action.action === "fork") nextForks[key] = true;
         }
         setStarred(nextStars);
-        setForked(nextForks);
+        setRemixed({});
       });
   }, [session]);
 
@@ -212,10 +210,10 @@ function App() {
 
   const totals = useMemo(() => ({
     stars: allItems.reduce((sum, item) => sum + item.stars + (starred[keyFor(item)] ? 1 : 0), 0),
-    forks: allItems.reduce((sum, item) => sum + item.forks + (forked[keyFor(item)] ? 1 : 0), 0),
+    forks: allItems.reduce((sum, item) => sum + item.forks, 0),
     threads: allItems.reduce((sum, item) => sum + item.threads, 0),
     indexed: allItems.length
-  }), [allItems, starred, forked]);
+  }), [allItems, starred]);
 
   const leader = leaderboard[0];
   const topItem = items[0] ?? allItems[0] ?? leader;
@@ -427,14 +425,16 @@ function App() {
     }
   }
 
-  async function forkHarness(item: RegistryItem) {
-    if (!requireUser("Log on to fork harnesses into your own corral.")) return;
-    setForked((current) => ({ ...current, [keyFor(item)]: true }));
-    flashMsg(`⑂ Forked ${item.title}. It's yours now, partner.`);
-    if (supabase && session?.user) {
-      const { error } = await supabase.from("user_harness_actions").upsert({ user_id: session.user.id, owner: item.owner, repo: item.name, action: "fork" });
-      if (error) flashMsg(error.message);
-    }
+  async function remixHarness(item: RegistryItem) {
+    const recipe = remixRecipe(item);
+    const key = keyFor(item);
+    setRemixed((current) => ({ ...current, [key]: true }));
+    void copyText(recipe, `Fork/remix recipe copied for ${item.title}`, `remix:${key}`);
+    showDialog({
+      title: "Fork/remix recipe",
+      icon: "⑂",
+      body: `Server-side forks are not live yet. Use this local remix path:\n\n${recipe}\n\nPublish only after renaming, reviewing source/license, and running eval/gate.`
+    });
   }
 
   async function runSample(item: RegistryItem) {
@@ -570,8 +570,8 @@ function App() {
 
   const cantClose = () => showDialog({ title: "OnlyHarness", icon: "⚠️", body: "You can't close the Wild West, partner. Your harness is still on the leaderboard." });
   const shutDown = () => showDialog({ title: "Shut Down OnlyHarness", icon: "🤠", body: "It's now safe to turn off your agent. But the harnesses keep getting warmer without you..." });
-  const binDialog = () => showDialog({ title: "Cooled Forks", icon: "🗑️", body: "The bin is empty. Forks don't die here — they just cool down." });
-  const aboutDialog = () => showDialog({ title: "About OnlyHarness 98", icon: "🧷", body: "The community hub for reusable agent harnesses: discover, try, fork, eval, improve. Lovingly wrapped in Windows 98 chrome, MS Paint colours and WordArt. No harnesses were harmed." });
+  const binDialog = () => showDialog({ title: "Remix Bin", icon: "🗑️", body: "The bin is empty. Server-side forks are not live yet; copied remix recipes stay local." });
+  const aboutDialog = () => showDialog({ title: "About OnlyHarness 98", icon: "🧷", body: "The community hub for reusable agent harnesses: discover, install, remix, eval, improve. Lovingly wrapped in Windows 98 chrome, MS Paint colours and WordArt. No harnesses were harmed." });
 
   /* ---------- taskbar ---------- */
 
@@ -661,7 +661,7 @@ function App() {
             tab={tabs[key] ?? "Overview"}
             setTab={(tab) => setTabs((current) => ({ ...current, [key]: tab }))}
             starred={Boolean(starred[key])}
-            forked={Boolean(forked[key])}
+            remixed={Boolean(remixed[key])}
             thread={thread}
             draft={drafts[key] ?? ""}
             setDraft={(value) => setDrafts((current) => ({ ...current, [key]: value }))}
@@ -671,7 +671,7 @@ function App() {
             tryState={tryStates[key] ?? "idle"}
             onRunSample={() => runSample(item)}
             onStar={() => toggleStar(item)}
-            onFork={() => forkHarness(item)}
+            onFork={() => remixHarness(item)}
             onCopyCli={() => {
               recordHarnessEvent("copy", item, "cli");
               void copyText(item.cliCommand, `Copied: ${item.cliCommand}`, `cli:${key}`);
@@ -765,7 +765,7 @@ function App() {
           sort={sort}
           setSort={setSort}
           starred={starred}
-          forked={forked}
+          remixed={remixed}
           session={session}
           totals={totals}
           leader={leader}
@@ -775,7 +775,7 @@ function App() {
             openHarness,
             openInstall,
             star: toggleStar,
-            fork: forkHarness,
+            remix: remixHarness,
             openPublish: () => openWin("publish"),
             openCli: () => openWin("cli", topItem ? keyFor(topItem) : undefined),
             openReview,
@@ -900,4 +900,26 @@ function refFromLocation(): string | undefined {
   if (queryRef) return queryRef;
   const hashQuery = window.location.hash.split("?")[1];
   return hashQuery ? new URLSearchParams(hashQuery).get("ref") ?? undefined : undefined;
+}
+
+function remixRecipe(item: RegistryItem): string {
+  const remixName = `my-${item.name}`;
+  if (item.contentType === "directory") {
+    const url = item.directory?.url ?? item.forgeUrl;
+    return [
+      `open ${url}`,
+      "# Link-only directory: inspect upstream source and license before vendoring.",
+      "# Convert the selected workflow into remix.md, then publish with HH_TOKEN:",
+      `npx onlyharness publish remix.md --name ${remixName} --json`
+    ].join("\n");
+  }
+  return [
+    `npx onlyharness install ${item.owner}/${item.name} --out ${remixName}`,
+    `cd ${remixName}`,
+    "# Rename harness.yaml name/title and edit agents/evals before publishing.",
+    "npx onlyharness eval . --json",
+    "npx onlyharness gate --dir . --json",
+    "# Current publish path accepts reviewed markdown; set HH_TOKEN first.",
+    `npx onlyharness publish README.md --name ${remixName} --json`
+  ].join("\n");
 }

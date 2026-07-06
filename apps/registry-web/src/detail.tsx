@@ -4,13 +4,13 @@ import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 const THREAD_KINDS = ["question", "recipe", "result", "proposal", "bug/risk"];
 
-export function DetailBody({ item, detail, tab, setTab, starred, forked, thread, draft, setDraft, kind, setKind, onPost, tryState, onRunSample, onStar, onFork, onCopyCli, onInstall, onShare, copied }: {
+export function DetailBody({ item, detail, tab, setTab, starred, remixed, thread, draft, setDraft, kind, setKind, onPost, tryState, onRunSample, onStar, onFork, onCopyCli, onInstall, onShare, copied }: {
   item: RegistryItem;
   detail?: HarnessDetail;
   tab: DetailTab;
   setTab: (tab: DetailTab) => void;
   starred: boolean;
-  forked: boolean;
+  remixed: boolean;
   thread: ThreadItem[];
   draft: string;
   setDraft: (value: string) => void;
@@ -260,7 +260,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
         <aside className="trust-panel">
           <div className="trust-stats">
             <div className="trust-stat"><span className="num">★ {fmtK(stars)}</span><span className="cap">stars</span></div>
-            <div className="trust-stat"><span className="num">⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span><span className="cap">forks</span></div>
+            <div className="trust-stat"><span className="num">⑂ {fmtK(item.forks)}</span><span className="cap">remixes</span></div>
             <div className="trust-stat"><span className="num">💬 {item.threads}</span><span className="cap">threads</span></div>
             <div className="trust-stat"><span className="num">✓ {fmtK(installConfirms)}</span><span className="cap">confirms</span></div>
           </div>
@@ -299,7 +299,7 @@ export function DetailBody({ item, detail, tab, setTab, starred, forked, thread,
             <Btn strong onClick={onInstall}>{isDirectory ? "🌐 Open directory" : "💿 Install"}</Btn>
             <Btn strong onClick={onCopyCli}>{copied ? "✓ Copied" : isDirectory ? "📋 Copy link" : ">_ Copy CLI"}</Btn>
             <Btn pressed={starred} onClick={onStar}>★ {starred ? "Starred" : "Star"}</Btn>
-            <Btn pressed={forked} onClick={onFork}>⑂ {forked ? "Forked" : "Fork"}</Btn>
+            <Btn pressed={remixed} onClick={onFork}>⑂ {remixed ? "Recipe copied" : "Fork/remix"}</Btn>
             <Btn onClick={onShare}>💾 Share card</Btn>
           </div>
         </aside>

@@ -16,7 +16,7 @@ export const SORT_OPTIONS = [
 export type ExploreActions = {
   openHarness: (item: RegistryItem, tab?: DetailTab) => void;
   star: (item: RegistryItem) => void;
-  fork: (item: RegistryItem) => void;
+  remix: (item: RegistryItem) => void;
   openInstall: (item?: RegistryItem) => void;
   openPublish: () => void;
   openCli: () => void;
@@ -30,7 +30,7 @@ export type ExploreActions = {
   refresh: () => void;
 };
 
-export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, setQuery, sort, setSort, starred, forked, session, totals, leader, flash, active, actions }: {
+export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, setQuery, sort, setSort, starred, remixed, session, totals, leader, flash, active, actions }: {
   items: RegistryItem[];
   jobs: Array<{ label: string; count: number }>;
   jobFilter: string;
@@ -40,7 +40,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
   sort: string;
   setSort: (value: string) => void;
   starred: Record<string, boolean>;
-  forked: Record<string, boolean>;
+  remixed: Record<string, boolean>;
   session: Session | null;
   totals: { stars: number; forks: number; threads: number; indexed: number };
   leader?: RegistryItem;
@@ -50,7 +50,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
 }) {
   const top = items[0] ?? leader;
 
-  const ticker = `★ ${fmtK(totals.stars)} stars flexed this week · ⑂ ${fmtK(totals.forks)} forks in the wild · 🔥 ${leader?.title ?? "the frontier"} is heating up · new season drops Monday · fork responsibly, cowboy · onlyharness.com · `;
+  const ticker = `★ ${fmtK(totals.stars)} stars flexed this week · ⑂ ${fmtK(totals.forks)} fork/remix records · 🔥 ${leader?.title ?? "the frontier"} is heating up · new season drops Monday · remix responsibly · onlyharness.com · `;
 
   const menus = [
     {
@@ -83,7 +83,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
       items: [
         { icon: "▶", label: top ? `Preview "${top.title}"` : "Preview sample", onClick: () => top && actions.openHarness(top, "Try sample") },
         { icon: "💿", label: top ? `Install "${top.title}"` : "Install Center", onClick: () => actions.openInstall(top) },
-        { icon: "⑂", label: top ? `Fork "${top.title}"` : "Fork", onClick: () => top && actions.fork(top) },
+        { icon: "⑂", label: top ? `Fork/remix "${top.title}"` : "Fork/remix", onClick: () => top && actions.remix(top) },
         "sep" as const,
         { icon: "🔧", label: "Maintainer review...", onClick: actions.openReview }
       ]
@@ -115,7 +115,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
 
         <div className="toolbar">
           <Btn onClick={actions.openPublish}>📄 New harness</Btn>
-          <Btn onClick={() => top && actions.fork(top)}>⑂ Fork</Btn>
+          <Btn onClick={() => top && actions.remix(top)}>⑂ Fork/remix</Btn>
           <Btn onClick={() => actions.openInstall(top)}>💿 Install</Btn>
           <Btn onClick={() => top && actions.openHarness(top, "Try sample")}>▶ Preview</Btn>
           <Btn onClick={actions.openCli}>&gt;_ CLI</Btn>
@@ -134,7 +134,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
             <div>
               <div className="wordart">OnlyHarness</div>
               <div className="hero-sub">
-                Build with proven agent workflows. <b>Find, fork, run and improve</b> reusable AI-agent harnesses — no repo archaeology required.
+                Build with proven agent workflows. <b>Find, install, remix and improve</b> reusable AI-agent harnesses — no repo archaeology required.
               </div>
               <div className="hero-actions">
                 <Btn strong big onClick={() => document.getElementById("trending")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
@@ -166,10 +166,10 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
                     key={keyFor(item)}
                     item={item}
                     starred={Boolean(starred[keyFor(item)])}
-                    forked={Boolean(forked[keyFor(item)])}
+                    remixed={Boolean(remixed[keyFor(item)])}
                     onOpen={(tab) => actions.openHarness(item, tab)}
                     onStar={() => actions.star(item)}
-                    onFork={() => actions.fork(item)}
+                    onFork={() => actions.remix(item)}
                   />
                 ))}
               </div>
@@ -210,10 +210,10 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
   );
 }
 
-export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
+export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork }: {
   item: RegistryItem;
   starred: boolean;
-  forked: boolean;
+  remixed: boolean;
   onOpen: (tab?: DetailTab) => void;
   onStar: () => void;
   onFork: () => void;
@@ -249,7 +249,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
           )}
         </div>
         <div className="stats-plate">
-          <span>⑂ {fmtK(item.forks + (forked ? 1 : 0))}</span>
+          <span>⑂ {fmtK(item.forks)}</span>
           <span>💬 {item.threads}</span>
           <span>ctx {fmtK(item.contextCost.approxTokens)}</span>
           <span className="eval-ok">eval {item.evalScore ? item.evalScore.toFixed(2) : "—"}</span>
@@ -268,7 +268,7 @@ export function HarnessCard({ item, starred, forked, onOpen, onStar, onFork }: {
           <Btn className="star-btn" pressed={starred} onClick={onStar} title={starred ? "Unstar" : "Star"}>★ {fmtK(stars)}</Btn>
           <Btn strong onClick={() => isDirectory ? onOpen("Overview") : onOpen("Install")}>{isDirectory ? "🌐 Open" : "💿 Install"}</Btn>
           <Btn onClick={() => onOpen(isDirectory ? "Files" : "Try sample")}>{isDirectory ? "Source" : "Preview"}</Btn>
-          <Btn pressed={forked} onClick={onFork} title="Fork">⑂</Btn>
+          <Btn pressed={remixed} onClick={onFork} title="Fork/remix recipe">⑂ Remix</Btn>
         </div>
       </div>
     </article>

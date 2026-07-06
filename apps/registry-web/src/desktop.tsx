@@ -19,7 +19,7 @@ export function DesktopIcons({ onMyHarnesses, onNetwork, onBin }: { onMyHarnesse
       </button>
       <button className="desk-icon" onClick={onBin}>
         <span className="glyph">🗑️</span>
-        <span className="label">Cooled Forks</span>
+        <span className="label">Remix Bin</span>
       </button>
     </div>
   );
@@ -231,7 +231,7 @@ export function LogonDialog({ note, status, busy, configured, onSignIn, onSignUp
             </button>
           </p>
         )}
-        <p className="logon-note">Your account stores stars, forks and thread posts. Nothing else.</p>
+        <p className="logon-note">Your account stores stars and thread posts. Remix recipes stay local.</p>
       </div>
     </Dialog>
   );
