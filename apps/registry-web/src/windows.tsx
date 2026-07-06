@@ -477,12 +477,17 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
   const isDirectory = item.contentType === "directory";
   const shareBanner = isDirectory ? "★ LOOK AT MY DIRECTORY ★" : "★ LOOK AT MY HARNESS ★";
   const shareCommand = item.cliCommand ?? (isDirectory && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`);
+  const worksWith = isDirectory ? ["Open link", "Source review"] : ["CLI", "MCP", "HTTP archive"];
+  const evalLabel = isDirectory ? "link-only" : `eval ${item.evalScore ? item.evalScore.toFixed(2) : item.evalStatus}`;
+  const riskLabel = `risk ${item.riskTier} ${item.riskScore}`;
+  const evalClass = item.evalStatus === "passed" || isDirectory ? "safe" : "warn";
+  const riskClass = item.riskTier === "LOW" ? "safe" : "warn";
   const metricLine = isDirectory
     ? `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · ${item.directory?.itemCount ?? "curated"} items · ${item.heatQualified ? `Heat ${heat.toFixed(1)}🔥` : "Heat collecting signals"}`
     : `★ ${fmtK(stars)} · ⑂ ${fmtK(item.forks)} · 💬 ${item.threads} · eval ${item.evalScore ? item.evalScore.toFixed(2) : "—"} · context ${fmtContextCost(item.contextCost)} · ${item.heatQualified ? `Heat ${heat.toFixed(1)}🔥` : "Heat collecting signals"}`;
   const baseUrl = typeof window === "undefined" ? "https://onlyharness.com" : window.location.origin;
   const shareUrl = `${baseUrl}/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}${refCode ? `?ref=${encodeURIComponent(refCode)}` : ""}`;
-  const brag = `${shareBanner}\n${item.title} — ${item.summary}\n${metricLine}\nWorks with: ${isDirectory ? "Open link, source review" : "CLI, MCP, HTTP archive"}\n${shareUrl}\n> ${shareCommand}`;
+  const brag = `${shareBanner}\n${item.title} — ${item.summary}\n${metricLine}\nEval: ${evalLabel} · Risk: ${riskLabel}\nWorks with: ${worksWith.join(", ")}\n${shareUrl}\nInstall: ${shareCommand}`;
   return (
     <div className="win-body">
       <div className="share-stage">
@@ -500,10 +505,10 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
                 </div>
                 <div className="share-promise">{item.summary}</div>
                 <div className="share-tags">
-                  {item.tags.slice(0, 2).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
-                  {item.riskTier === "LOW" && <span className="tag98 safe">✓ low-risk scan</span>}
-                  <span className="tag98 safe">{isDirectory ? "Open link" : "CLI"}</span>
-                  <span className="tag98 safe">{isDirectory ? "Source review" : "MCP"}</span>
+                  {item.tags.slice(0, 1).map((tag) => <span key={tag} className="tag98">#{tag.replace(/^#/, "")}</span>)}
+                  <span className={`tag98 ${evalClass}`}>{evalLabel}</span>
+                  <span className={`tag98 ${riskClass}`}>{riskLabel}</span>
+                  {worksWith.map((target) => <span key={target} className="tag98 safe">{target}</span>)}
                 </div>
                 <div style={{ flex: 1 }} />
                 <div className="share-stats">
@@ -532,7 +537,7 @@ export function ShareBody({ item, starred, refCode, onCopy, copied }: { item: Re
               </div>
             </div>
             <div className="share-footer">
-              <span>&gt; {shareCommand}</span>
+              <span>Install: {shareCommand}</span>
               <span className="site">onlyharness.com 🌐</span>
             </div>
           </div>

@@ -888,7 +888,7 @@ button.status-plate { cursor: pointer; }
 
 .share-promise { font-size: 21px; font-weight: bold; margin-top: 12px; }
 
-.share-tags { display: flex; gap: 7px; margin-top: 14px; }
+.share-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
 
 .share-tags .tag98 { font-size: 15px; padding: 3px 11px; }
 
