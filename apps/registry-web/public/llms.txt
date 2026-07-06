@@ -168,6 +168,7 @@ Install from the marketplace source:
 
 Local development check from a repo clone:
 
+    npm run check:plugin
     claude plugin validate .
     claude plugin validate plugins/onlyharness
 

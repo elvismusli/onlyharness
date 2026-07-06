@@ -30,6 +30,7 @@ npm run typecheck -w @harnesshub/api
 npm run typecheck -w @harnesshub/registry-web
 npm run typecheck -w onlyharness
 npm run check:mcp-registry
+npm run check:plugin
 npm test -w onlyharness
 node packages/harness-cli/dist/hh.mjs doctor
 ```

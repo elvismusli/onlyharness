@@ -135,7 +135,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Safer community gates use short-lived signed codes: the buyer calls `POST /api/community/invite-code` after entitlement, then the Telegram/Discord bot calls `POST /api/community/verify-code` with a scoped org token before granting access. `COMMUNITY_INVITE_SECRET` must be configured on the API.
 - Registry items include `installConfirms`; only authenticated `kind=install&client=claude-code` events count toward the `works in Claude Code: N confirms` badge.
 - Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install onlyharness@onlyharness`.
-- Local validation: `npm run check:mcp-registry && claude plugin validate . && claude plugin validate plugins/onlyharness`.
+- Local validation: `npm run check:mcp-registry && npm run check:plugin`; when Claude CLI is installed, also run `claude plugin validate . && claude plugin validate plugins/onlyharness`.
 
 Create local env from the examples:
 
