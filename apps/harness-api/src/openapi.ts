@@ -68,11 +68,15 @@ export const openapi = {
     "/repos/{owner}/{repo}/archive": {
       get: {
         summary: "Download harness files",
-        parameters: [pathParam("owner"), pathParam("repo")],
+        parameters: [pathParam("owner"), pathParam("repo"), queryParam("version", "Optional immutable archive version")],
         responses: {
           "200": {
             description: "Archive payload",
             content: { "application/json": { schema: { $ref: "#/components/schemas/Archive" } } }
+          },
+          "402": {
+            description: "Payment required for a paid harness archive",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentRequired" } } }
           },
           "404": { $ref: "#/components/responses/NotFound" }
         }
@@ -126,6 +130,38 @@ export const openapi = {
         description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, search_docs, publish_markdown_to_harness.",
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream" }
+        }
+      }
+    },
+    "/events": {
+      post: {
+        summary: "Record a privacy-safe registry event",
+        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials and arbitrary metadata.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "applied"] },
+                  owner: { type: "string" },
+                  repo: { type: "string" },
+                  version: { type: "string" },
+                  target: { type: "string" },
+                  client: { type: "string" }
+                },
+                required: ["kind"]
+              }
+            }
+          }
+        },
+        responses: {
+          "202": {
+            description: "Event accepted",
+            content: { "application/json": { schema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" }
         }
       }
     }
@@ -215,6 +251,8 @@ export const openapi = {
         properties: {
           owner: { type: "string" },
           repo: { type: "string" },
+          version: { type: "string" },
+          snapshot: { type: "boolean" },
           files: {
             type: "array",
             items: {
@@ -228,7 +266,23 @@ export const openapi = {
             }
           }
         },
-        required: ["owner", "repo", "files"]
+        required: ["owner", "repo", "version", "snapshot", "files"]
+      },
+      PaymentRequired: {
+        type: "object",
+        properties: {
+          error: { type: "string" },
+          code: { type: "string", enum: ["PAYMENT_REQUIRED"] },
+          owner: { type: "string" },
+          repo: { type: "string" },
+          version: { type: "string" },
+          pricing: { type: "object" },
+          provider: { type: "string", enum: ["manual"] },
+          checkout_url: { type: "string" },
+          x402: { type: "object" },
+          next: { type: "string" }
+        },
+        required: ["error", "code", "owner", "repo", "version", "pricing", "provider", "checkout_url", "x402", "next"]
       },
       SecurityReport: {
         type: "object",

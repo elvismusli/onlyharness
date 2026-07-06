@@ -54,8 +54,9 @@ Core endpoints:
 | GET | `/healthz` | API health |
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
-| GET | `/repos/{owner}/{name}/archive` | Pull all harness files |
+| GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
+| POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
 Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `search_docs`, `publish_markdown_to_harness`.
@@ -69,6 +70,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Keep docs, `/llms.txt`, API behavior, and CLI behavior synchronized.
 - Do not commit `infra/production.env`, tokens, cookies, Supabase service keys, or generated secrets.
 - Money movement, auth, publishing, permissions, and entitlements are high-risk; prefer explicit failures over optimistic UI.
+- Paid `hh pull` uses `HH_TOKEN`; 402 must exit with code 5 and include checkout/manual-entitlement next steps.
 - CLI failures should use documented exit codes and, with `--json`, emit `{ "error", "code", "next" }` to stderr.
 - Harness imports must not invent eval scores, licenses, permissions, or runtime proof.
 

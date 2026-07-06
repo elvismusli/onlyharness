@@ -84,10 +84,16 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     async ({ owner, name }) => {
       const root = registry.resolveHarnessPath(owner, name);
       if (!root) return json({ error: `Harness ${owner}/${name} not found` });
+      const { inspection } = registry.registryDetailBasics(root);
+      const version = inspection.manifest?.version ?? "current";
+      const pricing = inspection.manifest?.pricing;
       return json({
         command: `npx onlyharness pull ${owner}/${name}`,
         localCommand: `node packages/harness-cli/dist/hh.mjs pull ${owner}/${name}`,
-        archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive`,
+        archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
+        payment: pricing && pricing.model !== "free"
+          ? { required: true, pricing, tokenEnv: "HH_TOKEN", paymentExitCode: 5 }
+          : { required: false },
         next: [`hh run ${name} --json`, `hh eval ${name} --json`, `hh gate --dir ${name} --json`]
       });
     }

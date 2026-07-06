@@ -67,7 +67,7 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
 
 /* ---------- Install Center ---------- */
 
-export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string) => void; copied: boolean }) {
+export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onCopy: (text: string, target: "cli" | "archive") => void; copied: boolean }) {
   const target = item ? `${item.owner}/${item.name}` : "";
   const commands = item
     ? [
@@ -101,8 +101,8 @@ export function InstallBody({ item, onCopy, copied }: { item?: RegistryItem; onC
             <h4>Recommended install loop</h4>
             <pre className="pre98">{commands}</pre>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-              <Btn strong disabled={!item} onClick={() => onCopy(commands)}>{copied ? "✓ Copied" : "📋 Copy CLI loop"}</Btn>
-              <Btn disabled={!item} onClick={() => onCopy(archive)}>📦 Copy archive curl</Btn>
+              <Btn strong disabled={!item} onClick={() => onCopy(commands, "cli")}>{copied ? "✓ Copied" : "📋 Copy CLI loop"}</Btn>
+              <Btn disabled={!item} onClick={() => onCopy(archive, "archive")}>📦 Copy archive curl</Btn>
             </div>
           </div>
 

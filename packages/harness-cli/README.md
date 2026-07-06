@@ -27,6 +27,8 @@ By default `hh` talks to `https://onlyharness.com/api`.
 HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
 ```
 
+Paid harness pulls send `HH_TOKEN` as a bearer token. Without entitlement the registry returns 402 and `hh pull --json` exits 5 with `{ "error", "code", "next" }`.
+
 ## Publishing
 
 Publishing needs an OnlyHarness access token.
@@ -38,7 +40,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 ## Agent Contract
 
 - `hh search <terms> --json` prints machine-readable registry results.
-- `hh pull owner/name` writes a runnable harness directory.
+- `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
 - `hh run` is sample mode only: no LLM calls, no credentials.
 - `hh eval` writes `.harnesshub/results.json`.
 - `hh gate` enforces `quality_gates` from `harness.yaml`.

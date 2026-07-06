@@ -1,7 +1,9 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import os from "node:os";
 import path from "node:path";
 
 const HH = new URL("../dist/hh.mjs", import.meta.url).pathname;
@@ -9,6 +11,7 @@ const seedHarness = path.resolve(import.meta.dirname, "../../../seed-harnesses/d
 
 let server: Server;
 let registryUrl = "";
+let sawPullToken = false;
 
 before(async () => {
   server = createServer((request, response) => {
@@ -27,6 +30,28 @@ before(async () => {
     if (request.url?.startsWith("/repos/harnesses/definitely-not-real-xyz/archive")) {
       response.statusCode = 404;
       response.end(JSON.stringify({ error: "Harness not found" }));
+      return;
+    }
+
+    if (request.url?.startsWith("/repos/harnesses/paid-harness/archive")) {
+      response.statusCode = 402;
+      response.end(JSON.stringify({
+        error: "Payment required",
+        code: "PAYMENT_REQUIRED",
+        checkout_url: "https://onlyharness.com/checkout?owner=harnesses&repo=paid-harness",
+        pricing: { model: "one_time", amount_usd: 9, currency: "USD" }
+      }));
+      return;
+    }
+
+    if (request.url?.startsWith("/repos/harnesses/token-required/archive")) {
+      sawPullToken = request.headers.authorization === "Bearer paid-token";
+      response.end(JSON.stringify({
+        owner: "harnesses",
+        repo: "token-required",
+        version: "0.1.0",
+        files: [{ path: "README.md", truncated: false, content: "# token-required\n" }]
+      }));
       return;
     }
 
@@ -51,6 +76,28 @@ test("pull of a missing harness exits 4 and names the next command", async () =>
 
   assert.equal(result.status, 4);
   assert.match(result.stderr, /Next: hh search/);
+});
+
+test("pull of a paid harness exits 5 and returns JSON payment guidance", async () => {
+  const result = await runCli(["pull", "harnesses/paid-harness", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+  assert.equal(result.status, 5);
+  const body = JSON.parse(result.stderr) as { error?: string; code?: number; next?: string };
+  assert.match(body.error ?? "", /Payment required/);
+  assert.equal(body.code, 5);
+  assert.match(body.next ?? "", /checkout/);
+});
+
+test("pull sends HH_TOKEN as a bearer token", async () => {
+  sawPullToken = false;
+  const out = await mkdtemp(path.join(os.tmpdir(), "hh-token-pull-"));
+  try {
+    const result = await runCli(["pull", "harnesses/token-required", "--out", out], { HH_REGISTRY_URL: registryUrl, HH_TOKEN: "paid-token" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawPullToken, true);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
 });
 
 test("run outside a harness dir exits 4", async () => {

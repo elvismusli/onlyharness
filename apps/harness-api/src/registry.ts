@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { inspectHarness, validateHarnessDir, type HarnessManifest, type SecurityReport as ManifestSecurityReport } from "@harnesshub/schema";
 import { scanHarnessDir, type SecurityReport as StaticSecurityReport } from "./security-scan.js";
@@ -7,8 +7,23 @@ import { socialFromCounters, type Counters } from "./social.js";
 export const workspaceRoot = path.resolve(process.env.HARNESS_WORKSPACE_ROOT ?? path.join(import.meta.dirname, "../../.."));
 export const seedRoot = path.join(workspaceRoot, "seed-harnesses");
 export const importRoot = path.join(workspaceRoot, "data/imports");
+export const versionRoot = path.resolve(process.env.HARNESS_VERSION_ROOT ?? path.join(workspaceRoot, "data/harness-versions"));
 
 export const MAX_ARCHIVE_FILE_BYTES = 256 * 1024;
+
+export type ArchiveFile = {
+  path: string;
+  truncated: boolean;
+  content: string;
+};
+
+export type ArchiveSnapshot = {
+  owner: string;
+  repo: string;
+  version: string;
+  createdAt: string;
+  files: ArchiveFile[];
+};
 
 export type RegistryItem = {
   owner: string;
@@ -163,7 +178,7 @@ export function resolveHarnessPath(owner: string, repo: string): string | undefi
   return undefined;
 }
 
-export function buildArchive(root: string) {
+export function buildArchive(root: string): { files: ArchiveFile[] } {
   const files = listHarnessFiles(root).map((file) => {
     const full = path.join(root, file);
     const size = statSafe(full) ? statSync(full).size : 0;
@@ -171,6 +186,44 @@ export function buildArchive(root: string) {
     return { path: file, truncated: false, content: readMaybe(full) };
   });
   return { files };
+}
+
+export function buildArchiveForVersion(owner: string, repo: string, root: string, version?: string): { files: ArchiveFile[]; version: string; snapshot: boolean } | undefined {
+  const currentVersion = registryDetailBasics(root).inspection.manifest?.version ?? "0.0.0";
+  if (!version) return { ...buildArchive(root), version: currentVersion, snapshot: false };
+  const snapshot = readArchiveSnapshot(owner, repo, version);
+  if (snapshot) return { files: snapshot.files, version: snapshot.version, snapshot: true };
+  if (version === currentVersion) return { ...buildArchive(root), version: currentVersion, snapshot: false };
+  return undefined;
+}
+
+export function writeArchiveSnapshot(owner: string, repo: string, root: string, version?: string): ArchiveSnapshot | undefined {
+  const resolvedVersion = version ?? registryDetailBasics(root).inspection.manifest?.version;
+  if (!resolvedVersion || !safeSnapshotSegment(owner) || !safeSnapshotSegment(repo) || !safeSnapshotSegment(resolvedVersion)) return undefined;
+  const snapshot: ArchiveSnapshot = {
+    owner,
+    repo,
+    version: resolvedVersion,
+    createdAt: new Date().toISOString(),
+    files: buildArchive(root).files
+  };
+  const file = archiveSnapshotPath(owner, repo, resolvedVersion);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(snapshot, null, 2));
+  return snapshot;
+}
+
+export function readArchiveSnapshot(owner: string, repo: string, version: string): ArchiveSnapshot | undefined {
+  if (!safeSnapshotSegment(owner) || !safeSnapshotSegment(repo) || !safeSnapshotSegment(version)) return undefined;
+  const file = archiveSnapshotPath(owner, repo, version);
+  if (!existsSync(file)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as ArchiveSnapshot;
+    if (parsed.owner !== owner || parsed.repo !== repo || parsed.version !== version || !Array.isArray(parsed.files)) return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
 }
 
 export function registryDetailBasics(root: string) {
@@ -256,4 +309,12 @@ function statSafe(file: string): number {
   } catch {
     return 0;
   }
+}
+
+function archiveSnapshotPath(owner: string, repo: string, version: string): string {
+  return path.join(versionRoot, owner, repo, `${version}.json`);
+}
+
+function safeSnapshotSegment(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$/.test(value);
 }

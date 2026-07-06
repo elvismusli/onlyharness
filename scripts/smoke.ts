@@ -6,7 +6,9 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const seedRoot = path.join(root, "seed-harnesses");
 const maliciousRoot = path.join(root, "data/imports/smoke-malicious-harness");
+const paidRoot = path.join(root, "data/imports/smoke-paid-harness");
 const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
+const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
 
 function run(command: string, args: string[], options: { cwd?: string; allowFailure?: boolean; env?: NodeJS.ProcessEnv } = {}) {
   const result = spawnSync(command, args, { cwd: options.cwd ?? root, encoding: "utf8", env: options.env ?? process.env });
@@ -34,11 +36,20 @@ run("node", [cliBin, "diff", "--base-dir", base, "--head-dir", head, "--format",
 if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error("Diff output missing");
 
 createMaliciousHarness(maliciousRoot);
+createPaidHarness(paidRoot);
 
 const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
   cwd: root,
   stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, HARNESS_API_PORT: "8799", HARNESS_API_HOST: "127.0.0.1", HARNESS_WORKSPACE_ROOT: root }
+  env: {
+    ...process.env,
+    HARNESS_API_PORT: "8799",
+    HARNESS_API_HOST: "127.0.0.1",
+    HARNESS_WORKSPACE_ROOT: root,
+    HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
+    HARNESS_VERSION_ROOT: path.join(smokeDataRoot, "harness-versions"),
+    HARNESS_MANUAL_ENTITLEMENTS: "smoke-paid-token=local/smoke-paid-harness"
+  }
 });
 
 try {
@@ -65,12 +76,34 @@ try {
   if (security.verdict !== "fail" || !security.findings?.length) throw new Error(`Malicious security report did not fail: ${JSON.stringify(security)}`);
   const detail = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/harness").then((response) => response.json()) as { manifest?: { name: string } };
   if (detail.manifest?.name !== "deep-market-researcher") throw new Error("Detail endpoint returned wrong manifest");
+  const paidRequired = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive");
+  const paidRequiredBody = await paidRequired.json() as { code?: string; checkout_url?: string };
+  if (paidRequired.status !== 402 || paidRequiredBody.code !== "PAYMENT_REQUIRED" || !paidRequiredBody.checkout_url) {
+    throw new Error(`Paid archive did not require payment: ${paidRequired.status} ${JSON.stringify(paidRequiredBody)}`);
+  }
+  const paidArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
+    headers: { Authorization: "Bearer smoke-paid-token" }
+  }).then((response) => response.json()) as { version?: string; files?: unknown[] };
+  if (paidArchive.version !== "0.1.0" || !paidArchive.files?.length) throw new Error(`Paid archive entitlement failed: ${JSON.stringify(paidArchive)}`);
+  const missingVersion = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=9.9.9", {
+    headers: { Authorization: "Bearer smoke-paid-token" }
+  });
+  if (missingVersion.status !== 404) throw new Error(`Unknown archive version should be 404, got ${missingVersion.status}`);
+  const eventResponse = await fetch("http://127.0.0.1:8799/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "copy", owner: "harnesses", repo: "deep-market-researcher", target: "cli", client: "smoke", prompt: "must-not-store" })
+  });
+  if (eventResponse.status !== 202) throw new Error(`Events endpoint failed: ${eventResponse.status}`);
   const imported = await fetch("http://127.0.0.1:8799/imports/markdown-to-harness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "smoke-imported-harness", markdown: "# Smoke Imported Harness\n\nResearch, synthesize, critique and produce a memo." })
-  }).then((response) => response.json()) as { item?: { name: string } };
+  }).then((response) => response.json()) as { item?: { name: string }; snapshotVersion?: string };
   if (imported.item?.name !== "smoke-imported-harness") throw new Error(`Import endpoint failed: ${JSON.stringify(imported)}`);
+  if (imported.snapshotVersion !== "0.1.0") throw new Error(`Import did not create a version snapshot: ${JSON.stringify(imported)}`);
+  const importedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-imported-harness/archive?version=0.1.0").then((response) => response.json()) as { snapshot?: boolean; files?: unknown[] };
+  if (!importedArchive.snapshot || !importedArchive.files?.length) throw new Error(`Imported version snapshot unavailable: ${JSON.stringify(importedArchive)}`);
 
   const cliEnv = { ...process.env, HH_REGISTRY_URL: "http://127.0.0.1:8799" };
   run("node", [cliBin, "doctor", "--json"], { env: cliEnv });
@@ -86,6 +119,8 @@ try {
 } finally {
   api.kill("SIGTERM");
   rmSync(maliciousRoot, { recursive: true, force: true });
+  rmSync(paidRoot, { recursive: true, force: true });
+  rmSync(smokeDataRoot, { recursive: true, force: true });
 }
 
 const importedPath = path.join(root, "data/imports/smoke-imported-harness/harness.yaml");
@@ -93,7 +128,7 @@ if (!existsSync(importedPath)) throw new Error("Imported harness manifest missin
 const importedAgentGuide = path.join(root, "data/imports/smoke-imported-harness/AGENTS.md");
 if (!existsSync(importedAgentGuide)) throw new Error("Imported harness AGENTS.md missing");
 JSON.parse(readFileSync(path.join(root, ".harnesshub-smoke-diff.json"), "utf8"));
-console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, CLI validate/eval/gate/diff, local CLI doctor/search/pull/run loop`);
+console.log(`Smoke passed: ${seeds.length} seeds, API registry/detail/import, archive versions, paid 402/entitlement, events, CLI validate/eval/gate/diff, local CLI doctor/search/pull/run loop`);
 
 async function waitForApi(url: string) {
   const deadline = Date.now() + 15_000;
@@ -168,4 +203,82 @@ examples:
   writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 1\n");
   writeFileSync(path.join(target, "examples/input.md"), "input\n");
   writeFileSync(path.join(target, "examples/expected.md"), "expected\n");
+}
+
+function createPaidHarness(target: string) {
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(path.join(target, "agents"), { recursive: true });
+  mkdirSync(path.join(target, "evals/cases"), { recursive: true });
+  mkdirSync(path.join(target, "examples"), { recursive: true });
+  mkdirSync(path.join(target, ".harnesshub"), { recursive: true });
+  writeFileSync(path.join(target, "harness.yaml"), `schemaVersion: harness.v0.2
+name: smoke-paid-harness
+title: Smoke Paid Harness
+summary: Local paid fixture used to verify archive entitlement gates.
+version: 0.1.0
+license: MIT
+pricing:
+  model: one_time
+  amount_usd: 9
+  currency: USD
+tags: [smoke, paid]
+runtime:
+  primary: none
+  adapters: []
+agents:
+  - id: operator
+    role: operator
+    prompt: agents/operator.md
+    tools: []
+    handoffs: []
+workflow:
+  entrypoint: operator
+  stages:
+    - id: run
+      agent: operator
+tools:
+  mcp_servers: []
+  function_tools: []
+  external_apis: []
+permissions:
+  network: "false"
+  network_allowlist: []
+  filesystem: readonly
+  shell: false
+  browser: false
+  credentials: "false"
+  external_send: false
+  money_movement: false
+  user_data: false
+  human_approval_required: []
+evals:
+  promptfoo_config: evals/promptfooconfig.yaml
+  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml
+quality_gates:
+  min_score: 0.82
+  max_regression: 0.03
+  max_cost_usd_per_run: 3
+  max_risk_score: 39
+  required_checks: [schema_valid, eval_passed]
+examples:
+  - title: Smoke
+    input: examples/input.md
+    output: examples/expected.md
+`);
+  writeFileSync(path.join(target, "README.md"), "# Smoke Paid Harness\n");
+  writeFileSync(path.join(target, "agents/operator.md"), "Return a short smoke result.\n");
+  writeFileSync(path.join(target, "evals/promptfooconfig.yaml"), "description: paid smoke\nprompts: []\nproviders: []\n");
+  writeFileSync(path.join(target, "evals/cases/smoke.yaml"), "title: Smoke\nscore: 0.9\n");
+  writeFileSync(path.join(target, "examples/input.md"), "input\n");
+  writeFileSync(path.join(target, "examples/expected.md"), "expected\n");
+  writeFileSync(path.join(target, ".harnesshub/results.json"), JSON.stringify({
+    runner: "harnesshub-local-eval",
+    status: "passed",
+    score: 0.9,
+    verified: true,
+    verification_status: "declared_case_scores",
+    cost_usd: 0.03,
+    duration_ms: 250,
+    cases: [{ id: "smoke", title: "Smoke", score: 0.9, passed: true, verification_status: "declared_score" }]
+  }, null, 2));
 }

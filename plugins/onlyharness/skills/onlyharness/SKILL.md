@@ -20,6 +20,7 @@ npx onlyharness gate --dir deep-market-researcher --json
 ```
 
 `hh run` is sample mode only: no LLM calls and no credentials.
+For paid harnesses, set `HH_TOKEN`; payment-required pulls exit 5 and include checkout/manual-entitlement next steps.
 
 ## Publish
 
@@ -56,7 +57,7 @@ curl -s 'https://onlyharness.com/api/repos/harnesses/deep-market-researcher/arch
 curl -s 'https://onlyharness.com/api/openapi.json'
 ```
 
-Write archive `files[]` to disk to reconstruct the harness directory.
+Write archive `files[]` to disk to reconstruct the harness directory. Add `?version=0.1.0` to pin an immutable archive version. HTTP 402 means payment or entitlement is required, not that the harness is missing.
 
 ## MCP
 

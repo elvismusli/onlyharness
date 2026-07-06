@@ -8,6 +8,8 @@ import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler } from "./mcp.js";
 import { openapi } from "./openapi.js";
+import { recordEvent, sanitizeEvent } from "./events.js";
+import { requireArchivePaymentAccess } from "./payments.js";
 import { fetchCountersMap } from "./social.js";
 import * as registry from "./registry.js";
 
@@ -95,10 +97,29 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
 
 app.get("/repos/:owner/:repo/archive", async (request, reply) => {
   const { owner, repo } = request.params as { owner: string; repo: string };
+  const query = request.query as { version?: string };
   const root = registry.resolveHarnessPath(owner, repo);
   if (!root) return reply.code(404).send({ error: "Harness not found" });
-  const { files } = registry.buildArchive(root);
-  return { owner, repo, files };
+  const archive = registry.buildArchiveForVersion(owner, repo, root, query.version);
+  if (!archive) return reply.code(404).send({ error: "Harness version not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  if (!manifest) return reply.code(500).send({ error: "Harness manifest unavailable" });
+  const authorization = headerValue(request.headers.authorization);
+  const auth = authorization ? await userFromAuthorization(authorization) : {};
+  const payment = await requireArchivePaymentAccess({
+    owner,
+    repo,
+    version: archive.version,
+    manifest,
+    authorization,
+    userId: auth.user?.id
+  });
+  if (!payment.allowed) {
+    await recordEvent({ kind: "checkout", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client: "api" });
+    return reply.code(payment.status).send(payment.body);
+  }
+  await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client: "api" });
+  return { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files };
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
@@ -154,9 +175,27 @@ app.post("/imports/markdown-to-harness", async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
   const body = request.body as ImportRequest;
-  const result = importMarkdownToHarness(body, user);
+  const result = await importMarkdownToHarness(body, user);
   if ("error" in result) return reply.code(result.status ?? 500).send({ error: result.error });
   return result;
+});
+
+app.post("/events", async (request, reply) => {
+  const authorization = headerValue(request.headers.authorization);
+  const auth = authorization ? await userFromAuthorization(authorization) : {};
+  const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const event = sanitizeEvent({
+    kind: String(body.kind ?? ""),
+    owner: typeof body.owner === "string" ? body.owner : undefined,
+    repo: typeof body.repo === "string" ? body.repo : undefined,
+    version: typeof body.version === "string" ? body.version : undefined,
+    target: typeof body.target === "string" ? body.target : undefined,
+    client: typeof body.client === "string" ? body.client : undefined,
+    subject: eventSubject(auth.user?.id)
+  });
+  if (!event) return reply.code(400).send({ error: "Invalid event" });
+  await recordEvent(event);
+  return reply.code(202).send({ ok: true });
 });
 
 app.post("/webhooks/gitea", async (request, reply) => {
@@ -233,11 +272,11 @@ const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorizatio
       resource_metadata: resourceMetadataUrl
     };
   }
-  const result = importMarkdownToHarness(body, auth.user);
+  const result = await importMarkdownToHarness(body, auth.user);
   return "error" in result ? result : result;
 };
 
-function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
+async function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
   if (!body?.markdown || body.markdown.length < 20) {
     return { status: 400, error: "markdown must be at least 20 characters" };
   }
@@ -255,8 +294,10 @@ function importMarkdownToHarness(body: ImportRequest, user: AuthUser) {
     return { status: 500, error: cli.stderr || cli.stdout || "import failed" };
   }
   const item = registry.registryItemFromDir("local", target, new Map());
+  const snapshot = registry.writeArchiveSnapshot("local", name, target);
+  await recordEvent({ kind: "applied", owner: "local", repo: name, version: snapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
   appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
-  return { item, output: cli.stdout };
+  return { item, output: cli.stdout, snapshotVersion: snapshot?.version };
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {
@@ -353,6 +394,10 @@ function supabaseRestHeaders() {
     apikey: supabaseRestKey ?? "",
     authorization: `Bearer ${supabaseRestKey ?? ""}`
   };
+}
+
+function eventSubject(userId: string | undefined): string {
+  return userId ? `user:${userId}` : "anonymous";
 }
 
 function importCliCommand(tempSource: string, target: string, name: string) {

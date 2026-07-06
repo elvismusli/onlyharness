@@ -208,6 +208,23 @@ function App() {
     }
   }
 
+  function recordHarnessEvent(kind: "copy" | "install", item: RegistryItem, target: string) {
+    void fetch(`${apiUrl}/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+      },
+      body: JSON.stringify({
+        kind,
+        owner: item.owner,
+        repo: item.name,
+        target,
+        client: "registry-web"
+      })
+    }).catch(() => undefined);
+  }
+
   function requireUser(note: string) {
     if (session?.user) return true;
     setAuthStatus("");
@@ -289,6 +306,7 @@ function App() {
     if (selected) {
       const key = keyFor(selected);
       setKnownItems((current) => (current[key] ? current : { ...current, [key]: selected }));
+      recordHarnessEvent("install", selected, "install-center");
       openWin("install", key);
       return;
     }
@@ -551,7 +569,10 @@ function App() {
             onRunSample={() => runSample(item)}
             onStar={() => toggleStar(item)}
             onFork={() => forkHarness(item)}
-            onCopyCli={() => copyText(item.cliCommand, `Copied: ${item.cliCommand}`, `cli:${key}`)}
+            onCopyCli={() => {
+              recordHarnessEvent("copy", item, "cli");
+              void copyText(item.cliCommand, `Copied: ${item.cliCommand}`, `cli:${key}`);
+            }}
             onInstall={() => openInstall(item)}
             onShare={() => openWin("share", key)}
             copied={copiedTag === `cli:${key}`}
@@ -573,9 +594,15 @@ function App() {
           />
         );
       case "install":
-        return <InstallBody item={item} onCopy={(text) => copyText(text, "Install commands copied", "install")} copied={copiedTag === "install"} />;
+        return <InstallBody item={item} onCopy={(text, target) => {
+          if (item) recordHarnessEvent("copy", item, target);
+          void copyText(text, "Install commands copied", "install");
+        }} copied={copiedTag === "install"} />;
       case "cli":
-        return <CliBody item={item} onCopy={(text) => copyText(text, "CLI commands copied", "cliwin")} copied={copiedTag === "cliwin"} />;
+        return <CliBody item={item} onCopy={(text) => {
+          if (item) recordHarnessEvent("copy", item, "cli");
+          void copyText(text, "CLI commands copied", "cliwin");
+        }} copied={copiedTag === "cliwin"} />;
       case "review":
         return <ReviewBody item={item} detail={item ? details[keyFor(item)] : undefined} onCopy={(text) => copyText(text, "Gate commands copied", "gate")} copied={copiedTag === "gate"} />;
       case "leaderboard":

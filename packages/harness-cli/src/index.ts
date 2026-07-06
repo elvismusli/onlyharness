@@ -30,6 +30,17 @@ type SearchItem = {
 };
 
 type ArchiveFile = { path: string; truncated: boolean; content: string };
+type PaymentRequiredBody = {
+  error?: string;
+  code?: string;
+  checkout_url?: string;
+  next?: string;
+  pricing?: {
+    model?: string;
+    amount_usd?: number;
+    currency?: string;
+  };
+};
 
 export const EXIT = {
   OK: 0,
@@ -85,6 +96,7 @@ program.command("pull")
   .argument("<harness>", "owner/name, e.g. harnesses/deep-market-researcher")
   .option("--out <dir>", "output directory (default ./<name>)")
   .option("--force", "write into a non-empty directory", false)
+  .option("--token <token>", "access token (defaults to HH_TOKEN env)")
   .option("--json", "print JSON", false)
   .action(async (harness: string, options) => {
     const [owner, name] = harness.split("/");
@@ -92,9 +104,29 @@ program.command("pull")
       fail("Expected <owner>/<name>, e.g. harnesses/deep-market-researcher", EXIT.VALIDATION, "hh pull harnesses/deep-market-researcher", options.json);
     }
     const archiveUrl = `${registryUrl}/repos/${owner}/${name}/archive`;
-    const response = await fetchRegistryResponse(archiveUrl, options.json);
+    const token = options.token ?? process.env.HH_TOKEN;
+    const response = await fetchRegistryResponse(archiveUrl, options.json, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
     if (response.status === 404) {
       fail(`Harness ${owner}/${name} not found.`, EXIT.NOT_FOUND, `hh search ${name.replaceAll("-", " ")}`, options.json);
+    }
+    if (response.status === 401) {
+      const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as { error?: string };
+      fail(
+        `Pull failed (401): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        options.json
+      );
+    }
+    if (response.status === 402) {
+      const body = await readResponseJson(response, archiveUrl, options.json).catch(() => ({})) as PaymentRequiredBody;
+      const price = priceLabel(body);
+      fail(
+        `Payment required for ${owner}/${name}${price ? ` (${price})` : ""}`,
+        EXIT.PAYMENT,
+        body.checkout_url ? `Open ${body.checkout_url}, then retry with HH_TOKEN` : body.next,
+        options.json
+      );
     }
     if (!response.ok) {
       fail(`Registry request failed: ${archiveUrl} -> ${response.status}`, EXIT.GENERAL, undefined, options.json);
@@ -424,9 +456,9 @@ async function fetchJson(url: string, options: { json?: boolean } = {}): Promise
   return readResponseJson(response, url, options.json);
 }
 
-async function fetchRegistryResponse(url: string, json = false): Promise<Response> {
+async function fetchRegistryResponse(url: string, json = false, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(url);
+    return await fetch(url, init);
   } catch (error) {
     fail(`Registry request failed: ${url}: ${errorMessage(error)}`, EXIT.GENERAL, undefined, json);
   }
@@ -442,6 +474,13 @@ async function readResponseJson(response: Response, url: string, json = false): 
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function priceLabel(body: PaymentRequiredBody): string {
+  const amount = body.pricing?.amount_usd;
+  const currency = body.pricing?.currency ?? "USD";
+  if (typeof amount === "number" && Number.isFinite(amount)) return `${amount} ${currency}`;
+  return body.pricing?.model ?? "";
 }
 
 function validationText(result: ReturnType<typeof validateHarnessDir>): string {
