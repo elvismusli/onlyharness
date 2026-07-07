@@ -10,8 +10,10 @@ import { useSocial } from "./core/useSocial";
 import { usePublish } from "./core/usePublish";
 import { useStorefront } from "./core/useStorefront";
 import { useOrgWorkspace } from "./core/useOrgWorkspace";
+import { useAppNav } from "./core/useAppNav";
+import type { Surface } from "./core/useAppNav";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, RegistryItem, ResourceItem, WinKind } from "./core/types";
+import type { CheckoutLinkState, DetailTab, DialogSpec, RegistryItem, ResourceItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
@@ -96,11 +98,16 @@ function App() {
     onNeedAuth: openMyBriefcase
   });
 
-  /* window manager: `wins` keeps stable taskbar order, `stack` keeps stacking order (last = top) */
-  const [wins, setWins] = useState<FloatWin[]>([]);
+  /* skin-neutral surface stack: the source of truth for *which* windows exist,
+     their taskbar order, the active surface, and each harness window's detail
+     tab. The Win98 window manager keeps only its view-state on top of it. */
+  const nav = useAppNav();
+
+  /* Win98-only window chrome: per-surface position + minimized state (`winView`,
+     keyed by surface id) and z-order (`stack`, last = top). `focusedId` is now
+     `nav.activeId`; per-harness `tab` is now `surface.tab`. */
+  const [winView, setWinView] = useState<Record<string, { x: number; y: number; minimized: boolean }>>({});
   const [stack, setStack] = useState<string[]>([]);
-  const [focusedId, setFocusedId] = useState("");
-  const [tabs, setTabs] = useState<Record<string, DetailTab>>({});
   const openCount = useRef(0);
 
   /* chrome */
@@ -137,7 +144,7 @@ function App() {
           reg.loadDetail(item);
         }
         const canonical = `checkout:${checkoutKey}`;
-        if (handledHash.current === canonical && wins.some((win) => win.id === `checkout:${checkoutKey}` && !win.minimized)) return;
+        if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `checkout:${checkoutKey}`) && !winView[`checkout:${checkoutKey}`]?.minimized) return;
         handledHash.current = canonical;
         openWin("checkout", checkoutKey);
         return;
@@ -145,7 +152,7 @@ function App() {
       const storefront = parseStorefrontHash(window.location.hash);
       if (storefront) {
         const canonical = `#/@${storefront.handle}`;
-        if (handledHash.current === canonical && wins.some((win) => win.id === `storefront:${storefront.handle}` && !win.minimized)) return;
+        if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `storefront:${storefront.handle}`) && !winView[`storefront:${storefront.handle}`]?.minimized) return;
         handledHash.current = canonical;
         openStorefront(storefront.handle);
         return;
@@ -156,7 +163,7 @@ function App() {
       const item = reg.knownItems[key] ?? reg.allItems.find((entry) => entry.owner === parsed.owner && entry.name === parsed.name);
       if (!item) return;
       const canonical = `#/h/${parsed.owner}/${parsed.name}`;
-      if (handledHash.current === canonical && wins.some((win) => win.id === `harness:${key}` && !win.minimized)) return;
+      if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `harness:${key}`) && !winView[`harness:${key}`]?.minimized) return;
       handledHash.current = canonical;
       openHarness(item);
     }
@@ -168,7 +175,7 @@ function App() {
       window.removeEventListener("hashchange", openFromHash);
       window.removeEventListener("popstate", openFromHash);
     };
-  }, [reg.allItems, reg.knownItems, wins]);
+  }, [reg.allItems, reg.knownItems, nav.surfaces, winView]);
 
   /* ---------- helpers ---------- */
 
@@ -182,40 +189,46 @@ function App() {
     setDialog(spec);
   }
 
-  /* ---------- window manager ---------- */
+  /* ---------- window manager ----------
+     `nav` owns *which* surfaces exist + the active id; these wrappers layer the
+     Win98 chrome (cascade position, minimized flag, z-order) on top. */
 
   function raise(id: string) {
     setStack((current) => [...current.filter((entry) => entry !== id), id]);
-    setFocusedId(id);
+    nav.focus(id);
   }
 
   function focusWin(id: string) {
-    setWins((current) => current.map((win) => (win.id === id ? { ...win, minimized: false } : win)));
+    setWinView((current) => (current[id] ? { ...current, [id]: { ...current[id], minimized: false } } : current));
     raise(id);
   }
 
   function openWin(kind: WinKind, hkey?: string) {
-    const id = kind === "harness" ? `harness:${hkey}` : kind === "storefront" ? `storefront:${hkey}` : kind === "checkout" ? `checkout:${hkey}` : kind;
+    const id = nav.open(kind, { key: hkey });
     openCount.current += 1;
     const step = openCount.current % 5;
-    setWins((current) => {
-      const existing = current.find((win) => win.id === id);
-      if (existing) {
-        return current.map((win) => (win.id === id ? { ...win, hkey: hkey ?? win.hkey, minimized: false } : win));
-      }
+    setWinView((current) => {
+      if (current[id]) return current;
       const width = WIN_WIDTHS[kind];
       const x = Math.max(8, Math.round((window.innerWidth - width) / 2) + step * 28 - 40);
       const y = 42 + step * 26;
-      return [...current, { id, kind, hkey, x, y, minimized: false }];
+      return { ...current, [id]: { x, y, minimized: false } };
     });
+    setStack((current) => (current.includes(id) ? current : [...current, id]));
     raise(id);
+    return id;
   }
 
   function closeWin(id: string) {
     clearDeepLinkForClosedWindow(id);
-    setWins((current) => current.filter((win) => win.id !== id));
+    nav.close(id);
+    setWinView((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setStack((current) => current.filter((entry) => entry !== id));
-    setFocusedId((current) => (current === id ? "" : current));
   }
 
   function clearDeepLinkForClosedWindow(id: string) {
@@ -242,12 +255,12 @@ function App() {
   }
 
   function minimizeWin(id: string) {
-    setWins((current) => current.map((win) => (win.id === id ? { ...win, minimized: true } : win)));
-    setFocusedId((current) => (current === id ? "" : current));
+    setWinView((current) => (current[id] ? { ...current, [id]: { ...current[id], minimized: true } } : current));
+    if (nav.activeId === id) nav.focus("");
   }
 
   function moveWin(id: string, x: number, y: number) {
-    setWins((current) => current.map((win) => (win.id === id ? { ...win, x, y } : win)));
+    setWinView((current) => (current[id] ? { ...current, [id]: { ...current[id], x, y } } : current));
   }
 
   /* ---------- data actions ---------- */
@@ -255,10 +268,10 @@ function App() {
   function openHarness(item: RegistryItem, tab?: DetailTab) {
     const key = keyFor(item);
     reg.cacheItem(item);
-    if (tab) setTabs((current) => ({ ...current, [key]: tab }));
     reg.loadDetail(item);
     setHarnessHash(item);
-    openWin("harness", key);
+    const id = openWin("harness", key);
+    if (tab) nav.setTab(id, tab);
   }
 
   function openResource(item: ResourceItem) {
@@ -337,10 +350,10 @@ function App() {
 
   /* ---------- taskbar ---------- */
 
-  function winMeta(win: FloatWin): { icon: string; title: string } {
-    const checkout = win.kind === "checkout" && win.hkey ? checkoutLinks[win.hkey] : undefined;
-    const item = checkout ? reg.knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? reg.knownItems[win.hkey] : undefined;
-    switch (win.kind) {
+  function winMeta(surface: Surface): { icon: string; title: string } {
+    const checkout = surface.kind === "checkout" && surface.key ? checkoutLinks[surface.key] : undefined;
+    const item = checkout ? reg.knownItems[`${checkout.owner}/${checkout.repo}`] : surface.key ? reg.knownItems[surface.key] : undefined;
+    switch (surface.kind) {
       case "harness": return { icon: "📦", title: item?.title ?? "Harness" };
       case "publish": return { icon: "📄", title: "New Harness Wizard" };
       case "install": return { icon: "💿", title: item ? `Install Center — ${item.title}` : "Install Center" };
@@ -349,7 +362,7 @@ function App() {
       case "review": return { icon: "🔧", title: "Maintainer Review Preview" };
       case "leaderboard": return { icon: "🏆", title: "Wild West Top 10" };
       case "share": return { icon: "💾", title: `harness_flex.exe — ${item?.title ?? ""}` };
-      case "storefront": return { icon: "🗂️", title: `@${win.hkey ?? "handle"} — My Briefcase` };
+      case "storefront": return { icon: "🗂️", title: `@${surface.key ?? "handle"} — My Briefcase` };
       case "profile": return { icon: "🗂️", title: "My Briefcase — Creator Profile" };
       case "network": return { icon: "🌐", title: "Network Neighborhood" };
     }
@@ -360,29 +373,30 @@ function App() {
       id: "explore",
       icon: "🌐",
       title: "OnlyHarness — Explore",
-      active: focusedId === "",
+      active: nav.activeId === "",
       onClick: () => {
-        setFocusedId("");
+        nav.focus("");
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     },
-    ...wins.map((win) => {
-      const meta = winMeta(win);
+    ...nav.surfaces.map((surface) => {
+      const meta = winMeta(surface);
+      const minimized = Boolean(winView[surface.id]?.minimized);
       return {
-        id: win.id,
+        id: surface.id,
         icon: meta.icon,
         title: meta.title,
-        active: focusedId === win.id && !win.minimized,
+        active: nav.activeId === surface.id && !minimized,
         onClick: () => {
-          if (win.minimized || focusedId !== win.id) focusWin(win.id);
-          else minimizeWin(win.id);
+          if (minimized || nav.activeId !== surface.id) focusWin(surface.id);
+          else minimizeWin(surface.id);
         }
       };
     })
   ];
 
   const startEntries: StartEntry[] = [
-    { icon: "🧭", label: "Explore", onClick: () => { setFocusedId(""); window.scrollTo({ top: 0, behavior: "smooth" }); } },
+    { icon: "🧭", label: "Explore", onClick: () => { nav.focus(""); window.scrollTo({ top: 0, behavior: "smooth" }); } },
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
     { icon: "🌐", label: "Network Neighborhood", onClick: () => openWin("network") },
     { icon: "💿", label: "Install Center", onClick: () => openInstall(reg.topItem) },
@@ -406,10 +420,10 @@ function App() {
 
   /* ---------- window bodies ---------- */
 
-  function renderWinBody(win: FloatWin) {
-    const checkout = win.kind === "checkout" && win.hkey ? checkoutLinks[win.hkey] : undefined;
-    const item = checkout ? reg.knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? reg.knownItems[win.hkey] : reg.topItem;
-    switch (win.kind) {
+  function renderWinBody(surface: Surface) {
+    const checkout = surface.kind === "checkout" && surface.key ? checkoutLinks[surface.key] : undefined;
+    const item = checkout ? reg.knownItems[`${checkout.owner}/${checkout.repo}`] : surface.key ? reg.knownItems[surface.key] : reg.topItem;
+    switch (surface.kind) {
       case "harness": {
         if (!item) return <div className="win-body plate">This harness rode off into the sunset.</div>;
         const key = keyFor(item);
@@ -419,8 +433,8 @@ function App() {
           <DetailBody
             item={item}
             detail={detail}
-            tab={tabs[key] ?? "Overview"}
-            setTab={(tab) => setTabs((current) => ({ ...current, [key]: tab }))}
+            tab={surface.tab ?? "Overview"}
+            setTab={(tab) => nav.setTab(surface.id, tab)}
             starred={Boolean(social.starred[key])}
             remixed={Boolean(social.remixed[key])}
             thread={thread}
@@ -500,7 +514,7 @@ function App() {
           ? <ShareBody item={item} starred={Boolean(social.starred[keyFor(item)])} refCode={refCode} onCopy={(text) => copyText(text, "Share text copied", "brag")} copied={copiedTag === "brag"} />
           : <div className="win-body plate">Nothing to brag about yet.</div>;
       case "storefront": {
-        const handle = win.hkey ?? "";
+        const handle = surface.key ?? "";
         return <StorefrontBody page={storefront.storefronts[handle]} handle={handle} referrer={refCode} onOpen={(entry) => openHarness(entry)} onCopy={(text) => copyText(text, "Ref-link copied", `storefront:${handle}`)} copied={copiedTag === `storefront:${handle}`} />;
       }
       case "profile":
@@ -553,7 +567,7 @@ function App() {
       />
       <AwardWindow leader={reg.leader} />
 
-      <div onPointerDownCapture={() => setFocusedId("")}>
+      <div onPointerDownCapture={() => nav.focus("")}>
         <ExploreWindow
           items={reg.items}
           resources={reg.visibleResources}
@@ -573,7 +587,7 @@ function App() {
           totals={reg.totals}
           leader={reg.leader}
           flash={flash}
-          active={focusedId === ""}
+          active={nav.activeId === ""}
           actions={{
             openHarness,
             openResource,
@@ -602,24 +616,25 @@ function App() {
         />
       </div>
 
-      {wins.map((win) => {
-        const meta = winMeta(win);
+      {nav.surfaces.map((surface) => {
+        const meta = winMeta(surface);
+        const view = winView[surface.id] ?? { x: 0, y: 0, minimized: false };
         return (
           <FloatWindow
-            key={win.id}
-            win={win}
-            zIndex={30 + Math.max(0, stack.indexOf(win.id))}
-            width={WIN_WIDTHS[win.kind]}
+            key={surface.id}
+            win={{ id: surface.id, kind: surface.kind, hkey: surface.key, ...view }}
+            zIndex={30 + Math.max(0, stack.indexOf(surface.id))}
+            width={WIN_WIDTHS[surface.kind]}
             icon={meta.icon}
             title={meta.title}
-            active={focusedId === win.id}
-            maroon={win.kind === "leaderboard"}
-            onFocus={() => { if (focusedId !== win.id) focusWin(win.id); }}
-            onClose={() => closeWin(win.id)}
-            onMinimize={() => minimizeWin(win.id)}
-            onMove={(x, y) => moveWin(win.id, x, y)}
+            active={nav.activeId === surface.id}
+            maroon={surface.kind === "leaderboard"}
+            onFocus={() => { if (nav.activeId !== surface.id) focusWin(surface.id); }}
+            onClose={() => closeWin(surface.id)}
+            onMinimize={() => minimizeWin(surface.id)}
+            onMove={(x, y) => moveWin(surface.id, x, y)}
           >
-            {renderWinBody(win)}
+            {renderWinBody(surface)}
           </FloatWindow>
         );
       })}
