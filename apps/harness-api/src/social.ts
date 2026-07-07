@@ -324,7 +324,10 @@ function mergeLocalForkRows(counters: Map<string, Counters>): void {
     const forkRepo = fork?.repo ?? row.name;
     if (!source?.owner || !source.repo || !forkOwner || !forkRepo) return;
     rows.push({
-      id: `${forkOwner}/${forkRepo}:${source.version ?? ""}:${row.userId ?? ""}:${row.at ?? index}`,
+      // Mirror the Supabase harness_forks uniqueness (user + source + fork, no
+      // timestamp): the same remix lands as both a "remix" and a "fork" state
+      // row and must collapse into one fork signal.
+      id: `${source.owner}/${source.repo}:${forkOwner}/${forkRepo}:${row.userId ?? `anonymous:${index}`}`,
       source_owner: source.owner,
       source_repo: source.repo,
       fork_owner: forkOwner,
