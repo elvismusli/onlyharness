@@ -11,7 +11,7 @@ export function DesktopIcons({ onMyHarnesses, onNetwork, onBin }: { onMyHarnesse
     <div className="desk-icons">
       <button className="desk-icon" onClick={onMyHarnesses}>
         <span className="glyph">🗂️</span>
-        <span className="label">My Harnesses</span>
+        <span className="label">Resource Catalog</span>
       </button>
       <button className="desk-icon" onClick={onNetwork}>
         <span className="glyph">🌐</span>
@@ -67,7 +67,7 @@ export function PaintWindow({ items }: { items: RegistryItem[] }) {
 }
 
 export function Mascot({ onYes }: { onYes: () => void }) {
-  const [mood, setMood] = useState<"ship" | "fine" | "hidden">("ship");
+  const [mood, setMood] = useState<"ship" | "fine" | "hidden">("hidden");
   return (
     <div className="mascot">
       {mood !== "hidden" && (

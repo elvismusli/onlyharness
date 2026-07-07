@@ -46,6 +46,70 @@ export type RegistryItem = {
   updatedAt: string;
 };
 
+export type ResourceItem = {
+  id: string;
+  title: string;
+  summary: string;
+  summaryOriginal?: string;
+  resourceType: "harness" | "skill" | "plugin" | "workflow" | "mcp_server" | "service_endpoint" | "agent_team" | "subagent_pack" | "command_pack" | "config" | "guide" | "framework" | "agent_runtime" | "directory";
+  sourcePlatform: string;
+  canonicalUrl: string;
+  mirror?: {
+    platform: "github";
+    owner: string;
+    repo: string;
+    fullName: string;
+    url: string;
+    cloneUrl?: string;
+    defaultBranch?: string;
+    defaultBranchOnly: boolean;
+    fork: boolean;
+    sourceUrl: string;
+    status: "ready" | "pending" | "failed";
+    syncedAt?: string;
+    error?: string;
+  };
+  upstreamId: string;
+  upstreamOwner: string;
+  upstreamRepo?: string;
+  licenseStatus: "permissive" | "copyleft" | "proprietary" | "unknown" | "blocked" | "manual_review";
+  sourceCheckedAt: string;
+  sourceCheckStatus: "active" | "stale" | "archived" | "unavailable";
+  lastSeenAt: string;
+  installability: "open_only" | "importable" | "installable" | "verified";
+  tags: string[];
+  worksWith: string[];
+  upstreamPopularity: {
+    githubStarsSnapshot?: number;
+    githubStarsCurrent?: number;
+    sourceLabel: string;
+  };
+  onlyHarnessSignals: {
+    stars: number;
+    opens: number;
+    imports: number;
+    installs: number;
+    threads: number;
+    passedGates: number;
+  };
+  popularityScore: number;
+  trust: {
+    sourceChecked: boolean;
+    securityScan?: "pass" | "warn" | "fail" | "not_scanned";
+    installVerifiedAt?: string;
+    gateVerifiedAt?: string;
+    riskTier?: string;
+  };
+  actions: Array<
+    | { id: "open_mirror"; label: string; url: string }
+    | { id: "open_upstream"; label: string; url: string }
+    | { id: "copy_mcp_config"; label: string; command?: string }
+    | { id: "install"; label: string; command: string; target: string }
+    | { id: "import_github"; label: string; command: string }
+    | { id: "claim"; label: string; proofRequired: true }
+  >;
+};
+
 export type CompatibilityTarget = {
   id?: string;
   name?: string;

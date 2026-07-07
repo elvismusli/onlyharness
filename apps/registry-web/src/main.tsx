@@ -4,9 +4,9 @@ import type { Root } from "react-dom/client";
 import { createClient, type Session } from "@supabase/supabase-js";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
-import { ExploreWindow } from "./explore";
+import { ExploreWindow, type ResourceTab } from "./explore";
 import { clockLabel, keyFor } from "./format";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
 import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
@@ -39,6 +39,9 @@ type ActiveDialog = DialogSpec & { onOk?: () => void };
 function App() {
   /* registry data */
   const [allItems, setAllItems] = useState<RegistryItem[]>([]);
+  const [resourceItems, setResourceItems] = useState<ResourceItem[]>([]);
+  const [resourceCounts, setResourceCounts] = useState({ externalSeed: 0, internal: 0, total: 0 });
+  const [resourceTab, setResourceTab] = useState<ResourceTab>("All");
   const [leaderboard, setLeaderboard] = useState<RegistryItem[]>([]);
   const [details, setDetails] = useState<Record<string, HarnessDetail>>({});
   const [knownItems, setKnownItems] = useState<Record<string, RegistryItem>>({});
@@ -129,6 +132,27 @@ function App() {
       })
       .catch(() => {
         if (!controller.signal.aborted) setAllItems([]);
+      });
+    return () => controller.abort();
+  }, [query, sort, refreshTick]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    params.set("sort", sort === "stars" ? "github-stars" : sort === "new" ? "new" : "popular");
+    params.set("limit", "80");
+    fetch(`${apiUrl}/resources?${params.toString()}`, { signal: controller.signal })
+      .then((response) => response.json())
+      .then((data) => {
+        setResourceItems(data.resources ?? data.items ?? []);
+        setResourceCounts(data.counts ?? { externalSeed: 0, internal: 0, total: 0 });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setResourceItems([]);
+          setResourceCounts({ externalSeed: 0, internal: 0, total: 0 });
+        }
       });
     return () => controller.abort();
   }, [query, sort, refreshTick]);
@@ -249,6 +273,20 @@ function App() {
     if (jobFilter === "starred") return allItems.filter((item) => starred[keyFor(item)]);
     return allItems.filter((item) => item.job === jobFilter || item.outcome === jobFilter);
   }, [allItems, jobFilter, starred]);
+
+  const visibleResources = useMemo(() => {
+    const typeByTab: Partial<Record<ResourceTab, ResourceItem["resourceType"][]>> = {
+      Skills: ["skill", "subagent_pack", "agent_team"],
+      Plugins: ["plugin", "command_pack", "config"],
+      Workflows: ["workflow"],
+      MCP: ["mcp_server"],
+      Runtimes: ["agent_runtime", "framework"],
+      Guides: ["guide", "directory"]
+    };
+    const types = typeByTab[resourceTab];
+    if (!types) return resourceItems;
+    return resourceItems.filter((resource) => types.includes(resource.resourceType));
+  }, [resourceItems, resourceTab]);
 
   const jobs = useMemo(() => {
     const counts = JOB_FILTERS.map((label) => ({ label, count: allItems.filter((item) => item.job === label || item.outcome === label).length }));
@@ -478,6 +516,28 @@ function App() {
     loadDetail(item);
     setHarnessHash(item);
     openWin("harness", key);
+  }
+
+  function openResource(item: ResourceItem) {
+    const openAction = item.actions?.find((action) => action.id === "open_mirror" && "url" in action)
+      ?? item.actions?.find((action) => action.id === "open_upstream" && "url" in action);
+    const url = openAction && "url" in openAction ? openAction.url : item.canonicalUrl;
+    window.open(url, "_blank", "noopener,noreferrer");
+    void fetch(`${apiUrl}/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+      },
+      body: JSON.stringify({
+        kind: "view",
+        owner: item.upstreamOwner,
+        repo: item.upstreamRepo ?? item.title,
+        target: "resource-open",
+        client: "registry-web"
+      })
+    }).catch(() => undefined);
+    flashMsg(`Opened ${item.title}`);
   }
 
   function openStorefront(handle: string) {
@@ -990,12 +1050,8 @@ function App() {
     <div className="desktop">
       <DesktopIcons
         onMyHarnesses={() => {
-          setJobFilter("starred");
-          if (!session?.user) {
-            setAuthStatus("");
-            setLogon({ open: true, note: "Log on to see the harnesses you starred." });
-            return;
-          }
+          setResourceTab("All");
+          setJobFilter("all");
           document.getElementById("trending")?.scrollIntoView({ behavior: "smooth" });
         }}
         onNetwork={() => openWin("network")}
@@ -1006,6 +1062,10 @@ function App() {
       <div onPointerDownCapture={() => setFocusedId("")}>
         <ExploreWindow
           items={items}
+          resources={visibleResources}
+          resourceCounts={resourceCounts}
+          resourceTab={resourceTab}
+          setResourceTab={setResourceTab}
           jobs={jobs}
           jobFilter={jobFilter}
           setJobFilter={setJobFilter}
@@ -1022,6 +1082,7 @@ function App() {
           active={focusedId === ""}
           actions={{
             openHarness,
+            openResource,
             openInstall,
             star: toggleStar,
             remix: remixHarness,

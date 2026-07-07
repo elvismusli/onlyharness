@@ -1,7 +1,7 @@
 import type { Session } from "@supabase/supabase-js";
 import { topTargetLabels } from "./compat";
 import { fmtContextCost, fmtK, heatPct, keyFor } from "./format";
-import type { DetailTab, RegistryItem } from "./types";
+import type { DetailTab, RegistryItem, ResourceItem } from "./types";
 import { Btn, GroupBox, HeatMeter, MenuBar, TitleBar } from "./win98";
 
 const PAINT_SWATCHES = ["#ff0000", "#ffff00", "#00a000", "#0000ff"];
@@ -16,6 +16,7 @@ export const SORT_OPTIONS = [
 
 export type ExploreActions = {
   openHarness: (item: RegistryItem, tab?: DetailTab) => void;
+  openResource: (item: ResourceItem) => void;
   star: (item: RegistryItem) => void;
   remix: (item: RegistryItem) => void;
   share: (item: RegistryItem) => void;
@@ -35,8 +36,15 @@ export type ExploreActions = {
   refresh: () => void;
 };
 
-export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, setQuery, sort, setSort, starred, remixed, session, totals, leader, flash, active, actions }: {
+export const RESOURCE_TABS = ["All", "Skills", "Plugins", "Workflows", "MCP", "Runtimes", "Guides", "Harnesses"] as const;
+export type ResourceTab = (typeof RESOURCE_TABS)[number];
+
+export function ExploreWindow({ items, resources, resourceCounts, resourceTab, setResourceTab, jobs, jobFilter, setJobFilter, query, setQuery, sort, setSort, starred, remixed, session, totals, leader, flash, active, actions }: {
   items: RegistryItem[];
+  resources: ResourceItem[];
+  resourceCounts: { externalSeed: number; internal: number; total: number };
+  resourceTab: ResourceTab;
+  setResourceTab: (value: ResourceTab) => void;
   jobs: Array<{ label: string; count: number }>;
   jobFilter: string;
   setJobFilter: (value: string) => void;
@@ -54,8 +62,9 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
   actions: ExploreActions;
 }) {
   const top = items[0] ?? leader;
+  const resourceMode = resourceTab !== "Harnesses";
 
-  const ticker = `★ ${fmtK(totals.stars)} stars flexed this week · ⑂ ${fmtK(totals.forks)} fork records · 🔥 ${leader?.title ?? "the frontier"} is heating up · new season drops Monday · remix responsibly · onlyharness.com · `;
+  const ticker = `${fmtK(resourceCounts.externalSeed)} upstream resources indexed · ★ ${fmtK(totals.stars)} native stars · 🔥 ${leader?.title ?? "the frontier"} is heating up · skills, plugins, workflows, MCP, harnesses · onlyharness.com · `;
 
   const menus = [
     {
@@ -131,7 +140,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
           <div className="vsep" />
           <label className="field98">
             <span style={{ fontSize: 13, color: "var(--shadow)" }}>🔍</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search harnesses..." aria-label="Search harnesses" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={resourceMode ? "Search resources..." : "Search harnesses..."} aria-label={resourceMode ? "Search resources" : "Search harnesses"} />
           </label>
           <div className="swatches" aria-hidden>
             {PAINT_SWATCHES.map((color) => <span key={color} className="swatch" style={{ background: color }} />)}
@@ -143,11 +152,11 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
             <div>
               <div className="wordart">OnlyHarness</div>
               <div className="hero-sub">
-                Build with proven agent workflows. <b>Find, install, remix and improve</b> reusable AI-agent harnesses — no repo archaeology required.
+                Browse agent resources. <b>Find skills, plugins, workflows, MCP servers and harnesses</b> with upstream authors, stars and source links.
               </div>
               <div className="hero-actions">
                 <Btn strong big onClick={() => document.getElementById("trending")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                  🔥 Explore trending
+                  🌐 Browse resources
                 </Btn>
                 <Btn big onClick={actions.openPublish}>＋ Publish a harness</Btn>
                 <Btn big onClick={() => actions.openInstall(top)}>💿 Install Center</Btn>
@@ -158,8 +167,36 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
             </div>
           </div>
 
-          <GroupBox legend="🔥 Trending this week" id="trending">
-            {items.length === 0 ? (
+          <GroupBox legend="OnlyHarness resource catalog">
+            <div className="outcome-row resource-tabs">
+              {RESOURCE_TABS.map((tab) => (
+                <Btn key={tab} pressed={resourceTab === tab} onClick={() => setResourceTab(tab)}>
+                  {tab}
+                </Btn>
+              ))}
+            </div>
+          </GroupBox>
+
+          <GroupBox legend={resourceMode ? `🌐 ${resourceTab} resources` : "💿 Native harnesses"} id="trending">
+            {resourceMode ? (
+              resources.length === 0 ? (
+                <div className="empty-state">
+                  <span className="tumbleweed">🌐</span>
+                  No resources found. Try another word or switch tabs.
+                </div>
+              ) : (
+                <div className="hcards">
+                  {resources.map((item) => (
+                    <ResourceCard
+                      key={item.id}
+                      item={item}
+                      onOpen={() => actions.openResource(item)}
+                      onCopy={() => actions.copyText(item.id, "Resource ID copied")}
+                    />
+                  ))}
+                </div>
+              )
+            ) : items.length === 0 ? (
               <div className="empty-state">
                 <span className="tumbleweed">🌵</span>
                 {jobFilter === "starred" && !session
@@ -186,7 +223,7 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
             )}
           </GroupBox>
 
-          <GroupBox legend="Browse by job">
+          {!resourceMode && <GroupBox legend="Browse by job">
             <div className="outcome-row">
               {jobs.map((entry) => (
                 <Btn key={entry.label} pressed={jobFilter === entry.label} onClick={() => setJobFilter(jobFilter === entry.label ? "all" : entry.label)}>
@@ -203,10 +240,10 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
             >
               C:\hub&gt; {top?.cliCommand ?? "hh install harnesses/deep-market-researcher"}<span className="cursor" />
             </button>
-          </GroupBox>
+          </GroupBox>}
 
           <div className="statusbar">
-            <span className="status-plate">{flash || `Ready · ${totals.indexed} harnesses indexed`}</span>
+            <span className="status-plate">{flash || `Ready · ${fmtK(resourceCounts.externalSeed)} upstream resources · ${totals.indexed} native harnesses`}</span>
             {session?.user ? (
               <button className="status-plate" onClick={actions.logOff} title="Log off">👤 {session.user.email} · Log off</button>
             ) : (
@@ -218,6 +255,59 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
       </div>
     </div>
   );
+}
+
+export function ResourceCard({ item, onOpen, onCopy }: {
+  item: ResourceItem;
+  onOpen: () => void;
+  onCopy: () => void;
+}) {
+  const stars = item.upstreamPopularity.githubStarsCurrent ?? item.upstreamPopularity.githubStarsSnapshot;
+  const primary = item.actions.find((action) => action.id === "install" || action.id === "copy_mcp_config" || action.id === "open_mirror" || action.id === "open_upstream");
+  const availability = availabilityLabel(item);
+  return (
+    <article className="win small hcard resource-card">
+      <TitleBar text={item.title} decor onClick={onOpen} />
+      <div className="hcard-body">
+        <div className="promise" onClick={onOpen}>{item.summary}</div>
+        <div className="tagrow">
+          <span className="tag98">{item.resourceType.replace(/_/g, " ")}</span>
+          <span className="tag98">{item.sourcePlatform}</span>
+          <span className={item.installability === "verified" || item.installability === "installable" ? "tag98 safe" : "tag98"}>{availability}</span>
+          <span className={item.licenseStatus === "permissive" ? "tag98 safe" : "tag98 warn"}>license {item.licenseStatus}</span>
+        </div>
+        <div className="compat-chiprow">
+          {item.worksWith.slice(0, 5).map((target) => <span className="tag98 safe" key={target}>{target}</span>)}
+        </div>
+        <div className="stats-plate">
+          <span>{stars !== undefined ? `GitHub ★ ${fmtK(stars)}` : `OnlyHarness ★ ${item.onlyHarnessSignals.stars}`}</span>
+          <span>source {item.sourceCheckStatus}</span>
+          <span>{item.sourceCheckedAt}</span>
+        </div>
+        <div className="heat-block">
+          <div className="heat-head">
+            <span className="lbl">Trust</span>
+            <span className="heat-num">{item.trust.installVerifiedAt ? "Verified install" : "Source checked"}</span>
+          </div>
+          <div style={{ fontSize: 11, marginTop: 3, color: "#404040" }}>
+            Popularity is upstream signal, not safety proof.
+          </div>
+        </div>
+        <div className="hcard-actions hcard-cta-grid">
+          <Btn strong onClick={onOpen}>{primary?.id === "install" ? "💿 Install" : primary?.id === "copy_mcp_config" ? "📋 Copy" : "🌐 Use"}</Btn>
+          <Btn onClick={onCopy}>ID</Btn>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function availabilityLabel(item: ResourceItem): string {
+  if (item.mirror?.status === "ready") return "OnlyHarness mirror";
+  if (item.installability === "verified") return "verified install";
+  if (item.installability === "installable") return item.resourceType === "harness" ? "native install" : "installable";
+  if (item.installability === "importable") return "ready to add";
+  return "upstream listing";
 }
 
 export function HarnessCard({ item, starred, remixed, onOpen, onStar, onFork, onShare }: {
