@@ -1589,3 +1589,309 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ============================================================================
+ * Nav Leaderboard tab (nav.tsx) — button styled to match the label tabs.
+ * ========================================================================== */
+.skin-modern .oh-navtab-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--oh-font-ui);
+  font-size: 14px;
+  transition: background .15s, color .15s;
+}
+.skin-modern .oh-navtab-btn:hover {
+  color: #fff;
+}
+
+/* ============================================================================
+ * Logon modal (auth.tsx) — Task 1.5a. Reuses the neutral `.ohc-*` scrim/modal
+ * chrome; adds the labelled auth form + toggle/resend affordances.
+ * ========================================================================== */
+.skin-modern .oh-logon {
+  max-width: 400px;
+  gap: 12px;
+}
+.skin-modern .oh-logon-form {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-top: 2px;
+}
+.skin-modern .oh-logon-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.skin-modern .oh-logon-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--oh-faint);
+}
+.skin-modern .oh-logon-input {
+  font-family: var(--oh-font-ui);
+  font-size: 13.5px;
+  color: var(--oh-text);
+  background: var(--oh-elevated);
+  border: 1px solid var(--oh-border-elevated);
+  border-radius: var(--oh-r-control);
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color .15s;
+}
+.skin-modern .oh-logon-input:focus {
+  border-color: var(--oh-border-hover);
+}
+.skin-modern .oh-logon-warn {
+  font-size: 12px;
+  color: var(--oh-heat-grad-end);
+  margin: 0;
+}
+.skin-modern .oh-logon-status {
+  font-size: 12.5px;
+  color: var(--oh-text);
+  background: var(--oh-elevated);
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-control);
+  padding: 8px 11px;
+  margin: 0;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.skin-modern .oh-logon-link {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--oh-font-ui);
+  font-size: 12.5px;
+  color: var(--oh-accent-soft);
+  transition: color .15s;
+}
+.skin-modern .oh-logon-link:hover:not(:disabled) {
+  color: #ffa87f;
+}
+.skin-modern .oh-logon-link:disabled {
+  color: var(--oh-faint);
+  cursor: default;
+}
+.skin-modern .oh-logon-fine {
+  font-size: 11.5px;
+  color: var(--oh-faint);
+  line-height: 1.5;
+  margin: 0;
+}
+.skin-modern .oh-logon-actions {
+  align-items: center;
+  margin-top: 2px;
+}
+.skin-modern .oh-logon-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--oh-font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--oh-muted);
+  transition: color .15s;
+}
+.skin-modern .oh-logon-toggle:hover {
+  color: var(--oh-text);
+}
+
+/* ============================================================================
+ * Publish surface (publish.tsx) — Task 1.5a. Full-viewport `.ohd` layer; a
+ * two-column form (name + markdown) with a right "what gets created" box.
+ * ========================================================================== */
+.skin-modern .oh-publish-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  max-width: var(--oh-content-max);
+  margin: 0 auto;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .skin-modern .oh-publish-grid { grid-template-columns: 1fr; }
+}
+.skin-modern .oh-pub-field {
+  display: block;
+  margin-bottom: 18px;
+}
+.skin-modern .oh-pub-name {
+  width: 100%;
+  margin-top: 2px;
+}
+.skin-modern .oh-pub-md {
+  width: 100%;
+  font-family: var(--oh-font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--oh-dim);
+  background: #0d0d0f;
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-terminal);
+  padding: 14px 16px;
+  outline: none;
+  resize: vertical;
+  min-height: 220px;
+  transition: border-color .15s;
+}
+.skin-modern .oh-pub-md:focus {
+  border-color: var(--oh-border-hover);
+}
+.skin-modern .oh-pub-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+.skin-modern .oh-pub-status {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--oh-text);
+}
+.skin-modern .oh-pub-check {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.skin-modern .oh-pub-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--oh-muted);
+  line-height: 1.45;
+}
+.skin-modern .oh-pub-check-mark {
+  color: var(--oh-eval-green);
+  font-family: var(--oh-font-mono);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.skin-modern .oh-pub-mono {
+  font-family: var(--oh-font-mono);
+  font-size: 11px;
+  color: var(--oh-accent-soft);
+}
+
+/* ============================================================================
+ * Leaderboard surface (leaderboard.tsx) — Task 1.5a. Full-viewport `.ohd`
+ * layer; ranked rows with a heat bar, delta chip and heat number.
+ * ========================================================================== */
+.skin-modern .oh-lb-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.skin-modern .oh-lb-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skin-modern .oh-lb-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  background: var(--oh-surface);
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-card);
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: border-color .15s, transform .15s;
+}
+.skin-modern .oh-lb-row:hover {
+  border-color: var(--oh-border-hover);
+  transform: translateY(-1px);
+}
+.skin-modern .oh-lb-row.top {
+  border-color: rgba(255, 107, 53, 0.4);
+  background: rgba(255, 107, 53, 0.05);
+}
+.skin-modern .oh-lb-rank {
+  font-family: var(--oh-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--oh-faint);
+  width: 26px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.skin-modern .oh-lb-row.top .oh-lb-rank {
+  color: var(--oh-accent);
+}
+.skin-modern .oh-lb-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skin-modern .oh-lb-titleline {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+.skin-modern .oh-lb-title {
+  font-family: var(--oh-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--oh-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skin-modern .oh-lb-author {
+  font-family: var(--oh-font-mono);
+  font-size: 11px;
+  color: var(--oh-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.skin-modern .oh-lb-bar {
+  height: 5px;
+  border-radius: var(--oh-r-pill);
+  background: var(--oh-hairline-soft);
+  overflow: hidden;
+}
+.skin-modern .oh-lb-bar-fill {
+  height: 100%;
+  border-radius: var(--oh-r-pill);
+  background: linear-gradient(90deg, var(--oh-accent), var(--oh-heat-grad-end));
+  transition: width .2s ease;
+}
+.skin-modern .oh-lb-delta {
+  font-family: var(--oh-font-mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.skin-modern .oh-lb-delta.up { color: var(--oh-eval-green); }
+.skin-modern .oh-lb-delta.down { color: #f87171; }
+.skin-modern .oh-lb-heat {
+  font-family: var(--oh-font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--oh-accent-soft);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 58px;
+  text-align: right;
+}
+.skin-modern .oh-lb-fine {
+  margin-top: 14px;
+}

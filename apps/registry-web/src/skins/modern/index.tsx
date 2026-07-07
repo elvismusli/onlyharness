@@ -7,6 +7,9 @@ import { Btn } from "./primitives";
 import { Nav } from "./nav";
 import { ModernExplore } from "./explore";
 import { ModernDetail } from "./detail";
+import { ModernPublish } from "./publish";
+import { ModernLeaderboard } from "./leaderboard";
+import { ModernLogon } from "./auth";
 import { ModernChrome } from "./chrome";
 import "./tokens.css";
 
@@ -129,11 +132,15 @@ function renderSurface(surface: Surface) {
       /* Task 1.4: the real two-column Modern detail page. */
       return <ModernDetail surface={surface} />;
     case "publish":
+      /* Task 1.5a: the Modern New Harness Wizard. */
+      return <ModernPublish surface={surface} />;
+    case "leaderboard":
+      /* Task 1.5a: the Modern Harness-Heat leaderboard. */
+      return <ModernLeaderboard surface={surface} />;
     case "install":
     case "checkout":
     case "cli":
     case "review":
-    case "leaderboard":
     case "share":
     case "storefront":
     case "profile":
@@ -160,6 +167,7 @@ export function ModernSkin() {
     <div className="skin-modern" data-skin="modern">
       <Nav />
       <SurfaceRouter />
+      <ModernLogon />
       <ModernChrome />
     </div>
   );

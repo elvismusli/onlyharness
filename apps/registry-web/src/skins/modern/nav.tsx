@@ -51,11 +51,37 @@ export function Nav() {
         </a>
 
         <nav className="oh-navtabs" aria-label="Primary">
-          {NAV_TABS.map((tab) => (
-            <span key={tab} className="oh-navtab" data-active={tab === "Explore" ? "" : undefined}>
-              {tab}
-            </span>
-          ))}
+          {NAV_TABS.map((tab) =>
+            tab === "Explore" ? (
+              <a
+                key={tab}
+                className="oh-navtab"
+                href="#"
+                data-active=""
+                onClick={(event) => {
+                  event.preventDefault();
+                  h.focus("");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                {tab}
+              </a>
+            ) : tab === "Leaderboard" ? (
+              <button
+                key={tab}
+                type="button"
+                className="oh-navtab oh-navtab-btn"
+                onClick={h.openLeaderboard}
+              >
+                {tab}
+              </button>
+            ) : (
+              /* Collections / Docs are inert labels until later tasks. */
+              <span key={tab} className="oh-navtab">
+                {tab}
+              </span>
+            )
+          )}
         </nav>
 
         <div className="oh-nav-spacer" />
