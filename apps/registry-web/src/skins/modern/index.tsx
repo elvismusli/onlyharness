@@ -6,6 +6,8 @@ import type { WinKind } from "../../core/types";
 import { Btn } from "./primitives";
 import { Nav } from "./nav";
 import { ModernExplore } from "./explore";
+import { ModernDetail } from "./detail";
+import { ModernChrome } from "./chrome";
 import "./tokens.css";
 
 const FONTS_HREF =
@@ -124,6 +126,8 @@ function SurfaceRouter() {
 function renderSurface(surface: Surface) {
   switch (surface.kind) {
     case "harness":
+      /* Task 1.4: the real two-column Modern detail page. */
+      return <ModernDetail surface={surface} />;
     case "publish":
     case "install":
     case "checkout":
@@ -156,6 +160,7 @@ export function ModernSkin() {
     <div className="skin-modern" data-skin="modern">
       <Nav />
       <SurfaceRouter />
+      <ModernChrome />
     </div>
   );
 }
