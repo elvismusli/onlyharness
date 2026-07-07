@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 
 import { useHarness } from "../../core/store";
 import type { Surface } from "../../core/useAppNav";
@@ -14,7 +15,10 @@ import { ModernStorefront } from "./storefront";
 import { ModernProfile } from "./profile";
 import { ModernLogon } from "./auth";
 import { ModernChrome } from "./chrome";
+import { NeutralInstall } from "../shared/neutral/install";
+import { NeutralCli } from "../shared/neutral/cli";
 import "./tokens.css";
+import "../shared/neutral/neutral.css";
 
 const FONTS_HREF =
   "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap";
@@ -109,10 +113,31 @@ function SurfacePlaceholder({ surface }: { surface: Surface }) {
 }
 
 /**
+ * Modern page shell for a shared-neutral surface. The Install Center and CLI
+ * terminal are skin-neutral (`skins/shared/neutral/*`) so they read serious in
+ * every skin; here we drop them into the same full-viewport `.ohd` layer the
+ * Modern detail/publish surfaces use — near-black canvas + top-right glow, its own
+ * scroll, a back button and a content-max column — then render the neutral body
+ * inside. The neutral CSS is self-contained (`.oh-neutral` + `--neutral-*`), so it
+ * simply inherits the dark chrome around it.
+ */
+function ModernNeutralShell({ surface, children }: { surface: Surface; children: ReactNode }) {
+  const h = useHarness();
+  return (
+    <main className="oh-main ohd">
+      <button type="button" className="ohd-back" onClick={() => h.closeSurface(surface.id)}>
+        ← Explore
+      </button>
+      <div style={{ maxWidth: "var(--oh-content-max)", margin: "0 auto" }}>{children}</div>
+    </main>
+  );
+}
+
+/**
  * Surface router. The active surface is `h.activeId` ("" == Explore). Explore
  * always renders underneath; when a surface is active we render its placeholder
  * (or, later, its real view) on top. The switch is exhaustive over `WinKind` so
- * every surface has a home — all currently route to `SurfacePlaceholder`.
+ * every surface has a home — `install`/`cli` route to the shared-neutral surfaces.
  */
 function SurfaceRouter() {
   const h = useHarness();
@@ -150,8 +175,20 @@ function renderSurface(surface: Surface) {
       /* Task 1.5b: the Modern creator-profile editor. */
       return <ModernProfile surface={surface} />;
     case "install":
-    case "checkout":
+      /* Task 1.6a: the shared-neutral Install Center (used by every skin). */
+      return (
+        <ModernNeutralShell surface={surface}>
+          <NeutralInstall surfaceKey={surface.key} />
+        </ModernNeutralShell>
+      );
     case "cli":
+      /* Task 1.6a: the shared-neutral CLI terminal (used by every skin). */
+      return (
+        <ModernNeutralShell surface={surface}>
+          <NeutralCli surfaceKey={surface.key} />
+        </ModernNeutralShell>
+      );
+    case "checkout":
     case "review":
     case "network":
       return <SurfacePlaceholder surface={surface} />;

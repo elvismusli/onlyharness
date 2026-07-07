@@ -1,0 +1,458 @@
+/*
+ * Shared-neutral surfaces — the "serious" Install Center + CLI terminal that must
+ * look credible in EVERY skin (installation + commands are never parody). Built
+ * once here and rendered inside a skin's page area; each skin retextures it by
+ * overriding the `--neutral-*` custom properties on `.oh-neutral` (or an ancestor).
+ *
+ * Everything is scoped under `.oh-neutral` and resolves colour/type ONLY from the
+ * `--neutral-*` variables declared here — it never reads a skin's own tokens
+ * (`--oh-*`, Win98 vars, …), so it is genuinely self-contained. The default
+ * palette below is a dark, serious developer-console theme; Phase-2 Fans will
+ * ship its own `--neutral-*` overrides to retheme the exact same markup.
+ */
+
+.oh-neutral {
+  /* ---- default palette: dark + serious (override these to reskin) ---- */
+  --neutral-bg: #0b0b0d;
+  --neutral-surface: #121216;
+  --neutral-elevated: #17171c;
+  --neutral-hairline: #24242b;
+  --neutral-hairline-soft: #1d1d23;
+  --neutral-border-hover: #34343d;
+  --neutral-text: #e8e8ec;
+  --neutral-muted: #a2a2ac;
+  --neutral-faint: #6f6f79;
+  --neutral-dim: #8a8a94;
+  --neutral-accent: #ff6b35;
+  --neutral-accent-soft: #ff8a5c;
+  --neutral-green: #4ade80;
+  --neutral-warn: #ffb347;
+  --neutral-danger: #f87171;
+
+  /* ---- radii ---- */
+  --neutral-r-tag: 6px;
+  --neutral-r-control: 9px;
+  --neutral-r-card: 14px;
+  --neutral-r-terminal: 14px;
+  --neutral-r-pill: 999px;
+
+  /* ---- type ---- */
+  --neutral-font-ui: "Inter", system-ui, -apple-system, sans-serif;
+  --neutral-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+
+  color: var(--neutral-text);
+  font-family: var(--neutral-font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.oh-neutral *,
+.oh-neutral *::before,
+.oh-neutral *::after {
+  box-sizing: border-box;
+}
+
+.oh-neutral h1,
+.oh-neutral h2,
+.oh-neutral h3,
+.oh-neutral h4 {
+  margin: 0;
+}
+
+.oh-neutral a {
+  color: var(--neutral-accent-soft);
+  text-decoration: none;
+  word-break: break-word;
+}
+.oh-neutral a:hover {
+  text-decoration: underline;
+}
+
+@keyframes oh-neutral-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ============================================================================
+ * Buttons — a self-contained trio so the neutral surface never depends on a
+ * skin's button primitive.
+ * ========================================================================== */
+.oh-neutral .ohn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--neutral-r-control);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: var(--neutral-font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 9px 15px;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.oh-neutral .ohn-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.oh-neutral .ohn-btn-primary {
+  background: var(--neutral-accent);
+  color: var(--neutral-bg);
+}
+.oh-neutral .ohn-btn-primary:not(:disabled):hover {
+  background: var(--neutral-accent-soft);
+}
+.oh-neutral .ohn-btn-secondary {
+  background: var(--neutral-elevated);
+  color: var(--neutral-text);
+  border-color: var(--neutral-hairline);
+}
+.oh-neutral .ohn-btn-secondary:not(:disabled):hover {
+  border-color: var(--neutral-border-hover);
+}
+.oh-neutral .ohn-btn-mono {
+  background: var(--neutral-elevated);
+  color: var(--neutral-text);
+  border-color: var(--neutral-hairline);
+  font-family: var(--neutral-font-mono);
+  font-weight: 500;
+}
+.oh-neutral .ohn-btn-mono:not(:disabled):hover {
+  border-color: var(--neutral-border-hover);
+}
+
+/* ============================================================================
+ * Header (owner-line / title / promise) — shared by Install + directory shelf.
+ * ========================================================================== */
+.oh-neutral .ohn-head {
+  margin-bottom: 22px;
+}
+.oh-neutral .ohn-owner {
+  font-family: var(--neutral-font-mono);
+  font-size: 12px;
+  color: var(--neutral-faint);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.oh-neutral .ohn-title {
+  font-family: var(--neutral-font-ui);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  color: var(--neutral-text);
+}
+.oh-neutral .ohn-promise {
+  font-size: 14.5px;
+  color: var(--neutral-muted);
+  line-height: 1.5;
+  max-width: 680px;
+  margin: 8px 0 0;
+}
+
+/* ============================================================================
+ * Two-column grid (setup + payment on the left, trust sidebar on the right).
+ * ========================================================================== */
+.oh-neutral .ohn-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .oh-neutral .ohn-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.oh-neutral .ohn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.oh-neutral .ohn-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ---- titled box ---- */
+.oh-neutral .ohn-box {
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-card);
+  padding: 16px;
+}
+.oh-neutral .ohn-box-title {
+  font-family: var(--neutral-font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--neutral-text);
+  letter-spacing: -0.2px;
+  margin: 0 0 12px;
+}
+
+/* ============================================================================
+ * Install-target tab strip.
+ * ========================================================================== */
+.oh-neutral .ohn-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.oh-neutral .ohn-tab {
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  font-family: var(--neutral-font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--neutral-muted);
+  padding: 7px 13px;
+  border-radius: var(--neutral-r-control);
+  white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.oh-neutral .ohn-tab:hover {
+  color: var(--neutral-text);
+  background: var(--neutral-elevated);
+}
+.oh-neutral .ohn-tab[data-active] {
+  background: var(--neutral-elevated);
+  border-color: var(--neutral-border-hover);
+  color: var(--neutral-text);
+  font-weight: 600;
+}
+
+/* ============================================================================
+ * Mono command block (setup <pre> + terminal share the base look).
+ * ========================================================================== */
+.oh-neutral .ohn-pre {
+  font-family: var(--neutral-font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--neutral-dim);
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-terminal);
+  padding: 14px 16px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.oh-neutral .ohn-btnrow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* ============================================================================
+ * InfoLine (label / mono value) rows inside boxes.
+ * ========================================================================== */
+.oh-neutral .ohn-info {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 6px 0;
+  border-top: 1px solid var(--neutral-hairline-soft);
+  font-size: 12.5px;
+}
+.oh-neutral .ohn-info:first-of-type {
+  border-top: none;
+}
+.oh-neutral .ohn-info-k {
+  color: var(--neutral-faint);
+  white-space: nowrap;
+}
+.oh-neutral .ohn-info-v {
+  color: var(--neutral-text);
+  font-family: var(--neutral-font-mono);
+  font-size: 11.5px;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* ============================================================================
+ * Payment box extras.
+ * ========================================================================== */
+.oh-neutral .ohn-pay-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.oh-neutral .ohn-note {
+  font-size: 12px;
+  color: var(--neutral-dim);
+  line-height: 1.5;
+  background: var(--neutral-elevated);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-control);
+  padding: 10px 12px;
+  margin: 12px 0 0;
+}
+.oh-neutral .ohn-session {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--neutral-hairline-soft);
+}
+.oh-neutral .ohn-session-link {
+  font-family: var(--neutral-font-mono);
+  font-size: 11.5px;
+}
+.oh-neutral .ohn-status {
+  font-size: 12px;
+  color: var(--neutral-muted);
+  margin: 12px 0 0;
+  line-height: 1.5;
+}
+.oh-neutral .ohn-status.is-error {
+  color: var(--neutral-danger);
+}
+
+/* ============================================================================
+ * Compatibility target list.
+ * ========================================================================== */
+.oh-neutral .ohn-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.oh-neutral .ohn-target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--neutral-muted);
+  line-height: 1.4;
+}
+.oh-neutral .ohn-target b {
+  color: var(--neutral-text);
+}
+.oh-neutral .ohn-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-family: var(--neutral-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  border-radius: var(--neutral-r-tag);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.oh-neutral .ohn-badge.safe {
+  color: var(--neutral-green);
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.22);
+}
+.oh-neutral .ohn-badge.warn {
+  color: var(--neutral-warn);
+  background: rgba(255, 179, 71, 0.08);
+  border: 1px solid rgba(255, 179, 71, 0.22);
+}
+
+/* ============================================================================
+ * Trust sidebar fine-print.
+ * ========================================================================== */
+.oh-neutral .ohn-fine {
+  font-size: 11.5px;
+  color: var(--neutral-faint);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+/* ============================================================================
+ * Directory (link-only) shelf.
+ * ========================================================================== */
+.oh-neutral .ohn-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.oh-neutral .ohn-shelf-link {
+  font-family: var(--neutral-font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ============================================================================
+ * CLI terminal.
+ * ========================================================================== */
+.oh-neutral .ohn-term {
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-terminal);
+  overflow: hidden;
+}
+.oh-neutral .ohn-term-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--neutral-hairline-soft);
+}
+.oh-neutral .ohn-term-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.oh-neutral .ohn-term-label {
+  font-family: var(--neutral-font-mono);
+  font-size: 12px;
+  color: var(--neutral-faint);
+  margin-left: 8px;
+}
+.oh-neutral .ohn-term-body {
+  font-family: var(--neutral-font-mono);
+  font-size: 13px;
+  line-height: 1.85;
+  padding: 16px 18px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.oh-neutral .ohn-term-dim {
+  color: var(--neutral-faint);
+}
+.oh-neutral .ohn-term-prompt {
+  color: var(--neutral-accent-soft);
+}
+.oh-neutral .ohn-term-cmd {
+  color: var(--neutral-text);
+}
+.oh-neutral .ohn-term-ok {
+  color: var(--neutral-green);
+}
+.oh-neutral .ohn-term-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 15px;
+  background: var(--neutral-accent);
+  margin-left: 4px;
+  vertical-align: -2px;
+  animation: oh-neutral-blink 1s step-end infinite;
+}
+.oh-neutral .ohn-term-foot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.oh-neutral .ohn-term-foot-note {
+  font-size: 11.5px;
+  color: var(--neutral-faint);
+}
