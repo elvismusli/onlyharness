@@ -109,7 +109,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 
 ## For agents
 
-- Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json), and OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://onlyharness.com/.well-known/oauth-protected-resource).
+- Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json), OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://onlyharness.com/.well-known/oauth-protected-resource), and authorization-server metadata at [`/.well-known/oauth-authorization-server`](https://onlyharness.com/.well-known/oauth-authorization-server).
 - MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, and `publish_markdown_to_harness`. `harness_detail`/`pull_instructions` expose read-only access/payment state; only `pull_harness`/archive delivery returns files after entitlement.
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`. Org auth/bundles/audit read Supabase service-role tables first and keep `HARNESS_ORGS_PATH`/`HARNESS_ORG_AUDIT_PATH` as the local smoke fallback.
@@ -153,7 +153,8 @@ The current VPS uses a shared system Caddy on ports `80/443`. OnlyHarness runs b
 SSH_TARGET=hetzner-root DEPLOY_MODE=system-caddy scripts/deploy-production.sh
 ```
 
-`scripts/deploy-production.sh` runs public smoke by default after containers reload: `/api/healthz`, `/server.json`, `/.well-known/oauth-protected-resource`, `/checkout`, and `/mcp`. Override `PUBLIC_BASE_URL` for a non-default hostname or set `RUN_DEPLOY_SMOKE=0` only for a deliberately partial deploy.
+`scripts/deploy-production.sh` runs public smoke by default after containers reload: `/api/healthz`, `/server.json`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/checkout`, and `/mcp`. Override `PUBLIC_BASE_URL` for a non-default hostname or set `RUN_DEPLOY_SMOKE=0` only for a deliberately partial deploy.
+For authenticated production smoke without creating throwaway users, set `ONLYHARNESS_QA_EMAIL` and `ONLYHARNESS_QA_PASSWORD` in the ignored production env and run `scripts/smoke-production-auth.ts` against `https://onlyharness.com/api`.
 
 Deployment artifacts:
 

@@ -75,6 +75,8 @@ Core endpoints:
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/security-report` | Static security report for install/apply gating |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
+| POST | `/repos/{owner}/{name}/star` | Authenticated server-side star/unstar path for browser and agent clients |
+| GET/POST | `/repos/{owner}/{name}/thread` | Read or create harness thread posts; POST requires Bearer auth and writes through API |
 | POST | `/billing/checkout` | Authenticated manual checkout session for paid harnesses; manual provider only |
 | GET | `/billing/receipt?provider_ref={ref}` | Authenticated buyer receipt; read-only, never grants entitlement by itself |
 | POST | `/billing/escrow/receipt` | Authenticated buyer settles a reserved `gate_escrow` purchase with a signed gate receipt |
@@ -104,7 +106,7 @@ Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`
 `harness_detail` and `pull_instructions` include read-only access/payment state; they must not grant entitlement or return archive files. `pull_harness` and HTTP archive delivery are the file-returning entitlement gates.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
 MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
-OAuth protected-resource metadata is available at `https://onlyharness.com/.well-known/oauth-protected-resource`; Caddy must serve it as `application/json`.
+OAuth protected-resource metadata is available at `https://onlyharness.com/.well-known/oauth-protected-resource`; OAuth authorization-server metadata is available at `https://onlyharness.com/.well-known/oauth-authorization-server`; Caddy must serve both extensionless files as `application/json`.
 Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install onlyharness@onlyharness`.
 
 ## Conventions
@@ -124,7 +126,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Hosted execution endpoints are not live. `hh run` stays local sample preview only, MCP/HTTP archive routes deliver files, and `pricing.model=per_call` returns `409 HOSTED_EXECUTION_NOT_AVAILABLE` until a partner-backed or first-party runner has passed runtime smoke.
 - Payout tooling may create only draft/manual payout ledgers (`payout_runs`, `payout_items`); it must not call payout providers or mark ledger items paid.
 - `hh suggest` is the agent-first autopilot path: search, ranked candidate shortlist with trust fields, selected detail trust summary, optional `--pick <rank>`, optional `--apply --out <dir>`. `--apply` must use the same archive semantics as `hh pull`, including paid 402 and directory 409. With `--target cli|claude-code|codex|cursor`, it must run the same adapter/install path as `hh install --target` before recording `applied`.
-- `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed. `hh install owner/name --version <semver>` and `hh pull owner/name --version <semver>` request the same immutable `/archive?version=` path.
+- `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed. `hh install owner/name --version <semver>` and `hh pull owner/name --version <semver>` request the same `/archive?version=` path; require `snapshot:true` when immutability matters.
 - Directory shelf entries use manifest `content.type: directory` and `source.vendor_policy: link-only`; they must stay free, expose `open <url>`, and must not return archive files.
 - `/repos/{owner}/{repo}/remixes` is the server-side fork graph for local remix drafts: it may create only free unverified `local/{name}` copies from archive files, must strip `.harnesshub/*`, records a source -> fork edge in `harness_forks`/local state, and must reject paid, org/private, directory, link-only, and `UNSPECIFIED` license sources. Copied fallback recipes must not increment forks.
 - Public API payloads must not expose server filesystem paths. Registry/detail may include public forge or upstream URLs only; `/healthz` returns status only; detail `prReview.source=local-demo` is a generated preview, not an open forge PR.

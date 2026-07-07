@@ -97,7 +97,7 @@ try {
     minimumSignals?: number;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/prs/{owner}/{repo}/{number}/semantic-diff"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/repos/{owner}/{repo}/star"] || !openapi.paths?.["/repos/{owner}/{repo}/thread"] || !openapi.paths?.["/prs/{owner}/{repo}/{number}/semantic-diff"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.repoPath || item.forgeUrl?.startsWith("file://"))) throw new Error(`Registry leaked local paths: ${JSON.stringify(registry.items.filter((item) => item.repoPath || item.forgeUrl?.startsWith("file://")))}`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");
@@ -259,6 +259,14 @@ try {
   }
   if (detail.contextCost?.status !== "estimated" || !detail.contextCost.approxTokens || !detail.contextCost.files) {
     throw new Error(`Detail endpoint returned invalid context-cost estimate: ${JSON.stringify(detail.contextCost)}`);
+  }
+  const localStar = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/star", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-agent" },
+    body: JSON.stringify({ starred: true })
+  }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string } }));
+  if (localStar.status !== 503 || localStar.body.code !== "SOCIAL_STORE_UNAVAILABLE") {
+    throw new Error(`Local social write must fail closed without Supabase store: ${JSON.stringify(localStar)}`);
   }
   const profile = await fetch("http://127.0.0.1:8799/me/storefront", {
     method: "PUT",
@@ -603,10 +611,13 @@ try {
   const imported = await fetch("http://127.0.0.1:8799/imports/markdown-to-harness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "smoke-imported-harness", markdown: "# Smoke Imported Harness\n\nResearch, synthesize, critique and produce a memo." })
-  }).then((response) => response.json()) as { item?: { name: string }; snapshotVersion?: string };
+    body: JSON.stringify({ name: "smoke-imported-harness", markdown: "# Smoke Imported Harness\n\nResearch, synthesize, critique and produce a memo.\n\nLicense: MIT" })
+  }).then((response) => response.json()) as { item?: { name: string }; snapshotVersion?: string; warnings?: string[]; next?: string };
   if (imported.item?.name !== "smoke-imported-harness") throw new Error(`Import endpoint failed: ${JSON.stringify(imported)}`);
   if (imported.snapshotVersion !== "0.1.0") throw new Error(`Import did not create a version snapshot: ${JSON.stringify(imported)}`);
+  if (!imported.warnings?.some((warning) => /license/i.test(warning)) || !imported.next?.includes("UNSPECIFIED")) {
+    throw new Error(`Import must warn when markdown license intent is not promoted: ${JSON.stringify(imported)}`);
+  }
   const importedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-imported-harness/archive?version=0.1.0").then((response) => response.json()) as { snapshot?: boolean; files?: unknown[] };
   if (!importedArchive.snapshot || !importedArchive.files?.length) throw new Error(`Imported version snapshot unavailable: ${JSON.stringify(importedArchive)}`);
   cpSync(path.join(seedRoot, "support-triage-agent"), verifiedPublishSource, { recursive: true });

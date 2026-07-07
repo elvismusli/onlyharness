@@ -67,6 +67,15 @@ type RemixRequest = {
   version?: string;
 };
 
+type StarRequest = {
+  starred?: boolean;
+};
+
+type ThreadPostRequest = {
+  kind?: string;
+  body?: string;
+};
+
 type ReceiptQuery = {
   provider_ref?: string;
 };
@@ -692,6 +701,37 @@ app.get("/repos/:owner/:repo/thread", async (request, reply) => {
   const orgGate = await gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "thread");
   if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
   return { items: await fetchThreadPosts(owner, repo) };
+});
+
+app.post("/repos/:owner/:repo/star", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { owner, repo } = request.params as { owner: string; repo: string };
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  const orgGate = await gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "star");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
+  const body = request.body && typeof request.body === "object" ? request.body as StarRequest : {};
+  const starred = body.starred !== false;
+  const result = await writeHarnessStar({ owner, repo, userId: user.id, starred });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code, next: result.next });
+  return { owner, repo, starred };
+});
+
+app.post("/repos/:owner/:repo/thread", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { owner, repo } = request.params as { owner: string; repo: string };
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return reply.code(404).send({ error: "Harness not found" });
+  const manifest = registry.registryDetailBasics(root).inspection.manifest;
+  const orgGate = await gateOrgVisibility(owner, manifest, headerValue(request.headers.authorization), "thread");
+  if (!orgGate.ok) return reply.code(orgGate.status).send({ error: orgGate.error });
+  const body = request.body && typeof request.body === "object" ? request.body as ThreadPostRequest : {};
+  const result = await writeHarnessThreadPost({ owner, repo, user, kind: body.kind, body: body.body });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code, next: result.next });
+  return reply.code(201).send({ owner, repo, item: result.item });
 });
 
 app.get("/repos/:owner/:repo/security-report", async (request, reply) => {
@@ -1447,6 +1487,7 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
   if (!body?.markdown || body.markdown.length < 20) {
     return { status: 400, error: "markdown must be at least 20 characters" };
   }
+  const licenseWarning = markdownLicenseWarning(body.markdown);
   const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
   const owner = options.owner ?? "local";
   const target = options.orgSlug ? path.join(registry.orgImportRoot(options.orgSlug), name) : path.join(registry.importRoot, name);
@@ -1481,10 +1522,25 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
     if (!options.orgSlug) await upsertHarnessCreator("local", name, user.id);
     await recordEvent({ kind: "applied", owner, repo: name, version: writtenSnapshot?.version, subject: eventSubject(user.id), target: "publish", client: "api" });
     appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
-    return { item, output: cli.stdout, snapshotVersion: writtenSnapshot?.version };
+    return {
+      item,
+      output: cli.stdout,
+      snapshotVersion: writtenSnapshot?.version,
+      ...(licenseWarning ? {
+        warnings: [licenseWarning],
+        next: "Markdown imports keep license UNSPECIFIED. Publish a verified harness directory with harness.yaml license set before remixing or paid distribution."
+      } : {})
+    };
   } finally {
     rmSync(tempTarget, { recursive: true, force: true });
   }
+}
+
+function markdownLicenseWarning(markdown: string): string | undefined {
+  const match = markdown.match(/(?:^|\n)\s*(?:license|licen[cs]e)\s*:\s*([A-Za-z0-9._+ -]{2,40})(?:\n|$)/i);
+  const license = match?.[1]?.trim();
+  if (!license || license.toUpperCase() === "UNSPECIFIED") return undefined;
+  return `Detected markdown license "${license}", but markdown imports cannot safely promote it into harness.yaml; generated harness stays UNSPECIFIED until explicitly verified.`;
 }
 
 async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: AuthUser, options: ImportOptions = {}) {
@@ -1803,6 +1859,117 @@ async function fetchProfiles(userIds: string[]): Promise<Map<string, string>> {
   }
 
   return profiles;
+}
+
+async function writeHarnessStar(input: { owner: string; repo: string; userId: string; starred: boolean }): Promise<
+  | { ok: true }
+  | { ok: false; status: number; error: string; code: string; next: string }
+> {
+  if (!supabaseUrl || !supabaseRestKey) return socialStoreUnavailable();
+  try {
+    if (!input.starred) {
+      const params = new URLSearchParams({
+        user_id: `eq.${input.userId}`,
+        owner: `eq.${input.owner}`,
+        repo: `eq.${input.repo}`,
+        action: "eq.star"
+      });
+      const response = await fetch(`${supabaseUrl}/rest/v1/user_harness_actions?${params.toString()}`, {
+        method: "DELETE",
+        headers: { ...supabaseRestHeaders(), Prefer: "return=minimal" }
+      });
+      if (!response.ok) return supabaseWriteFailed(response.status, await safeResponseText(response));
+      return { ok: true };
+    }
+
+    const params = new URLSearchParams({ on_conflict: "user_id,owner,repo,action" });
+    const response = await fetch(`${supabaseUrl}/rest/v1/user_harness_actions?${params.toString()}`, {
+      method: "POST",
+      headers: {
+        ...supabaseRestHeaders(),
+        "content-type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify({ user_id: input.userId, owner: input.owner, repo: input.repo, action: "star" })
+    });
+    if (!response.ok) return supabaseWriteFailed(response.status, await safeResponseText(response));
+    return { ok: true };
+  } catch {
+    return { ok: false, status: 503, error: "Social store unavailable", code: "SOCIAL_STORE_UNAVAILABLE", next: "Retry after the registry API can reach Supabase." };
+  }
+}
+
+async function writeHarnessThreadPost(input: { owner: string; repo: string; user: AuthUser; kind?: string; body?: string }): Promise<
+  | { ok: true; item: ThreadItem }
+  | { ok: false; status: number; error: string; code: string; next: string }
+> {
+  if (!supabaseUrl || !supabaseRestKey) return socialStoreUnavailable();
+  const kind = normalizeThreadKind(input.kind);
+  if (!kind) return { ok: false, status: 400, error: "Invalid thread post kind", code: "INVALID_THREAD_KIND", next: "Use one of: question, recipe, result, proposal, bug/risk." };
+  const body = input.body?.trim() ?? "";
+  if (body.length < 2 || body.length > 2000) return { ok: false, status: 400, error: "Thread post body must be 2-2000 characters", code: "INVALID_THREAD_BODY", next: "Send a concise question, recipe, result, proposal, or bug/risk note." };
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/harness_thread_posts`, {
+      method: "POST",
+      headers: {
+        ...supabaseRestHeaders(),
+        "content-type": "application/json",
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({ owner: input.owner, repo: input.repo, user_id: input.user.id, kind, body })
+    });
+    if (!response.ok) return supabaseWriteFailed(response.status, await safeResponseText(response));
+    const rows = await response.json() as Array<{ id: string; kind: string; body: string; created_at: string }>;
+    const row = rows[0];
+    if (!row?.id) return { ok: false, status: 502, error: "Thread post was not returned by the social store", code: "SOCIAL_STORE_BAD_RESPONSE", next: "Retry and check Supabase REST health." };
+    const profiles = await fetchProfiles([input.user.id]);
+    return {
+      ok: true,
+      item: {
+        id: row.id,
+        author: profiles.get(input.user.id) ?? input.user.email?.split("@")[0] ?? `user-${input.user.id.slice(0, 6)}`,
+        userId: input.user.id,
+        role: "member",
+        kind: row.kind,
+        body: row.body,
+        likes: 0,
+        at: relativeTime(row.created_at)
+      }
+    };
+  } catch {
+    return { ok: false, status: 503, error: "Social store unavailable", code: "SOCIAL_STORE_UNAVAILABLE", next: "Retry after the registry API can reach Supabase." };
+  }
+}
+
+function normalizeThreadKind(value: string | undefined): string | undefined {
+  const kind = value ?? "question";
+  return ["question", "recipe", "result", "proposal", "bug/risk"].includes(kind) ? kind : undefined;
+}
+
+function socialStoreUnavailable(): { ok: false; status: number; error: string; code: string; next: string } {
+  return { ok: false, status: 503, error: "Social store unavailable", code: "SOCIAL_STORE_UNAVAILABLE", next: "Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for server-side social writes." };
+}
+
+function supabaseWriteFailed(status: number, detail: string): { ok: false; status: number; error: string; code: string; next: string } {
+  return {
+    ok: false,
+    status: status >= 400 && status < 500 ? status : 503,
+    error: detail || "Social write failed",
+    code: "SOCIAL_WRITE_FAILED",
+    next: "Check the authenticated user, target harness, and Supabase RLS/REST status."
+  };
+}
+
+async function safeResponseText(response: Response): Promise<string> {
+  try {
+    const body = await response.text();
+    if (!body) return "";
+    const parsed = JSON.parse(body) as { message?: string; error?: string };
+    return parsed.message ?? parsed.error ?? body;
+  } catch {
+    return "";
+  }
 }
 
 function supabaseRestHeaders() {

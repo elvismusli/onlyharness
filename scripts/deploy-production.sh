@@ -134,6 +134,8 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsS "$PUBLIC_BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
   curl -fsS "$PUBLIC_BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
   curl -fsSI "$PUBLIC_BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
+  curl -fsS "$PUBLIC_BASE_URL/.well-known/oauth-authorization-server" | grep -q '"issuer": "https://onlyharness.com"'
+  curl -fsSI "$PUBLIC_BASE_URL/.well-known/oauth-authorization-server" | tr -d '\r' | grep -qi '^content-type: application/json'
   curl -fsS "$PUBLIC_BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher&version=0.2.0&provider_ref=manual_deploy_smoke" | grep -q "OnlyHarness"
   curl -fsS -X POST "$PUBLIC_BASE_URL/mcp" \
     -H 'Content-Type: application/json' \

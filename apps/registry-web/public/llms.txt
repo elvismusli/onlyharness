@@ -15,6 +15,7 @@ OpenAPI: https://onlyharness.com/api/openapi.json
 MCP Registry metadata: https://onlyharness.com/server.json
 
 OAuth protected-resource metadata: https://onlyharness.com/.well-known/oauth-protected-resource
+OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-authorization-server
 
 - Health check: GET /healthz
 - Search the registry: GET /registry?q={terms}&job={job}&sort={trending|stars|forks|threads|new}
@@ -23,13 +24,17 @@ OAuth protected-resource metadata: https://onlyharness.com/.well-known/oauth-pro
 - Harness detail: GET /repos/{owner}/{name}/harness
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost, file list, versions[] archive history and prReview. Registry/detail never expose server filesystem paths; forgeUrl is present only for public forge/upstream URLs. prReview.source=local-demo means generated preview, not an open forge PR.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
-  Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory.
+  Response: { owner, repo, version, snapshot, files: [{ path, content, truncated }] } — write the files to disk to get a runnable harness directory. Treat snapshot:true as immutable; snapshot:false is the current live manifest row.
   Paid harnesses return HTTP 402 with { code: "PAYMENT_REQUIRED", checkout_url, pricing, payments_enabled, x402, next }. Retry with Authorization: Bearer {HH_TOKEN} after entitlement. If x402.enabled=true, the response also includes a base64 JSON PAYMENT-REQUIRED header; `hh install --pay` or `hh pull --pay` signs with HH_WALLET_KEY/EVM_PRIVATE_KEY and enforces HH_MAX_PAY_USD before retrying. The API returns archive files only after facilitator verify/settle succeeds via X402_FACILITATOR_URL.
   Directory shelf entries use owner `directories` and manifest content.type=directory. They are link-only discovery indexes: search results expose `open <url>`, and archive returns HTTP 409 { code: "DIRECTORY_LINK_ONLY", url, next } instead of files.
 - Create local remix draft: POST /repos/{owner}/{name}/remixes
   Auth required. Body { name?, title?, summary?, sourceVersion? }. Creates only a free unverified `local/{name}` copy from archive files, strips `.harnesshub/*`, records a privacy-safe `applied` event with target `server-remix`, and records a source -> fork graph edge. Paid, org/private, directory, link-only and `UNSPECIFIED` license sources fail closed. Copied fallback recipes do not count as forks.
 - Security report: GET /repos/{owner}/{name}/security-report
   Read before installing/applying when detail.security is missing or failing; plugin/autopilot flows must not bypass a failed report.
+- Stars: POST /repos/{owner}/{name}/star
+  Auth required. Body { starred?: boolean }. Records or removes the caller's star through the API so browser and agent clients share one heat-signal path.
+- Thread: GET /repos/{owner}/{name}/thread and POST /repos/{owner}/{name}/thread
+  POST auth required. Body { kind, body }, where kind is question, recipe, result, proposal, or bug/risk.
 - Forge PR semantic diff: GET /prs/{owner}/{name}/{number}/semantic-diff
   Org visibility is enforced, but real forge PR diffing is not connected yet. The endpoint returns 501 PR_SEMANTIC_DIFF_NOT_AVAILABLE with a local-demo preview and next steps; use detail.prReview only as a maintainer-review shape preview.
 - Checkout: POST /billing/checkout
@@ -134,11 +139,11 @@ For local development from the repo:
 - hh suggest {terms} --apply --target cli|claude-code|codex|cursor    run the target adapter install path before recording applied
 - hh install {owner}/{name} --target cli|claude-code|codex|cursor    primary install path; pulls files, optionally writes adapter files, then records a privacy-safe install event
 - hh pull {owner}/{name}    download a harness into ./{name}; sends HH_TOKEN when set
-- hh pull {owner}/{name} --version <semver>    download an immutable archive snapshot and write that version to .harnesshub/source.json
+- hh pull {owner}/{name} --version <semver>    request that registry version and write it to .harnesshub/source.json; archive snapshot:true is immutable, snapshot:false is the live current row
 - hh adapt [dir] --target claude-code|codex|cursor    generate local adapter instruction files
 - hh mcp-config [dir] --target claude-desktop|claude-code|cursor    generate package-backed MCP client JSON
 - hh install {owner}/{name} --pay    pay an x402-enabled 402 with HH_WALLET_KEY/EVM_PRIVATE_KEY, capped by HH_MAX_PAY_USD
-- hh install {owner}/{name} --version <semver>    install a specific immutable archive snapshot through the same payment/entitlement path
+- hh install {owner}/{name} --version <semver>    install a specific registry version through the same payment/entitlement path; require snapshot:true when immutability matters
 - hh pull {owner}/{name} --pay    low-level archive download with the same x402 payment behavior
 - hh install @org/{name}    download an org-private harness; sends HH_ORG_TOKEN when set
 - hh pull @org/{name}       low-level org-private archive download; sends HH_ORG_TOKEN when set

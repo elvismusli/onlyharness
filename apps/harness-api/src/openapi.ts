@@ -194,6 +194,73 @@ export const openapi = {
         }
       }
     },
+    "/repos/{owner}/{repo}/star": {
+      post: {
+        summary: "Star or unstar a harness",
+        description: "Auth required. Records the caller's star server-side so browser and agent clients share the same heat signal path.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("owner"), pathParam("repo")],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/StarRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Star state recorded",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/StarResponse" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/thread": {
+      get: {
+        summary: "List harness thread posts",
+        parameters: [pathParam("owner"), pathParam("repo")],
+        responses: {
+          "200": {
+            description: "Thread posts",
+            content: { "application/json": { schema: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/ThreadItem" } } }, required: ["items"] } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      },
+      post: {
+        summary: "Create a harness thread post",
+        description: "Auth required. Writes through the API social path instead of direct browser Supabase mutations.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("owner"), pathParam("repo")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ThreadPostRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Thread post created",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ThreadPostResponse" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
     "/repos/{owner}/{repo}/security-report": {
       get: {
         summary: "Static security report",
@@ -493,7 +560,20 @@ export const openapi = {
         responses: {
           "200": {
             description: "Imported harness",
-            content: { "application/json": { schema: { type: "object", properties: { item: { $ref: "#/components/schemas/RegistryItem" }, output: { type: "string" } } } } }
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    item: { $ref: "#/components/schemas/RegistryItem" },
+                    output: { type: "string" },
+                    snapshotVersion: { type: "string" },
+                    warnings: { type: "array", items: { type: "string" } },
+                    next: { type: "string" }
+                  }
+                }
+              }
+            }
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" }
@@ -970,6 +1050,10 @@ export const openapi = {
       NotFound: {
         description: "Resource not found",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
+      ServiceUnavailable: {
+        description: "Dependent service unavailable",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
       }
     },
     schemas: {
@@ -1118,6 +1202,52 @@ export const openapi = {
           fileCount: { type: "number" }
         },
         required: ["version", "createdAt", "snapshot", "current", "fileCount"]
+      },
+      ThreadItem: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          author: { type: "string" },
+          userId: { type: "string" },
+          role: { type: "string" },
+          kind: { type: "string", enum: ["question", "recipe", "result", "proposal", "bug/risk"] },
+          body: { type: "string" },
+          likes: { type: "number" },
+          at: { type: "string" }
+        },
+        required: ["id", "author", "role", "kind", "body", "likes", "at"]
+      },
+      StarRequest: {
+        type: "object",
+        properties: {
+          starred: { type: "boolean", description: "false removes the caller's star; omitted or true records a star." }
+        }
+      },
+      StarResponse: {
+        type: "object",
+        properties: {
+          owner: { type: "string" },
+          repo: { type: "string" },
+          starred: { type: "boolean" }
+        },
+        required: ["owner", "repo", "starred"]
+      },
+      ThreadPostRequest: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["question", "recipe", "result", "proposal", "bug/risk"] },
+          body: { type: "string", minLength: 2, maxLength: 2000 }
+        },
+        required: ["body"]
+      },
+      ThreadPostResponse: {
+        type: "object",
+        properties: {
+          owner: { type: "string" },
+          repo: { type: "string" },
+          item: { $ref: "#/components/schemas/ThreadItem" }
+        },
+        required: ["owner", "repo", "item"]
       },
       ContextCost: {
         type: "object",

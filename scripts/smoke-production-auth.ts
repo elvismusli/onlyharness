@@ -13,8 +13,51 @@ const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const email = `qa+publish-${suffix}@onlyharness.com`;
 const password = `OnlyHarnessSmoke-${suffix}!`;
 const name = `qa-publish-${suffix}`;
+const qaEmail = process.env.ONLYHARNESS_QA_EMAIL;
+const qaPassword = process.env.ONLYHARNESS_QA_PASSWORD;
 const expectEmailConfirmation = process.env.SMOKE_EXPECT_EMAIL_CONFIRMATION === "1";
 const authRateLimitOk = process.env.SMOKE_AUTH_RATE_LIMIT_OK === "1";
+
+if (qaEmail && qaPassword) {
+  const login = await supabase.auth.signInWithPassword({ email: qaEmail, password: qaPassword });
+  if (login.error || !login.data.session?.access_token) {
+    throw new Error(`Persistent QA sign-in failed: ${login.error?.message ?? "missing session"}`);
+  }
+  const token = login.data.session.access_token;
+  const star = await fetch(`${apiUrl}/repos/harnesses/deep-market-researcher/star`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ starred: true })
+  });
+  if (!star.ok) throw new Error(`Persistent QA star failed with ${star.status}: ${await star.text()}`);
+
+  const unstar = await fetch(`${apiUrl}/repos/harnesses/deep-market-researcher/star`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ starred: false })
+  });
+  if (!unstar.ok) throw new Error(`Persistent QA unstar failed with ${unstar.status}: ${await unstar.text()}`);
+
+  const thread = await fetch(`${apiUrl}/repos/harnesses/deep-market-researcher/thread`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ kind: "result", body: `QA auth smoke ${suffix}` })
+  });
+  if (!thread.ok) throw new Error(`Persistent QA thread failed with ${thread.status}: ${await thread.text()}`);
+
+  await supabase.auth.signOut();
+  console.log(`Production persistent QA auth smoke passed: ${qaEmail}`);
+  process.exit(0);
+}
 
 const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
   email,

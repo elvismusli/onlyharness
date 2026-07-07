@@ -59,7 +59,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - Registry and local inspect payloads include `contextCost: { approxTokens, files, bytes, status: "estimated" }` from markdown instruction files.
 - `hh install owner/name --target cli|claude-code|codex|cursor` pulls a runnable harness and records a privacy-safe `install` event after optional adapter generation succeeds.
 - `hh pull owner/name` writes a runnable harness directory and sends `HH_TOKEN` when set.
-- `hh pull owner/name --version <semver>` and `hh install owner/name --version <semver>` request an immutable archive snapshot and write that resolved version to `.harnesshub/source.json`.
+- `hh pull owner/name --version <semver>` and `hh install owner/name --version <semver>` request that registry version and write the resolved version to `.harnesshub/source.json`; require `snapshot:true` in the archive response when immutability matters.
 - `hh install owner/name --pay` and `hh pull owner/name --pay` use `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuse to sign above `HH_MAX_PAY_USD`.
 - `hh install @org/name` and `hh pull @org/name` send `HH_ORG_TOKEN` when set.
 - `hh adapt [dir] --target claude-code|codex|cursor` writes local adapter instruction files and refuses to overwrite without `--force`.

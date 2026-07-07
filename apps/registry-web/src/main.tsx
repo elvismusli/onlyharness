@@ -5,7 +5,7 @@ import { createClient, type Session } from "@supabase/supabase-js";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
-import { clockLabel, keyFor, relativeTime } from "./format";
+import { clockLabel, keyFor } from "./format";
 import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
 import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
@@ -513,13 +513,22 @@ function App() {
     const next = !starred[key];
     setStarred((current) => ({ ...current, [key]: next }));
     flashMsg(next ? `★ Starred ${item.title} · heat +0.4` : `Unstarred ${item.title}`);
-    if (!supabase || !session?.user) return;
-    const { error } = next
-      ? await supabase.from("user_harness_actions").upsert({ user_id: session.user.id, owner: item.owner, repo: item.name, action: "star" })
-      : await supabase.from("user_harness_actions").delete().match({ user_id: session.user.id, owner: item.owner, repo: item.name, action: "star" });
-    if (error) {
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/star`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ starred: next })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Star failed (${response.status})`);
+      setRefreshTick((tick) => tick + 1);
+    } catch (error) {
       setStarred((current) => ({ ...current, [key]: !next }));
-      flashMsg(error.message);
+      flashMsg(error instanceof Error ? error.message : "Star failed");
     }
   }
 
@@ -589,22 +598,26 @@ function App() {
     if (!draft) return;
     if (!requireUser("Log on to post in the thread.")) return;
     const kind = kinds[key] ?? "question";
-    const post: ThreadItem = { id: `${key}-${Date.now()}`, author: "you", userId: session?.user.id, role: "member", kind, body: draft, likes: 0, at: "now" };
-    if (supabase && session?.user) {
-      const { data, error } = await supabase
-        .from("harness_thread_posts")
-        .insert({ owner: item.owner, repo: item.name, user_id: session.user.id, kind, body: draft })
-        .select("id,kind,body,created_at")
-        .single();
-      if (error) {
-        flashMsg(error.message);
-        return;
-      }
-      post.id = data.id;
-      post.at = relativeTime(data.created_at);
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/thread`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ kind, body: draft })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Post failed (${response.status})`);
+      const post = data.item as ThreadItem | undefined;
+      if (!post?.id) throw new Error("Post failed: empty API response");
+      setRemotePosts((current) => ({ ...current, [key]: [...(current[key] ?? []), post] }));
+      setDrafts((current) => ({ ...current, [key]: "" }));
+      setRefreshTick((tick) => tick + 1);
+    } catch (error) {
+      flashMsg(error instanceof Error ? error.message : "Post failed");
     }
-    setRemotePosts((current) => ({ ...current, [key]: [...(current[key] ?? []), post] }));
-    setDrafts((current) => ({ ...current, [key]: "" }));
   }
 
   async function submitImport() {
@@ -629,7 +642,9 @@ function App() {
       setQuery("");
       setJobFilter("all");
       setRefreshTick((tick) => tick + 1);
-      showDialog({ title: "Harness published", icon: "📦", body: `${result.item.title} is live on the frontier. Give it a star before someone else does.` });
+      const warnings = Array.isArray(result.warnings) && result.warnings.length ? `\n\n${result.warnings.join("\n")}` : "";
+      const next = typeof result.next === "string" ? `\n\n${result.next}` : "";
+      showDialog({ title: "Harness published", icon: "📦", body: `${result.item.title} is live on the frontier. Give it a star before someone else does.${warnings}${next}` });
     } catch {
       setImportStatus("Publish failed: the harness API is unreachable.");
     } finally {

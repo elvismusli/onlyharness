@@ -44,6 +44,8 @@ curl -fsS "$BASE_URL/api/leaderboard?limit=1" | grep -q '"items"'
 curl -fsS "$BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
 curl -fsS "$BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
 curl -fsSI "$BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
+curl -fsS "$BASE_URL/.well-known/oauth-authorization-server" | grep -q '"issuer": "https://onlyharness.com"'
+curl -fsSI "$BASE_URL/.well-known/oauth-authorization-server" | tr -d '\r' | grep -qi '^content-type: application/json'
 index_html="$(curl -fsS "$BASE_URL/")"
 [[ "$index_html" == *"OnlyHarness"* ]]
 checkout_html="$(curl -fsS "$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher&version=0.2.0&provider_ref=manual_smoke")"

@@ -20,10 +20,20 @@ type ProtectedResourceMetadata = {
   resource_documentation?: string;
 };
 
+type AuthorizationServerMetadata = {
+  issuer?: string;
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+  jwks_uri?: string;
+  grant_types_supported?: string[];
+  service_documentation?: string;
+};
+
 const root = path.resolve(import.meta.dirname, "..");
 const rootServerPath = path.join(root, "server.json");
 const publicServerPath = path.join(root, "apps/registry-web/public/server.json");
 const protectedResourcePath = path.join(root, "apps/registry-web/public/.well-known/oauth-protected-resource");
+const authorizationServerPath = path.join(root, "apps/registry-web/public/.well-known/oauth-authorization-server");
 const caddyfilePaths = [
   path.join(root, "infra/Caddyfile"),
   path.join(root, "infra/Caddyfile.local-smoke")
@@ -41,6 +51,7 @@ const publicText = readFileSync(publicServerPath, "utf8");
 const rootServer = JSON.parse(rootText) as ServerJson;
 const publicServer = JSON.parse(publicText) as ServerJson;
 const protectedResource = JSON.parse(readFileSync(protectedResourcePath, "utf8")) as ProtectedResourceMetadata;
+const authorizationServer = JSON.parse(readFileSync(authorizationServerPath, "utf8")) as AuthorizationServerMetadata;
 const caddyfiles = caddyfilePaths.map((file) => ({ file, text: readFileSync(file, "utf8") }));
 const cliPackage = JSON.parse(readFileSync(cliPackagePath, "utf8")) as { version?: string };
 const llms = readFileSync(llmsPath, "utf8");
@@ -69,18 +80,32 @@ check(protectedResource.bearer_methods_supported?.includes("header"), "OAuth pro
 check(protectedResource.resource_documentation === "https://onlyharness.com/llms.txt", "OAuth protected resource metadata must link llms.txt");
 check(!JSON.stringify(protectedResource).includes("127.0.0.1"), "OAuth protected resource metadata must not contain local URLs");
 check(!JSON.stringify(protectedResource).includes("localhost"), "OAuth protected resource metadata must not contain localhost URLs");
+check(authorizationServer.issuer === "https://onlyharness.com", "OAuth authorization-server metadata must use onlyharness.com issuer");
+check(Boolean(authorizationServer.authorization_endpoint?.startsWith("https://ogwabmsxetotzafunyza.supabase.co/auth/v1/authorize")), "OAuth authorization-server metadata must expose Supabase auth endpoint");
+check(Boolean(authorizationServer.token_endpoint?.startsWith("https://ogwabmsxetotzafunyza.supabase.co/auth/v1/token")), "OAuth authorization-server metadata must expose Supabase token endpoint");
+check(Boolean(authorizationServer.jwks_uri?.startsWith("https://ogwabmsxetotzafunyza.supabase.co/auth/v1/")), "OAuth authorization-server metadata must expose Supabase JWKS endpoint");
+check(authorizationServer.grant_types_supported?.includes("authorization_code"), "OAuth authorization-server metadata must support authorization_code");
+check(authorizationServer.service_documentation === "https://onlyharness.com/llms.txt", "OAuth authorization-server metadata must link llms.txt");
 
 for (const { file, text } of caddyfiles) {
   const name = path.relative(root, file);
   const protectedResourceHandle = /handle\s+\/\.well-known\/oauth-protected-resource\s*\{[\s\S]*?file_server[\s\S]*?\}/.exec(text)?.[0] ?? "";
   const protectedResourceHandleIndex = text.indexOf("handle /.well-known/oauth-protected-resource");
+  const authorizationServerHandle = /handle\s+\/\.well-known\/oauth-authorization-server\s*\{[\s\S]*?file_server[\s\S]*?\}/.exec(text)?.[0] ?? "";
+  const authorizationServerHandleIndex = text.indexOf("handle /.well-known/oauth-authorization-server");
   const spaFallbackIndex = text.indexOf("try_files {path} /index.html");
   check(Boolean(protectedResourceHandle), `${name} must handle /.well-known/oauth-protected-resource`);
+  check(Boolean(authorizationServerHandle), `${name} must handle /.well-known/oauth-authorization-server`);
   check(
     protectedResourceHandleIndex >= 0 && spaFallbackIndex >= 0 && protectedResourceHandleIndex < spaFallbackIndex,
     `${name} must serve /.well-known/oauth-protected-resource before the SPA fallback`
   );
+  check(
+    authorizationServerHandleIndex >= 0 && spaFallbackIndex >= 0 && authorizationServerHandleIndex < spaFallbackIndex,
+    `${name} must serve /.well-known/oauth-authorization-server before the SPA fallback`
+  );
   check(protectedResourceHandle.includes("header Content-Type application/json"), `${name} must serve the extensionless protected-resource metadata as application/json`);
+  check(authorizationServerHandle.includes("header Content-Type application/json"), `${name} must serve the extensionless authorization-server metadata as application/json`);
 }
 
 for (const docs of [
@@ -91,6 +116,7 @@ for (const docs of [
   check(docs.text.includes(expectedRemoteUrl), `${docs.name} must link the MCP remote endpoint`);
   check(docs.text.includes("https://onlyharness.com/api/openapi.json"), `${docs.name} must link OpenAPI`);
   check(docs.text.includes("https://onlyharness.com/.well-known/oauth-protected-resource"), `${docs.name} must link OAuth protected resource metadata`);
+  check(docs.text.includes("https://onlyharness.com/.well-known/oauth-authorization-server"), `${docs.name} must link OAuth authorization-server metadata`);
 }
 
 console.log("MCP Registry metadata check passed: server.json schema, remote transport, public copy, and docs links are in sync");

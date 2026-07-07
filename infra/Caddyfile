@@ -20,6 +20,12 @@ onlyharness.com, www.onlyharness.com {
 		file_server
 	}
 
+	handle /.well-known/oauth-authorization-server {
+		root * /srv/web
+		header Content-Type application/json
+		file_server
+	}
+
 	handle {
 		root * /srv/web
 		try_files {path} /index.html
