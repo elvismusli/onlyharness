@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, JOB_FILTERS, remixRecipe } from "./core/constants";
+import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, remixRecipe } from "./core/constants";
 import { supabase } from "./core/supabase";
 import { clockLabel, keyFor } from "./core/format";
 import { useAuth } from "./core/useAuth";
+import { useRegistry } from "./core/useRegistry";
 import { useClipboard } from "./core/useClipboard";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
-import { ExploreWindow, type ResourceTab } from "./explore";
+import { ExploreWindow } from "./explore";
 import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
@@ -32,20 +33,9 @@ const WIN_WIDTHS: Record<WinKind, number> = {
 type ActiveDialog = DialogSpec & { onOk?: () => void };
 
 function App() {
-  /* registry data */
-  const [allItems, setAllItems] = useState<RegistryItem[]>([]);
-  const [resourceItems, setResourceItems] = useState<ResourceItem[]>([]);
-  const [resourceCounts, setResourceCounts] = useState({ externalSeed: 0, internal: 0, total: 0 });
-  const [resourceTab, setResourceTab] = useState<ResourceTab>("All");
-  const [leaderboard, setLeaderboard] = useState<RegistryItem[]>([]);
-  const [details, setDetails] = useState<Record<string, HarnessDetail>>({});
-  const [knownItems, setKnownItems] = useState<Record<string, RegistryItem>>({});
+  /* registry/resource data (extracted to core/useRegistry) */
   const [storefronts, setStorefronts] = useState<Record<string, StorefrontPage>>({});
   const [checkoutLinks, setCheckoutLinks] = useState<Record<string, CheckoutLinkState>>({});
-  const [query, setQuery] = useState("");
-  const [jobFilter, setJobFilter] = useState("all");
-  const [sort, setSort] = useState("trending");
-  const [refreshTick, setRefreshTick] = useState(0);
 
   /* social state */
   const [starred, setStarred] = useState<Record<string, boolean>>({});
@@ -54,6 +44,9 @@ function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [kinds, setKinds] = useState<Record<string, string>>({});
   const [tryStates, setTryStates] = useState<Record<string, "idle" | "running" | "done">>({});
+
+  /* registry/resource data + discovery controls (starred/org headers stay here; they extract later) */
+  const reg = useRegistry({ starred, orgHeadersForOwner });
 
   /* auth (extracted to core/useAuth; storefront/social identity stays here for now) */
   const auth = useAuth({ onFlash: flashMsg });
@@ -96,56 +89,6 @@ function App() {
   const { copyText, copiedTag, copyFallback, dismissFallback } = useClipboard({ onFlash: flashMsg });
 
   /* ---------- effects ---------- */
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    params.set("sort", sort);
-    fetch(`${apiUrl}/registry?${params.toString()}`, { signal: controller.signal })
-      .then((response) => response.json())
-      .then((data) => {
-        const items: RegistryItem[] = data.items ?? [];
-        setAllItems(items);
-        setKnownItems((current) => {
-          const next = { ...current };
-          for (const item of items) next[keyFor(item)] = item;
-          return next;
-        });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setAllItems([]);
-      });
-    return () => controller.abort();
-  }, [query, sort, refreshTick]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    params.set("sort", sort === "stars" ? "github-stars" : sort === "new" ? "new" : "popular");
-    params.set("limit", "80");
-    fetch(`${apiUrl}/resources?${params.toString()}`, { signal: controller.signal })
-      .then((response) => response.json())
-      .then((data) => {
-        setResourceItems(data.resources ?? data.items ?? []);
-        setResourceCounts(data.counts ?? { externalSeed: 0, internal: 0, total: 0 });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setResourceItems([]);
-          setResourceCounts({ externalSeed: 0, internal: 0, total: 0 });
-        }
-      });
-    return () => controller.abort();
-  }, [query, sort, refreshTick]);
-
-  useEffect(() => {
-    fetch(`${apiUrl}/leaderboard?limit=10`)
-      .then((response) => response.json())
-      .then((data) => setLeaderboard(data.items ?? []))
-      .catch(() => setLeaderboard([]));
-  }, [refreshTick]);
 
   useEffect(() => {
     if (!supabase || !auth.session?.user) {
@@ -209,11 +152,11 @@ function App() {
       if (checkout) {
         const checkoutKey = keyForCheckout(checkout);
         const harnessKey = `${checkout.owner}/${checkout.repo}`;
-        const item = knownItems[harnessKey] ?? allItems.find((entry) => entry.owner === checkout.owner && entry.name === checkout.repo);
+        const item = reg.knownItems[harnessKey] ?? reg.allItems.find((entry) => entry.owner === checkout.owner && entry.name === checkout.repo);
         setCheckoutLinks((current) => ({ ...current, [checkoutKey]: checkout }));
         if (item) {
-          setKnownItems((current) => (current[harnessKey] ? current : { ...current, [harnessKey]: item }));
-          loadDetail(item);
+          reg.cacheItem(item);
+          reg.loadDetail(item);
         }
         const canonical = `checkout:${checkoutKey}`;
         if (handledHash.current === canonical && wins.some((win) => win.id === `checkout:${checkoutKey}` && !win.minimized)) return;
@@ -232,7 +175,7 @@ function App() {
       const parsed = parseHarnessHash(window.location.hash);
       if (!parsed) return;
       const key = `${parsed.owner}/${parsed.name}`;
-      const item = knownItems[key] ?? allItems.find((entry) => entry.owner === parsed.owner && entry.name === parsed.name);
+      const item = reg.knownItems[key] ?? reg.allItems.find((entry) => entry.owner === parsed.owner && entry.name === parsed.name);
       if (!item) return;
       const canonical = `#/h/${parsed.owner}/${parsed.name}`;
       if (handledHash.current === canonical && wins.some((win) => win.id === `harness:${key}` && !win.minimized)) return;
@@ -247,44 +190,7 @@ function App() {
       window.removeEventListener("hashchange", openFromHash);
       window.removeEventListener("popstate", openFromHash);
     };
-  }, [allItems, knownItems, wins]);
-
-  /* ---------- derived ---------- */
-
-  const items = useMemo(() => {
-    if (jobFilter === "all") return allItems;
-    if (jobFilter === "starred") return allItems.filter((item) => starred[keyFor(item)]);
-    return allItems.filter((item) => item.job === jobFilter || item.outcome === jobFilter);
-  }, [allItems, jobFilter, starred]);
-
-  const visibleResources = useMemo(() => {
-    const typeByTab: Partial<Record<ResourceTab, ResourceItem["resourceType"][]>> = {
-      Skills: ["skill", "subagent_pack", "agent_team"],
-      Plugins: ["plugin", "command_pack", "config"],
-      Workflows: ["workflow"],
-      MCP: ["mcp_server"],
-      Runtimes: ["agent_runtime", "framework"],
-      Guides: ["guide", "directory"]
-    };
-    const types = typeByTab[resourceTab];
-    if (!types) return resourceItems;
-    return resourceItems.filter((resource) => types.includes(resource.resourceType));
-  }, [resourceItems, resourceTab]);
-
-  const jobs = useMemo(() => {
-    const counts = JOB_FILTERS.map((label) => ({ label, count: allItems.filter((item) => item.job === label || item.outcome === label).length }));
-    return [...counts, { label: "starred", count: allItems.filter((item) => starred[keyFor(item)]).length }];
-  }, [allItems, starred]);
-
-  const totals = useMemo(() => ({
-    stars: allItems.reduce((sum, item) => sum + item.stars + (starred[keyFor(item)] ? 1 : 0), 0),
-    forks: allItems.reduce((sum, item) => sum + item.forks, 0),
-    threads: allItems.reduce((sum, item) => sum + item.threads, 0),
-    indexed: allItems.length
-  }), [allItems, starred]);
-
-  const leader = leaderboard[0];
-  const topItem = items[0] ?? allItems[0] ?? leader;
+  }, [reg.allItems, reg.knownItems, wins]);
 
   /* ---------- helpers ---------- */
 
@@ -385,16 +291,6 @@ function App() {
 
   /* ---------- data actions ---------- */
 
-  function loadDetail(item: RegistryItem) {
-    const key = keyFor(item);
-    if (!details[key]) {
-      fetch(`${apiUrl}/repos/${item.owner}/${item.name}/harness`, { headers: orgHeadersForOwner(item.owner) })
-        .then((response) => response.json())
-        .then((data) => setDetails((current) => ({ ...current, [key]: data })))
-        .catch(() => undefined);
-    }
-  }
-
   function orgHeadersForOwner(owner: string): Record<string, string> {
     const slug = owner.startsWith("@") ? owner.slice(1) : "";
     if (!slug || slug !== networkOrg.replace(/^@/, "").trim().toLowerCase() || !networkToken) return {};
@@ -407,11 +303,7 @@ function App() {
       .then((response) => response.json())
       .then((data: StorefrontPage) => {
         setStorefronts((current) => ({ ...current, [handle]: data }));
-        setKnownItems((current) => {
-          const next = { ...current };
-          for (const item of data.items ?? []) next[keyFor(item)] = item;
-          return next;
-        });
+        reg.cacheItems(data.items ?? []);
       })
       .catch(() => undefined);
   }
@@ -431,11 +323,7 @@ function App() {
       setOrgWorkspace(workspace);
       setNetworkOrg(workspace.organization.slug);
       localStorage.setItem("hh:networkOrg", workspace.organization.slug);
-      setKnownItems((current) => {
-        const next = { ...current };
-        for (const item of workspace.items ?? []) next[keyFor(item)] = item;
-        return next;
-      });
+      reg.cacheItems(workspace.items ?? []);
       setNetworkStatus(`Loaded ${workspace.items.length} private harnesses · ${workspace.audit.length} audit rows`);
     } catch (error) {
       setNetworkStatus(error instanceof Error ? error.message : "Org workspace failed");
@@ -446,9 +334,9 @@ function App() {
 
   function openHarness(item: RegistryItem, tab?: DetailTab) {
     const key = keyFor(item);
-    setKnownItems((current) => (current[key] ? current : { ...current, [key]: item }));
+    reg.cacheItem(item);
     if (tab) setTabs((current) => ({ ...current, [key]: tab }));
-    loadDetail(item);
+    reg.loadDetail(item);
     setHarnessHash(item);
     openWin("harness", key);
   }
@@ -536,7 +424,7 @@ function App() {
   }
 
   function openInstall(item?: RegistryItem) {
-    const selected = item ?? topItem;
+    const selected = item ?? reg.topItem;
     if (selected?.contentType === "directory" && selected.directory?.url) {
       window.open(selected.directory.url, "_blank", "noopener,noreferrer");
       recordHarnessEvent("view", selected, "directory-open");
@@ -545,7 +433,7 @@ function App() {
     }
     if (selected) {
       const key = keyFor(selected);
-      setKnownItems((current) => (current[key] ? current : { ...current, [key]: selected }));
+      reg.cacheItem(selected);
       recordHarnessEvent("view", selected, "install-center");
       openWin("install", key);
       return;
@@ -571,7 +459,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Star failed (${response.status})`);
-      setRefreshTick((tick) => tick + 1);
+      reg.bumpRefresh();
     } catch (error) {
       setStarred((current) => ({ ...current, [key]: !next }));
       flashMsg(error instanceof Error ? error.message : "Star failed");
@@ -606,10 +494,9 @@ function App() {
       const remixItem = data.item as RegistryItem | undefined;
       if (remixItem) {
         const remixKey = keyFor(remixItem);
-        setKnownItems((current) => ({ ...current, [remixKey]: remixItem }));
-        setAllItems((current) => [remixItem, ...current.filter((entry) => keyFor(entry) !== remixKey)]);
+        reg.prependItem(remixItem);
         setRemixed((current) => ({ ...current, [key]: true, [remixKey]: true }));
-        setRefreshTick((tick) => tick + 1);
+        reg.bumpRefresh();
         showDialog({
           title: "Local remix draft created",
           icon: "⑂",
@@ -660,7 +547,7 @@ function App() {
       if (!post?.id) throw new Error("Post failed: empty API response");
       setRemotePosts((current) => ({ ...current, [key]: [...(current[key] ?? []), post] }));
       setDrafts((current) => ({ ...current, [key]: "" }));
-      setRefreshTick((tick) => tick + 1);
+      reg.bumpRefresh();
     } catch (error) {
       flashMsg(error instanceof Error ? error.message : "Post failed");
     }
@@ -685,9 +572,9 @@ function App() {
         return;
       }
       closeWin("publish");
-      setQuery("");
-      setJobFilter("all");
-      setRefreshTick((tick) => tick + 1);
+      reg.setQuery("");
+      reg.setJobFilter("all");
+      reg.bumpRefresh();
       const warnings = Array.isArray(result.warnings) && result.warnings.length ? `\n\n${result.warnings.join("\n")}` : "";
       const next = typeof result.next === "string" ? `\n\n${result.next}` : "";
       showDialog({ title: "Harness published", icon: "📦", body: `${result.item.title} is live on the frontier. Give it a star before someone else does.${warnings}${next}` });
@@ -720,7 +607,7 @@ function App() {
 
   function winMeta(win: FloatWin): { icon: string; title: string } {
     const checkout = win.kind === "checkout" && win.hkey ? checkoutLinks[win.hkey] : undefined;
-    const item = checkout ? knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? knownItems[win.hkey] : undefined;
+    const item = checkout ? reg.knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? reg.knownItems[win.hkey] : undefined;
     switch (win.kind) {
       case "harness": return { icon: "📦", title: item?.title ?? "Harness" };
       case "publish": return { icon: "📄", title: "New Harness Wizard" };
@@ -766,10 +653,10 @@ function App() {
     { icon: "🧭", label: "Explore", onClick: () => { setFocusedId(""); window.scrollTo({ top: 0, behavior: "smooth" }); } },
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
     { icon: "🌐", label: "Network Neighborhood", onClick: () => openWin("network") },
-    { icon: "💿", label: "Install Center", onClick: () => openInstall(topItem) },
+    { icon: "💿", label: "Install Center", onClick: () => openInstall(reg.topItem) },
     { icon: "🗂️", label: myHandle ? `My Briefcase (@${myHandle})` : "My Briefcase...", onClick: openMyBriefcase },
     { icon: "📄", label: "New harness...", onClick: () => openWin("publish") },
-    { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", topItem ? keyFor(topItem) : undefined) },
+    { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", reg.topItem ? keyFor(reg.topItem) : undefined) },
     { icon: "🔧", label: "Maintainer Review", onClick: () => openReview() },
     "sep",
     auth.user
@@ -780,8 +667,8 @@ function App() {
   ];
 
   function openReview() {
-    const item = topItem;
-    if (item) loadDetail(item);
+    const item = reg.topItem;
+    if (item) reg.loadDetail(item);
     openWin("review", item ? keyFor(item) : undefined);
   }
 
@@ -789,12 +676,12 @@ function App() {
 
   function renderWinBody(win: FloatWin) {
     const checkout = win.kind === "checkout" && win.hkey ? checkoutLinks[win.hkey] : undefined;
-    const item = checkout ? knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? knownItems[win.hkey] : topItem;
+    const item = checkout ? reg.knownItems[`${checkout.owner}/${checkout.repo}`] : win.hkey ? reg.knownItems[win.hkey] : reg.topItem;
     switch (win.kind) {
       case "harness": {
         if (!item) return <div className="win-body plate">This harness rode off into the sunset.</div>;
         const key = keyFor(item);
-        const detail = details[key];
+        const detail = reg.details[key];
         const thread = [
           ...(detail?.thread ?? []),
           ...(remotePosts[key] ?? []).map((post) =>
@@ -847,7 +734,7 @@ function App() {
         return (
           <InstallBody
             item={item}
-            detail={item ? details[keyFor(item)] : undefined}
+            detail={item ? reg.details[keyFor(item)] : undefined}
             apiUrl={apiUrl}
             accessToken={auth.accessToken}
             refCode={refCode}
@@ -864,7 +751,7 @@ function App() {
           <CheckoutBody
             checkout={checkout}
             item={item}
-            detail={item ? details[keyFor(item)] : undefined}
+            detail={item ? reg.details[keyFor(item)] : undefined}
             apiUrl={apiUrl}
             refCode={checkout?.ref ?? refCode}
             onOpenInstall={() => openInstall(item)}
@@ -878,9 +765,9 @@ function App() {
           void copyText(text, "CLI commands copied", "cliwin");
         }} copied={copiedTag === "cliwin"} />;
       case "review":
-        return <ReviewBody item={item} detail={item ? details[keyFor(item)] : undefined} onCopy={(text) => copyText(text, "Gate commands copied", "gate")} copied={copiedTag === "gate"} />;
+        return <ReviewBody item={item} detail={item ? reg.details[keyFor(item)] : undefined} onCopy={(text) => copyText(text, "Gate commands copied", "gate")} copied={copiedTag === "gate"} />;
       case "leaderboard":
-        return <LeaderboardBody items={leaderboard} onOpen={(entry) => openHarness(entry)} />;
+        return <LeaderboardBody items={reg.leaderboard} onOpen={(entry) => openHarness(entry)} />;
       case "share":
         return item
           ? <ShareBody item={item} starred={Boolean(starred[keyFor(item)])} refCode={refCode} onCopy={(text) => copyText(text, "Share text copied", "brag")} copied={copiedTag === "brag"} />
@@ -930,34 +817,34 @@ function App() {
     <div className="desktop">
       <DesktopIcons
         onMyHarnesses={() => {
-          setResourceTab("All");
-          setJobFilter("all");
+          reg.setResourceTab("All");
+          reg.setJobFilter("all");
           document.getElementById("trending")?.scrollIntoView({ behavior: "smooth" });
         }}
         onNetwork={() => openWin("network")}
         onBin={binDialog}
       />
-      <AwardWindow leader={leader} />
+      <AwardWindow leader={reg.leader} />
 
       <div onPointerDownCapture={() => setFocusedId("")}>
         <ExploreWindow
-          items={items}
-          resources={visibleResources}
-          resourceCounts={resourceCounts}
-          resourceTab={resourceTab}
-          setResourceTab={setResourceTab}
-          jobs={jobs}
-          jobFilter={jobFilter}
-          setJobFilter={setJobFilter}
-          query={query}
-          setQuery={setQuery}
-          sort={sort}
-          setSort={setSort}
+          items={reg.items}
+          resources={reg.visibleResources}
+          resourceCounts={reg.resourceCounts}
+          resourceTab={reg.resourceTab}
+          setResourceTab={reg.setResourceTab}
+          jobs={reg.jobs}
+          jobFilter={reg.jobFilter}
+          setJobFilter={reg.setJobFilter}
+          query={reg.query}
+          setQuery={reg.setQuery}
+          sort={reg.sort}
+          setSort={reg.setSort}
           starred={starred}
           remixed={remixed}
           session={auth.session}
-          totals={totals}
-          leader={leader}
+          totals={reg.totals}
+          leader={reg.leader}
           flash={flash}
           active={focusedId === ""}
           actions={{
@@ -968,7 +855,7 @@ function App() {
             remix: remixHarness,
             share: (item) => openWin("share", keyFor(item)),
             openPublish: () => openWin("publish"),
-            openCli: () => openWin("cli", topItem ? keyFor(topItem) : undefined),
+            openCli: () => openWin("cli", reg.topItem ? keyFor(reg.topItem) : undefined),
             openReview,
             openLeaderboard: () => openWin("leaderboard"),
             openProfile: openMyBriefcase,
@@ -980,9 +867,8 @@ function App() {
             copyCodexMcpInstall: () => copyText(CODEX_MCP_INSTALL_COMMAND, "Codex MCP install copied", "agent-install:codex"),
             copyText: (text, label) => copyText(text, label),
             refresh: () => {
-              setDetails({});
+              reg.refresh();
               setRemotePosts({});
-              setRefreshTick((tick) => tick + 1);
               flashMsg("Registry refreshed");
             }
           }}
@@ -1011,7 +897,7 @@ function App() {
         );
       })}
 
-      <PaintWindow items={leaderboard} />
+      <PaintWindow items={reg.leaderboard} />
       <Mascot onYes={() => openWin("publish")} />
 
       {startOpen && <StartMenu items={startEntries} onClose={() => setStartOpen(false)} />}
