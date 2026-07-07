@@ -1,0 +1,893 @@
+/*
+ * Fans skin — friendly sky-blue "OnlyFans-style" PARODY landing where you
+ * subscribe to / support harnesses like creators. An original parody: OnlyHarness
+ * keeps its own "O" mark + copy; the footer says "a parody landing". No
+ * third-party logos, wordmarks, or verbatim marketing copy.
+ *
+ * Every rule is scoped under `.skin-fans` so nothing leaks into the Modern or
+ * Win98 skins. Tokens mirror the hi-fi handoff exactly
+ * (design_handoff_onlyharness_fans/README.md): one brand blue, rounded pills,
+ * soft BLUE-tinted shadows (never neutral grey), Nunito everywhere + JetBrains
+ * Mono for @handles / CLI.
+ *
+ * Fonts are pulled from Google Fonts here (the app's index.html only ships the
+ * Win98 pixel fonts). `index.tsx` also injects a matching <link> on mount as a
+ * belt-and-braces fallback in case a build inlines/strips CSS @import.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;600&display=swap");
+
+.skin-fans {
+  /* ---- colour ---- */
+  --fa-brand: #00aff0;
+  --fa-brand-hover: #0090d0;
+  --fa-wash: #e9f8ff;
+  --fa-tint: #f6fbfe;
+  --fa-tint-border: #e4f2fa;
+  --fa-ink: #0a1721;
+  --fa-body: #4a5a67;
+  --fa-muted: #5b6b78;
+  --fa-faint: #9aa8b2;
+  --fa-hairline: #eef1f4;
+  --fa-hairline-soft: #e6ebef;
+  --fa-input-border: #dfe6eb;
+  --fa-eval-green: #16b364;
+  --fa-footer-text: #8ea1af;
+  --fa-card-border: #e9eef2;
+  --fa-switch-bg: #f1f5f8;
+  --fa-switch-hover: #e3e9ee;
+
+  /* ---- blue-tinted shadows (never neutral grey) ---- */
+  --fa-shadow-card: 0 18px 40px -18px rgba(0, 120, 175, 0.35);
+  --fa-shadow-creator: 0 16px 34px -16px rgba(10, 60, 90, 0.3);
+  --fa-shadow-cta: 0 14px 30px -12px rgba(0, 150, 208, 0.6);
+  --fa-shadow-badge: 0 12px 28px -12px rgba(0, 0, 0, 0.5);
+
+  /* ---- radii ladder (don't invent other values) ---- */
+  --fa-r-pill: 999px;
+  --fa-r-input: 12px;
+  --fa-r-badge: 14px;
+  --fa-r-card: 20px;
+  --fa-r-signup: 22px;
+
+  /* ---- type ---- */
+  --fa-font-ui: "Nunito", system-ui, -apple-system, sans-serif;
+  --fa-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+
+  /* ---- layout ---- */
+  --fa-content-max: 1180px;
+
+  /* base surface + type reset for the whole skin subtree */
+  min-height: 100vh;
+  background: #fff;
+  color: var(--fa-ink);
+  font-family: var(--fa-font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.skin-fans *,
+.skin-fans *::before,
+.skin-fans *::after {
+  box-sizing: border-box;
+}
+
+.skin-fans ::selection {
+  background: var(--fa-brand);
+  color: #fff;
+}
+
+.skin-fans a {
+  color: var(--fa-brand);
+  text-decoration: none;
+}
+.skin-fans a:hover {
+  color: var(--fa-brand-hover);
+}
+
+.skin-fans button {
+  font-family: inherit;
+}
+
+.skin-fans h1,
+.skin-fans h2,
+.skin-fans h3 {
+  font-family: var(--fa-font-ui);
+  margin: 0;
+}
+
+@keyframes fa-float {
+  0%, 100% { transform: translateY(0) rotate(var(--fa-r, 0deg)); }
+  50% { transform: translateY(-10px) rotate(var(--fa-r, 0deg)); }
+}
+
+/* ============================================================================
+ * Shared-neutral override — the Install Center + CLI terminal (rendered later
+ * via skins/shared/neutral/*) default to a DARK developer-console palette. On
+ * the bright Fans page that dark block would read wrong, so give `.oh-neutral`
+ * a LIGHT-but-serious treatment: white surfaces, ink text, the brand blue as
+ * accent. The markup is untouched — only `--neutral-*` custom properties are
+ * re-pointed. Scoped under `.skin-fans` so no other skin is affected.
+ * ========================================================================== */
+.skin-fans .oh-neutral {
+  --neutral-bg: #ffffff;
+  --neutral-surface: #f6fbfe;
+  --neutral-elevated: #eef6fb;
+  --neutral-hairline: #e4f2fa;
+  --neutral-hairline-soft: #eef1f4;
+  --neutral-border-hover: #cfe6f4;
+  --neutral-text: #0a1721;
+  --neutral-muted: #4a5a67;
+  --neutral-faint: #9aa8b2;
+  --neutral-dim: #5b6b78;
+  --neutral-accent: #00aff0;
+  --neutral-accent-soft: #0090d0;
+  --neutral-green: #16b364;
+  --neutral-warn: #d98a00;
+  --neutral-danger: #e0555f;
+  --neutral-font-ui: "Nunito", system-ui, -apple-system, sans-serif;
+  --neutral-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+}
+/* Primary neutral buttons use white text on the brand blue (the default theme
+   assumes a dark bg for its button text, which would be invisible here). */
+.skin-fans .oh-neutral .ohn-btn-primary {
+  color: #fff;
+}
+
+/* ============================================================================
+ * Primitives (see primitives.tsx). Kept here so the skin ships one CSS file and
+ * everything stays scoped under `.skin-fans`.
+ * ========================================================================== */
+
+/* ---- Btn ---- */
+.skin-fans .fa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: var(--fa-r-pill);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.skin-fans .fa-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.skin-fans .fa-btn-primary {
+  background: var(--fa-brand);
+  color: #fff;
+}
+.skin-fans .fa-btn-primary:not(:disabled):hover {
+  background: var(--fa-brand-hover);
+}
+.skin-fans .fa-btn-outline {
+  background: #fff;
+  color: var(--fa-ink);
+  border-color: var(--fa-input-border);
+  font-weight: 700;
+}
+.skin-fans .fa-btn-outline:not(:disabled):hover {
+  background: #f6f9fb;
+}
+.skin-fans .fa-btn-cli {
+  background: var(--fa-ink);
+  color: #fff;
+  font-family: var(--fa-font-mono);
+  font-weight: 600;
+}
+.skin-fans .fa-btn-cli:not(:disabled):hover {
+  background: #1b2733;
+}
+
+/* ---- Pill ---- */
+.skin-fans .fa-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--fa-r-pill);
+  font-weight: 800;
+  font-size: 11px;
+  padding: 4px 11px;
+  white-space: nowrap;
+}
+.skin-fans .fa-pill-brand {
+  background: var(--fa-brand);
+  color: #fff;
+}
+.skin-fans .fa-pill-soft {
+  background: var(--fa-wash);
+  color: var(--fa-brand-hover);
+}
+.skin-fans .fa-pill-dark {
+  background: var(--fa-ink);
+  color: #fff;
+  border-radius: var(--fa-r-badge);
+  padding: 11px 15px;
+  font-size: 13px;
+  box-shadow: var(--fa-shadow-badge);
+}
+
+/* ---- Avatar (round emoji-on-tint) ---- */
+.skin-fans .fa-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* ---- Stat ---- */
+.skin-fans .fa-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #7c8b96;
+  white-space: nowrap;
+}
+.skin-fans .fa-stat-eval {
+  color: var(--fa-eval-green);
+}
+
+/* ---- SubscribeButton ---- */
+.skin-fans .fa-subscribe {
+  border: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--fa-brand);
+  border-radius: var(--fa-r-pill);
+  padding: 4px 11px;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.skin-fans .fa-subscribe:hover {
+  background: var(--fa-brand-hover);
+}
+.skin-fans .fa-subscribe[data-subscribed] {
+  background: var(--fa-eval-green);
+}
+
+/* ============================================================================
+ * Nav (see nav.tsx) — sticky 64px white bar, bottom hairline.
+ * ========================================================================== */
+.skin-fans .fa-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: #fff;
+  border-bottom: 1px solid var(--fa-hairline);
+}
+.skin-fans .fa-nav-inner {
+  max-width: var(--fa-content-max);
+  margin: 0 auto;
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.skin-fans .fa-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.skin-fans .fa-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--fa-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 900;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.skin-fans .fa-wordmark {
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: -0.5px;
+  color: var(--fa-ink);
+}
+.skin-fans .fa-wordmark b {
+  color: var(--fa-brand);
+  font-weight: 900;
+}
+.skin-fans .fa-nav-spacer {
+  flex: 1;
+}
+.skin-fans .fa-login {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--fa-ink);
+  padding: 9px 14px;
+}
+.skin-fans .fa-login:hover {
+  color: var(--fa-brand);
+}
+
+/* ---- SkinSwitcher (headless markup, styled here as a pill segment group) ---- */
+.skin-fans .skin-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--fa-switch-bg);
+  border-radius: var(--fa-r-pill);
+  padding: 3px;
+}
+.skin-fans .skin-switcher-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fa-muted);
+  padding: 6px 12px;
+  border-radius: var(--fa-r-pill);
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.skin-fans .skin-switcher-btn:hover {
+  background: var(--fa-switch-hover);
+}
+.skin-fans .skin-switcher-btn[data-active] {
+  background: var(--fa-brand);
+  color: #fff;
+  font-weight: 800;
+}
+
+/* ============================================================================
+ * Landing (see landing.tsx).
+ * ========================================================================== */
+.skin-fans .fa-page {
+  min-height: 100vh;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* ---- hero ---- */
+.skin-fans .fa-hero {
+  position: relative;
+  background: linear-gradient(180deg, var(--fa-wash) 0%, #fff 78%);
+}
+.skin-fans .fa-blob {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #7fdcff, var(--fa-brand));
+  pointer-events: none;
+}
+.skin-fans .fa-blob-1 {
+  top: 60px;
+  left: 6%;
+  width: 120px;
+  height: 120px;
+  opacity: 0.25;
+  animation: fa-float 7s ease-in-out infinite;
+}
+.skin-fans .fa-blob-2 {
+  bottom: 40px;
+  right: 4%;
+  width: 80px;
+  height: 80px;
+  opacity: 0.2;
+  animation: fa-float 9s ease-in-out infinite;
+}
+.skin-fans .fa-hero-inner {
+  max-width: var(--fa-content-max);
+  margin: 0 auto;
+  padding: 56px 24px 72px;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 48px;
+  align-items: center;
+}
+.skin-fans .fa-h1 {
+  font-weight: 900;
+  font-size: 56px;
+  line-height: 1.03;
+  letter-spacing: -1.6px;
+  margin: 0 0 18px;
+}
+.skin-fans .fa-h1 b {
+  color: var(--fa-brand);
+  font-weight: 900;
+}
+.skin-fans .fa-lede {
+  font-size: 19px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 0 28px;
+  max-width: 460px;
+}
+
+/* ---- sign-up card ---- */
+.skin-fans .fa-signup {
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 26px;
+  max-width: 440px;
+}
+.skin-fans .fa-signup-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.skin-fans .fa-input {
+  width: 100%;
+  border: 1.5px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 14px 16px;
+  font-family: var(--fa-font-ui);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--fa-ink);
+  outline: none;
+  transition: border-color .15s;
+}
+.skin-fans .fa-input:focus {
+  border-color: var(--fa-brand);
+}
+.skin-fans .fa-input::placeholder {
+  color: var(--fa-faint);
+}
+.skin-fans .fa-signup .fa-btn {
+  width: 100%;
+  padding: 15px;
+  font-size: 16px;
+}
+.skin-fans .fa-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--fa-faint);
+  font-size: 13px;
+  font-weight: 700;
+}
+.skin-fans .fa-or span {
+  flex: 1;
+  height: 1px;
+  background: var(--fa-hairline);
+}
+.skin-fans .fa-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skin-fans .fa-oauth .fa-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+}
+.skin-fans .fa-oauth .fa-btn-cli {
+  font-size: 13px;
+}
+.skin-fans .fa-fine {
+  font-size: 11.5px;
+  color: var(--fa-faint);
+  font-weight: 600;
+  text-align: center;
+  margin: 16px 0 0;
+  line-height: 1.5;
+}
+
+/* ---- creator collage ---- */
+.skin-fans .fa-collage {
+  position: relative;
+  height: 520px;
+}
+.skin-fans .fa-collage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--fa-muted);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 24px;
+}
+.skin-fans .fa-creator {
+  position: absolute;
+  background: #fff;
+  border: 1px solid var(--fa-card-border);
+  border-radius: var(--fa-r-card);
+  box-shadow: var(--fa-shadow-creator);
+  padding: 14px;
+  animation: fa-float var(--fa-dur, 7s) ease-in-out infinite;
+}
+.skin-fans .fa-creator-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.skin-fans .fa-creator-meta {
+  min-width: 0;
+}
+.skin-fans .fa-creator-title {
+  font-weight: 800;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skin-fans .fa-creator-handle {
+  font-family: var(--fa-font-mono);
+  font-size: 11px;
+  color: var(--fa-brand);
+  font-weight: 600;
+}
+.skin-fans .fa-creator-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.skin-fans .fa-creator-price {
+  font-family: var(--fa-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fa-ink);
+}
+.skin-fans .fa-creator-price small {
+  color: var(--fa-faint);
+  font-weight: 600;
+}
+.skin-fans .fa-creator-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.skin-fans .fa-top-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  z-index: 5;
+}
+
+/* ============================================================================
+ * Stats bar (full-bleed brand blue).
+ * ========================================================================== */
+.skin-fans .fa-statsbar {
+  background: var(--fa-brand);
+  color: #fff;
+}
+.skin-fans .fa-statsbar-inner {
+  max-width: var(--fa-content-max);
+  margin: 0 auto;
+  padding: 26px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  justify-content: space-around;
+  text-align: center;
+}
+.skin-fans .fa-statsbar-figure {
+  font-weight: 900;
+  font-size: 34px;
+  line-height: 1;
+}
+.skin-fans .fa-statsbar-label {
+  font-weight: 700;
+  font-size: 13.5px;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+/* ============================================================================
+ * How it works.
+ * ========================================================================== */
+.skin-fans .fa-how {
+  max-width: var(--fa-content-max);
+  margin: 0 auto;
+  padding: 72px 24px;
+}
+.skin-fans .fa-how-title {
+  font-weight: 900;
+  font-size: 38px;
+  letter-spacing: -1px;
+  text-align: center;
+  margin: 0 0 8px;
+}
+.skin-fans .fa-how-sub {
+  text-align: center;
+  color: var(--fa-muted);
+  font-weight: 600;
+  font-size: 17px;
+  margin: 0 0 44px;
+}
+.skin-fans .fa-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.skin-fans .fa-step {
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 26px;
+}
+.skin-fans .fa-step-n {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--fa-r-badge);
+  background: var(--fa-brand);
+  color: #fff;
+  font-weight: 900;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.skin-fans .fa-step-title {
+  font-weight: 800;
+  font-size: 19px;
+  margin-bottom: 7px;
+}
+.skin-fans .fa-step-body {
+  font-size: 14.5px;
+  color: var(--fa-muted);
+  font-weight: 600;
+  line-height: 1.55;
+}
+.skin-fans .fa-how-cta {
+  text-align: center;
+  margin-top: 44px;
+}
+.skin-fans .fa-how-cta .fa-btn {
+  padding: 16px 40px;
+  font-size: 17px;
+  box-shadow: var(--fa-shadow-cta);
+}
+
+/* ============================================================================
+ * Footer (dark ink).
+ * ========================================================================== */
+.skin-fans .fa-footer {
+  background: var(--fa-ink);
+  color: var(--fa-footer-text);
+}
+.skin-fans .fa-footer-inner {
+  max-width: var(--fa-content-max);
+  margin: 0 auto;
+  padding: 40px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+}
+.skin-fans .fa-footer-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--fa-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 900;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.skin-fans .fa-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.skin-fans .fa-footer-brand span {
+  font-weight: 900;
+  font-size: 17px;
+  color: #fff;
+}
+.skin-fans .fa-footer-links {
+  display: flex;
+  gap: 22px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.skin-fans .fa-footer-links a {
+  color: var(--fa-footer-text);
+}
+.skin-fans .fa-footer-links a:hover {
+  color: #fff;
+}
+.skin-fans .fa-footer-fine {
+  border-top: 1px solid #17242f;
+  padding: 16px 24px;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fa-muted);
+}
+
+/* ============================================================================
+ * Chrome (see chrome.tsx) — blue-tinted modal, copy fallback, toast.
+ * ========================================================================== */
+.skin-fans .fac-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(10, 23, 33, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.skin-fans .fac-modal {
+  width: 100%;
+  max-width: 440px;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 24px;
+}
+.skin-fans .fac-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.skin-fans .fac-modal-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.skin-fans .fac-modal-title {
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: -0.4px;
+  color: var(--fa-ink);
+}
+.skin-fans .fac-modal-body {
+  font-size: 14.5px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin: 0 0 18px;
+}
+.skin-fans .fac-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.skin-fans .fac-fallback {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 1.5px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 12px 14px;
+  font-family: var(--fa-font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--fa-ink);
+  outline: none;
+  margin: 0 0 18px;
+}
+.skin-fans .fac-fallback:focus {
+  border-color: var(--fa-brand);
+}
+.skin-fans .fac-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 120;
+  background: var(--fa-ink);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 11px 18px;
+  border-radius: var(--fa-r-pill);
+  box-shadow: var(--fa-shadow-badge);
+  max-width: min(90vw, 520px);
+  text-align: center;
+}
+
+/* ============================================================================
+ * Placeholder surface card (non-Explore surfaces until later tasks fill them).
+ * ========================================================================== */
+.skin-fans .fa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: linear-gradient(180deg, var(--fa-wash) 0%, #fff 60%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.skin-fans .fa-overlay-card {
+  width: 100%;
+  max-width: 460px;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 28px;
+}
+.skin-fans .fa-overlay-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.skin-fans .fa-overlay-title {
+  font-weight: 900;
+  font-size: 24px;
+  letter-spacing: -0.6px;
+  color: var(--fa-ink);
+}
+.skin-fans .fa-overlay-close {
+  border: none;
+  background: var(--fa-tint);
+  color: var(--fa-muted);
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.skin-fans .fa-overlay-close:hover {
+  background: var(--fa-wash);
+  color: var(--fa-brand);
+}
+.skin-fans .fa-overlay-body {
+  font-size: 15px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+.skin-fans .fa-overlay-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ============================================================================
+ * Responsive — collapse the hero/steps grids on narrow viewports.
+ * ========================================================================== */
+@media (max-width: 900px) {
+  .skin-fans .fa-hero-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .skin-fans .fa-h1 {
+    font-size: 44px;
+    letter-spacing: -1.2px;
+  }
+  .skin-fans .fa-collage {
+    height: 560px;
+  }
+  .skin-fans .fa-steps {
+    grid-template-columns: 1fr;
+  }
+}

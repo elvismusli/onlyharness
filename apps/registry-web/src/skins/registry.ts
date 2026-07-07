@@ -13,10 +13,9 @@ export type SkinEntry = {
 };
 
 /**
- * Registered skins, in switcher order. Modern and Win98 ship today (each lazily
- * mounted so only the active skin's chunk loads); Fans is added in a later phase.
- * The default skin is resolved in SkinProvider (still Win98), independent of this
- * array's order.
+ * Registered skins, in switcher order. Each is lazily mounted so only the active
+ * skin's chunk loads. The default skin is resolved in SkinProvider (still Win98),
+ * independent of this array's order.
  */
 export const SKINS: SkinEntry[] = [
   {
@@ -30,5 +29,11 @@ export const SKINS: SkinEntry[] = [
     label: "W98",
     icon: "🪟",
     mount: lazy(() => import("./win98").then((m) => ({ default: m.Win98Skin })))
+  },
+  {
+    id: "fans",
+    label: "Fans",
+    icon: "💙",
+    mount: lazy(() => import("./fans").then((m) => ({ default: m.FansSkin })))
   }
 ];
