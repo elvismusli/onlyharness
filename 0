@@ -1,1 +1,0 @@
-local production.env VITE_SUPABASE_URL set: 40

@@ -6,6 +6,8 @@ dist
 .env
 .env.local
 data/harness-state.json
+data/events.jsonl
+data/harness-versions/*
 data/.review-variant
 data/*.source.md
 data/gitea-proof-source-test
