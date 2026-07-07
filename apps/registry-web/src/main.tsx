@@ -9,8 +9,9 @@ import { useClipboard } from "./core/useClipboard";
 import { useSocial } from "./core/useSocial";
 import { usePublish } from "./core/usePublish";
 import { useStorefront } from "./core/useStorefront";
+import { useOrgWorkspace } from "./core/useOrgWorkspace";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, WinKind } from "./core/types";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, RegistryItem, ResourceItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
@@ -63,8 +64,17 @@ function App() {
     onFlash: flashMsg
   });
 
-  /* registry/resource data + discovery controls (org headers stay here; they extract later) */
-  const reg = useRegistry({ starred: social.starred, orgHeadersForOwner });
+  /* organization workspace (extracted to core/useOrgWorkspace). Created before
+     `reg` because `reg` needs `org.orgHeadersForOwner`; the `cacheItems` wrapper
+     only dereferences `reg` inside `loadOrgWorkspace`'s fetch handler, well after
+     both hooks mount — the same lazy trick used for reg↔social above. */
+  const org = useOrgWorkspace({
+    cacheItems: (items) => reg.cacheItems(items),
+    onFlash: flashMsg
+  });
+
+  /* registry/resource data + discovery controls */
+  const reg = useRegistry({ starred: social.starred, orgHeadersForOwner: org.orgHeadersForOwner });
 
   /* publish/import flow (extracted to core/usePublish) */
   const publish = usePublish({
@@ -85,13 +95,6 @@ function App() {
     onFlash: flashMsg,
     onNeedAuth: openMyBriefcase
   });
-
-  /* organization workspace */
-  const [networkOrg, setNetworkOrg] = useState(() => localStorage.getItem("hh:networkOrg") ?? "acme");
-  const [networkToken, setNetworkToken] = useState("");
-  const [networkStatus, setNetworkStatus] = useState("");
-  const [networkBusy, setNetworkBusy] = useState(false);
-  const [orgWorkspace, setOrgWorkspace] = useState<OrgWorkspace | undefined>();
 
   /* window manager: `wins` keeps stable taskbar order, `stack` keeps stacking order (last = top) */
   const [wins, setWins] = useState<FloatWin[]>([]);
@@ -248,36 +251,6 @@ function App() {
   }
 
   /* ---------- data actions ---------- */
-
-  function orgHeadersForOwner(owner: string): Record<string, string> {
-    const slug = owner.startsWith("@") ? owner.slice(1) : "";
-    if (!slug || slug !== networkOrg.replace(/^@/, "").trim().toLowerCase() || !networkToken) return {};
-    return { Authorization: `Bearer ${networkToken}` };
-  }
-
-  async function loadOrgWorkspace() {
-    const slug = networkOrg.replace(/^@/, "").trim().toLowerCase();
-    if (!slug) return;
-    setNetworkBusy(true);
-    setNetworkStatus("");
-    try {
-      const response = await fetch(`${apiUrl}/orgs/${encodeURIComponent(slug)}/workspace`, {
-        headers: networkToken ? { Authorization: `Bearer ${networkToken}` } : {}
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? `Request failed (${response.status})`);
-      const workspace = data as OrgWorkspace;
-      setOrgWorkspace(workspace);
-      setNetworkOrg(workspace.organization.slug);
-      localStorage.setItem("hh:networkOrg", workspace.organization.slug);
-      reg.cacheItems(workspace.items ?? []);
-      setNetworkStatus(`Loaded ${workspace.items.length} private harnesses · ${workspace.audit.length} audit rows`);
-    } catch (error) {
-      setNetworkStatus(error instanceof Error ? error.message : "Org workspace failed");
-    } finally {
-      setNetworkBusy(false);
-    }
-  }
 
   function openHarness(item: RegistryItem, tab?: DetailTab) {
     const key = keyFor(item);
@@ -551,14 +524,14 @@ function App() {
       case "network":
         return (
           <NetworkBody
-            orgSlug={networkOrg}
-            setOrgSlug={setNetworkOrg}
-            orgToken={networkToken}
-            setOrgToken={setNetworkToken}
-            workspace={orgWorkspace}
-            status={networkStatus}
-            busy={networkBusy}
-            onLoad={loadOrgWorkspace}
+            orgSlug={org.networkOrg}
+            setOrgSlug={org.setNetworkOrg}
+            orgToken={org.networkToken}
+            setOrgToken={org.setNetworkToken}
+            workspace={org.orgWorkspace}
+            status={org.networkStatus}
+            busy={org.networkBusy}
+            onLoad={org.loadOrgWorkspace}
             onOpen={(entry) => openHarness(entry)}
           />
         );
