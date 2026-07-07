@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, JOB_FILTERS, remixRecipe } from "./core/constants";
 import { supabase } from "./core/supabase";
 import { clockLabel, keyFor } from "./core/format";
+import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
 import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
@@ -210,12 +211,12 @@ function App() {
 
   useEffect(() => {
     function openFromHash() {
-      const ref = refFromLocation();
+      const ref = refFromLocation(window.location.search, window.location.hash);
       if (ref) {
         setRefCode((current) => current === ref ? current : ref);
         localStorage.setItem("onlyharness.ref", ref);
       }
-      const checkout = parseCheckoutLocation();
+      const checkout = parseCheckoutLocation(window.location.pathname, window.location.search);
       if (checkout) {
         const checkoutKey = keyForCheckout(checkout);
         const harnessKey = `${checkout.owner}/${checkout.repo}`;
@@ -410,7 +411,7 @@ function App() {
   }
 
   function clearDeepLinkForClosedWindow(id: string) {
-    const checkout = parseCheckoutLocation();
+    const checkout = parseCheckoutLocation(window.location.pathname, window.location.search);
     if (checkout && id === `checkout:${keyForCheckout(checkout)}`) {
       const next = checkout.ref ? `/?ref=${encodeURIComponent(checkout.ref)}` : "/";
       window.history.replaceState(null, "", next);
@@ -1199,57 +1200,3 @@ const root = (window as HarnessWindow).__harnessHub98Root ?? createRoot(containe
 (window as HarnessWindow).__harnessHub98Root = root;
 root.render(<App />);
 
-function parseHarnessHash(hash: string): { owner: string; name: string } | undefined {
-  const match = hash.match(/^#\/h\/([^/]+)\/([^/?#]+)(?:\?.*)?$/);
-  if (!match) return undefined;
-  return {
-    owner: decodeURIComponent(match[1]),
-    name: decodeURIComponent(match[2])
-  };
-}
-
-function parseStorefrontHash(hash: string): { handle: string } | undefined {
-  const match = hash.match(/^#\/@([^/?#]+)(?:\?.*)?$/);
-  if (!match) return undefined;
-  return { handle: decodeURIComponent(match[1]).replace(/^@/, "").toLowerCase() };
-}
-
-function parseCheckoutLocation(): CheckoutLinkState | undefined {
-  if (window.location.pathname.replace(/\/+$/, "") !== "/checkout") return undefined;
-  const params = new URLSearchParams(window.location.search);
-  const owner = params.get("owner")?.trim();
-  const repo = params.get("repo")?.trim();
-  if (!owner || !repo) return undefined;
-  return {
-    owner,
-    repo,
-    version: params.get("version")?.trim() || "latest",
-    providerRef: params.get("provider_ref")?.trim() || undefined,
-    ref: params.get("ref")?.trim() || undefined
-  };
-}
-
-function keyForCheckout(checkout: CheckoutLinkState): string {
-  return [
-    encodeURIComponent(checkout.owner),
-    encodeURIComponent(checkout.repo),
-    encodeURIComponent(checkout.providerRef || checkout.version || "latest")
-  ].join("/");
-}
-
-function setHarnessHash(item: RegistryItem) {
-  const next = `#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`;
-  if (window.location.hash === next) return;
-  window.history.replaceState(null, "", next);
-}
-
-function initialRefCode(): string {
-  return refFromLocation() ?? localStorage.getItem("onlyharness.ref") ?? "";
-}
-
-function refFromLocation(): string | undefined {
-  const queryRef = new URLSearchParams(window.location.search).get("ref");
-  if (queryRef) return queryRef;
-  const hashQuery = window.location.hash.split("?")[1];
-  return hashQuery ? new URLSearchParams(hashQuery).get("ref") ?? undefined : undefined;
-}
