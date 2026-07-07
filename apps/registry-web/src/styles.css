@@ -1185,6 +1185,26 @@ button.status-plate { cursor: pointer; }
 
 .dialog-actions .b98 { min-width: 76px; }
 
+.copy-fallback { align-items: flex-start; }
+
+.copy-fallback-body {
+  display: grid;
+  gap: 8px;
+  min-width: min(520px, calc(100vw - 110px));
+}
+
+.copy-fallback-text {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  background: #fff;
+  color: var(--ink);
+  border: 0;
+  box-shadow: var(--bevel-sunken);
+  padding: 8px;
+  font: 12px "Courier New", monospace;
+}
+
 .logon-form { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 12px; }
 
 .logon-row { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 8px; font-size: 12px; }

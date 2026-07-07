@@ -17,6 +17,8 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : undefined;
 
 const JOB_FILTERS = ["Market research", "GTM research", "Support triage", "Payment safety", "Product strategy", "Incident response", "Data quality", "Security review", "Launch readiness", "Repo audit", "Harness building", "Directory discovery"];
+const CLAUDE_PLUGIN_INSTALL_COMMAND = "claude plugin marketplace add elvismusli/onlyharness && claude plugin install onlyharness@onlyharness";
+const CODEX_MCP_INSTALL_COMMAND = "codex mcp add onlyharness --url https://onlyharness.com/mcp --bearer-token-env-var HH_TOKEN";
 
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
@@ -90,6 +92,7 @@ function App() {
 
   /* chrome */
   const [dialog, setDialog] = useState<ActiveDialog | null>(null);
+  const [copyFallback, setCopyFallback] = useState<{ label: string; text: string } | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [flash, setFlash] = useState("");
   const [copiedTag, setCopiedTag] = useState("");
@@ -278,11 +281,36 @@ function App() {
 
   async function copyText(text: string, label: string, tag = "") {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeClipboard(text);
       flashMsg(label);
       if (tag) markCopied(tag);
     } catch {
-      flashMsg("Copy failed — clipboard is unavailable");
+      setCopyFallback({ label, text });
+      flashMsg("Clipboard unavailable — command shown");
+    }
+  }
+
+  async function writeClipboard(text: string) {
+    if (copyWithSelection(text)) return;
+    await navigator.clipboard.writeText(text);
+  }
+
+  function copyWithSelection(text: string) {
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    field.style.top = "0";
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      document.body.removeChild(field);
     }
   }
 
@@ -1007,6 +1035,8 @@ function App() {
             logOff,
             cantClose,
             about: aboutDialog,
+            copyClaudePluginInstall: () => copyText(CLAUDE_PLUGIN_INSTALL_COMMAND, "Claude Code plugin install copied", "agent-install:claude"),
+            copyCodexMcpInstall: () => copyText(CODEX_MCP_INSTALL_COMMAND, "Codex MCP install copied", "agent-install:codex"),
             copyText: (text, label) => copyText(text, label),
             refresh: () => {
               setDetails({});
@@ -1081,6 +1111,28 @@ function App() {
             ) : undefined
           }
         />
+      )}
+
+      {copyFallback && (
+        <Dialog
+          title="Copy Text"
+          onClose={() => setCopyFallback(null)}
+          actions={<Btn strong onClick={() => setCopyFallback(null)}>OK</Btn>}
+        >
+          <div className="dialog-body copy-fallback">
+            <span className="di">📋</span>
+            <div className="copy-fallback-body">
+              <span>{copyFallback.label}</span>
+              <textarea
+                className="copy-fallback-text"
+                readOnly
+                value={copyFallback.text}
+                onFocus={(event) => event.currentTarget.select()}
+                autoFocus
+              />
+            </div>
+          </div>
+        </Dialog>
       )}
     </div>
   );

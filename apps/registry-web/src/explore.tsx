@@ -29,6 +29,8 @@ export type ExploreActions = {
   logOff: () => void;
   cantClose: () => void;
   about: () => void;
+  copyClaudePluginInstall: () => void;
+  copyCodexMcpInstall: () => void;
   copyText: (text: string, label: string) => void;
   refresh: () => void;
 };
@@ -123,6 +125,9 @@ export function ExploreWindow({ items, jobs, jobFilter, setJobFilter, query, set
           <Btn onClick={() => actions.openInstall(top)}>💿 Install</Btn>
           <Btn onClick={() => top && actions.openHarness(top, "Try sample")}>▶ Preview</Btn>
           <Btn onClick={actions.openCli}>&gt;_ CLI</Btn>
+          <div className="vsep" />
+          <Btn onClick={actions.copyClaudePluginInstall} title="Copy Claude Code plugin install command" ariaLabel="Copy Claude Code plugin install command">🧩 Claude plugin</Btn>
+          <Btn onClick={actions.copyCodexMcpInstall} title="Copy Codex MCP install command" ariaLabel="Copy Codex MCP install command">◇ Codex MCP</Btn>
           <div className="vsep" />
           <label className="field98">
             <span style={{ fontSize: 13, color: "var(--shadow)" }}>🔍</span>
