@@ -1,6 +1,7 @@
 import type { Session } from "@supabase/supabase-js";
 import { topTargetLabels } from "../../core/compat";
 import { fmtContextCost, fmtK, heatPct, keyFor } from "../../core/format";
+import { RESOURCE_TABS, type ResourceTab } from "../../core/resource-tabs";
 import type { DetailTab, RegistryItem, ResourceItem } from "../../core/types";
 import { Btn, GroupBox, HeatMeter, MenuBar, TitleBar } from "./win98";
 
@@ -35,9 +36,6 @@ export type ExploreActions = {
   copyText: (text: string, label: string) => void;
   refresh: () => void;
 };
-
-export const RESOURCE_TABS = ["All", "Skills", "Plugins", "Workflows", "MCP", "Runtimes", "Guides", "Harnesses"] as const;
-export type ResourceTab = (typeof RESOURCE_TABS)[number];
 
 export function ExploreWindow({ items, resources, resourceCounts, resourceTab, setResourceTab, jobs, jobFilter, setJobFilter, query, setQuery, sort, setSort, starred, remixed, session, totals, leader, flash, active, actions }: {
   items: RegistryItem[];

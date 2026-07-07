@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiUrl, JOB_FILTERS } from "./constants";
 import { keyFor } from "./format";
 import type { HarnessDetail, RegistryItem, ResourceItem } from "./types";
-import type { ResourceTab } from "../skins/win98/explore";
+import type { ResourceTab } from "./resource-tabs";
 
 export type ResourceCounts = { externalSeed: number; internal: number; total: number };
 
