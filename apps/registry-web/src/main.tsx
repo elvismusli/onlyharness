@@ -8,6 +8,7 @@ import { useAuth } from "./core/useAuth";
 import { useRegistry } from "./core/useRegistry";
 import { useClipboard } from "./core/useClipboard";
 import { useSocial } from "./core/useSocial";
+import { usePublish } from "./core/usePublish";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
 import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
@@ -66,6 +67,17 @@ function App() {
   /* registry/resource data + discovery controls (org headers stay here; they extract later) */
   const reg = useRegistry({ starred: social.starred, orgHeadersForOwner });
 
+  /* publish/import flow (extracted to core/usePublish) */
+  const publish = usePublish({
+    requireUser: auth.requireUser,
+    accessToken: auth.accessToken,
+    setQuery: reg.setQuery,
+    setJobFilter: reg.setJobFilter,
+    bumpRefresh: reg.bumpRefresh,
+    closePublish: () => closeWin("publish"),
+    showDialog
+  });
+
   const [myHandle, setMyHandle] = useState("");
   const [myStorefront, setMyStorefront] = useState<StorefrontProfile | undefined>();
   const [storefrontHandle, setStorefrontHandle] = useState("");
@@ -73,12 +85,6 @@ function App() {
   const [storefrontBio, setStorefrontBio] = useState("");
   const [storefrontStatus, setStorefrontStatus] = useState("");
   const [storefrontBusy, setStorefrontBusy] = useState(false);
-
-  /* publish */
-  const [importName, setImportName] = useState("customer-research-pipeline");
-  const [importMarkdown, setImportMarkdown] = useState("# Customer Research Pipeline\n\nResearch target users, synthesize pains, critique assumptions, produce a decision memo with unresolved fields marked.");
-  const [importStatus, setImportStatus] = useState("");
-  const [importBusy, setImportBusy] = useState(false);
 
   /* organization workspace */
   const [networkOrg, setNetworkOrg] = useState(() => localStorage.getItem("hh:networkOrg") ?? "acme");
@@ -424,38 +430,6 @@ function App() {
     openWin("install");
   }
 
-  async function submitImport() {
-    if (!auth.requireUser("Log on to publish a harness.")) return;
-    setImportBusy(true);
-    setImportStatus("");
-    try {
-      const response = await fetch(`${apiUrl}/imports/markdown-to-harness`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${auth.accessToken}`
-        },
-        body: JSON.stringify({ name: importName, markdown: importMarkdown })
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        setImportStatus(result.error ?? "Publish failed.");
-        return;
-      }
-      closeWin("publish");
-      reg.setQuery("");
-      reg.setJobFilter("all");
-      reg.bumpRefresh();
-      const warnings = Array.isArray(result.warnings) && result.warnings.length ? `\n\n${result.warnings.join("\n")}` : "";
-      const next = typeof result.next === "string" ? `\n\n${result.next}` : "";
-      showDialog({ title: "Harness published", icon: "📦", body: `${result.item.title} is live on the frontier. Give it a star before someone else does.${warnings}${next}` });
-    } catch {
-      setImportStatus("Publish failed: the harness API is unreachable.");
-    } finally {
-      setImportBusy(false);
-    }
-  }
-
   /* ---------- auth (sign-in/up/out/requireUser live in core/useAuth) ---------- */
 
   function logOff() {
@@ -585,14 +559,14 @@ function App() {
       case "publish":
         return (
           <PublishBody
-            name={importName}
-            setName={setImportName}
-            markdown={importMarkdown}
-            setMarkdown={setImportMarkdown}
-            status={importStatus}
-            busy={importBusy}
+            name={publish.importName}
+            setName={publish.setImportName}
+            markdown={publish.importMarkdown}
+            setMarkdown={publish.setImportMarkdown}
+            status={publish.importStatus}
+            busy={publish.importBusy}
             loggedIn={Boolean(auth.user)}
-            onSubmit={submitImport}
+            onSubmit={publish.submitImport}
             onLogon={() => auth.openLogon("Log on to publish a harness.")}
           />
         );
