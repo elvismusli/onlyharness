@@ -17,6 +17,9 @@ import { ModernLogon } from "./auth";
 import { ModernChrome } from "./chrome";
 import { NeutralInstall } from "../shared/neutral/install";
 import { NeutralCli } from "../shared/neutral/cli";
+import { NeutralCheckout } from "../shared/neutral/checkout";
+import { NeutralReview } from "../shared/neutral/review";
+import { NeutralNetwork } from "../shared/neutral/network";
 import "./tokens.css";
 import "../shared/neutral/neutral.css";
 
@@ -189,9 +192,26 @@ function renderSurface(surface: Surface) {
         </ModernNeutralShell>
       );
     case "checkout":
+      /* Task 1.6b: the shared-neutral Manual Checkout handoff (used by every skin). */
+      return (
+        <ModernNeutralShell surface={surface}>
+          <NeutralCheckout surfaceKey={surface.key} />
+        </ModernNeutralShell>
+      );
     case "review":
+      /* Task 1.6b: the shared-neutral Maintainer Review (used by every skin). */
+      return (
+        <ModernNeutralShell surface={surface}>
+          <NeutralReview surfaceKey={surface.key} />
+        </ModernNeutralShell>
+      );
     case "network":
-      return <SurfacePlaceholder surface={surface} />;
+      /* Task 1.6b: the shared-neutral Network / Org workspace (used by every skin). */
+      return (
+        <ModernNeutralShell surface={surface}>
+          <NeutralNetwork />
+        </ModernNeutralShell>
+      );
     default: {
       /* exhaustiveness guard: a new WinKind must be handled above */
       const _never: never = surface.kind;

@@ -456,3 +456,236 @@
   font-size: 11.5px;
   color: var(--neutral-faint);
 }
+
+/* ============================================================================
+ * Tag row (header status chips) — shared by Checkout / Review / Network heads.
+ * ========================================================================== */
+.oh-neutral .ohn-tagrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.oh-neutral .ohn-tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--neutral-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  color: var(--neutral-muted);
+  background: var(--neutral-elevated);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-tag);
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.oh-neutral .ohn-tag.safe {
+  color: var(--neutral-green);
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.22);
+}
+.oh-neutral .ohn-tag.warn {
+  color: var(--neutral-warn);
+  background: rgba(255, 179, 71, 0.08);
+  border-color: rgba(255, 179, 71, 0.22);
+}
+.oh-neutral .ohn-tag.danger {
+  color: var(--neutral-danger);
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.22);
+}
+
+/* ============================================================================
+ * Empty-state block (honest "unavailable" surfaces).
+ * ========================================================================== */
+.oh-neutral .ohn-empty {
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-card);
+  padding: 22px 20px;
+  color: var(--neutral-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 620px;
+}
+
+/* ============================================================================
+ * Field / label / input (connect form). Self-contained so the neutral surface
+ * never leans on a skin's form primitive.
+ * ========================================================================== */
+.oh-neutral .ohn-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.oh-neutral .ohn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.oh-neutral .ohn-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--neutral-muted);
+  letter-spacing: -0.1px;
+}
+.oh-neutral .ohn-input {
+  font-family: var(--neutral-font-mono);
+  font-size: 12.5px;
+  color: var(--neutral-text);
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-control);
+  padding: 9px 12px;
+  width: 100%;
+  transition: border-color .15s;
+}
+.oh-neutral .ohn-input:focus {
+  outline: none;
+  border-color: var(--neutral-accent);
+}
+.oh-neutral .ohn-input::placeholder {
+  color: var(--neutral-faint);
+}
+
+/* ============================================================================
+ * Item / audit rows (Checkout receipt list, Network catalog + audit).
+ * ========================================================================== */
+.oh-neutral .ohn-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.oh-neutral .ohn-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  font-family: var(--neutral-font-ui);
+  font-size: 12.5px;
+  color: var(--neutral-muted);
+  line-height: 1.45;
+  background: var(--neutral-elevated);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-control);
+  padding: 11px 13px;
+}
+.oh-neutral .ohn-row b {
+  color: var(--neutral-text);
+  font-weight: 600;
+}
+.oh-neutral button.ohn-row {
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.oh-neutral button.ohn-row:hover {
+  border-color: var(--neutral-border-hover);
+  background: var(--neutral-surface);
+}
+.oh-neutral .ohn-row-glyph {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.oh-neutral .ohn-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ============================================================================
+ * Maintainer Review — risk plate + change rows.
+ * ========================================================================== */
+.oh-neutral .ohn-intro {
+  font-size: 13px;
+  color: var(--neutral-muted);
+  line-height: 1.6;
+  margin: 0 0 16px;
+  max-width: 720px;
+}
+.oh-neutral .ohn-intro b {
+  color: var(--neutral-text);
+  font-weight: 600;
+}
+.oh-neutral .ohn-risk-plate {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-card);
+  padding: 16px;
+}
+.oh-neutral .ohn-shield {
+  font-size: 26px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.oh-neutral .ohn-risk-head {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--neutral-text);
+  letter-spacing: -0.3px;
+}
+.oh-neutral .ohn-risk-sub {
+  font-size: 12px;
+  color: var(--neutral-dim);
+  margin-top: 3px;
+}
+.oh-neutral .ohn-change-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-hairline);
+  border-radius: var(--neutral-r-card);
+  padding: 13px 15px;
+}
+.oh-neutral .ohn-severity {
+  flex-shrink: 0;
+  font-family: var(--neutral-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: var(--neutral-r-tag);
+  padding: 3px 8px;
+  margin-top: 1px;
+  color: var(--neutral-muted);
+  background: var(--neutral-elevated);
+  border: 1px solid var(--neutral-hairline);
+}
+.oh-neutral .ohn-severity.high,
+.oh-neutral .ohn-severity.critical {
+  color: var(--neutral-danger);
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.22);
+}
+.oh-neutral .ohn-severity.medium,
+.oh-neutral .ohn-severity.warn {
+  color: var(--neutral-warn);
+  background: rgba(255, 179, 71, 0.08);
+  border-color: rgba(255, 179, 71, 0.22);
+}
+.oh-neutral .ohn-severity.low,
+.oh-neutral .ohn-severity.info {
+  color: var(--neutral-green);
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.22);
+}
+.oh-neutral .ohn-change-area {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neutral-text);
+}
+.oh-neutral .ohn-change-msg {
+  font-size: 12.5px;
+  color: var(--neutral-muted);
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
