@@ -263,7 +263,7 @@ export function ResourceCard({ item, onOpen, onCopy }: {
   onCopy: () => void;
 }) {
   const stars = item.upstreamPopularity.githubStarsCurrent ?? item.upstreamPopularity.githubStarsSnapshot;
-  const primary = item.actions.find((action) => action.id === "install" || action.id === "copy_mcp_config" || action.id === "open_mirror" || action.id === "open_upstream");
+  const primary = item.actions.find((action) => action.id === "install" || action.id === "copy_mcp_config" || action.id === "open_onlyharness" || action.id === "open_mirror" || action.id === "open_upstream");
   const availability = availabilityLabel(item);
   return (
     <article className="win small hcard resource-card">
@@ -303,6 +303,7 @@ export function ResourceCard({ item, onOpen, onCopy }: {
 }
 
 function availabilityLabel(item: ResourceItem): string {
+  if (item.actions.some((action) => action.id === "open_onlyharness")) return "OnlyHarness listing";
   if (item.mirror?.status === "ready") return "OnlyHarness mirror";
   if (item.installability === "verified") return "verified install";
   if (item.installability === "installable") return item.resourceType === "harness" ? "native install" : "installable";

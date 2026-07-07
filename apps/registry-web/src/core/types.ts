@@ -101,8 +101,10 @@ export type ResourceItem = {
     riskTier?: string;
   };
   actions: Array<
+    | { id: "open_onlyharness"; label: string; url: string }
     | { id: "open_mirror"; label: string; url: string }
     | { id: "open_upstream"; label: string; url: string }
+    | { id: "download_archive"; label: string; url: string }
     | { id: "copy_mcp_config"; label: string; command?: string }
     | { id: "install"; label: string; command: string; target: string }
     | { id: "import_github"; label: string; command: string }
