@@ -99,6 +99,23 @@ export function Nav() {
           <span className="oh-search-kbd" aria-hidden>/</span>
         </label>
 
+        <Btn
+          variant="secondary"
+          className="oh-nav-briefcase"
+          onClick={() => {
+            /* Open the creator-profile surface directly (not the gated
+               `openMyBriefcase`, which diverts logged-out users to the logon
+               modal) so the Profile page's own logged-out gate is reachable and
+               the editor renders once signed in. Mirror the status reset. */
+            h.setStorefrontStatus("");
+            h.open("profile");
+          }}
+          title={h.myHandle ? `My Briefcase (@${h.myHandle})` : "Creator profile"}
+          aria-label={h.myHandle ? `My Briefcase, @${h.myHandle}` : "Creator profile"}
+        >
+          🗂️{h.myHandle ? <span className="oh-nav-handle">@{h.myHandle}</span> : null}
+        </Btn>
+
         <Btn variant="primary" onClick={h.openPublish}>Publish</Btn>
 
         <SkinSwitcher />

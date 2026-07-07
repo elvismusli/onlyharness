@@ -9,6 +9,9 @@ import { ModernExplore } from "./explore";
 import { ModernDetail } from "./detail";
 import { ModernPublish } from "./publish";
 import { ModernLeaderboard } from "./leaderboard";
+import { ModernShare } from "./share";
+import { ModernStorefront } from "./storefront";
+import { ModernProfile } from "./profile";
 import { ModernLogon } from "./auth";
 import { ModernChrome } from "./chrome";
 import "./tokens.css";
@@ -137,13 +140,19 @@ function renderSurface(surface: Surface) {
     case "leaderboard":
       /* Task 1.5a: the Modern Harness-Heat leaderboard. */
       return <ModernLeaderboard surface={surface} />;
+    case "share":
+      /* Task 1.5b: the Modern share/brag card. */
+      return <ModernShare surface={surface} />;
+    case "storefront":
+      /* Task 1.5b: the Modern public creator storefront. */
+      return <ModernStorefront surface={surface} />;
+    case "profile":
+      /* Task 1.5b: the Modern creator-profile editor. */
+      return <ModernProfile surface={surface} />;
     case "install":
     case "checkout":
     case "cli":
     case "review":
-    case "share":
-    case "storefront":
-    case "profile":
     case "network":
       return <SurfacePlaceholder surface={surface} />;
     default: {

@@ -1895,3 +1895,414 @@
 .skin-modern .oh-lb-fine {
   margin-top: 14px;
 }
+
+/* ============================================================================
+ * Nav briefcase button (nav.tsx) — Task 1.5b. Opens the creator profile; shows
+ * the current @handle inline once claimed.
+ * ========================================================================== */
+.skin-modern .oh-nav-briefcase {
+  gap: 6px;
+}
+.skin-modern .oh-nav-handle {
+  font-family: var(--oh-font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--oh-accent-soft);
+}
+
+/* ============================================================================
+ * Share card surface (share.tsx) — Task 1.5b. Full-viewport `.ohd` layer; a
+ * single dark OG-style brag card (WordArt-ish title, share-stats, a big Harness
+ * Heat readout, a season/award badge, install + site footer).
+ * ========================================================================== */
+.skin-modern .oh-share-wrap {
+  max-width: 940px;
+  margin: 0 auto;
+}
+.skin-modern .oh-share-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(255, 107, 53, 0.16), transparent 60%),
+    linear-gradient(160deg, #141417, #0d0d0f 70%);
+  border: 1px solid var(--oh-border-elevated);
+  border-radius: var(--oh-r-card);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+.skin-modern .oh-share-glow {
+  position: absolute;
+  right: -60px;
+  bottom: -80px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 179, 71, 0.18), transparent 68%);
+  pointer-events: none;
+  z-index: 0;
+}
+.skin-modern .oh-share-top,
+.skin-modern .oh-share-body,
+.skin-modern .oh-share-footer {
+  position: relative;
+  z-index: 1;
+}
+.skin-modern .oh-share-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--oh-hairline-soft);
+}
+.skin-modern .oh-share-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.skin-modern .oh-share-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--oh-accent), #ff9557);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--oh-font-display);
+  font-weight: 700;
+  color: var(--oh-canvas);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.skin-modern .oh-share-wordmark {
+  font-family: var(--oh-font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: var(--oh-text);
+}
+.skin-modern .oh-share-season {
+  font-family: var(--oh-font-mono);
+  font-size: 11.5px;
+  color: var(--oh-faint);
+  white-space: nowrap;
+}
+.skin-modern .oh-share-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 24px;
+  padding: 24px;
+}
+@media (max-width: 720px) {
+  .skin-modern .oh-share-body { grid-template-columns: 1fr; }
+}
+.skin-modern .oh-share-left {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.skin-modern .oh-share-banner {
+  font-family: var(--oh-font-mono);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--oh-accent-soft);
+  margin-bottom: 10px;
+}
+.skin-modern .oh-share-title {
+  font-family: var(--oh-font-display);
+  font-weight: 700;
+  font-size: 40px;
+  line-height: 1.02;
+  letter-spacing: -1.4px;
+  background: linear-gradient(120deg, #fff, var(--oh-accent) 55%, var(--oh-heat-grad-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .skin-modern .oh-share-title { font-size: 30px; letter-spacing: -0.8px; }
+}
+.skin-modern .oh-share-promise {
+  font-size: 14px;
+  color: var(--oh-muted);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+.skin-modern .oh-share-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+.skin-modern .oh-share-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  margin-top: auto;
+  padding-top: 20px;
+}
+.skin-modern .oh-share-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.skin-modern .oh-share-stat-n {
+  font-family: var(--oh-font-display);
+  font-weight: 700;
+  font-size: 19px;
+  color: var(--oh-text);
+  line-height: 1;
+}
+.skin-modern .oh-share-stat-n.ok {
+  color: var(--oh-eval-green);
+}
+.skin-modern .oh-share-stat-c {
+  font-size: 10.5px;
+  color: var(--oh-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.skin-modern .oh-share-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.skin-modern .oh-share-heat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 107, 53, 0.06);
+  border: 1px solid rgba(255, 107, 53, 0.24);
+  border-radius: var(--oh-r-card);
+  padding: 20px 18px;
+}
+.skin-modern .oh-share-heat-label {
+  font-family: var(--oh-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--oh-accent-soft);
+}
+.skin-modern .oh-share-heat-num {
+  font-family: var(--oh-font-display);
+  font-weight: 700;
+  font-size: 52px;
+  line-height: 1;
+  color: var(--oh-accent);
+}
+.skin-modern .oh-share-heat-trend {
+  font-family: var(--oh-font-mono);
+  font-size: 11.5px;
+  color: var(--oh-faint);
+  margin-bottom: 6px;
+}
+.skin-modern .oh-share-heat-trend.up {
+  color: var(--oh-eval-green);
+}
+.skin-modern .oh-share-heat .oh-heatbar {
+  width: 100%;
+  height: 6px;
+}
+.skin-modern .oh-share-award {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--oh-surface);
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-card);
+  padding: 14px 16px;
+}
+.skin-modern .oh-share-award-ic {
+  font-size: 30px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.skin-modern .oh-share-award-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--oh-text);
+  line-height: 1.35;
+}
+.skin-modern .oh-share-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 24px;
+  border-top: 1px solid var(--oh-hairline-soft);
+  background: rgba(0, 0, 0, 0.25);
+}
+.skin-modern .oh-share-install {
+  font-size: 12px;
+  color: var(--oh-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skin-modern .oh-share-cmd {
+  font-family: var(--oh-font-mono);
+  font-size: 11.5px;
+  color: var(--oh-accent-soft);
+}
+.skin-modern .oh-share-site {
+  font-family: var(--oh-font-mono);
+  font-size: 12px;
+  color: var(--oh-faint);
+  white-space: nowrap;
+}
+.skin-modern .oh-share-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+/* ============================================================================
+ * Storefront public page (storefront.tsx) — Task 1.5b. Reuses the `.ohd` shell
+ * and two-column `.ohd-grid`; adds a creator avatar + a published-harness grid.
+ * ========================================================================== */
+.skin-modern .oh-store-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--oh-r-tile);
+  background: linear-gradient(135deg, var(--oh-accent), #ff9557);
+  color: var(--oh-canvas);
+  font-family: var(--oh-font-display);
+  font-weight: 700;
+  font-size: 24px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.skin-modern .oh-store-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+@media (max-width: 640px) {
+  .skin-modern .oh-store-grid { grid-template-columns: 1fr; }
+}
+.skin-modern .oh-store-card {
+  background: var(--oh-surface);
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-card);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, transform .15s;
+}
+.skin-modern .oh-store-card:hover {
+  border-color: var(--oh-border-hover);
+  transform: translateY(-2px);
+}
+.skin-modern .oh-store-card:focus-visible {
+  outline: none;
+  border-color: var(--oh-accent);
+}
+.skin-modern .oh-store-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+.skin-modern .oh-store-card-ic {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.skin-modern .oh-store-card-heading {
+  min-width: 0;
+  flex: 1;
+}
+.skin-modern .oh-store-card-title {
+  font-family: var(--oh-font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.2px;
+  color: var(--oh-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skin-modern .oh-store-card-author {
+  font-family: var(--oh-font-mono);
+  font-size: 11px;
+  color: var(--oh-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skin-modern .oh-store-card-promise {
+  font-size: 13px;
+  color: var(--oh-muted);
+  line-height: 1.5;
+  margin: 0;
+  min-height: 39px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.skin-modern .oh-store-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-size: 12px;
+  color: var(--oh-dim);
+  border-top: 1px solid var(--oh-hairline-soft);
+  padding-top: 11px;
+}
+.skin-modern .oh-store-card-eval {
+  margin-left: auto;
+  font-family: var(--oh-font-mono);
+  font-size: 11.5px;
+  color: var(--oh-eval-green);
+}
+
+/* ============================================================================
+ * Profile editor (profile.tsx) — Task 1.5b. Reuses the `.ohd` shell + boxes; the
+ * form uses labelled `.ohd-input` fields; the status line echoes the save state.
+ * ========================================================================== */
+.skin-modern .oh-profile-wrap {
+  max-width: 560px;
+  margin: 0 auto;
+}
+.skin-modern .oh-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.skin-modern .oh-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.skin-modern .oh-profile-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--oh-faint);
+}
+.skin-modern .oh-profile-bio {
+  resize: vertical;
+  min-height: 88px;
+  line-height: 1.5;
+}
+.skin-modern .oh-profile-status {
+  font-size: 12.5px;
+  color: var(--oh-text);
+  background: var(--oh-elevated);
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-control);
+  padding: 8px 11px;
+  margin: 12px 0 0;
+  line-height: 1.45;
+  word-break: break-word;
+}
