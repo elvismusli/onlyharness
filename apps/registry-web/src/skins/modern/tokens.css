@@ -545,6 +545,273 @@
   color: var(--oh-eval-green);
 }
 
+/* muted heat badge for link-only / not-yet-qualified harnesses (honest "—") */
+.skin-modern .oh-heat-badge[data-muted] {
+  color: var(--oh-faint);
+  background: #18181c;
+  border-color: #26262b;
+}
+
+/* warn-tone tag (e.g. non-permissive license) — same chip shape, amber accent */
+.skin-modern .oh-tag-warn {
+  font-family: var(--oh-font-mono);
+  font-size: 11px;
+  color: var(--oh-heat-grad-end);
+  background: rgba(255, 179, 71, 0.08);
+  border: 1px solid rgba(255, 179, 71, 0.22);
+  border-radius: var(--oh-r-tag);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ---- Browse-by-outcome chips ---- */
+.skin-modern .oh-chips {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.skin-modern .oh-chips-label {
+  font-size: 13px;
+  color: var(--oh-faint);
+  margin-right: 2px;
+}
+.skin-modern .oh-chip {
+  font-family: var(--oh-font-ui);
+  font-size: 13.5px;
+  color: var(--oh-muted);
+  background: var(--oh-elevated);
+  border: 1px solid #26262b;
+  border-radius: var(--oh-r-pill);
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.skin-modern .oh-chip:hover {
+  border-color: var(--oh-border-hover);
+  color: var(--oh-text);
+}
+.skin-modern .oh-chip[data-active] {
+  border-color: rgba(255, 107, 53, 0.5);
+  background: rgba(255, 107, 53, 0.1);
+  color: var(--oh-accent-soft);
+}
+.skin-modern .oh-chip-all[data-active] {
+  background: var(--oh-accent);
+  border-color: var(--oh-accent);
+  color: var(--oh-canvas);
+  font-weight: 600;
+}
+.skin-modern .oh-chip-count {
+  font-family: var(--oh-font-mono);
+  font-size: 11px;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+/* ---- Sort menu ("Sorted by … ▾") ---- */
+.skin-modern .oh-sort {
+  position: relative;
+}
+.skin-modern .oh-sort-trigger {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--oh-font-ui);
+  font-size: 13px;
+  color: var(--oh-faint);
+  white-space: nowrap;
+}
+.skin-modern .oh-sort-trigger:hover .oh-sort-val {
+  color: var(--oh-accent-soft);
+}
+.skin-modern .oh-sort-val {
+  color: var(--oh-text);
+  transition: color .15s;
+}
+.skin-modern .oh-sort-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  min-width: 190px;
+  background: var(--oh-surface);
+  border: 1px solid var(--oh-hairline);
+  border-radius: var(--oh-r-control-lg);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+.skin-modern .oh-sort-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--oh-font-ui);
+  font-size: 13.5px;
+  color: var(--oh-muted);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+  transition: background .12s, color .12s;
+}
+.skin-modern .oh-sort-item:hover {
+  background: var(--oh-elevated);
+  color: var(--oh-text);
+}
+.skin-modern .oh-sort-item[data-active] {
+  color: var(--oh-text);
+}
+.skin-modern .oh-sort-check {
+  width: 12px;
+  color: var(--oh-accent-soft);
+  font-size: 12px;
+}
+
+/* ---- Resource-catalog tabs ---- */
+.skin-modern .oh-restabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--oh-hairline-soft);
+}
+.skin-modern .oh-restab {
+  position: relative;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--oh-font-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--oh-muted);
+  padding: 8px 12px 10px;
+  border-radius: 8px 8px 0 0;
+  transition: color .15s;
+}
+.skin-modern .oh-restab:hover {
+  color: var(--oh-text);
+}
+.skin-modern .oh-restab[data-active] {
+  color: var(--oh-text);
+}
+.skin-modern .oh-restab[data-active]::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -5px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--oh-accent);
+}
+
+/* ---- Resource card extras (reuses .oh-card chrome) ---- */
+.skin-modern .oh-rcard {
+  cursor: pointer;
+}
+.skin-modern .oh-worksrow {
+  gap: 5px;
+}
+.skin-modern .oh-wor {
+  font-family: var(--oh-font-mono);
+  font-size: 11px;
+  color: var(--oh-eval-green);
+  background: rgba(74, 222, 128, 0.06);
+  border: 1px solid rgba(74, 222, 128, 0.18);
+  border-radius: var(--oh-r-tag);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.skin-modern .oh-rstats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--oh-dim);
+}
+.skin-modern .oh-rstat {
+  white-space: nowrap;
+}
+.skin-modern .oh-rstat-sep {
+  color: var(--oh-faint);
+}
+.skin-modern .oh-trust-line {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--oh-faint);
+  border-top: 1px solid var(--oh-hairline-soft);
+  padding-top: 12px;
+}
+.skin-modern .oh-rcard-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.skin-modern .oh-rcard-primary {
+  flex: 1;
+}
+
+/* ---- CLI strip (mock terminal) ---- */
+.skin-modern .oh-cli {
+  margin-top: 32px;
+  background: #0d0d0f;
+  border: 1px solid #1e1e22;
+  border-radius: var(--oh-r-terminal);
+  overflow: hidden;
+}
+.skin-modern .oh-cli-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #1a1a1e;
+}
+.skin-modern .oh-cli-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.skin-modern .oh-cli-label {
+  font-family: var(--oh-font-mono);
+  font-size: 12px;
+  color: #6b6b74;
+  margin-left: 8px;
+}
+.skin-modern .oh-cli-body {
+  font-family: var(--oh-font-mono);
+  font-size: 13.5px;
+  line-height: 1.9;
+  padding: 16px 18px;
+}
+.skin-modern .oh-cli-cmd {
+  color: var(--oh-dim);
+}
+.skin-modern .oh-cli-prompt {
+  color: var(--oh-accent-soft);
+}
+.skin-modern .oh-cli-ok {
+  color: var(--oh-eval-green);
+}
+.skin-modern .oh-cli-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 15px;
+  background: var(--oh-accent);
+  margin-left: 4px;
+  vertical-align: -2px;
+  animation: oh-pulse 1s step-end infinite;
+}
+
 /* ============================================================================
  * Surface placeholder overlay (index.tsx) — real detail views land in 1.4–1.6.
  * ========================================================================== */
