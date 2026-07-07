@@ -344,9 +344,33 @@ function App() {
   }
 
   function closeWin(id: string) {
+    clearDeepLinkForClosedWindow(id);
     setWins((current) => current.filter((win) => win.id !== id));
     setStack((current) => current.filter((entry) => entry !== id));
     setFocusedId((current) => (current === id ? "" : current));
+  }
+
+  function clearDeepLinkForClosedWindow(id: string) {
+    const checkout = parseCheckoutLocation();
+    if (checkout && id === `checkout:${keyForCheckout(checkout)}`) {
+      const next = checkout.ref ? `/?ref=${encodeURIComponent(checkout.ref)}` : "/";
+      window.history.replaceState(null, "", next);
+      handledHash.current = "";
+      return;
+    }
+
+    const storefront = parseStorefrontHash(window.location.hash);
+    if (storefront && id === `storefront:${storefront.handle}`) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      handledHash.current = "";
+      return;
+    }
+
+    const harness = parseHarnessHash(window.location.hash);
+    if (harness && id === `harness:${harness.owner}/${harness.name}`) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      handledHash.current = "";
+    }
   }
 
   function minimizeWin(id: string) {
