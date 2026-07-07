@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, remixRecipe } from "./core/constants";
+import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND } from "./core/constants";
 import { supabase } from "./core/supabase";
 import { clockLabel, keyFor } from "./core/format";
 import { useAuth } from "./core/useAuth";
 import { useRegistry } from "./core/useRegistry";
 import { useClipboard } from "./core/useClipboard";
+import { useSocial } from "./core/useSocial";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
@@ -37,19 +38,34 @@ function App() {
   const [storefronts, setStorefronts] = useState<Record<string, StorefrontPage>>({});
   const [checkoutLinks, setCheckoutLinks] = useState<Record<string, CheckoutLinkState>>({});
 
-  /* social state */
-  const [starred, setStarred] = useState<Record<string, boolean>>({});
-  const [remixed, setRemixed] = useState<Record<string, boolean>>({});
-  const [remotePosts, setRemotePosts] = useState<Record<string, ThreadItem[]>>({});
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [kinds, setKinds] = useState<Record<string, string>>({});
-  const [tryStates, setTryStates] = useState<Record<string, "idle" | "running" | "done">>({});
-
-  /* registry/resource data + discovery controls (starred/org headers stay here; they extract later) */
-  const reg = useRegistry({ starred, orgHeadersForOwner });
-
   /* auth (extracted to core/useAuth; storefront/social identity stays here for now) */
   const auth = useAuth({ onFlash: flashMsg });
+
+  /* clipboard (extracted to core/useClipboard). Declared before `social` because
+     `social`'s remix fallback copies the local recipe via `copyText`. */
+  const { copyText, copiedTag, copyFallback, dismissFallback } = useClipboard({ onFlash: flashMsg });
+
+  /* social state + handlers (extracted to core/useSocial). Registry cache helpers
+     are injected via lazy wrappers so `social` is created before `reg` (which reads
+     `social.starred` as a plain value for its derived memos); the wrappers only
+     dereference `reg` inside user-action handlers, well after both are mounted. */
+  const social = useSocial({
+    session: auth.session,
+    accessToken: auth.accessToken,
+    requireUser: auth.requireUser,
+    openLogon: auth.openLogon,
+    cacheItem: (item) => reg.cacheItem(item),
+    prependItem: (item) => reg.prependItem(item),
+    bumpRefresh: () => reg.bumpRefresh(),
+    copyText,
+    openHarness,
+    showDialog,
+    onFlash: flashMsg
+  });
+
+  /* registry/resource data + discovery controls (org headers stay here; they extract later) */
+  const reg = useRegistry({ starred: social.starred, orgHeadersForOwner });
+
   const [myHandle, setMyHandle] = useState("");
   const [myStorefront, setMyStorefront] = useState<StorefrontProfile | undefined>();
   const [storefrontHandle, setStorefrontHandle] = useState("");
@@ -86,34 +102,18 @@ function App() {
   const [time, setTime] = useState(() => clockLabel(new Date()));
   const flashTimer = useRef(0);
   const handledHash = useRef("");
-  const { copyText, copiedTag, copyFallback, dismissFallback } = useClipboard({ onFlash: flashMsg });
 
   /* ---------- effects ---------- */
 
   useEffect(() => {
     if (!supabase || !auth.session?.user) {
-      setStarred({});
-      setRemixed({});
       setMyHandle("");
       setMyStorefront(undefined);
       setStorefrontHandle("");
       setStorefrontDisplayName("");
       setStorefrontBio("");
       setStorefrontStatus("");
-      return;
     }
-    supabase
-      .from("user_harness_actions")
-      .select("owner,repo,action")
-      .then(({ data }) => {
-        const nextStars: Record<string, boolean> = {};
-        for (const action of data ?? []) {
-          const key = `${action.owner}/${action.repo}`;
-          if (action.action === "star") nextStars[key] = true;
-        }
-        setStarred(nextStars);
-        setRemixed({});
-      });
   }, [auth.session]);
 
   useEffect(() => {
@@ -198,23 +198,6 @@ function App() {
     setFlash(message);
     window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlash(""), 2000);
-  }
-
-  function recordHarnessEvent(kind: "view" | "copy", item: RegistryItem, target: string) {
-    void fetch(`${apiUrl}/events`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {})
-      },
-      body: JSON.stringify({
-        kind,
-        owner: item.owner,
-        repo: item.name,
-        target,
-        client: "registry-web"
-      })
-    }).catch(() => undefined);
   }
 
   function showDialog(spec: ActiveDialog) {
@@ -427,130 +410,18 @@ function App() {
     const selected = item ?? reg.topItem;
     if (selected?.contentType === "directory" && selected.directory?.url) {
       window.open(selected.directory.url, "_blank", "noopener,noreferrer");
-      recordHarnessEvent("view", selected, "directory-open");
+      social.recordHarnessEvent("view", selected, "directory-open");
       flashMsg(`Opened directory: ${selected.title}`);
       return;
     }
     if (selected) {
       const key = keyFor(selected);
       reg.cacheItem(selected);
-      recordHarnessEvent("view", selected, "install-center");
+      social.recordHarnessEvent("view", selected, "install-center");
       openWin("install", key);
       return;
     }
     openWin("install");
-  }
-
-  async function toggleStar(item: RegistryItem) {
-    if (!auth.requireUser("Log on to star harnesses. Stars keep the heat honest.")) return;
-    const key = keyFor(item);
-    const next = !starred[key];
-    setStarred((current) => ({ ...current, [key]: next }));
-    flashMsg(next ? `★ Starred ${item.title} · heat +0.4` : `Unstarred ${item.title}`);
-    if (!auth.accessToken) return;
-    try {
-      const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/star`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${auth.accessToken}`
-        },
-        body: JSON.stringify({ starred: next })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Star failed (${response.status})`);
-      reg.bumpRefresh();
-    } catch (error) {
-      setStarred((current) => ({ ...current, [key]: !next }));
-      flashMsg(error instanceof Error ? error.message : "Star failed");
-    }
-  }
-
-  async function remixHarness(item: RegistryItem) {
-    const recipe = remixRecipe(item);
-    const key = keyFor(item);
-    if (!auth.accessToken) {
-      setRemixed((current) => ({ ...current, [key]: true }));
-      void copyText(recipe, `Local remix recipe copied for ${item.title}`, `remix:${key}`);
-      auth.openLogon("Log on to create a server-side local remix draft. A local recipe was copied.");
-      return;
-    }
-    try {
-      const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/remixes`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${auth.accessToken}`
-        },
-        body: JSON.stringify({ name: `my-${item.name}` })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setRemixed((current) => ({ ...current, [key]: true }));
-        void copyText(recipe, `Local remix recipe copied for ${item.title}`, `remix:${key}`);
-        const next = typeof data.next === "string" ? `\n\n${data.next}` : "";
-        throw new Error(`${data.error ?? `Server-side remix failed (${response.status})`}${next}`);
-      }
-      const remixItem = data.item as RegistryItem | undefined;
-      if (remixItem) {
-        const remixKey = keyFor(remixItem);
-        reg.prependItem(remixItem);
-        setRemixed((current) => ({ ...current, [key]: true, [remixKey]: true }));
-        reg.bumpRefresh();
-        showDialog({
-          title: "Local remix draft created",
-          icon: "⑂",
-          body: `${remixItem.title} is available as ${remixItem.owner}/${remixItem.name}.\n\nIt starts free and unverified; edit it, then run eval/gate before treating it as production-ready.`
-        });
-        openHarness(remixItem);
-        return;
-      }
-      throw new Error("Server-side remix returned no registry item.");
-    } catch (error) {
-      showDialog({
-        title: "Remix draft fallback",
-        icon: "⑂",
-        body: `${error instanceof Error ? error.message : "Server-side remix failed."}\n\nUse this local path instead:\n\n${recipe}`
-      });
-    }
-  }
-
-  async function runSample(item: RegistryItem) {
-    if (item.contentType === "directory") {
-      flashMsg("Directory entries are link-only; open the upstream index instead.");
-      return;
-    }
-    const key = keyFor(item);
-    setTryStates((current) => ({ ...current, [key]: "done" }));
-    flashMsg("Preview only. Run hh eval or hh gate locally for execution evidence.");
-  }
-
-  async function addThreadPost(item: RegistryItem) {
-    const key = keyFor(item);
-    const draft = (drafts[key] ?? "").trim();
-    if (!draft) return;
-    if (!auth.requireUser("Log on to post in the thread.")) return;
-    const kind = kinds[key] ?? "question";
-    if (!auth.accessToken) return;
-    try {
-      const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/thread`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${auth.accessToken}`
-        },
-        body: JSON.stringify({ kind, body: draft })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Post failed (${response.status})`);
-      const post = data.item as ThreadItem | undefined;
-      if (!post?.id) throw new Error("Post failed: empty API response");
-      setRemotePosts((current) => ({ ...current, [key]: [...(current[key] ?? []), post] }));
-      setDrafts((current) => ({ ...current, [key]: "" }));
-      reg.bumpRefresh();
-    } catch (error) {
-      flashMsg(error instanceof Error ? error.message : "Post failed");
-    }
   }
 
   async function submitImport() {
@@ -682,32 +553,27 @@ function App() {
         if (!item) return <div className="win-body plate">This harness rode off into the sunset.</div>;
         const key = keyFor(item);
         const detail = reg.details[key];
-        const thread = [
-          ...(detail?.thread ?? []),
-          ...(remotePosts[key] ?? []).map((post) =>
-            post.userId && post.userId === auth.user?.id ? { ...post, author: "you" } : post
-          )
-        ];
+        const thread = social.threadFor(item, detail);
         return (
           <DetailBody
             item={item}
             detail={detail}
             tab={tabs[key] ?? "Overview"}
             setTab={(tab) => setTabs((current) => ({ ...current, [key]: tab }))}
-            starred={Boolean(starred[key])}
-            remixed={Boolean(remixed[key])}
+            starred={Boolean(social.starred[key])}
+            remixed={Boolean(social.remixed[key])}
             thread={thread}
-            draft={drafts[key] ?? ""}
-            setDraft={(value) => setDrafts((current) => ({ ...current, [key]: value }))}
-            kind={kinds[key] ?? "question"}
-            setKind={(value) => setKinds((current) => ({ ...current, [key]: value }))}
-            onPost={() => addThreadPost(item)}
-            tryState={tryStates[key] ?? "idle"}
-            onRunSample={() => runSample(item)}
-            onStar={() => toggleStar(item)}
-            onFork={() => remixHarness(item)}
+            draft={social.drafts[key] ?? ""}
+            setDraft={(value) => social.setDraft(key, value)}
+            kind={social.kinds[key] ?? "question"}
+            setKind={(value) => social.setKind(key, value)}
+            onPost={() => social.addThreadPost(item)}
+            tryState={social.tryStates[key] ?? "idle"}
+            onRunSample={() => social.runSample(item)}
+            onStar={() => social.toggleStar(item)}
+            onFork={() => social.remixHarness(item)}
             onCopyCli={() => {
-              recordHarnessEvent("copy", item, "cli");
+              social.recordHarnessEvent("copy", item, "cli");
               void copyText(item.cliCommand, `Copied: ${item.cliCommand}`, `cli:${key}`);
             }}
             onInstall={() => openInstall(item)}
@@ -740,7 +606,7 @@ function App() {
             refCode={refCode}
             onLogon={() => auth.openLogon("Log on to create a checkout session.")}
             onCopy={(text, target) => {
-              if (item) recordHarnessEvent("copy", item, target);
+              if (item) social.recordHarnessEvent("copy", item, target);
               void copyText(text, "Install commands copied", "install");
             }}
             copied={copiedTag === "install"}
@@ -761,7 +627,7 @@ function App() {
         );
       case "cli":
         return <CliBody item={item} onCopy={(text) => {
-          if (item) recordHarnessEvent("copy", item, "cli");
+          if (item) social.recordHarnessEvent("copy", item, "cli");
           void copyText(text, "CLI commands copied", "cliwin");
         }} copied={copiedTag === "cliwin"} />;
       case "review":
@@ -770,7 +636,7 @@ function App() {
         return <LeaderboardBody items={reg.leaderboard} onOpen={(entry) => openHarness(entry)} />;
       case "share":
         return item
-          ? <ShareBody item={item} starred={Boolean(starred[keyFor(item)])} refCode={refCode} onCopy={(text) => copyText(text, "Share text copied", "brag")} copied={copiedTag === "brag"} />
+          ? <ShareBody item={item} starred={Boolean(social.starred[keyFor(item)])} refCode={refCode} onCopy={(text) => copyText(text, "Share text copied", "brag")} copied={copiedTag === "brag"} />
           : <div className="win-body plate">Nothing to brag about yet.</div>;
       case "storefront": {
         const handle = win.hkey ?? "";
@@ -840,8 +706,8 @@ function App() {
           setQuery={reg.setQuery}
           sort={reg.sort}
           setSort={reg.setSort}
-          starred={starred}
-          remixed={remixed}
+          starred={social.starred}
+          remixed={social.remixed}
           session={auth.session}
           totals={reg.totals}
           leader={reg.leader}
@@ -851,8 +717,8 @@ function App() {
             openHarness,
             openResource,
             openInstall,
-            star: toggleStar,
-            remix: remixHarness,
+            star: social.toggleStar,
+            remix: social.remixHarness,
             share: (item) => openWin("share", keyFor(item)),
             openPublish: () => openWin("publish"),
             openCli: () => openWin("cli", reg.topItem ? keyFor(reg.topItem) : undefined),
@@ -868,7 +734,7 @@ function App() {
             copyText: (text, label) => copyText(text, label),
             refresh: () => {
               reg.refresh();
-              setRemotePosts({});
+              social.clearRemotePosts();
               flashMsg("Registry refreshed");
             }
           }}
