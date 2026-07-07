@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, JOB_FILTERS, remixRecipe } from "./core/constants";
 import { supabase } from "./core/supabase";
 import { clockLabel, keyFor } from "./core/format";
+import { useClipboard } from "./core/useClipboard";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
 import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
@@ -89,15 +90,13 @@ function App() {
 
   /* chrome */
   const [dialog, setDialog] = useState<ActiveDialog | null>(null);
-  const [copyFallback, setCopyFallback] = useState<{ label: string; text: string } | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [flash, setFlash] = useState("");
-  const [copiedTag, setCopiedTag] = useState("");
   const [refCode, setRefCode] = useState(() => initialRefCode());
   const [time, setTime] = useState(() => clockLabel(new Date()));
   const flashTimer = useRef(0);
-  const copiedTimer = useRef(0);
   const handledHash = useRef("");
+  const { copyText, copiedTag, copyFallback, dismissFallback } = useClipboard({ onFlash: flashMsg });
 
   /* ---------- effects ---------- */
 
@@ -303,47 +302,6 @@ function App() {
     setFlash(message);
     window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlash(""), 2000);
-  }
-
-  function markCopied(tag: string) {
-    setCopiedTag(tag);
-    window.clearTimeout(copiedTimer.current);
-    copiedTimer.current = window.setTimeout(() => setCopiedTag(""), 1600);
-  }
-
-  async function copyText(text: string, label: string, tag = "") {
-    try {
-      await writeClipboard(text);
-      flashMsg(label);
-      if (tag) markCopied(tag);
-    } catch {
-      setCopyFallback({ label, text });
-      flashMsg("Clipboard unavailable — command shown");
-    }
-  }
-
-  async function writeClipboard(text: string) {
-    if (copyWithSelection(text)) return;
-    await navigator.clipboard.writeText(text);
-  }
-
-  function copyWithSelection(text: string) {
-    const field = document.createElement("textarea");
-    field.value = text;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    field.style.top = "0";
-    document.body.appendChild(field);
-    field.focus();
-    field.select();
-    try {
-      return document.execCommand("copy");
-    } catch {
-      return false;
-    } finally {
-      document.body.removeChild(field);
-    }
   }
 
   function recordHarnessEvent(kind: "view" | "copy", item: RegistryItem, target: string) {
@@ -1171,8 +1129,8 @@ function App() {
       {copyFallback && (
         <Dialog
           title="Copy Text"
-          onClose={() => setCopyFallback(null)}
-          actions={<Btn strong onClick={() => setCopyFallback(null)}>OK</Btn>}
+          onClose={dismissFallback}
+          actions={<Btn strong onClick={dismissFallback}>OK</Btn>}
         >
           <div className="dialog-body copy-fallback">
             <span className="di">📋</span>
