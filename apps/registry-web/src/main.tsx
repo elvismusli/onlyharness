@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import { createClient, type Session } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
+import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, JOB_FILTERS, remixRecipe } from "./core/constants";
+import { supabase } from "./core/supabase";
+import { clockLabel, keyFor } from "./core/format";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow, type ResourceTab } from "./explore";
-import { clockLabel, keyFor } from "./format";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./types";
 import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
-
-const apiUrl = import.meta.env.VITE_HARNESS_API_URL ?? "http://127.0.0.1:8787";
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : undefined;
-
-const JOB_FILTERS = ["Market research", "GTM research", "Support triage", "Payment safety", "Product strategy", "Incident response", "Data quality", "Security review", "Launch readiness", "Repo audit", "Harness building", "Directory discovery"];
-const CLAUDE_PLUGIN_INSTALL_COMMAND = "claude plugin marketplace add elvismusli/onlyharness && claude plugin install onlyharness@onlyharness";
-const CODEX_MCP_INSTALL_COMMAND = "codex mcp add onlyharness --url https://onlyharness.com/mcp --bearer-token-env-var HH_TOKEN";
 
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
@@ -1259,28 +1252,4 @@ function refFromLocation(): string | undefined {
   if (queryRef) return queryRef;
   const hashQuery = window.location.hash.split("?")[1];
   return hashQuery ? new URLSearchParams(hashQuery).get("ref") ?? undefined : undefined;
-}
-
-function remixRecipe(item: RegistryItem): string {
-  const remixName = `my-${item.name}`;
-  const hh = "node packages/harness-cli/dist/hh.mjs";
-  if (item.contentType === "directory") {
-    const url = item.directory?.url ?? item.forgeUrl;
-    return [
-      `open ${url ?? "<upstream-url>"}`,
-      "# Link-only directory: inspect upstream source and license before vendoring.",
-      "# Convert the selected workflow into remix.md, then publish with HH_TOKEN:",
-      "npm run build -w onlyharness",
-      `${hh} publish remix.md --name ${remixName} --json`
-    ].join("\n");
-  }
-  return [
-    "npm run build -w onlyharness",
-    `${hh} install ${item.owner}/${item.name} --out ${remixName}`,
-    "# Rename harness.yaml name/title and edit agents/evals before publishing.",
-    `${hh} eval ${remixName} --json`,
-    `${hh} gate --dir ${remixName} --json`,
-    "# Current publish path requires a verified directory; set HH_TOKEN first.",
-    `${hh} publish ${remixName} --name ${remixName} --json`
-  ].join("\n");
 }

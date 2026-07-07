@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { isoWeek } from "./format";
-import type { RegistryItem } from "./types";
+import { isoWeek } from "./core/format";
+import type { RegistryItem } from "./core/types";
 import { Btn, Dialog, TitleBar } from "./win98";
 
 const PALETTE = ["#000000", "#808080", "#800000", "#808000", "#008000", "#008080", "#000080", "#800080", "#ffffff", "#c0c0c0", "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff"];
