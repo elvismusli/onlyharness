@@ -13,10 +13,18 @@ export type SkinEntry = {
 };
 
 /**
- * Registered skins, in switcher order. Modern/Fans are added in later phases;
- * for now only Win98 is mounted so the switcher shows a single control.
+ * Registered skins, in switcher order. Modern and Win98 ship today (each lazily
+ * mounted so only the active skin's chunk loads); Fans is added in a later phase.
+ * The default skin is resolved in SkinProvider (still Win98), independent of this
+ * array's order.
  */
 export const SKINS: SkinEntry[] = [
+  {
+    id: "modern",
+    label: "Modern",
+    icon: "🖥",
+    mount: lazy(() => import("./modern").then((m) => ({ default: m.ModernSkin })))
+  },
   {
     id: "win98",
     label: "W98",
