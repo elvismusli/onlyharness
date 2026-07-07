@@ -1,6 +1,6 @@
-import { compatibilityTargetsFor, targetLabel, targetTone } from "./core/compat";
-import { cleanReadme, fmtContextCost, fmtK, heatPct, relativeTime } from "./core/format";
-import { DETAIL_TABS, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "./core/types";
+import { compatibilityTargetsFor, targetLabel, targetTone } from "../../core/compat";
+import { cleanReadme, fmtContextCost, fmtK, heatPct, relativeTime } from "../../core/format";
+import { DETAIL_TABS, type DetailTab, type HarnessDetail, type RegistryItem, type ThreadItem } from "../../core/types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 const THREAD_KINDS = ["question", "recipe", "result", "proposal", "bug/risk"];

@@ -1,7 +1,7 @@
 import type { Session } from "@supabase/supabase-js";
-import { topTargetLabels } from "./core/compat";
-import { fmtContextCost, fmtK, heatPct, keyFor } from "./core/format";
-import type { DetailTab, RegistryItem, ResourceItem } from "./core/types";
+import { topTargetLabels } from "../../core/compat";
+import { fmtContextCost, fmtK, heatPct, keyFor } from "../../core/format";
+import type { DetailTab, RegistryItem, ResourceItem } from "../../core/types";
 import { Btn, GroupBox, HeatMeter, MenuBar, TitleBar } from "./win98";
 
 const PAINT_SWATCHES = ["#ff0000", "#ffff00", "#00a000", "#0000ff"];

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "./core/compat";
-import { fmtContextCost, fmtK, heatPct, isoWeek } from "./core/format";
-import type { CheckoutLinkState, CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "./core/types";
+import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "../../core/compat";
+import { fmtContextCost, fmtK, heatPct, isoWeek } from "../../core/format";
+import type { CheckoutLinkState, CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "../../core/types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 /* ---------- New Harness Wizard (publish) ---------- */

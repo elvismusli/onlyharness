@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { FloatWin } from "./core/types";
+import type { FloatWin } from "../../core/types";
 
 /* ---------- buttons ---------- */
 
