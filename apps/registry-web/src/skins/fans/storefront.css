@@ -1,0 +1,280 @@
+/*
+ * Fans Storefront — the creator page (see storefront.tsx). A friendly blue
+ * OnlyFans-parody creator profile: big round avatar, @handle, bio, a Subscribe /
+ * supporters header, a feed of the creator's published harnesses as creator-cards
+ * (click → openHarness), and a Creator ref-link block with Copy ref-link.
+ *
+ * Every rule is scoped under `.skin-fans` and every new class is prefixed
+ * `.fans-storefront-` so nothing leaks into other skins or the shared Fans
+ * primitives. Only the `--fa-*` tokens defined in tokens.css are consumed here —
+ * no new tokens are introduced and tokens.css is not modified. The outer scrim
+ * reuses the skin's existing `.fa-overlay` (defined in tokens.css); this file
+ * only styles the creator card and its contents.
+ */
+
+/* Widen + top-align the shared overlay so the creator page reads as a full page
+   (the base `.fa-overlay` centers a narrow modal card). */
+.skin-fans .fans-storefront.fa-overlay {
+  align-items: flex-start;
+  padding: 40px 24px 64px;
+}
+
+/* ============================================================================
+ * Card shell
+ * ========================================================================== */
+.skin-fans .fans-storefront-card {
+  position: relative;
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 28px;
+}
+
+.skin-fans .fans-storefront-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  border: none;
+  background: var(--fa-tint);
+  color: var(--fa-muted);
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.skin-fans .fans-storefront-close:hover {
+  background: var(--fa-wash);
+  color: var(--fa-brand);
+}
+
+/* ============================================================================
+ * Creator header
+ * ========================================================================== */
+.skin-fans .fans-storefront-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  padding: 8px 44px 26px 0;
+  border-bottom: 1px solid var(--fa-hairline);
+}
+.skin-fans .fans-storefront-identity {
+  min-width: 0;
+  flex: 1;
+}
+.skin-fans .fans-storefront-kicker {
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--fa-brand-hover);
+}
+.skin-fans .fans-storefront-name {
+  font-family: var(--fa-font-mono);
+  font-weight: 600;
+  font-size: 30px;
+  letter-spacing: -0.5px;
+  color: var(--fa-ink);
+  margin: 3px 0 0;
+  word-break: break-word;
+}
+.skin-fans .fans-storefront-displayname {
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--fa-ink);
+  margin-top: 4px;
+}
+.skin-fans .fans-storefront-bio {
+  font-size: 15px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 10px 0 0;
+  max-width: 560px;
+}
+.skin-fans .fans-storefront-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.skin-fans .fans-storefront-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+.skin-fans .fans-storefront-cta .fa-btn {
+  padding: 12px 26px;
+  font-size: 15px;
+  box-shadow: var(--fa-shadow-cta);
+}
+.skin-fans .fans-storefront-cta-note {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fa-muted);
+}
+
+/* ============================================================================
+ * Published feed
+ * ========================================================================== */
+.skin-fans .fans-storefront-feed {
+  padding: 26px 0 8px;
+}
+.skin-fans .fans-storefront-feed-title {
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: -0.4px;
+  color: var(--fa-ink);
+  margin: 0 0 16px;
+}
+.skin-fans .fans-storefront-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.skin-fans .fans-storefront-post {
+  display: block;
+  text-align: left;
+  width: 100%;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.skin-fans .fans-storefront-post:hover {
+  border-color: var(--fa-brand);
+  box-shadow: var(--fa-shadow-creator);
+  transform: translateY(-2px);
+}
+.skin-fans .fans-storefront-post-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.skin-fans .fans-storefront-post-meta {
+  min-width: 0;
+  flex: 1;
+}
+.skin-fans .fans-storefront-post-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--fa-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skin-fans .fans-storefront-post-handle {
+  font-family: var(--fa-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fa-brand);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skin-fans .fans-storefront-post-promise {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fa-muted);
+  line-height: 1.5;
+  margin: 12px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.skin-fans .fans-storefront-post-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fa-tint-border);
+}
+
+/* ============================================================================
+ * Empty / loading state
+ * ========================================================================== */
+.skin-fans .fans-storefront-empty {
+  background: var(--fa-tint);
+  border: 1px dashed var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 36px 24px;
+  text-align: center;
+  color: var(--fa-muted);
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+/* ============================================================================
+ * Creator ref-link
+ * ========================================================================== */
+.skin-fans .fans-storefront-reflink {
+  margin-top: 22px;
+  background: var(--fa-wash);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 22px;
+}
+.skin-fans .fans-storefront-reflink-title {
+  font-weight: 900;
+  font-size: 17px;
+  color: var(--fa-ink);
+  margin: 0;
+}
+.skin-fans .fans-storefront-reflink-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fa-muted);
+  line-height: 1.5;
+  margin: 6px 0 14px;
+}
+.skin-fans .fans-storefront-reflink-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  background: #fff;
+  border: 1px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.skin-fans .fans-storefront-reflink-url {
+  font-family: var(--fa-font-mono);
+  font-size: 12.5px;
+  color: var(--fa-ink);
+  word-break: break-all;
+  min-width: 0;
+  flex: 1;
+}
+.skin-fans .fans-storefront-reflink-meta {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--fa-faint);
+  white-space: nowrap;
+}
+
+/* ============================================================================
+ * Responsive — single-column feed + stacked header on narrow viewports.
+ * ========================================================================== */
+@media (max-width: 720px) {
+  .skin-fans .fans-storefront-grid {
+    grid-template-columns: 1fr;
+  }
+  .skin-fans .fans-storefront-head {
+    flex-direction: column;
+    gap: 16px;
+    padding-right: 0;
+  }
+}

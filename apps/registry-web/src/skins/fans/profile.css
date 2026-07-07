@@ -1,0 +1,220 @@
+/*
+ * Fans skin — Profile editor (see profile.tsx). The creator-profile form
+ * rebuilt in the friendly sky-blue Fans look, rendered as a centered overlay
+ * card on the blue wash (reusing `.fa-overlay` from tokens.css for the backdrop).
+ *
+ * Every rule is scoped under `.skin-fans` and prefixed `.fans-profile-` so it
+ * cannot leak into the Modern or Win98 skins, and never collides with the other
+ * `.fa-*` / `.fac-*` Fans classes in tokens.css. All colour/radius/shadow/type
+ * values resolve from the `--fa-*` custom properties defined in tokens.css — this
+ * file invents no new tokens, only new layout.
+ */
+
+/* ---- card shell (a slightly wider sign-up-style card) ---- */
+.skin-fans .fans-profile-card {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 30px 28px 26px;
+}
+
+.skin-fans .fans-profile-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  border: none;
+  background: var(--fa-tint);
+  color: var(--fa-muted);
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.skin-fans .fans-profile-close:hover {
+  background: var(--fa-wash);
+  color: var(--fa-brand);
+}
+
+/* ============================================================================
+ * Logged-out gate
+ * ========================================================================== */
+.skin-fans .fans-profile-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 8px 4px 0;
+}
+.skin-fans .fans-profile-gate-title {
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: -0.8px;
+  color: var(--fa-ink);
+  margin: 4px 0 0;
+}
+.skin-fans .fans-profile-gate-body {
+  font-size: 15px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 400px;
+}
+.skin-fans .fans-profile-gate-btn {
+  width: 100%;
+  max-width: 320px;
+  padding: 15px;
+  font-size: 16px;
+  margin-top: 4px;
+  box-shadow: var(--fa-shadow-cta);
+}
+
+/* ============================================================================
+ * Logged-in header
+ * ========================================================================== */
+.skin-fans .fans-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-right: 40px; /* clear the close button */
+  margin-bottom: 22px;
+}
+.skin-fans .fans-profile-head-meta {
+  min-width: 0;
+}
+.skin-fans .fans-profile-title {
+  font-weight: 900;
+  font-size: 24px;
+  letter-spacing: -0.6px;
+  color: var(--fa-ink);
+  margin: 0 0 6px;
+}
+.skin-fans .fans-profile-subline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.skin-fans .fans-profile-handle {
+  font-family: var(--fa-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fa-brand);
+}
+.skin-fans .fans-profile-handle-empty {
+  color: var(--fa-faint);
+}
+
+/* ============================================================================
+ * Editor form
+ * ========================================================================== */
+.skin-fans .fans-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.skin-fans .fans-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skin-fans .fans-profile-label {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--fa-ink);
+}
+/* multi-line bio — the base `.fa-input` is single-line height, so relax it */
+.skin-fans .fans-profile-bio {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.55;
+}
+.skin-fans .fans-profile-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* ============================================================================
+ * Actions + status
+ * ========================================================================== */
+.skin-fans .fans-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+.skin-fans .fans-profile-actions .fa-btn {
+  flex: 1;
+  min-width: 160px;
+  padding: 13px 18px;
+  font-size: 15px;
+}
+.skin-fans .fans-profile-status {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--fa-brand-hover);
+  line-height: 1.5;
+}
+
+/* ============================================================================
+ * Public URL block
+ * ========================================================================== */
+.skin-fans .fans-profile-url {
+  margin-top: 22px;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-input);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.skin-fans .fans-profile-url-label {
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--fa-muted);
+}
+.skin-fans .fans-profile-url-value {
+  font-family: var(--fa-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fa-ink);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* ---- shared fine print ---- */
+.skin-fans .fans-profile-fine {
+  font-size: 11.5px;
+  color: var(--fa-faint);
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.5;
+  margin: 18px 0 0;
+}
+
+/* ============================================================================
+ * Responsive — stack the action buttons on very narrow viewports.
+ * ========================================================================== */
+@media (max-width: 480px) {
+  .skin-fans .fans-profile-card {
+    padding: 26px 20px 22px;
+  }
+  .skin-fans .fans-profile-actions .fa-btn {
+    flex: 1 1 100%;
+  }
+}

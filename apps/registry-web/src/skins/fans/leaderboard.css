@@ -1,0 +1,284 @@
+/* ============================================================================
+ * Fans skin — Leaderboard surface ("Top creators this week").
+ *
+ * The friendly sky-blue parody take on the Harness Heat board: a centered card
+ * on the blue wash (reusing `.fa-overlay` as the backdrop) with a podium-flavoured
+ * ranked list — rank badge / medal, round avatar, title + @handle, a heat bar,
+ * the 🔥 heat number and a ▲/▼ delta chip.
+ *
+ * Everything is scoped under `.skin-fans` (so it can't leak into Modern/Win98)
+ * and every new class uses the `.fans-leaderboard-` prefix. All colour, radii,
+ * shadow and type values resolve from the `--fa-*` custom properties defined in
+ * tokens.css — no new tokens, no hard-coded greys.
+ * ========================================================================== */
+
+.skin-fans .fans-leaderboard {
+  /* backdrop styling comes from the shared `.fa-overlay` rule; only tune the
+     scroll padding so a tall list breathes on short viewports. */
+  align-items: flex-start;
+  padding: 48px 24px;
+}
+
+.skin-fans .fans-leaderboard-card {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 28px 28px 24px;
+}
+
+/* ---- back link (text button, top-left) ---- */
+.skin-fans .fans-leaderboard-back {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-weight: 800;
+  font-size: 13.5px;
+  color: var(--fa-muted);
+  padding: 0;
+  margin: 0 0 16px;
+  transition: color 0.15s;
+}
+.skin-fans .fans-leaderboard-back:hover {
+  color: var(--fa-brand);
+}
+
+/* ---- header ---- */
+.skin-fans .fans-leaderboard-head {
+  margin-bottom: 22px;
+}
+.skin-fans .fans-leaderboard-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: -0.8px;
+  line-height: 1.1;
+  color: var(--fa-ink);
+  margin: 14px 0 8px;
+}
+.skin-fans .fans-leaderboard-title b {
+  color: var(--fa-brand);
+  font-weight: 900;
+}
+.skin-fans .fans-leaderboard-sub {
+  font-size: 14.5px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 520px;
+}
+.skin-fans .fans-leaderboard-week {
+  display: inline-block;
+  margin-top: 14px;
+  font-family: var(--fa-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fa-brand-hover);
+  background: var(--fa-wash);
+  border-radius: var(--fa-r-pill);
+  padding: 5px 12px;
+}
+
+/* ---- ranked list ---- */
+.skin-fans .fans-leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skin-fans .fans-leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+}
+.skin-fans .fans-leaderboard-row:hover {
+  transform: translateY(-2px);
+  border-color: #cfe6f4;
+  box-shadow: var(--fa-shadow-creator);
+  background: #fff;
+}
+.skin-fans .fans-leaderboard-row:focus-visible {
+  outline: 2px solid var(--fa-brand);
+  outline-offset: 2px;
+}
+/* podium (top 3) — a touch warmer/rounder so the winners pop */
+.skin-fans .fans-leaderboard-row.is-podium {
+  background: #fff;
+  border-color: var(--fa-card-border);
+  box-shadow: var(--fa-shadow-creator);
+}
+.skin-fans .fans-leaderboard-row.is-top {
+  border-color: var(--fa-brand);
+  box-shadow: 0 16px 34px -16px rgba(0, 150, 208, 0.5);
+}
+
+/* ---- rank badge / medal ---- */
+.skin-fans .fans-leaderboard-rank {
+  flex-shrink: 0;
+  width: 34px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fa-faint);
+  font-family: var(--fa-font-ui);
+}
+.skin-fans .fans-leaderboard-row.is-podium .fans-leaderboard-rank {
+  font-size: 22px;
+}
+.skin-fans .fans-leaderboard-row.is-top .fans-leaderboard-rank {
+  color: var(--fa-brand);
+}
+
+/* ---- main column (title + handle + bar) ---- */
+.skin-fans .fans-leaderboard-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skin-fans .fans-leaderboard-titleline {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+.skin-fans .fans-leaderboard-name {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--fa-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.skin-fans .fans-leaderboard-handle {
+  font-family: var(--fa-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fa-brand);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ---- heat bar ---- */
+.skin-fans .fans-leaderboard-bar {
+  height: 6px;
+  border-radius: var(--fa-r-pill);
+  background: var(--fa-switch-bg);
+  overflow: hidden;
+}
+.skin-fans .fans-leaderboard-bar-fill {
+  height: 100%;
+  border-radius: var(--fa-r-pill);
+  background: linear-gradient(90deg, var(--fa-brand), #7fdcff);
+  transition: width 0.25s ease;
+}
+
+/* ---- heat column (number + delta) ---- */
+.skin-fans .fans-leaderboard-heatcol {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 70px;
+}
+.skin-fans .fans-leaderboard-heat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--fa-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fa-brand-hover);
+  white-space: nowrap;
+}
+.skin-fans .fans-leaderboard-heat b {
+  font-weight: 700;
+  color: var(--fa-ink);
+}
+.skin-fans .fans-leaderboard-heat-pending {
+  font-family: var(--fa-font-ui);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--fa-faint);
+}
+
+/* ---- honest empty state ---- */
+.skin-fans .fans-leaderboard-empty {
+  text-align: center;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 40px 28px;
+}
+.skin-fans .fans-leaderboard-empty-emoji {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+.skin-fans .fans-leaderboard-empty-title {
+  font-weight: 900;
+  font-size: 18px;
+  color: var(--fa-ink);
+  margin-bottom: 8px;
+}
+.skin-fans .fans-leaderboard-empty-body {
+  font-size: 14px;
+  color: var(--fa-muted);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 0 auto;
+  max-width: 380px;
+}
+
+/* ---- fine print + actions ---- */
+.skin-fans .fans-leaderboard-fine {
+  font-size: 11.5px;
+  color: var(--fa-faint);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 18px 0 0;
+}
+.skin-fans .fans-leaderboard-actions {
+  margin-top: 18px;
+}
+
+/* ---- responsive: tighten padding + hide @handle on very narrow cards ---- */
+@media (max-width: 560px) {
+  .skin-fans .fans-leaderboard {
+    padding: 24px 14px;
+  }
+  .skin-fans .fans-leaderboard-card {
+    padding: 22px 18px 20px;
+  }
+  .skin-fans .fans-leaderboard-title {
+    font-size: 26px;
+  }
+  .skin-fans .fans-leaderboard-row {
+    gap: 11px;
+    padding: 11px 13px;
+  }
+  .skin-fans .fans-leaderboard-handle {
+    display: none;
+  }
+  .skin-fans .fans-leaderboard-heatcol {
+    min-width: 58px;
+  }
+}

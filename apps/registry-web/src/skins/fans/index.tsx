@@ -1,12 +1,24 @@
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 
 import { useHarness } from "../../core/store";
 import type { Surface } from "../../core/useAppNav";
-import type { WinKind } from "../../core/types";
 import { Btn } from "./primitives";
 import { FansNav } from "./nav";
 import { FansLanding } from "./landing";
 import { FansChrome } from "./chrome";
+import { FansLogon } from "./auth";
+import { FansDetail } from "./detail";
+import { FansPublish } from "./publish";
+import { FansLeaderboard } from "./leaderboard";
+import { FansShare } from "./share";
+import { FansStorefront } from "./storefront";
+import { FansProfile } from "./profile";
+import { NeutralInstall } from "../shared/neutral/install";
+import { NeutralCli } from "../shared/neutral/cli";
+import { NeutralCheckout } from "../shared/neutral/checkout";
+import { NeutralReview } from "../shared/neutral/review";
+import { NeutralNetwork } from "../shared/neutral/network";
 import "./tokens.css";
 import "../shared/neutral/neutral.css";
 
@@ -49,52 +61,24 @@ function useFansCanvas() {
   }, []);
 }
 
-/** Human title for a placeholder surface (until later tasks build real ones). */
-function surfaceTitle(surface: Surface, h: ReturnType<typeof useHarness>): string {
-  const item = surface.key ? h.knownItems[surface.key] : undefined;
-  const titles: Record<WinKind, string> = {
-    harness: item?.title ?? "Harness",
-    publish: "Publish a harness",
-    install: item ? `Install — ${item.title}` : "Install Center",
-    checkout: "Checkout",
-    cli: "CLI",
-    review: "Maintainer review",
-    leaderboard: "Leaderboard",
-    share: item ? `Share — ${item.title}` : "Share",
-    storefront: surface.key ? `@${surface.key}` : "Creator",
-    profile: "Your profile",
-    network: "Network"
-  };
-  return titles[surface.kind];
-}
-
 /**
- * Minimal Fans placeholder card for any non-landing surface. Later Fans tasks
- * each replace one of these with a real surface view. Shown as a centered overlay
- * card on the wash so a click-through from the landing lands somewhere honest and
- * closable ("‹Kind› coming soon" → `closeSurface`).
+ * Fans page shell for a shared-neutral surface. The Install Center, CLI,
+ * Checkout, Review and Network workspaces are skin-neutral
+ * (`skins/shared/neutral/*`, self-contained `.oh-neutral` + `--neutral-*`) so they
+ * read *serious* in every skin — money / maintainer review / org admin carry no
+ * parody. Fans' `tokens.css` overrides `--neutral-*` to a light treatment so they
+ * sit correctly on the blue wash. We render them inside the standard Fans overlay
+ * with a friendly "back" affordance.
  */
-function FansPlaceholder({ surface }: { surface: Surface }) {
+function FansNeutralShell({ surface, children }: { surface: Surface; children: ReactNode }) {
   const h = useHarness();
-  const title = surfaceTitle(surface, h);
   return (
-    <div className="fa-overlay" role="dialog" aria-label={title}>
-      <div className="fa-overlay-card">
-        <div className="fa-overlay-head">
-          <h2 className="fa-overlay-title">{title}</h2>
-          <button
-            type="button"
-            className="fa-overlay-close"
-            aria-label="Close"
-            onClick={() => h.closeSurface(surface.id)}
-          >
-            ✕
-          </button>
+    <div className="fa-overlay" role="dialog" aria-label="OnlyHarness">
+      <div style={{ width: "100%", maxWidth: 1080, margin: "0 auto" }}>
+        <div style={{ marginBottom: 14 }}>
+          <Btn variant="outline" onClick={() => h.closeSurface(surface.id)}>← Back</Btn>
         </div>
-        <p className="fa-overlay-body">Coming soon to the Fans skin. 💙</p>
-        <div className="fa-overlay-actions">
-          <Btn variant="outline" onClick={() => h.closeSurface(surface.id)}>Close</Btn>
-        </div>
+        {children}
       </div>
     </div>
   );
@@ -102,9 +86,10 @@ function FansPlaceholder({ surface }: { surface: Surface }) {
 
 /**
  * Surface router. The active surface is `h.activeId` ("" == the landing). The
- * landing always renders underneath; when a surface is active we render its
- * placeholder (later, its real Fans view) on top. The switch is exhaustive over
- * `WinKind` with a `never` guard so a new surface kind must be handled here.
+ * landing always renders underneath; when a surface is active we render its real
+ * Fans view (or a shared-neutral surface wrapped in the Fans shell) on top. The
+ * switch is exhaustive over `WinKind` with a `never` guard so a new surface kind
+ * must be handled here.
  */
 function SurfaceRouter() {
   const h = useHarness();
@@ -121,20 +106,48 @@ function SurfaceRouter() {
 
 function renderSurface(surface: Surface) {
   switch (surface.kind) {
-    /* Every surface is a placeholder for now — later Fans tasks each add one
-       real surface view (detail / publish / install / …). */
     case "harness":
+      return <FansDetail surface={surface} />;
     case "publish":
-    case "install":
-    case "checkout":
-    case "cli":
-    case "review":
+      return <FansPublish surface={surface} />;
     case "leaderboard":
+      return <FansLeaderboard surface={surface} />;
     case "share":
+      return <FansShare surface={surface} />;
     case "storefront":
+      return <FansStorefront surface={surface} />;
     case "profile":
+      return <FansProfile surface={surface} />;
+    case "install":
+      return (
+        <FansNeutralShell surface={surface}>
+          <NeutralInstall surfaceKey={surface.key} />
+        </FansNeutralShell>
+      );
+    case "cli":
+      return (
+        <FansNeutralShell surface={surface}>
+          <NeutralCli surfaceKey={surface.key} />
+        </FansNeutralShell>
+      );
+    case "checkout":
+      return (
+        <FansNeutralShell surface={surface}>
+          <NeutralCheckout surfaceKey={surface.key} />
+        </FansNeutralShell>
+      );
+    case "review":
+      return (
+        <FansNeutralShell surface={surface}>
+          <NeutralReview surfaceKey={surface.key} />
+        </FansNeutralShell>
+      );
     case "network":
-      return <FansPlaceholder surface={surface} />;
+      return (
+        <FansNeutralShell surface={surface}>
+          <NeutralNetwork />
+        </FansNeutralShell>
+      );
     default: {
       /* exhaustiveness guard: a new WinKind must be handled above */
       const _never: never = surface.kind;
@@ -147,7 +160,7 @@ function renderSurface(surface: Surface) {
  * Fans skin entry — a pure consumer of `useHarness()` (data/actions/nav come
  * from the store mounted above the skin in `main.tsx`, so switching skins
  * preserves state). Wraps everything in `.skin-fans`, paints the wash canvas,
- * and renders the sticky nav + the surface router + chrome.
+ * and renders the sticky nav + the surface router + the logon modal + chrome.
  */
 export function FansSkin() {
   useFansFonts();
@@ -158,6 +171,7 @@ export function FansSkin() {
         <FansNav />
         <SurfaceRouter />
       </div>
+      <FansLogon />
       <FansChrome />
     </div>
   );

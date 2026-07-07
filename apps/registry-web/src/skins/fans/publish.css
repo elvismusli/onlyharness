@@ -1,0 +1,226 @@
+/*
+ * Fans skin — "Start your harness" publish surface (see publish.tsx).
+ *
+ * A full-viewport overlay on the blue wash carrying a single friendly, rounded
+ * card: name input, mono markdown box, a cheerful "what gets created" checklist
+ * and one big blue CTA pill. Same publish state as every other skin, dressed in
+ * the Fans voice.
+ *
+ * Every rule is scoped under `.skin-fans` and every new class carries the
+ * `.fans-publish-` prefix, so nothing here leaks into the Modern or Win98 skins
+ * (or the other Fans surfaces). Colours, radii, shadows and fonts all resolve
+ * from the `--fa-*` custom properties defined in tokens.css — this file invents
+ * no new tokens and edits none. It reuses the shared `.fa-overlay` scrim +
+ * scroll container from tokens.css and only paints the card on top.
+ */
+
+/* The card sits on the shared `.fa-overlay` scroll layer; keep it above the
+   landing but let long markdown scroll the overlay, not the page body. */
+.skin-fans .fans-publish {
+  align-items: flex-start;
+  padding: clamp(20px, 6vh, 64px) 24px;
+}
+
+.skin-fans .fans-publish-card {
+  width: 100%;
+  max-width: 620px;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 28px;
+}
+
+/* ---- header ---- */
+.skin-fans .fans-publish-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.skin-fans .fans-publish-head-main {
+  min-width: 0;
+}
+.skin-fans .fans-publish-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--fa-wash);
+  color: var(--fa-brand-hover);
+  border-radius: var(--fa-r-pill);
+  font-weight: 800;
+  font-size: 11px;
+  padding: 4px 11px;
+  margin-bottom: 12px;
+}
+.skin-fans .fans-publish-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: -0.8px;
+  line-height: 1.05;
+  color: var(--fa-ink);
+}
+.skin-fans .fans-publish-sub {
+  font-size: 15px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 8px 0 0;
+  max-width: 460px;
+}
+.skin-fans .fans-publish-close {
+  border: none;
+  background: var(--fa-tint);
+  color: var(--fa-muted);
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.skin-fans .fans-publish-close:hover {
+  background: var(--fa-wash);
+  color: var(--fa-brand);
+}
+
+/* ---- fields ---- */
+.skin-fans .fans-publish-field {
+  display: block;
+  margin-bottom: 16px;
+}
+.skin-fans .fans-publish-label {
+  display: block;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--fa-ink);
+  margin-bottom: 8px;
+}
+.skin-fans .fans-publish-name,
+.skin-fans .fans-publish-md {
+  width: 100%;
+  border: 1.5px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 14px 16px;
+  color: var(--fa-ink);
+  outline: none;
+  transition: border-color .15s;
+}
+.skin-fans .fans-publish-name {
+  font-family: var(--fa-font-mono);
+  font-weight: 600;
+  font-size: 14px;
+}
+.skin-fans .fans-publish-md {
+  font-family: var(--fa-font-mono);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 180px;
+}
+.skin-fans .fans-publish-name:focus,
+.skin-fans .fans-publish-md:focus {
+  border-color: var(--fa-brand);
+}
+.skin-fans .fans-publish-name::placeholder {
+  color: var(--fa-faint);
+}
+
+/* ---- "what gets created" checklist ---- */
+.skin-fans .fans-publish-created {
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 18px 20px;
+  margin: 4px 0 20px;
+}
+.skin-fans .fans-publish-created-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--fa-ink);
+  margin: 0 0 12px;
+}
+.skin-fans .fans-publish-check {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skin-fans .fans-publish-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fa-body);
+  line-height: 1.45;
+}
+.skin-fans .fans-publish-check-emoji {
+  flex-shrink: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+/* ---- actions ---- */
+.skin-fans .fans-publish-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+.skin-fans .fans-publish-cta {
+  padding: 15px 26px;
+  font-size: 16px;
+  box-shadow: var(--fa-shadow-cta);
+}
+.skin-fans .fans-publish-status {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--fa-brand-hover);
+  line-height: 1.4;
+}
+.skin-fans .fans-publish-hint {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fa-muted);
+}
+
+/* ---- fine print ---- */
+.skin-fans .fans-publish-fine {
+  font-size: 12px;
+  color: var(--fa-faint);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 18px 0 0;
+}
+.skin-fans .fans-publish-fine b {
+  color: var(--fa-muted);
+  font-weight: 800;
+}
+.skin-fans .fans-publish-mono {
+  font-family: var(--fa-font-mono);
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--fa-ink);
+  background: var(--fa-wash);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+/* ---- responsive ---- */
+@media (max-width: 560px) {
+  .skin-fans .fans-publish-card {
+    padding: 22px;
+  }
+  .skin-fans .fans-publish-title {
+    font-size: 26px;
+  }
+  .skin-fans .fans-publish-cta {
+    width: 100%;
+  }
+}

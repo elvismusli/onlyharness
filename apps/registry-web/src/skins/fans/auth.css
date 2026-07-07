@@ -1,0 +1,188 @@
+/*
+ * Fans skin — logon modal (see auth.tsx). The skin-agnostic auth flow
+ * (`useHarness()` auth state) rendered in the Fans idiom so the star / fork /
+ * publish gates surface a real dialog on the bright blue page. Same handlers as
+ * the Modern/Win98 logon (sign-in / sign-up modes, the `note` prompt,
+ * `authStatus` line, `configured` / `authBusy` gating, Enter-to-submit, resend
+ * confirmation) — Fans look.
+ *
+ * Deliberately mirrors the landing's sign-up card (white 22px card, blue-tinted
+ * shadow, blue pill buttons, 12px inputs) so the modal reads as "the landing's
+ * sign-up, focused". Every rule is scoped under `.skin-fans` and every class is
+ * prefixed `.fans-auth-` so nothing leaks into the Modern or Win98 skins, and
+ * every colour/radius/shadow resolves from the tokens in `tokens.css`.
+ *
+ * Credentials are a no-joke zone, so the copy stays plain — no cowboy puns in
+ * the auth surface.
+ */
+
+/* ---- scrim + card (matches the landing sign-up card: white r22, blue shadow) ---- */
+.skin-fans .fans-auth-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: rgba(10, 23, 33, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.skin-fans .fans-auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 28px;
+}
+
+/* ---- head ---- */
+.skin-fans .fans-auth-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.skin-fans .fans-auth-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.skin-fans .fans-auth-title {
+  font-weight: 900;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+  color: var(--fa-ink);
+}
+.skin-fans .fans-auth-note {
+  font-size: 14.5px;
+  color: var(--fa-body);
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 0 0 18px;
+}
+
+/* ---- form fields (12px inputs, blue focus — same as .fa-input) ---- */
+.skin-fans .fans-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.skin-fans .fans-auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skin-fans .fans-auth-label {
+  font-weight: 800;
+  font-size: 12.5px;
+  color: var(--fa-muted);
+}
+.skin-fans .fans-auth-input {
+  width: 100%;
+  border: 1.5px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 13px 15px;
+  font-family: var(--fa-font-ui);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--fa-ink);
+  outline: none;
+  transition: border-color .15s;
+}
+.skin-fans .fans-auth-input:focus {
+  border-color: var(--fa-brand);
+}
+.skin-fans .fans-auth-input::placeholder {
+  color: var(--fa-faint);
+}
+
+/* ---- status / warning lines ---- */
+.skin-fans .fans-auth-warn {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fa-brand-hover);
+  background: var(--fa-wash);
+  border-radius: var(--fa-r-input);
+  padding: 10px 13px;
+  line-height: 1.45;
+}
+.skin-fans .fans-auth-status {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--fa-body);
+  line-height: 1.45;
+}
+
+/* ---- resend confirmation (text link, sign-in only) ---- */
+.skin-fans .fans-auth-resend {
+  display: inline-block;
+  margin: 12px 0 0;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-weight: 800;
+  font-size: 13.5px;
+  color: var(--fa-brand);
+}
+.skin-fans .fans-auth-resend:hover:not(:disabled) {
+  color: var(--fa-brand-hover);
+}
+.skin-fans .fans-auth-resend:disabled {
+  color: var(--fa-faint);
+  cursor: default;
+}
+
+/* ---- fine print ---- */
+.skin-fans .fans-auth-fine {
+  font-size: 11.5px;
+  color: var(--fa-faint);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 16px 0 0;
+}
+
+/* ---- actions row: toggle link on the left, Cancel + primary pill on the right ---- */
+.skin-fans .fans-auth-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+.skin-fans .fans-auth-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--fa-brand);
+  text-align: left;
+}
+.skin-fans .fans-auth-toggle:hover {
+  color: var(--fa-brand-hover);
+}
+.skin-fans .fans-auth-spacer {
+  flex: 1;
+}
+/* the primary pill grows a touch so "Create account" never feels cramped */
+.skin-fans .fans-auth-actions .fa-btn-primary {
+  padding: 11px 20px;
+}
+
+/* ---- narrow viewports: let the toggle link wrap above the buttons ---- */
+@media (max-width: 480px) {
+  .skin-fans .fans-auth-actions {
+    flex-wrap: wrap;
+  }
+  .skin-fans .fans-auth-spacer {
+    flex-basis: 100%;
+    height: 0;
+  }
+}

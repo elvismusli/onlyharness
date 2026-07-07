@@ -1,0 +1,795 @@
+/*
+ * Fans skin — harness "creator profile" detail page (see detail.tsx).
+ *
+ * Every rule is scoped under `.skin-fans` and prefixed `.fans-detail-` so nothing
+ * leaks into the Modern or Win98 skins, nor collides with the landing's `.fa-*`
+ * classes. Colours/radii/shadows/type all resolve from the `.skin-fans` tokens in
+ * tokens.css (brand #00aff0, Nunito + JetBrains Mono, pill radii, soft BLUE-tinted
+ * shadows). This file adds only new classes — tokens.css is never edited.
+ *
+ * The page mounts inside the shared `.fa-overlay` (the blue wash + scroll host the
+ * landing already defines), so a click-through from the landing lands here on the
+ * same wash and stays closable.
+ */
+
+/* ============================================================================
+ * Shell / overlay
+ * ========================================================================== */
+.skin-fans .fans-detail-overlay {
+  /* landing's .fa-overlay centers its child; the profile is a tall document, so
+     align to top and let the overlay scroll. */
+  align-items: flex-start;
+  padding: 32px 24px 64px;
+}
+.skin-fans .fans-detail-shell {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.skin-fans .fans-detail-missing {
+  background: #fff;
+  border: 1px solid var(--fa-hairline-soft);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 32px;
+  text-align: center;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.skin-fans .fans-detail-missing-body {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fa-body);
+  margin: 0;
+}
+
+.skin-fans .fans-detail-back {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--fa-muted);
+  padding: 6px 2px;
+  margin-bottom: 14px;
+  transition: color .15s;
+}
+.skin-fans .fans-detail-back:hover {
+  color: var(--fa-brand);
+}
+
+/* ============================================================================
+ * Header — big round avatar, title, @handle, Subscribe, stat row, tags
+ * ========================================================================== */
+.skin-fans .fans-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  background: #fff;
+  border: 1px solid var(--fa-card-border);
+  border-radius: var(--fa-r-signup);
+  box-shadow: var(--fa-shadow-card);
+  padding: 26px 28px;
+}
+.skin-fans .fans-detail-head .fa-avatar {
+  box-shadow: var(--fa-shadow-creator);
+}
+.skin-fans .fans-detail-head-main {
+  min-width: 0;
+  flex: 1;
+}
+.skin-fans .fans-detail-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: -0.8px;
+  line-height: 1.08;
+  color: var(--fa-ink);
+  margin: 0 0 4px;
+}
+.skin-fans .fans-detail-handle {
+  font-family: var(--fa-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fa-brand);
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+.skin-fans .fans-detail-summary {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--fa-body);
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.skin-fans .fans-detail-head-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* Subscribe pill — the honest skin for the real star/toggle action. */
+.skin-fans .fans-detail-subscribe {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  background: var(--fa-brand);
+  color: #fff;
+  border-radius: var(--fa-r-pill);
+  padding: 11px 20px;
+  box-shadow: var(--fa-shadow-cta);
+  transition: background .15s;
+}
+.skin-fans .fans-detail-subscribe:hover {
+  background: var(--fa-brand-hover);
+}
+.skin-fans .fans-detail-subscribe[data-subscribed] {
+  background: var(--fa-eval-green);
+  box-shadow: 0 14px 30px -12px rgba(22, 179, 100, 0.55);
+}
+.skin-fans .fans-detail-subscribe-label {
+  font-weight: 800;
+  font-size: 15px;
+}
+.skin-fans .fans-detail-subscribe-price {
+  font-family: var(--fa-font-mono);
+  font-weight: 600;
+  font-size: 12.5px;
+  opacity: 0.9;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.skin-fans .fans-detail-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+/* the header stat glyphs read a touch larger than the landing's collage stats */
+.skin-fans .fans-detail-stats .fa-stat {
+  font-size: 13px;
+}
+
+.skin-fans .fans-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* ============================================================================
+ * Profile stat strip
+ * ========================================================================== */
+.skin-fans .fans-detail-statstrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+.skin-fans .fans-detail-pstat {
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 16px 14px;
+  text-align: center;
+}
+.skin-fans .fans-detail-pstat-n {
+  display: block;
+  font-weight: 900;
+  font-size: 22px;
+  color: var(--fa-ink);
+  letter-spacing: -0.4px;
+}
+.skin-fans .fans-detail-pstat-c {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--fa-muted);
+  margin-top: 3px;
+}
+
+/* ============================================================================
+ * Segmented tab control
+ * ========================================================================== */
+.skin-fans .fans-detail-segbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  background: var(--fa-switch-bg);
+  border-radius: var(--fa-r-pill);
+  padding: 4px;
+  margin-top: 18px;
+}
+.skin-fans .fans-detail-seg {
+  flex: 1 1 auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--fa-font-ui);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--fa-muted);
+  padding: 9px 14px;
+  border-radius: var(--fa-r-pill);
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.skin-fans .fans-detail-seg:hover {
+  background: var(--fa-switch-hover);
+  color: var(--fa-ink);
+}
+.skin-fans .fans-detail-seg[data-active] {
+  background: var(--fa-brand);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: var(--fa-shadow-cta);
+}
+
+/* ============================================================================
+ * Panel + cards
+ * ========================================================================== */
+.skin-fans .fans-detail-panel {
+  margin-top: 18px;
+}
+
+.skin-fans .fans-detail-card {
+  background: #fff;
+  border: 1px solid var(--fa-card-border);
+  border-radius: var(--fa-r-card);
+  box-shadow: var(--fa-shadow-card);
+  padding: 22px 24px;
+}
+.skin-fans .fans-detail-card + .fans-detail-card {
+  margin-top: 16px;
+}
+.skin-fans .fans-detail-card-verified {
+  background: var(--fa-tint);
+  border-color: var(--fa-tint-border);
+}
+.skin-fans .fans-detail-card-title {
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: -0.3px;
+  color: var(--fa-ink);
+  margin: 0 0 14px;
+}
+
+.skin-fans .fans-detail-prose {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fa-body);
+  line-height: 1.6;
+  margin: 0;
+}
+.skin-fans .fans-detail-note {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fa-muted);
+  line-height: 1.55;
+  margin: 12px 0 0;
+}
+.skin-fans .fans-detail-warn {
+  color: var(--neutral-danger, #e0555f);
+}
+
+.skin-fans .fans-detail-taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* ---- workflow list ---- */
+.skin-fans .fans-detail-workflow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skin-fans .fans-detail-wf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-input);
+  padding: 10px 14px;
+}
+.skin-fans .fans-detail-wf-n {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--fa-brand);
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.skin-fans .fans-detail-wf-label {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--fa-ink);
+  text-transform: capitalize;
+  flex: 1;
+  min-width: 0;
+}
+.skin-fans .fans-detail-wf-agent {
+  font-family: var(--fa-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fa-muted);
+  white-space: nowrap;
+}
+
+/* ---- info lines (verified-creator + trust cards) ---- */
+.skin-fans .fans-detail-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--fa-hairline);
+}
+.skin-fans .fans-detail-info:last-child {
+  border-bottom: none;
+}
+.skin-fans .fans-detail-info-k {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--fa-muted);
+  white-space: nowrap;
+}
+.skin-fans .fans-detail-info-v {
+  font-family: var(--fa-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fa-ink);
+  text-align: right;
+  word-break: break-word;
+}
+
+/* ---- code / command blocks ---- */
+.skin-fans .fans-detail-pre {
+  background: var(--fa-ink);
+  color: #e7f6ff;
+  font-family: var(--fa-font-mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  border-radius: var(--fa-r-input);
+  padding: 14px 16px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.skin-fans .fans-detail-fine {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fa-faint);
+  line-height: 1.55;
+  margin: 12px 0 0;
+}
+.skin-fans .fans-detail-fine-block {
+  display: block;
+}
+
+.skin-fans .fans-detail-btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* ============================================================================
+ * Trust tab — stack of cards
+ * ========================================================================== */
+.skin-fans .fans-detail-trust {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.skin-fans .fans-detail-trust .fans-detail-card + .fans-detail-card {
+  margin-top: 0;
+}
+
+.skin-fans .fans-detail-evals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.skin-fans .fans-detail-eval {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--fa-r-input);
+  padding: 9px 12px;
+  border: 1px solid var(--fa-tint-border);
+  background: #fff;
+}
+.skin-fans .fans-detail-eval.pass {
+  border-color: rgba(22, 179, 100, 0.3);
+  background: rgba(22, 179, 100, 0.07);
+}
+.skin-fans .fans-detail-eval.fail {
+  border-color: rgba(224, 85, 95, 0.3);
+  background: rgba(224, 85, 95, 0.07);
+}
+.skin-fans .fans-detail-eval-mark {
+  font-weight: 900;
+  font-size: 14px;
+}
+.skin-fans .fans-detail-eval.pass .fans-detail-eval-mark {
+  color: var(--fa-eval-green);
+}
+.skin-fans .fans-detail-eval.fail .fans-detail-eval-mark {
+  color: #e0555f;
+}
+.skin-fans .fans-detail-eval-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--fa-ink);
+}
+.skin-fans .fans-detail-eval-score {
+  font-family: var(--fa-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fa-muted);
+}
+
+/* ============================================================================
+ * Try sample tab
+ * ========================================================================== */
+.skin-fans .fans-detail-try {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.skin-fans .fans-detail-try .fans-detail-card + .fans-detail-card {
+  margin-top: 0;
+}
+.skin-fans .fans-detail-try-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.skin-fans .fans-detail-run-status {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--fa-muted);
+}
+.skin-fans .fans-detail-ok {
+  color: var(--fa-eval-green);
+}
+
+/* ============================================================================
+ * Thread — friendly "fan wall"
+ * ========================================================================== */
+.skin-fans .fans-detail-wall {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.skin-fans .fans-detail-composer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--fa-card-border);
+  border-radius: var(--fa-r-card);
+  box-shadow: var(--fa-shadow-card);
+  padding: 16px;
+}
+.skin-fans .fans-detail-select {
+  border: 1.5px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 11px 12px;
+  font-family: var(--fa-font-ui);
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--fa-ink);
+  background: #fff;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.skin-fans .fans-detail-select:focus {
+  border-color: var(--fa-brand);
+}
+.skin-fans .fans-detail-input {
+  flex: 1;
+  min-width: 200px;
+  border: 1.5px solid var(--fa-input-border);
+  border-radius: var(--fa-r-input);
+  padding: 11px 14px;
+  font-family: var(--fa-font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fa-ink);
+  outline: none;
+  transition: border-color .15s;
+}
+.skin-fans .fans-detail-input:focus {
+  border-color: var(--fa-brand);
+}
+.skin-fans .fans-detail-input::placeholder {
+  color: var(--fa-faint);
+}
+
+.skin-fans .fans-detail-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.skin-fans .fans-detail-post {
+  display: flex;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--fa-card-border);
+  border-radius: var(--fa-r-card);
+  box-shadow: var(--fa-shadow-card);
+  padding: 16px;
+}
+.skin-fans .fans-detail-post-main {
+  flex: 1;
+  min-width: 0;
+}
+.skin-fans .fans-detail-post-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.skin-fans .fans-detail-post-author {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--fa-ink);
+}
+.skin-fans .fans-detail-post-meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fa-faint);
+}
+.skin-fans .fans-detail-post-body {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--fa-body);
+  line-height: 1.55;
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+.skin-fans .fans-detail-post-likes {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fa-muted);
+}
+
+.skin-fans .fans-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  background: var(--fa-tint);
+  border: 1px dashed var(--fa-tint-border);
+  border-radius: var(--fa-r-card);
+  padding: 40px 24px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--fa-muted);
+}
+.skin-fans .fans-detail-empty-ic {
+  font-size: 34px;
+  line-height: 1;
+}
+
+/* ============================================================================
+ * Files
+ * ========================================================================== */
+.skin-fans .fans-detail-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skin-fans .fans-detail-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-input);
+  padding: 10px 14px;
+}
+.skin-fans .fans-detail-file-ic {
+  font-size: 15px;
+  line-height: 1;
+}
+.skin-fans .fans-detail-file-name {
+  font-family: var(--fa-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fa-ink);
+  word-break: break-all;
+}
+
+/* ============================================================================
+ * Versions
+ * ========================================================================== */
+.skin-fans .fans-detail-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skin-fans .fans-detail-version {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--fa-tint);
+  border: 1px solid var(--fa-tint-border);
+  border-radius: var(--fa-r-input);
+  padding: 12px 14px;
+}
+.skin-fans .fans-detail-ver-tag {
+  font-family: var(--fa-font-mono);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--fa-muted);
+  background: #fff;
+  border: 1px solid var(--fa-input-border);
+  border-radius: var(--fa-r-pill);
+  padding: 4px 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.skin-fans .fans-detail-ver-tag.cur {
+  background: var(--fa-brand);
+  color: #fff;
+  border-color: var(--fa-brand);
+}
+.skin-fans .fans-detail-ver-tag.warn {
+  background: rgba(217, 138, 0, 0.12);
+  color: #b06f00;
+  border-color: rgba(217, 138, 0, 0.3);
+}
+.skin-fans .fans-detail-ver-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.skin-fans .fans-detail-ver-meta strong {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--fa-ink);
+}
+.skin-fans .fans-detail-ver-meta span {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fa-muted);
+}
+
+/* ============================================================================
+ * Footer — heat + trust cards, actions, CLI line
+ * ========================================================================== */
+.skin-fans .fans-detail-foot {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skin-fans .fans-detail-heat-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.skin-fans .fans-detail-heat-num {
+  font-weight: 900;
+  font-size: 32px;
+  letter-spacing: -0.6px;
+  color: var(--fa-ink);
+  line-height: 1;
+}
+.skin-fans .fans-detail-heat-delta {
+  font-weight: 800;
+  font-size: 12.5px;
+}
+.skin-fans .fans-detail-heat-delta.up {
+  color: var(--fa-eval-green);
+}
+.skin-fans .fans-detail-heat-delta.down {
+  color: #e0555f;
+}
+.skin-fans .fans-detail-heatbar {
+  height: 10px;
+  border-radius: var(--fa-r-pill);
+  background: #fff;
+  border: 1px solid var(--fa-tint-border);
+  overflow: hidden;
+}
+.skin-fans .fans-detail-heatbar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--fa-r-pill);
+  background: linear-gradient(90deg, #7fdcff, var(--fa-brand));
+  transition: width .3s ease;
+}
+
+.skin-fans .fans-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+/* "on" state for the outline Subscribe/Remix toggles */
+.skin-fans .fans-detail-on.fa-btn-outline {
+  background: var(--fa-wash);
+  border-color: var(--fa-brand);
+  color: var(--fa-brand-hover);
+}
+
+.skin-fans .fans-detail-cliline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--fa-ink);
+  border-radius: var(--fa-r-input);
+  padding: 13px 16px;
+}
+.skin-fans .fans-detail-cliline-cmd {
+  font-family: var(--fa-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: #e7f6ff;
+  word-break: break-all;
+}
+.skin-fans .fans-detail-cliline-meta {
+  font-family: var(--fa-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fa-footer-text);
+  white-space: nowrap;
+}
+
+/* ============================================================================
+ * Responsive
+ * ========================================================================== */
+@media (max-width: 720px) {
+  .skin-fans .fans-detail-overlay {
+    padding: 20px 14px 48px;
+  }
+  .skin-fans .fans-detail-head {
+    flex-direction: column;
+    gap: 16px;
+    padding: 22px 20px;
+  }
+  .skin-fans .fans-detail-title {
+    font-size: 26px;
+  }
+  .skin-fans .fans-detail-statstrip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .skin-fans .fans-detail-seg {
+    flex: 1 1 40%;
+  }
+}
