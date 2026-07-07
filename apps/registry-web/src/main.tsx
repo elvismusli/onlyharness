@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type { Session } from "@supabase/supabase-js";
 import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND, JOB_FILTERS, remixRecipe } from "./core/constants";
 import { supabase } from "./core/supabase";
 import { clockLabel, keyFor } from "./core/format";
+import { useAuth } from "./core/useAuth";
 import { useClipboard } from "./core/useClipboard";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
 import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, HarnessDetail, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, ThreadItem, WinKind } from "./core/types";
@@ -55,11 +55,8 @@ function App() {
   const [kinds, setKinds] = useState<Record<string, string>>({});
   const [tryStates, setTryStates] = useState<Record<string, "idle" | "running" | "done">>({});
 
-  /* auth */
-  const [session, setSession] = useState<Session | null>(null);
-  const [logon, setLogon] = useState<{ open: boolean; note: string }>({ open: false, note: "" });
-  const [authStatus, setAuthStatus] = useState("");
-  const [authBusy, setAuthBusy] = useState(false);
+  /* auth (extracted to core/useAuth; storefront/social identity stays here for now) */
+  const auth = useAuth({ onFlash: flashMsg });
   const [myHandle, setMyHandle] = useState("");
   const [myStorefront, setMyStorefront] = useState<StorefrontProfile | undefined>();
   const [storefrontHandle, setStorefrontHandle] = useState("");
@@ -99,13 +96,6 @@ function App() {
   const { copyText, copiedTag, copyFallback, dismissFallback } = useClipboard({ onFlash: flashMsg });
 
   /* ---------- effects ---------- */
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
-    return () => listener.subscription.unsubscribe();
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -158,7 +148,7 @@ function App() {
   }, [refreshTick]);
 
   useEffect(() => {
-    if (!supabase || !session?.user) {
+    if (!supabase || !auth.session?.user) {
       setStarred({});
       setRemixed({});
       setMyHandle("");
@@ -181,12 +171,12 @@ function App() {
         setStarred(nextStars);
         setRemixed({});
       });
-  }, [session]);
+  }, [auth.session]);
 
   useEffect(() => {
-    if (!session?.access_token) return;
+    if (!auth.accessToken) return;
     fetch(`${apiUrl}/me/storefront`, {
-      headers: { Authorization: `Bearer ${session.access_token}` }
+      headers: { Authorization: `Bearer ${auth.accessToken}` }
     })
       .then(async (response) => {
         if (response.status === 404) return undefined;
@@ -201,7 +191,7 @@ function App() {
         setStorefrontBio(profile?.bio ?? "");
       })
       .catch(() => undefined);
-  }, [session]);
+  }, [auth.session]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setTime(clockLabel(new Date())), 20_000);
@@ -309,7 +299,7 @@ function App() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        ...(auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {})
       },
       body: JSON.stringify({
         kind,
@@ -319,13 +309,6 @@ function App() {
         client: "registry-web"
       })
     }).catch(() => undefined);
-  }
-
-  function requireUser(note: string) {
-    if (session?.user) return true;
-    setAuthStatus("");
-    setLogon({ open: true, note });
-    return false;
   }
 
   function showDialog(spec: ActiveDialog) {
@@ -479,7 +462,7 @@ function App() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        ...(auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {})
       },
       body: JSON.stringify({
         kind: "view",
@@ -500,9 +483,8 @@ function App() {
   }
 
   function openMyBriefcase() {
-    if (!session?.user) {
-      setAuthStatus("");
-      setLogon({ open: true, note: "Log on to create your creator @handle." });
+    if (!auth.user) {
+      auth.openLogon("Log on to create your creator @handle.");
       return;
     }
     setStorefrontStatus("");
@@ -510,7 +492,7 @@ function App() {
   }
 
   async function saveMyStorefront() {
-    if (!session?.access_token) {
+    if (!auth.accessToken) {
       openMyBriefcase();
       return;
     }
@@ -522,7 +504,7 @@ function App() {
         method: "PUT",
         headers: {
           "content-type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${auth.accessToken}`
         },
         body: JSON.stringify({
           handle: storefrontHandle,
@@ -572,18 +554,18 @@ function App() {
   }
 
   async function toggleStar(item: RegistryItem) {
-    if (!requireUser("Log on to star harnesses. Stars keep the heat honest.")) return;
+    if (!auth.requireUser("Log on to star harnesses. Stars keep the heat honest.")) return;
     const key = keyFor(item);
     const next = !starred[key];
     setStarred((current) => ({ ...current, [key]: next }));
     flashMsg(next ? `★ Starred ${item.title} · heat +0.4` : `Unstarred ${item.title}`);
-    if (!session?.access_token) return;
+    if (!auth.accessToken) return;
     try {
       const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/star`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${auth.accessToken}`
         },
         body: JSON.stringify({ starred: next })
       });
@@ -599,10 +581,10 @@ function App() {
   async function remixHarness(item: RegistryItem) {
     const recipe = remixRecipe(item);
     const key = keyFor(item);
-    if (!session?.access_token) {
+    if (!auth.accessToken) {
       setRemixed((current) => ({ ...current, [key]: true }));
       void copyText(recipe, `Local remix recipe copied for ${item.title}`, `remix:${key}`);
-      setLogon({ open: true, note: "Log on to create a server-side local remix draft. A local recipe was copied." });
+      auth.openLogon("Log on to create a server-side local remix draft. A local recipe was copied.");
       return;
     }
     try {
@@ -610,7 +592,7 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${auth.accessToken}`
         },
         body: JSON.stringify({ name: `my-${item.name}` })
       });
@@ -660,15 +642,15 @@ function App() {
     const key = keyFor(item);
     const draft = (drafts[key] ?? "").trim();
     if (!draft) return;
-    if (!requireUser("Log on to post in the thread.")) return;
+    if (!auth.requireUser("Log on to post in the thread.")) return;
     const kind = kinds[key] ?? "question";
-    if (!session?.access_token) return;
+    if (!auth.accessToken) return;
     try {
       const response = await fetch(`${apiUrl}/repos/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}/thread`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${auth.accessToken}`
         },
         body: JSON.stringify({ kind, body: draft })
       });
@@ -685,7 +667,7 @@ function App() {
   }
 
   async function submitImport() {
-    if (!requireUser("Log on to publish a harness.")) return;
+    if (!auth.requireUser("Log on to publish a harness.")) return;
     setImportBusy(true);
     setImportStatus("");
     try {
@@ -693,7 +675,7 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`
+          Authorization: `Bearer ${auth.accessToken}`
         },
         body: JSON.stringify({ name: importName, markdown: importMarkdown })
       });
@@ -716,68 +698,14 @@ function App() {
     }
   }
 
-  /* ---------- auth ---------- */
-
-  async function signIn(email: string, password: string) {
-    if (!supabase) return setAuthStatus("Auth backend is not configured.");
-    if (!email || !password) return setAuthStatus("Email and password are required.");
-    setAuthBusy(true);
-    setAuthStatus("Logging on...");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setAuthBusy(false);
-    if (error) return setAuthStatus(error.message);
-    setLogon({ open: false, note: "" });
-    flashMsg(`Logged on as ${email}`);
-  }
-
-  async function resendConfirmation(email: string) {
-    if (!supabase) return setAuthStatus("Auth backend is not configured.");
-    if (!email) return setAuthStatus("Email is required.");
-    setAuthBusy(true);
-    setAuthStatus("Sending confirmation email...");
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email,
-      options: { emailRedirectTo: window.location.origin }
-    });
-    setAuthBusy(false);
-    if (error) return setAuthStatus(error.message);
-    setAuthStatus("Confirmation email sent. Check your inbox, then log on.");
-  }
-
-  async function signUp(name: string, email: string, password: string) {
-    if (!supabase) return setAuthStatus("Auth backend is not configured.");
-    if (!email || !password) return setAuthStatus("Email and password are required.");
-    setAuthBusy(true);
-    setAuthStatus("Creating account...");
-    const { error, data } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: name || email.split("@")[0] },
-        emailRedirectTo: window.location.origin
-      }
-    });
-    setAuthBusy(false);
-    if (error) return setAuthStatus(error.message);
-    if (data.session) {
-      setLogon({ open: false, note: "" });
-      flashMsg(`Welcome to the frontier, ${name || email}`);
-    } else {
-      setAuthStatus("Account created. Check your email to confirm, then log on.");
-    }
-  }
+  /* ---------- auth (sign-in/up/out/requireUser live in core/useAuth) ---------- */
 
   function logOff() {
     showDialog({
       title: "Log Off OnlyHarness",
       icon: "🔑",
-      body: `Log off ${session?.user.email ?? ""}? Your stars stay saved.`,
-      onOk: async () => {
-        await supabase?.auth.signOut();
-        setSession(null);
-        flashMsg("Logged off");
-      }
+      body: `Log off ${auth.user?.email ?? ""}? Your stars stay saved.`,
+      onOk: () => { void auth.signOut(); }
     });
   }
 
@@ -844,9 +772,9 @@ function App() {
     { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", topItem ? keyFor(topItem) : undefined) },
     { icon: "🔧", label: "Maintainer Review", onClick: () => openReview() },
     "sep",
-    session?.user
-      ? { icon: "🔑", label: `Log Off ${session.user.email?.split("@")[0] ?? ""}...`, onClick: logOff }
-      : { icon: "🔑", label: "Log On...", onClick: () => { setAuthStatus(""); setLogon({ open: true, note: "" }); } },
+    auth.user
+      ? { icon: "🔑", label: `Log Off ${auth.user.email?.split("@")[0] ?? ""}...`, onClick: logOff }
+      : { icon: "🔑", label: "Log On...", onClick: () => auth.openLogon() },
     "sep",
     { icon: "⏻", label: "Shut Down...", onClick: shutDown }
   ];
@@ -870,7 +798,7 @@ function App() {
         const thread = [
           ...(detail?.thread ?? []),
           ...(remotePosts[key] ?? []).map((post) =>
-            post.userId && post.userId === session?.user.id ? { ...post, author: "you" } : post
+            post.userId && post.userId === auth.user?.id ? { ...post, author: "you" } : post
           )
         ];
         return (
@@ -910,9 +838,9 @@ function App() {
             setMarkdown={setImportMarkdown}
             status={importStatus}
             busy={importBusy}
-            loggedIn={Boolean(session?.user)}
+            loggedIn={Boolean(auth.user)}
             onSubmit={submitImport}
-            onLogon={() => { setAuthStatus(""); setLogon({ open: true, note: "Log on to publish a harness." }); }}
+            onLogon={() => auth.openLogon("Log on to publish a harness.")}
           />
         );
       case "install":
@@ -921,9 +849,9 @@ function App() {
             item={item}
             detail={item ? details[keyFor(item)] : undefined}
             apiUrl={apiUrl}
-            accessToken={session?.access_token}
+            accessToken={auth.accessToken}
             refCode={refCode}
-            onLogon={() => { setAuthStatus(""); setLogon({ open: true, note: "Log on to create a checkout session." }); }}
+            onLogon={() => auth.openLogon("Log on to create a checkout session.")}
             onCopy={(text, target) => {
               if (item) recordHarnessEvent("copy", item, target);
               void copyText(text, "Install commands copied", "install");
@@ -964,7 +892,7 @@ function App() {
       case "profile":
         return (
           <StorefrontEditorBody
-            loggedIn={Boolean(session?.user)}
+            loggedIn={Boolean(auth.user)}
             profile={myStorefront}
             handle={storefrontHandle}
             setHandle={setStorefrontHandle}
@@ -976,7 +904,7 @@ function App() {
             busy={storefrontBusy}
             onSave={saveMyStorefront}
             onOpenPublic={() => myStorefront && openStorefront(myStorefront.handle)}
-            onLogon={() => { setAuthStatus(""); setLogon({ open: true, note: "Log on to create your creator @handle." }); }}
+            onLogon={() => auth.openLogon("Log on to create your creator @handle.")}
           />
         );
       case "network":
@@ -1027,7 +955,7 @@ function App() {
           setSort={setSort}
           starred={starred}
           remixed={remixed}
-          session={session}
+          session={auth.session}
           totals={totals}
           leader={leader}
           flash={flash}
@@ -1044,7 +972,7 @@ function App() {
             openReview,
             openLeaderboard: () => openWin("leaderboard"),
             openProfile: openMyBriefcase,
-            openLogon: () => { setAuthStatus(""); setLogon({ open: true, note: "" }); },
+            openLogon: () => auth.openLogon(),
             logOff,
             cantClose,
             about: aboutDialog,
@@ -1096,16 +1024,16 @@ function App() {
         onTrayFire={() => openWin("leaderboard")}
       />
 
-      {logon.open && (
+      {auth.logon.open && (
         <LogonDialog
-          note={logon.note}
-          status={authStatus}
-          busy={authBusy}
-          configured={Boolean(supabase)}
-          onSignIn={signIn}
-          onSignUp={signUp}
-          onResendConfirmation={resendConfirmation}
-          onClose={() => setLogon({ open: false, note: "" })}
+          note={auth.logon.note}
+          status={auth.authStatus}
+          busy={auth.authBusy}
+          configured={auth.configured}
+          onSignIn={auth.signIn}
+          onSignUp={auth.signUp}
+          onResendConfirmation={auth.resendConfirmation}
+          onClose={auth.closeLogon}
         />
       )}
 
