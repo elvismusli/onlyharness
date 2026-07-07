@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND } from "../../core/constants";
 import { clockLabel, keyFor } from "../../core/format";
-import { HarnessStore, useHarness } from "../../core/store";
+import { useHarness } from "../../core/store";
+import { SkinSwitcher } from "../SkinSwitcher";
 import type { Surface } from "../../core/useAppNav";
 import type { WinKind } from "../../core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
@@ -25,7 +26,7 @@ const WIN_WIDTHS: Record<WinKind, number> = {
   network: 900
 };
 
-function App({ onMinimizedChange }: { onMinimizedChange: (next: Record<string, boolean>) => void }) {
+function App() {
   /* Every core hook, chrome state, surface orchestration, and the deep-link
      effect now live in the store; the Win98 window manager reads them via `h`. */
   const h = useHarness();
@@ -47,16 +48,6 @@ function App({ onMinimizedChange }: { onMinimizedChange: (next: Record<string, b
     const timer = window.setInterval(() => setTime(clockLabel(new Date())), 20_000);
     return () => window.clearInterval(timer);
   }, []);
-
-  /* Publish the minimized projection up to the store so its deep-link dedup can
-     tell a minimized deep-link window (which should re-focus on a repeat hash
-     fire) from an already-visible one (which should be left untouched). The
-     original effect read this straight off `winView`. */
-  useEffect(() => {
-    const minimized: Record<string, boolean> = {};
-    for (const [id, view] of Object.entries(winView)) if (view.minimized) minimized[id] = true;
-    onMinimizedChange(minimized);
-  }, [winView, onMinimizedChange]);
 
   /* WM reconciliation: the window manager is a pure reactor to `h.surfaces`.
      Any surface without a view-state entry is seeded a cascade position (the same
@@ -429,6 +420,7 @@ function App({ onMinimizedChange }: { onMinimizedChange: (next: Record<string, b
         onStart={() => setStartOpen((open) => !open)}
         time={time}
         onTrayFire={h.openLeaderboard}
+        trayExtra={<SkinSwitcher />}
       />
 
       {h.logon.open && (
@@ -487,29 +479,11 @@ function App({ onMinimizedChange }: { onMinimizedChange: (next: Record<string, b
 }
 
 /**
- * Win98 skin entry: composes the store with the Win98 window manager. The Win98
- * window manager injects its `winView.minimized` view-state into the store's
- * deep-link dedup so a repeat fire of the same hash re-focuses a minimized
- * deep-link window but leaves an already-visible one untouched — preserving the
- * original effect (which depended on `winView` directly and so re-ran, and
- * re-focused, when a deep-link window's minimized flag flipped). `winMinimized`
- * only re-identifies when the minimized *set* changes, so the store effect
- * re-runs on minimize/restore but not on pure position moves.
+ * Win98 skin entry: a pure consumer of `useHarness()`. The store is mounted
+ * above the skin (in `main.tsx`, via `<HarnessStore><SkinProvider/></HarnessStore>`),
+ * so this just renders the Win98 window manager `App`; switching skins later
+ * preserves the shared store state.
  */
 export function Win98Skin() {
-  const [winMinimized, setWinMinimized] = useState<Record<string, boolean>>({});
-  const onMinimizedChange = useCallback((next: Record<string, boolean>) => {
-    setWinMinimized((current) => {
-      const currentIds = Object.keys(current);
-      const nextIds = Object.keys(next);
-      if (currentIds.length === nextIds.length && nextIds.every((id) => current[id])) return current;
-      return next;
-    });
-  }, []);
-  const isMinimized = useCallback((id: string) => Boolean(winMinimized[id]), [winMinimized]);
-  return (
-    <HarnessStore isMinimized={isMinimized}>
-      <App onMinimizedChange={onMinimizedChange} />
-    </HarnessStore>
-  );
+  return <App />;
 }

@@ -36,16 +36,8 @@ export type HarnessStoreValue = ReturnType<typeof useHarnessStore>;
 
 const HarnessContext = createContext<HarnessStoreValue | null>(null);
 
-/**
- * Optional skin hook: lets a window-manager skin tell the deep-link dedup whether
- * a given surface is currently minimized. The original Win98 effect consulted its
- * `winView[id].minimized` flag so that a repeat fire of the *same* deep-link hash
- * re-focuses a minimized window but leaves an already-visible one untouched.
- * Kept injectable (default: nothing minimized) so the store stays skin-neutral.
- */
 export type HarnessStoreProps = {
   children: ReactNode;
-  isMinimized?: (id: string) => boolean;
 };
 
 /**
@@ -58,7 +50,7 @@ export type HarnessStoreProps = {
  * `openMyBriefcase` are function declarations so the lazy wrappers can reference
  * them before their definitions, identical to the host's hoisting today.
  */
-function useHarnessStore(isMinimized: (id: string) => boolean) {
+function useHarnessStore() {
   /* deep-link checkout link cache (keyed by keyForCheckout) */
   const [checkoutLinks, setCheckoutLinks] = useState<Record<string, CheckoutLinkState>>({});
 
@@ -166,7 +158,7 @@ function useHarnessStore(isMinimized: (id: string) => boolean) {
           reg.loadDetail(item);
         }
         const canonical = `checkout:${checkoutKey}`;
-        if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `checkout:${checkoutKey}`) && !isMinimized(`checkout:${checkoutKey}`)) return;
+        if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `checkout:${checkoutKey}`)) return;
         handledHash.current = canonical;
         openCheckout(checkoutKey);
         return;
@@ -174,7 +166,7 @@ function useHarnessStore(isMinimized: (id: string) => boolean) {
       const storefront = parseStorefrontHash(window.location.hash);
       if (storefront) {
         const canonical = `#/@${storefront.handle}`;
-        if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `storefront:${storefront.handle}`) && !isMinimized(`storefront:${storefront.handle}`)) return;
+        if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `storefront:${storefront.handle}`)) return;
         handledHash.current = canonical;
         openStorefront(storefront.handle);
         return;
@@ -185,7 +177,7 @@ function useHarnessStore(isMinimized: (id: string) => boolean) {
       const item = reg.knownItems[key] ?? reg.allItems.find((entry) => entry.owner === parsed.owner && entry.name === parsed.name);
       if (!item) return;
       const canonical = `#/h/${parsed.owner}/${parsed.name}`;
-      if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `harness:${key}`) && !isMinimized(`harness:${key}`)) return;
+      if (handledHash.current === canonical && nav.surfaces.some((surface) => surface.id === `harness:${key}`)) return;
       handledHash.current = canonical;
       openHarness(item);
     }
@@ -198,7 +190,7 @@ function useHarnessStore(isMinimized: (id: string) => boolean) {
       window.removeEventListener("popstate", openFromHash);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reg.allItems, reg.knownItems, nav.surfaces, isMinimized]);
+  }, [reg.allItems, reg.knownItems, nav.surfaces]);
 
   /* ---------- surface orchestration (open* + closeSurface) ----------
      Each wrapper preserves its exact data side-effects from the host; the only
@@ -389,11 +381,12 @@ function useHarnessStore(isMinimized: (id: string) => boolean) {
 
 /**
  * Context provider composing all core hooks into one `useHarness()` value.
- * A skin renders `<HarnessStore isMinimized={...}><App/></HarnessStore>` and reads
- * everything from `useHarness()`.
+ * Mounted above the active skin (`<HarnessStore><SkinProvider/></HarnessStore>`)
+ * so `useHarness()` state survives a skin switch. A skin reads everything from
+ * `useHarness()`.
  */
-export function HarnessStore({ children, isMinimized }: HarnessStoreProps) {
-  const value = useHarnessStore(isMinimized ?? (() => false));
+export function HarnessStore({ children }: HarnessStoreProps) {
+  const value = useHarnessStore();
   return <HarnessContext.Provider value={value}>{children}</HarnessContext.Provider>;
 }
 

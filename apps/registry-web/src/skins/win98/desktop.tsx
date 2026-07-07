@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { isoWeek } from "../../core/format";
 import type { RegistryItem } from "../../core/types";
 import { Btn, Dialog, TitleBar } from "./win98";
@@ -92,12 +93,13 @@ export function Mascot({ onYes }: { onYes: () => void }) {
 
 export type TaskEntry = { id: string; icon: string; title: string; active: boolean; onClick: () => void };
 
-export function Taskbar({ tasks, startOpen, onStart, time, onTrayFire }: {
+export function Taskbar({ tasks, startOpen, onStart, time, onTrayFire, trayExtra }: {
   tasks: TaskEntry[];
   startOpen: boolean;
   onStart: () => void;
   time: string;
   onTrayFire: () => void;
+  trayExtra?: ReactNode;
 }) {
   return (
     <div className="taskbar">
@@ -113,6 +115,7 @@ export function Taskbar({ tasks, startOpen, onStart, time, onTrayFire }: {
         ))}
       </div>
       <div className="tray">
+        {trayExtra}
         <button title="Volume">🔊</button>
         <button title="Leaderboard" onClick={onTrayFire}>🔥</button>
         <span>{time}</span>
