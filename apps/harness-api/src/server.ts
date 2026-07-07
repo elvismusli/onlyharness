@@ -221,6 +221,8 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const counters = await fetchCountersMap();
   const item = registry.registryItemFromDir(owner, root, counters);
   const lastVerifiedAt = await fetchLastVerificationAt(owner, repo);
+  const { rootDir, ...publicInspection } = inspection;
+  void rootDir;
   return {
     owner,
     repo,
@@ -230,7 +232,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     example: registry.readExample(root),
     files: registry.listHarnessFiles(root),
     versions: registry.listArchiveVersions(owner, repo, root),
-    ...inspection,
+    ...publicInspection,
     evalResult,
     security,
     contextCost,

@@ -96,6 +96,10 @@ rsync -az "$ENV_FILE" "$SSH_TARGET:$SERVER_PATH/infra/production.env"
 
 ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES up -d --build"
 
+# The api data volume shadows the image's /app/data: seed committed link-only
+# directory shelves into the volume so the directory shelf survives on prod.
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/directories ]; then docker compose --env-file infra/production.env $COMPOSE_FILES cp data/directories api:/app/data/; fi"
+
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
 set -euo pipefail

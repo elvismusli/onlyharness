@@ -52,6 +52,9 @@ type SearchItem = {
     approxTokens: number;
     files: number;
   };
+  compatibility?: {
+    targets?: Array<{ id?: string; name?: string; status?: string }>;
+  };
 };
 
 type ArchiveFile = { path: string; truncated: boolean; content: string };
@@ -1693,7 +1696,7 @@ function buildSuggestionReport(item: SearchItem, detail: SuggestDetail): Suggest
       context: contextCostLabel(detail.contextCost ?? item.contextCost),
       standard: detail.standard ?? "unknown",
       payment: pricingTrustLabel(detail.manifest?.pricing ?? item.pricing),
-      compatibility: compatibilityLabels(detail),
+      compatibility: compatibilityLabels(detail, item),
       ...(detail.verification?.lastVerifiedAt ? { lastVerifiedAt: detail.verification.lastVerifiedAt } : {})
     }
   };
@@ -1751,8 +1754,10 @@ function pricingTrustLabel(pricing: PricingInfo | undefined): string {
   return pricing.model;
 }
 
-function compatibilityLabels(detail: SuggestDetail): string[] {
-  return (detail.manifest?.compatibility?.targets ?? [])
+function compatibilityLabels(detail: SuggestDetail, item?: SearchItem): string[] {
+  const declared = detail.manifest?.compatibility?.targets;
+  const targets = declared?.length ? declared : item?.compatibility?.targets ?? [];
+  return targets
     .map((target) => `${target.id ?? target.name ?? "target"}:${target.status ?? "unknown"}`)
     .slice(0, 5);
 }
@@ -3742,10 +3747,11 @@ function slugify(value: string): string {
 }
 
 function displayPath(value: string): string {
-  const relative = path.relative(process.cwd(), path.resolve(value));
+  const resolved = path.resolve(value);
+  const relative = path.relative(process.cwd(), resolved);
   if (!relative) return ".";
   if (!relative.startsWith("..") && !path.isAbsolute(relative)) return relative.split(path.sep).join("/");
-  return path.basename(value);
+  return resolved;
 }
 
 function escapeRegex(value: string): string {
