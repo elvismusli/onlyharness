@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND } from "./core/constants";
-import { supabase } from "./core/supabase";
 import { clockLabel, keyFor } from "./core/format";
 import { useAuth } from "./core/useAuth";
 import { useRegistry } from "./core/useRegistry";
 import { useClipboard } from "./core/useClipboard";
 import { useSocial } from "./core/useSocial";
 import { usePublish } from "./core/usePublish";
+import { useStorefront } from "./core/useStorefront";
 import { initialRefCode, keyForCheckout, parseCheckoutLocation, parseHarnessHash, parseStorefrontHash, refFromLocation, setHarnessHash } from "./core/url";
-import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, StorefrontPage, StorefrontProfile, WinKind } from "./core/types";
+import type { CheckoutLinkState, DetailTab, DialogSpec, FloatWin, OrgWorkspace, RegistryItem, ResourceItem, WinKind } from "./core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
@@ -36,7 +36,6 @@ type ActiveDialog = DialogSpec & { onOk?: () => void };
 
 function App() {
   /* registry/resource data (extracted to core/useRegistry) */
-  const [storefronts, setStorefronts] = useState<Record<string, StorefrontPage>>({});
   const [checkoutLinks, setCheckoutLinks] = useState<Record<string, CheckoutLinkState>>({});
 
   /* auth (extracted to core/useAuth; storefront/social identity stays here for now) */
@@ -78,13 +77,14 @@ function App() {
     showDialog
   });
 
-  const [myHandle, setMyHandle] = useState("");
-  const [myStorefront, setMyStorefront] = useState<StorefrontProfile | undefined>();
-  const [storefrontHandle, setStorefrontHandle] = useState("");
-  const [storefrontDisplayName, setStorefrontDisplayName] = useState("");
-  const [storefrontBio, setStorefrontBio] = useState("");
-  const [storefrontStatus, setStorefrontStatus] = useState("");
-  const [storefrontBusy, setStorefrontBusy] = useState(false);
+  /* storefront/creator-profile flow (extracted to core/useStorefront) */
+  const storefront = useStorefront({
+    session: auth.session,
+    accessToken: auth.accessToken,
+    cacheItems: reg.cacheItems,
+    onFlash: flashMsg,
+    onNeedAuth: openMyBriefcase
+  });
 
   /* organization workspace */
   const [networkOrg, setNetworkOrg] = useState(() => localStorage.getItem("hh:networkOrg") ?? "acme");
@@ -110,37 +110,6 @@ function App() {
   const handledHash = useRef("");
 
   /* ---------- effects ---------- */
-
-  useEffect(() => {
-    if (!supabase || !auth.session?.user) {
-      setMyHandle("");
-      setMyStorefront(undefined);
-      setStorefrontHandle("");
-      setStorefrontDisplayName("");
-      setStorefrontBio("");
-      setStorefrontStatus("");
-    }
-  }, [auth.session]);
-
-  useEffect(() => {
-    if (!auth.accessToken) return;
-    fetch(`${apiUrl}/me/storefront`, {
-      headers: { Authorization: `Bearer ${auth.accessToken}` }
-    })
-      .then(async (response) => {
-        if (response.status === 404) return undefined;
-        if (!response.ok) throw new Error(`Storefront profile failed (${response.status})`);
-        return await response.json() as StorefrontProfile;
-      })
-      .then((profile) => {
-        setMyStorefront(profile);
-        setMyHandle(profile?.handle ?? "");
-        setStorefrontHandle(profile?.handle ?? "");
-        setStorefrontDisplayName(profile?.display_name ?? "");
-        setStorefrontBio(profile?.bio ?? "");
-      })
-      .catch(() => undefined);
-  }, [auth.session]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setTime(clockLabel(new Date())), 20_000);
@@ -286,17 +255,6 @@ function App() {
     return { Authorization: `Bearer ${networkToken}` };
   }
 
-  function loadStorefront(handle: string) {
-    if (storefronts[handle]) return;
-    fetch(`${apiUrl}/storefront/${encodeURIComponent(handle)}`)
-      .then((response) => response.json())
-      .then((data: StorefrontPage) => {
-        setStorefronts((current) => ({ ...current, [handle]: data }));
-        reg.cacheItems(data.items ?? []);
-      })
-      .catch(() => undefined);
-  }
-
   async function loadOrgWorkspace() {
     const slug = networkOrg.replace(/^@/, "").trim().toLowerCase();
     if (!slug) return;
@@ -355,7 +313,7 @@ function App() {
   function openStorefront(handle: string) {
     const clean = handle.replace(/^@/, "").toLowerCase();
     if (!clean) return;
-    loadStorefront(clean);
+    storefront.loadStorefront(clean);
     openWin("storefront", clean);
   }
 
@@ -364,52 +322,8 @@ function App() {
       auth.openLogon("Log on to create your creator @handle.");
       return;
     }
-    setStorefrontStatus("");
+    storefront.setStorefrontStatus("");
     openWin("profile");
-  }
-
-  async function saveMyStorefront() {
-    if (!auth.accessToken) {
-      openMyBriefcase();
-      return;
-    }
-    setStorefrontBusy(true);
-    setStorefrontStatus("");
-    const previousHandle = myStorefront?.handle;
-    try {
-      const response = await fetch(`${apiUrl}/me/storefront`, {
-        method: "PUT",
-        headers: {
-          "content-type": "application/json",
-          Authorization: `Bearer ${auth.accessToken}`
-        },
-        body: JSON.stringify({
-          handle: storefrontHandle,
-          display_name: storefrontDisplayName,
-          bio: storefrontBio
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Storefront save failed (${response.status})`);
-      const profile = data as StorefrontProfile;
-      setMyStorefront(profile);
-      setMyHandle(profile.handle);
-      setStorefrontHandle(profile.handle);
-      setStorefrontDisplayName(profile.display_name);
-      setStorefrontBio(profile.bio);
-      setStorefronts((current) => {
-        const next = { ...current };
-        if (previousHandle) delete next[previousHandle];
-        delete next[profile.handle];
-        return next;
-      });
-      setStorefrontStatus(`Saved @${profile.handle}`);
-      flashMsg(`Saved @${profile.handle}`);
-    } catch (error) {
-      setStorefrontStatus(error instanceof Error ? error.message : "Storefront save failed");
-    } finally {
-      setStorefrontBusy(false);
-    }
   }
 
   function openInstall(item?: RegistryItem) {
@@ -499,7 +413,7 @@ function App() {
     { icon: "🏆", label: "Leaderboard", onClick: () => openWin("leaderboard") },
     { icon: "🌐", label: "Network Neighborhood", onClick: () => openWin("network") },
     { icon: "💿", label: "Install Center", onClick: () => openInstall(reg.topItem) },
-    { icon: "🗂️", label: myHandle ? `My Briefcase (@${myHandle})` : "My Briefcase...", onClick: openMyBriefcase },
+    { icon: "🗂️", label: storefront.myHandle ? `My Briefcase (@${storefront.myHandle})` : "My Briefcase...", onClick: openMyBriefcase },
     { icon: "📄", label: "New harness...", onClick: () => openWin("publish") },
     { icon: "🖥️", label: "MS-DOS Prompt", onClick: () => openWin("cli", reg.topItem ? keyFor(reg.topItem) : undefined) },
     { icon: "🔧", label: "Maintainer Review", onClick: () => openReview() },
@@ -614,23 +528,23 @@ function App() {
           : <div className="win-body plate">Nothing to brag about yet.</div>;
       case "storefront": {
         const handle = win.hkey ?? "";
-        return <StorefrontBody page={storefronts[handle]} handle={handle} referrer={refCode} onOpen={(entry) => openHarness(entry)} onCopy={(text) => copyText(text, "Ref-link copied", `storefront:${handle}`)} copied={copiedTag === `storefront:${handle}`} />;
+        return <StorefrontBody page={storefront.storefronts[handle]} handle={handle} referrer={refCode} onOpen={(entry) => openHarness(entry)} onCopy={(text) => copyText(text, "Ref-link copied", `storefront:${handle}`)} copied={copiedTag === `storefront:${handle}`} />;
       }
       case "profile":
         return (
           <StorefrontEditorBody
             loggedIn={Boolean(auth.user)}
-            profile={myStorefront}
-            handle={storefrontHandle}
-            setHandle={setStorefrontHandle}
-            displayName={storefrontDisplayName}
-            setDisplayName={setStorefrontDisplayName}
-            bio={storefrontBio}
-            setBio={setStorefrontBio}
-            status={storefrontStatus}
-            busy={storefrontBusy}
-            onSave={saveMyStorefront}
-            onOpenPublic={() => myStorefront && openStorefront(myStorefront.handle)}
+            profile={storefront.myStorefront}
+            handle={storefront.storefrontHandle}
+            setHandle={storefront.setStorefrontHandle}
+            displayName={storefront.storefrontDisplayName}
+            setDisplayName={storefront.setStorefrontDisplayName}
+            bio={storefront.storefrontBio}
+            setBio={storefront.setStorefrontBio}
+            status={storefront.storefrontStatus}
+            busy={storefront.storefrontBusy}
+            onSave={storefront.saveMyStorefront}
+            onOpenPublic={() => storefront.myStorefront && openStorefront(storefront.myStorefront.handle)}
             onLogon={() => auth.openLogon("Log on to create your creator @handle.")}
           />
         );
