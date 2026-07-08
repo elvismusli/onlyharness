@@ -79,6 +79,20 @@ type ResourcePackageImportOptions = {
   actorLabel?: string;
 };
 
+type WorkspaceCollectionRequest = {
+  slug?: string;
+  title?: string;
+  summary?: string;
+  visibility?: string;
+};
+
+type WorkspaceResourceApproveRequest = {
+  resourceId?: string;
+  collection?: string;
+  name?: string;
+  note?: string;
+};
+
 type CheckoutRequest = {
   owner?: string;
   repo?: string;
@@ -306,6 +320,7 @@ app.get("/workspaces/:slug/workspace", async (request, reply) => {
     workspace: publicWorkspace(auth.workspace),
     resources: resourceResult.resources,
     items: resourceResult.resources,
+    collections: workspaces.listWorkspaceCollections(auth.workspace.slug),
     permissions: workspaceResourcePermissionsSummary(auth.workspace.slug, resourceResult.resources),
     audit: await workspaces.readWorkspaceAudit(auth.workspace.slug, 80)
   };
@@ -323,6 +338,46 @@ app.get("/workspaces/:slug/resources", async (request, reply) => {
   const result = workspaces.searchWorkspaceResources(auth.workspace.slug, request.query as resources.ResourceQuery);
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resources_search", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resources", via: auth.via });
   return result;
+});
+
+app.post("/workspaces/:slug/resources/approve", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace resources are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["collection:write", "resource:publish"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resource_approval" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceResourceApproveRequest : {};
+  if (!body.resourceId) return reply.code(400).send({ error: "resourceId is required" });
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  const publicResource = resources.resourceDetail(body.resourceId, registryItems);
+  if (!publicResource) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_approval_missing", tokenName: auth.tokenName, subject: eventSubject(undefined), target: body.resourceId, via: auth.via });
+    return reply.code(404).send({ error: "Public resource not found" });
+  }
+  const result = workspaces.approveWorkspacePublicResource(auth.workspace.slug, auth.workspace.name, publicResource, {
+    collectionSlug: body.collection,
+    name: body.name,
+    note: body.note,
+    actor: auth.tokenName
+  });
+  if (!result.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_approval_rejected", tokenName: auth.tokenName, subject: eventSubject(undefined), target: publicResource.id, via: auth.via });
+    return reply.code(result.status).send({ error: result.error, code: result.code });
+  }
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_approved", tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${publicResource.id}->${result.resource.id}`, via: auth.via });
+  return reply.code(201).send({
+    workspace: publicWorkspace(auth.workspace),
+    collection: result.collection,
+    item: result.item,
+    resource: result.resource,
+    approvalState: result.approvalState,
+    verified: false,
+    next: "Workspace approval is a local recommendation. It is not an OnlyHarness Verified badge."
+  });
 });
 
 app.get("/workspaces/:slug/resources/:id", async (request, reply) => {
@@ -372,6 +427,90 @@ app.get("/workspaces/:slug/resources/:id/archive", async (request, reply) => {
     .header("content-type", "application/gzip")
     .header("content-disposition", `attachment; filename="${resources.resourceArchiveFileName(resource)}"`)
     .send(createReadStream(archivePath));
+});
+
+app.get("/workspaces/:slug/collections", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace collections are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["resource:read"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "collections" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const collections = workspaces.listWorkspaceCollections(auth.workspace.slug);
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collections_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "collections", via: auth.via });
+  return { workspace: publicWorkspace(auth.workspace), collections };
+});
+
+app.post("/workspaces/:slug/collections", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace collections are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["collection:write", "resource:publish"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "collection_create" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceCollectionRequest : {};
+  const collection = workspaces.upsertWorkspaceCollection(auth.workspace.slug, body);
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_upserted", tokenName: auth.tokenName, subject: eventSubject(undefined), target: collection.slug, via: auth.via });
+  return reply.code(201).send({ workspace: publicWorkspace(auth.workspace), collection });
+});
+
+app.get("/workspaces/:slug/collections/:collection", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace collections are not enabled" });
+  const { slug, collection: collectionSlug } = request.params as { slug: string; collection: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["resource:read"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "collection_detail" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const collection = workspaces.workspaceCollectionDetail(auth.workspace.slug, collectionSlug);
+  if (!collection) return reply.code(404).send({ error: "Workspace collection not found" });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: collection.slug, via: auth.via });
+  return { workspace: publicWorkspace(auth.workspace), collection };
+});
+
+app.post("/workspaces/:slug/collections/:collection/items", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace collections are not enabled" });
+  const { slug, collection } = request.params as { slug: string; collection: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["collection:write", "resource:publish"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "collection_item_add" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceResourceApproveRequest : {};
+  if (!body.resourceId) return reply.code(400).send({ error: "resourceId is required" });
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  const publicResource = resources.resourceDetail(body.resourceId, registryItems);
+  if (!publicResource) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_missing", tokenName: auth.tokenName, subject: eventSubject(undefined), target: body.resourceId, via: auth.via });
+    return reply.code(404).send({ error: "Public resource not found" });
+  }
+  const result = workspaces.approveWorkspacePublicResource(auth.workspace.slug, auth.workspace.name, publicResource, {
+    collectionSlug: collection,
+    name: body.name,
+    note: body.note,
+    actor: auth.tokenName
+  });
+  if (!result.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_rejected", tokenName: auth.tokenName, subject: eventSubject(undefined), target: publicResource.id, via: auth.via });
+    return reply.code(result.status).send({ error: result.error, code: result.code });
+  }
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_approved", tokenName: auth.tokenName, subject: eventSubject(undefined), target: `${collection}:${publicResource.id}->${result.resource.id}`, via: auth.via });
+  return reply.code(201).send({
+    workspace: publicWorkspace(auth.workspace),
+    collection: result.collection,
+    item: result.item,
+    resource: result.resource,
+    approvalState: result.approvalState,
+    verified: false,
+    next: "Workspace approval is a local recommendation. It is not an OnlyHarness Verified badge."
+  });
 });
 
 app.get("/leaderboard", async (request) => {

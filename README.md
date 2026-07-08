@@ -85,6 +85,7 @@ npx onlyharness@latest suggest market research --json
 npx onlyharness@latest resources search superpowers --json
 npx onlyharness@latest resources detail github:obra/superpowers --json
 npx onlyharness@latest resources open github:obra/superpowers --json
+npx onlyharness@latest resources approve github:obra/superpowers --workspace acme --collection approved --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
 npx onlyharness@latest publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
@@ -92,7 +93,7 @@ npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-Resource catalog and `publish-resource` commands are available in published `onlyharness@0.2.4` and through MCP/HTTP.
+Resource catalog, `publish-resource`, and workspace approval commands are available in published `onlyharness@0.2.5` and through MCP/HTTP.
 
 For local development, build the workspace bundle and run it directly:
 
@@ -126,7 +127,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`. Org auth/bundles/audit read Supabase service-role tables first and keep `HARNESS_ORGS_PATH`/`HARNESS_ORG_AUDIT_PATH` as the local smoke fallback.
 - Team workspace UI/API: Network Neighborhood uses `GET /api/orgs/{slug}/workspace` with the same org token and returns org-private cards, sanitized audit rows, and a permission/risk summary.
-- Workspace resource catalogs: `GET /api/workspaces/{slug}/workspace`, `GET /api/workspaces/{slug}/resources`, `GET /api/workspaces/{slug}/resources/{id}`, `GET /api/workspaces/{slug}/resources/{id}/archive`, and `POST /api/workspaces/{slug}/imports/resource-package` are gated by `WORKSPACES_ENABLED=true` and `HH_WORKSPACE_TOKEN` with `HH_ORG_TOKEN` as a migration fallback.
+- Workspace resource catalogs: `GET /api/workspaces/{slug}/workspace`, `GET /api/workspaces/{slug}/resources`, `GET /api/workspaces/{slug}/resources/{id}`, `GET /api/workspaces/{slug}/resources/{id}/archive`, `POST /api/workspaces/{slug}/imports/resource-package`, `POST /api/workspaces/{slug}/resources/approve`, and `/api/workspaces/{slug}/collections...` are gated by `WORKSPACES_ENABLED=true` and `HH_WORKSPACE_TOKEN` with `HH_ORG_TOKEN` as a migration fallback. Use `hh resources approve github:obra/superpowers --workspace acme --collection approved` to add a public marketplace listing to a workspace collection as local curation, not OnlyHarness verification.
 - Team git sync: `hh sync <git-url-or-local-path> --org acme` clones/scans markdown skills and runbooks, then imports them through the org publish endpoint. First version has no webhooks.
 - Maintainer publish: `hh publish <harness-dir>` requires local `.harnesshub/results.json`; `hh publish <git-url> --path <harness-dir>` clones to a temp dir, runs local eval/gate there, then publishes only if the server rechecks schema, security and gate successfully.
 - Resource package publish: `hh publish-resource <dir-or-git-url> --name <slug> --type <type>` packages safe bounded text files from skills, plugins, workflows, MCP servers, command packs, scripts, docs or source bundles into OnlyHarness archive storage and lists the result in `/api/resources`. It is not a Verified harness badge.

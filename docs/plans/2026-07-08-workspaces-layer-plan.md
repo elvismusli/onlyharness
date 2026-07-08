@@ -1,7 +1,24 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: подробный implementation plan после E2E-проверки, npm `onlyharness@0.2.3` и resource-first pivot.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, and workspace-approval slice targeting `onlyharness@0.2.5`.
+
+Current implementation status:
+
+- shipped: universal public resource packages, workspace token API foundation, workspace-private resource package publish/search/detail/archive, `hh publish-resource --workspace`, `hh resources search --workspace`, `hh resources detail @workspace/name`, OpenAPI/check/smoke coverage;
+- prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
+- not done yet: user membership/invites, workspace collections and approved marketplace resources, shared-neutral workspace management UI wiring, setup bundles v2, community gates, subscription lifecycle.
+
+Review corrections incorporated:
+
+- workspace UI must follow the current `core/` + `win98|modern|fans` skin architecture;
+- Phase 1-3 CLI remains token-based unless `hh login` is explicitly pulled forward;
+- hosted personal workspace is not v1 and must not be conflated with storefront/profile;
+- workspace collections are distinct from public marketplace collections;
+- marketplace approval requires a current trust/security snapshot;
+- recurring subscriptions are a separate billing track, not a community-gate footnote;
+- org-to-workspace migration is mostly greenfield on prod because orgs are disabled;
+- workspace list/search/audit APIs need pagination/index guardrails from the start.
 
 ## 1. Короткий вывод
 
@@ -18,7 +35,7 @@ Workspace = подборка agent resources + участники + правил
 - курсы и cohorts;
 - агентства и клиентские подборки;
 - open-source сообщества;
-- персональные подборки.
+- future personal/local saved setups, without a hosted personal workspace in v1.
 
 Главное: OnlyHarness остается showroom + trust + install layer. Workspace не становится местом, где агент выполняет всю работу. Он отвечает за то, что можно найти, кому это доступно, как это безопасно поставить в Claude Code/Codex/Cursor/MCP/CLI, и почему конкретный ресурс разрешен или запрещен.
 
@@ -611,7 +628,7 @@ Phase 1.5 / before broad beta:
 The workspace UI must follow the current skin architecture:
 
 - state and API calls live in `apps/registry-web/src/core`, not in one skin;
-- `core/useOrgWorkspace` should become `core/useWorkspace` or a compatibility wrapper around it;
+- `core/useWorkspace` already exists for new workspace endpoints; remaining web work is wiring it into the shared store/surface and demoting `core/useOrgWorkspace` to compatibility;
 - serious workspace surfaces should render through shared-neutral components, like checkout/review/network already do;
 - W98, Modern and Fans skins consume the same core state and neutral surface instead of duplicating logic;
 - skin-specific copy can frame the doorway, but auth/access/security/payments copy stays plain.
@@ -956,7 +973,8 @@ Goal: real workspace management for companies and communities.
 
 Tasks:
 
-- rename/extend `core/useOrgWorkspace` into `core/useWorkspace`;
+- wire existing `core/useWorkspace` into `core/store.tsx` and the shared surface stack;
+- keep `core/useOrgWorkspace` only as a legacy org compatibility wrapper until `/orgs` aliases are retired;
 - render workspace management through a shared-neutral surface consumed by all skins;
 - verify W98, Modern and Fans entry points;
 - workspace switcher;
@@ -1238,22 +1256,39 @@ Still open:
 - whether community moderators can approve non-installable guide-only resources;
 - exact subscription billing provider and lifecycle policy.
 
-## 19. Recommended first sprint
+## 19. First sprint status and next slice
 
-Build the smallest honest version:
+Already shipped in the first production slice:
 
-1. Add `workspaces`, `workspace_members`, `workspace_tokens`, `workspace_audit`.
-2. Implement membership/token authorization.
-3. Add `/workspaces/{slug}/workspace` read endpoint.
-4. Alias existing `/orgs/{slug}/workspace`.
-5. Add `POST /workspaces/{slug}/imports/resource-package`.
-6. Add `hh publish-resource --workspace`.
-7. Add workspace-private archive route.
-8. Add API/CLI tests for deny/allow.
-9. Rename/extend `core/useOrgWorkspace` to a workspace core hook.
-10. Keep web UI minimal and shared-neutral: connect workspace, list resources, copy install commands across all skins.
-11. Add `check:workspaces` and `smoke:workspaces`.
+1. `workspaces`, `workspace_members`, `workspace_tokens`, `workspace_audit`, `workspace_resources` migration.
+2. Workspace token authorization with legacy `HH_ORG_TOKEN` fallback.
+3. `/workspaces/{slug}/workspace` read endpoint.
+4. `POST /workspaces/{slug}/imports/resource-package`.
+5. `GET /workspaces/{slug}/resources`, detail and archive routes.
+6. `hh publish-resource --workspace`.
+7. `hh resources search --workspace` and `hh resources detail @workspace/name`.
+8. Workspace-private archive route with denied/allow smoke coverage.
+9. `core/useWorkspace` hook foundation.
+10. `check:workspaces` wired into `npm run check`.
+11. `smoke:workspaces`.
+
+Remaining from the original first sprint:
+
+1. Real user membership authorization in web/API, not only token access.
+2. `/orgs/{slug}/workspace` alias to new `/workspaces/{slug}/workspace` semantics.
+3. Shared-neutral web surface wired through `core/useWorkspace` across W98, Modern and Fans.
+4. Minimal workspace UI: connect workspace, list resources, copy install commands.
+
+Recommended next production slice:
+
+1. Add `workspace_collections` and `workspace_collection_items`.
+2. Add a default `approved` workspace collection.
+3. Add API/CLI for approving a public marketplace resource into a workspace collection.
+4. Store a trust/security snapshot on approval.
+5. Show the item as `Approved by {workspace}`, never as `Verified by OnlyHarness`.
+6. Return honest `409 not hosted by workspace` for approved external listings without workspace-hosted archive files.
+7. Extend `smoke:workspaces` to approve `github:obra/superpowers` into `@acme/approved`.
 
 Do not start with a big admin UI. The first value is private resource distribution plus approved collection semantics. Admin UX can follow once access rules are real.
 
-Do not block first sprint on full `hh login`; token-based CLI is acceptable for alpha if the plan labels it that way and web/API user membership is real.
+Do not block first alpha on full `hh login`; token-based CLI is acceptable if the plan labels it that way and web/API user membership work is tracked separately.

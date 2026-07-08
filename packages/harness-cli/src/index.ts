@@ -105,9 +105,21 @@ type ResourceItem = {
   popularityScore?: number;
   trust?: {
     sourceChecked?: boolean;
+    securityScan?: "pass" | "warn" | "fail" | "not_scanned";
     installVerifiedAt?: string;
     gateVerifiedAt?: string;
     riskTier?: string;
+  };
+  workspaceApproval?: {
+    workspaceSlug: string;
+    workspaceName: string;
+    collectionSlug: string;
+    sourceResourceId: string;
+    approvalState: "pending_review" | "approved" | "approved_with_warning" | "blocked" | "blocked_by_scan" | "deprecated";
+    approvedBy?: string;
+    approvedAt?: string;
+    note?: string;
+    riskSnapshot?: unknown;
   };
   actions?: Array<
     | { id: "open_onlyharness"; label: string; url: string }
@@ -365,6 +377,15 @@ type ResourcePackageImportResult = {
   verified?: boolean;
   next?: string;
 };
+type WorkspaceApprovalResult = {
+  workspace?: { slug?: string; name?: string };
+  collection?: { slug?: string; title?: string };
+  item?: { itemRef?: string; approvalState?: string; sourceResourceId?: string };
+  resource?: ResourceItem;
+  approvalState?: string;
+  verified?: boolean;
+  next?: string;
+};
 type PublishGateResult = {
   score: number;
   risk: number;
@@ -546,7 +567,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.4");
+  .version("0.2.5");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -628,6 +649,41 @@ resourcesCommand.command("open")
     const opened = openUrl(url);
     if (options.json) return writeStdout({ id: resource.id, url, opened });
     writeStdout(opened ? `Opened ${url}\n` : `${url}\n`);
+  });
+
+resourcesCommand.command("approve")
+  .description("approve a public resource into a workspace collection")
+  .argument("<id>", "public resource id, e.g. github:obra/superpowers")
+  .requiredOption("--workspace <slug>", "workspace slug")
+  .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
+  .option("--collection <slug>", "workspace collection slug", "approved")
+  .option("--name <name>", "workspace-local resource name")
+  .option("--note <note>", "short approval note")
+  .option("--json", "print JSON", false)
+  .action(async (id: string, options) => {
+    const workspace = cleanSetupOrg(options.workspace);
+    if (!workspace) fail("Invalid workspace slug.", EXIT.VALIDATION, "Use --workspace acme", options.json);
+    const collection = cleanWorkspaceCollectionSlug(options.collection, options.json);
+    const token = workspaceToken(options.workspaceToken);
+    if (!token) fail("Workspace token required.", EXIT.AUTH, "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>.", options.json);
+    const result = await approveWorkspaceResource({
+      resourceId: id,
+      workspace,
+      collection,
+      name: options.name,
+      note: options.note,
+      token,
+      json: options.json
+    });
+    if (options.json) return writeStdout(result);
+    const resourceId = result.resource?.id ?? id;
+    const state = result.approvalState ?? result.item?.approvalState ?? "approved";
+    const collectionSlug = result.collection?.slug ?? collection;
+    writeStdout([
+      `Approved ${id} into @${workspace}/${collectionSlug} as ${resourceId} (${state}).`,
+      result.next ?? "Workspace approval is not an OnlyHarness Verified badge.",
+      ""
+    ].join("\n"));
   });
 
 resourcesCommand.command("import")
@@ -1556,6 +1612,14 @@ function workspaceToken(tokenOverride?: string): string | undefined {
   return tokenOverride ?? process.env.HH_WORKSPACE_TOKEN ?? process.env.HH_ORG_TOKEN;
 }
 
+function cleanWorkspaceCollectionSlug(value: string | undefined, json: boolean): string {
+  const cleaned = value?.toLowerCase().trim().replace(/^@/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!cleaned || !/^[a-z0-9][a-z0-9._-]{0,80}$/.test(cleaned)) {
+    fail("Invalid workspace collection slug.", EXIT.VALIDATION, "Use --collection approved", json);
+  }
+  return cleaned;
+}
+
 function workspaceAuthInit(token?: string): RequestInit {
   return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 }
@@ -2432,6 +2496,52 @@ async function publishResourcePackage(input: {
     }
     const detail = body.failures?.length ? `${body.error ?? "publish rejected"}: ${body.failures.join("; ")}` : body.error ?? JSON.stringify(body);
     fail(`Resource package publish failed (${response.status}): ${detail}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION, "Check file count, file sizes, secret files and --type.", input.json);
+  }
+  return body;
+}
+
+async function approveWorkspaceResource(input: {
+  resourceId: string;
+  workspace: string;
+  collection: string;
+  name?: string;
+  note?: string;
+  token: string;
+  json: boolean;
+}): Promise<WorkspaceApprovalResult> {
+  const url = `${registryUrl}/workspaces/${input.workspace}/resources/approve`;
+  const response = await fetchRegistryResponse(url, input.json, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${input.token}`
+    },
+    body: JSON.stringify({
+      resourceId: input.resourceId,
+      collection: input.collection,
+      name: input.name,
+      note: input.note
+    })
+  });
+  const body = await response.json().catch(() => ({})) as WorkspaceApprovalResult & { error?: string; code?: string };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `Workspace approval failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token> with collection:write/resource:publish.",
+        input.json
+      );
+    }
+    if (response.status === 404) {
+      fail(`Workspace approval failed (404): ${body.error ?? "workspace or resource not found"}`, EXIT.NOT_FOUND, `hh resources detail ${input.resourceId}`, input.json);
+    }
+    fail(
+      `Workspace approval failed (${response.status}): ${body.error ?? JSON.stringify(body)}`,
+      response.status === 409 ? EXIT.VALIDATION : EXIT.GENERAL,
+      "Review the resource trust/security state before approving.",
+      input.json
+    );
   }
   return body;
 }

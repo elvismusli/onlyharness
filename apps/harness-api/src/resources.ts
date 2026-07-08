@@ -118,6 +118,17 @@ export type Resource = {
     gateVerifiedAt?: string;
     riskTier?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN";
   };
+  workspaceApproval?: {
+    workspaceSlug: string;
+    workspaceName: string;
+    collectionSlug: string;
+    sourceResourceId: string;
+    approvalState: "pending_review" | "approved" | "approved_with_warning" | "blocked" | "blocked_by_scan" | "deprecated";
+    approvedBy?: string;
+    approvedAt?: string;
+    note?: string;
+    riskSnapshot?: unknown;
+  };
   actions: ResourceAction[];
   source?: {
     platform: SourcePlatform;

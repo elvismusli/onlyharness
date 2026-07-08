@@ -26,6 +26,7 @@ let sawHarnessDirPublishToken = false;
 let sawResourcePackagePublishToken = false;
 let sawWorkspaceResourcePackagePublishToken = false;
 let sawWorkspaceResourcesToken = false;
+let sawWorkspaceApproveToken = false;
 let sawClaudeInstallToken = false;
 let orgPublishedNames: string[] = [];
 let resourcePackagePublishPaths: string[] = [];
@@ -349,6 +350,72 @@ before(async () => {
           hosted: true,
           verified: false,
           next: "workspace package"
+        }));
+      });
+      return;
+    }
+
+    if (request.url === "/workspaces/acme/resources/approve" && request.method === "POST") {
+      if (request.headers.authorization !== "Bearer workspace-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid workspace token" }));
+        return;
+      }
+      sawWorkspaceApproveToken = true;
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { resourceId?: string; collection?: string; name?: string; note?: string };
+        if (body.resourceId !== "github:obra/superpowers") {
+          response.statusCode = 404;
+          response.end(JSON.stringify({ error: "Public resource not found" }));
+          return;
+        }
+        response.statusCode = 201;
+        response.end(JSON.stringify({
+          workspace: { slug: "acme", name: "Acme Community" },
+          collection: { slug: body.collection ?? "approved", title: "Approved resources" },
+          item: {
+            itemRef: "@acme/superpowers",
+            sourceResourceId: "github:obra/superpowers",
+            approvalState: "approved"
+          },
+          resource: {
+            id: "@acme/superpowers",
+            title: "superpowers",
+            summary: "Approved by Acme Community; public marketplace source remains github:obra/superpowers.",
+            resourceType: "skill",
+            sourcePlatform: "github",
+            canonicalUrl: "https://onlyharness.com/#/workspaces/acme/resources/superpowers",
+            upstreamId: "obra/superpowers",
+            upstreamOwner: "obra",
+            upstreamRepo: "superpowers",
+            licenseStatus: "unknown",
+            sourceCheckedAt: "2026-07-05",
+            sourceCheckStatus: "active",
+            lastSeenAt: "2026-07-05",
+            installability: "open_only",
+            tags: ["workspace-approved", "approved", "skill"],
+            worksWith: ["claude-code", "codex"],
+            upstreamPopularity: { githubStarsSnapshot: 1000, sourceLabel: "GitHub" },
+            onlyHarnessSignals: { stars: 0, opens: 0, imports: 0, installs: 0, threads: 0, passedGates: 0 },
+            popularityScore: 1,
+            trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+            workspaceApproval: {
+              workspaceSlug: "acme",
+              workspaceName: "Acme Community",
+              collectionSlug: body.collection ?? "approved",
+              sourceResourceId: "github:obra/superpowers",
+              approvalState: "approved"
+            },
+            actions: [{ id: "open_onlyharness", label: "Use via Acme Community", url: "https://onlyharness.com/#/workspaces/acme/resources/superpowers" }]
+          },
+          approvalState: "approved",
+          verified: false,
+          next: "Workspace approval is a local recommendation. It is not an OnlyHarness Verified badge."
         }));
       });
       return;
@@ -1229,6 +1296,21 @@ test("resources search/detail support workspace catalogs with workspace token", 
   const detailBody = JSON.parse(detail.stdout) as { id?: string; upstreamOwner?: string };
   assert.equal(detailBody.id, "@acme/agent-tool");
   assert.equal(detailBody.upstreamOwner, "@acme");
+});
+
+test("resources approve adds a public resource to a workspace collection with workspace token", async () => {
+  sawWorkspaceApproveToken = false;
+
+  const result = await runCli(["resources", "approve", "github:obra/superpowers", "--workspace", "acme", "--collection", "approved", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(sawWorkspaceApproveToken, true);
+  assert.doesNotMatch(result.stdout, /workspace-token/);
+  const body = JSON.parse(result.stdout) as { resource?: { id?: string; workspaceApproval?: { sourceResourceId?: string; approvalState?: string } }; collection?: { slug?: string }; verified?: boolean };
+  assert.equal(body.resource?.id, "@acme/superpowers");
+  assert.equal(body.resource?.workspaceApproval?.sourceResourceId, "github:obra/superpowers");
+  assert.equal(body.resource?.workspaceApproval?.approvalState, "approved");
+  assert.equal(body.collection?.slug, "approved");
+  assert.equal(body.verified, false);
 });
 
 test("sync imports local repo markdown candidates into an org namespace", async () => {

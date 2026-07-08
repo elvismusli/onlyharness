@@ -49,7 +49,7 @@ function createWorkspaceStore(target: string) {
           {
             name: "smoke",
             hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
-            scopes: ["workspace:read", "resource:read", "resource:publish", "resource:archive"],
+            scopes: ["workspace:read", "resource:read", "resource:publish", "resource:archive", "collection:write"],
             expires_at: null
           }
         ]
@@ -71,12 +71,16 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     ...process.env,
     HARNESS_API_PORT: apiPort,
     HARNESS_API_HOST: "127.0.0.1",
-    HARNESS_WORKSPACE_ROOT: tempRoot,
+    HARNESS_WORKSPACE_ROOT: root,
+    HARNESS_STATE_PATH: path.join(tempRoot, "state.json"),
     HARNESS_WORKSPACES_PATH: workspaceStore,
     HARNESS_WORKSPACE_AUDIT_PATH: workspaceAudit,
     WORKSPACES_ENABLED: "true",
     RESOURCE_IMPORTS_PATH: path.join(tempRoot, "public-imports.json"),
-    RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "public-archives")
+    RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "public-archives"),
+    WORKSPACE_RESOURCES_PATH: path.join(tempRoot, "workspace-resources"),
+    WORKSPACE_COLLECTIONS_PATH: path.join(tempRoot, "workspace-collections"),
+    WORKSPACE_RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "workspace-archives")
   }
 });
 
@@ -93,8 +97,12 @@ try {
   for (const route of [
     "/workspaces/{slug}/workspace",
     "/workspaces/{slug}/resources",
+    "/workspaces/{slug}/resources/approve",
     "/workspaces/{slug}/resources/{id}",
     "/workspaces/{slug}/resources/{id}/archive",
+    "/workspaces/{slug}/collections",
+    "/workspaces/{slug}/collections/{collection}",
+    "/workspaces/{slug}/collections/{collection}/items",
     "/workspaces/{slug}/imports/resource-package"
   ]) {
     if (!openapi.paths?.[route]) throw new Error(`OpenAPI missing ${route}`);
@@ -123,14 +131,39 @@ try {
   }
   if (publish.stdout.includes(token)) throw new Error("Workspace publish leaked raw token in stdout");
 
+  const approve = run("node", [cliBin, "resources", "approve", "github:obra/superpowers", "--workspace", "acme", "--collection", "approved", "--json"], { env: cliEnv });
+  const approved = JSON.parse(approve.stdout) as { resource?: { id?: string; workspaceApproval?: { sourceResourceId?: string; approvalState?: string }; actions?: Array<{ id?: string; url?: string }> }; collection?: { slug?: string; items?: Array<{ sourceResourceId?: string }> }; verified?: boolean; approvalState?: string };
+  if (approved.resource?.id !== "@acme/superpowers" || approved.resource.workspaceApproval?.sourceResourceId !== "github:obra/superpowers" || approved.approvalState !== "approved" || approved.verified !== false) {
+    throw new Error(`Workspace approval returned wrong payload: ${approve.stdout}`);
+  }
+  if (!approved.resource.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("/#/workspaces/acme/resources/superpowers"))) {
+    throw new Error(`Workspace approval missing workspace OnlyHarness action: ${approve.stdout}`);
+  }
+  if (approved.resource.actions?.some((action) => action.id === "download_archive" && action.url?.includes("/api/workspaces/acme/resources/superpowers/archive"))) {
+    throw new Error(`Workspace approval must not invent a workspace archive action: ${approve.stdout}`);
+  }
+  if (approve.stdout.includes(token)) throw new Error("Workspace approve leaked raw token in stdout");
+
   const search = run("node", [cliBin, "resources", "search", "agent", "--workspace", "acme", "--json"], { env: cliEnv });
   const searchBody = JSON.parse(search.stdout) as { resources?: Array<{ id?: string }> };
   if (!searchBody.resources?.some((item) => item.id === "@acme/agent-tool")) throw new Error(`Workspace search missing package: ${search.stdout}`);
+
+  const approvedSearch = run("node", [cliBin, "resources", "search", "superpowers", "--workspace", "acme", "--json"], { env: cliEnv });
+  const approvedSearchBody = JSON.parse(approvedSearch.stdout) as { resources?: Array<{ id?: string; workspaceApproval?: { sourceResourceId?: string } }> };
+  if (!approvedSearchBody.resources?.some((item) => item.id === "@acme/superpowers" && item.workspaceApproval?.sourceResourceId === "github:obra/superpowers")) {
+    throw new Error(`Workspace search missing approved resource: ${approvedSearch.stdout}`);
+  }
 
   const detail = run("node", [cliBin, "resources", "detail", "@acme/agent-tool", "--json"], { env: cliEnv });
   const detailBody = JSON.parse(detail.stdout) as { id?: string; resourceType?: string; actions?: Array<{ id?: string; url?: string }> };
   if (detailBody.id !== "@acme/agent-tool" || detailBody.resourceType !== "command_pack" || !detailBody.actions?.some((action) => action.id === "download_archive")) {
     throw new Error(`Workspace detail wrong: ${detail.stdout}`);
+  }
+
+  const approvedDetail = run("node", [cliBin, "resources", "detail", "@acme/superpowers", "--json"], { env: cliEnv });
+  const approvedDetailBody = JSON.parse(approvedDetail.stdout) as { id?: string; workspaceApproval?: { approvalState?: string; sourceResourceId?: string }; trust?: { securityScan?: string } };
+  if (approvedDetailBody.id !== "@acme/superpowers" || approvedDetailBody.workspaceApproval?.sourceResourceId !== "github:obra/superpowers" || approvedDetailBody.workspaceApproval?.approvalState !== "approved" || approvedDetailBody.trust?.securityScan !== "not_scanned") {
+    throw new Error(`Workspace approved detail wrong: ${approvedDetail.stdout}`);
   }
 
   const archiveResponse = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
@@ -144,10 +177,22 @@ try {
     throw new Error(`Workspace archive contents are wrong:\n${tar.stdout}`);
   }
 
+  const approvedArchive = await fetch(`${baseUrl}/workspaces/acme/resources/superpowers/archive`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (approvedArchive.status !== 409) throw new Error(`Approved public resource should not pretend to have workspace archive, got ${approvedArchive.status}`);
+
+  const collection = await fetch(`${baseUrl}/workspaces/acme/collections/approved`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { collection?: { slug?: string; items?: Array<{ sourceResourceId?: string; approvalState?: string }> } };
+  if (collection.collection?.slug !== "approved" || !collection.collection.items?.some((item) => item.sourceResourceId === "github:obra/superpowers" && item.approvalState === "approved")) {
+    throw new Error(`Workspace collection missing approved item: ${JSON.stringify(collection)}`);
+  }
+
   const workspace = await fetch(`${baseUrl}/workspaces/acme/workspace`, {
     headers: { Authorization: `Bearer ${token}` }
-  }).then((response) => response.json()) as { resources?: Array<{ id?: string }>; audit?: unknown[]; permissions?: { totalResources?: number; hostedArchives?: number } };
-  if (!workspace.resources?.some((item) => item.id === "@acme/agent-tool") || workspace.permissions?.hostedArchives !== 1) {
+  }).then((response) => response.json()) as { resources?: Array<{ id?: string }>; collections?: Array<{ slug?: string }>; audit?: unknown[]; permissions?: { totalResources?: number; hostedArchives?: number } };
+  if (!workspace.resources?.some((item) => item.id === "@acme/agent-tool") || !workspace.resources?.some((item) => item.id === "@acme/superpowers") || !workspace.collections?.some((item) => item.slug === "approved") || workspace.permissions?.hostedArchives !== 1) {
     throw new Error(`Workspace overview missing published resource: ${JSON.stringify(workspace)}`);
   }
   if (JSON.stringify(workspace.audit ?? []).includes(token)) throw new Error("Workspace audit leaked raw token");

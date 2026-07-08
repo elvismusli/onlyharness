@@ -44,6 +44,7 @@ npx onlyharness@latest suggest market research --json
 npx onlyharness@latest resources search superpowers --json
 npx onlyharness@latest resources detail github:obra/superpowers --json
 npx onlyharness@latest resources open github:obra/superpowers --json
+npx onlyharness@latest resources approve github:obra/superpowers --workspace acme --collection approved --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
 
@@ -112,8 +113,12 @@ Core endpoints:
 | POST | `/orgs/{slug}/imports/harness-dir` | Publish verified org-private harness directory after eval/gate; requires org token with publish scope |
 | GET | `/workspaces/{slug}/workspace` | Workspace catalog payload: private resources, sanitized audit rows, permission/risk summary; requires `WORKSPACES_ENABLED=true` and workspace token |
 | GET | `/workspaces/{slug}/resources` | Search private workspace resources; accepts legacy org token as compatibility fallback |
+| POST | `/workspaces/{slug}/resources/approve` | Add a public marketplace resource into a workspace catalog/collection as `Approved by {workspace}`; stores a trust snapshot and never grants an OnlyHarness Verified badge |
 | GET | `/workspaces/{slug}/resources/{id}` | Workspace resource detail; IDs can be short names or `@workspace/name` refs |
 | GET | `/workspaces/{slug}/resources/{id}/archive` | Download workspace-hosted resource package archives; no upstream redirect |
+| GET/POST | `/workspaces/{slug}/collections` | List or create workspace collections such as the default `approved` collection |
+| GET | `/workspaces/{slug}/collections/{collection}` | Read a workspace collection and approval items |
+| POST | `/workspaces/{slug}/collections/{collection}/items` | Add/approve a public resource into a named workspace collection |
 | POST | `/workspaces/{slug}/imports/resource-package` | Publish a private hosted agent resource package into a workspace; requires `resource:publish` or legacy publish scope |
 | GET/PUT | `/me/storefront` | Authenticated creator storefront profile and referral code management |
 | GET | `/storefront/{handle}` | Public creator storefront with referral attribution code |
@@ -156,7 +161,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Public API payloads must not expose server filesystem paths. Registry/detail may include public forge, OnlyHarness GitHub mirror, or upstream URLs only; `/healthz` returns status only; detail `prReview.source=local-demo` is a generated preview, not an open forge PR.
 - Category benchmarks are local declared-score comparisons until Owner-authored suites add external measurements; never present `hh benchmark` as an independent LLM quality proof. Add suites under `benchmarks/`; smoke requires at least 3 YAML suites and runs all of them.
 - Team `hh setup @org`, `hh install @org/name`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org auth/bundles/audit read Supabase service-role tables first, fall back to local JSON for smoke, are feature-flagged by `ORGS_ENABLED`, and must not log raw tokens.
-- Network Neighborhood still supports the legacy org token path through `/orgs/{slug}/workspace`; new resource-first workspace catalog flows use `/workspaces/{slug}/...` with `HH_WORKSPACE_TOKEN`, falling back to `HH_ORG_TOKEN` during migration. Audit rows must stay sanitized and permission summaries reuse schema risk/resource reports.
+- Network Neighborhood still supports the legacy org token path through `/orgs/{slug}/workspace`; new resource-first workspace catalog flows use `/workspaces/{slug}/...` with `HH_WORKSPACE_TOKEN`, falling back to `HH_ORG_TOKEN` during migration. `hh resources approve github:obra/superpowers --workspace acme --collection approved` adds public resources to a workspace collection as local curation only; approval is not an OnlyHarness Verified badge, and workspace archive routes still return 409 when the approved listing is not workspace-hosted. Audit rows must stay sanitized and permission summaries reuse schema risk/resource reports.
 - `hh suggest`, `hh install`, `hh eval`, and `hh gate` may record `suggested`, `accepted`, `applied`, `install`, `eval`, or `gate` events; event payloads must stay owner/repo/version/target/client only, never local paths or prompts. `accepted` means the user chose `--apply`; `applied` is recorded only after local files are written.
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
 - `/community/invite-code` must only mint codes for the authenticated buyer after a live entitlement check. `/community/verify-code` must HMAC/TTL-check the code, re-check entitlement live, and never trust a subject typed into Telegram chat.

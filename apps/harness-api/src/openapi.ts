@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.3",
+    version: "0.2.5",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -873,6 +873,57 @@ export const openapi = {
         }
       }
     },
+    "/workspaces/{slug}/resources/approve": {
+      post: {
+        summary: "Approve a public marketplace resource into a workspace",
+        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is scoped to the workspace and is never an OnlyHarness Verified badge. Failed security scans are blocked; warnings become approved_with_warning.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  resourceId: { type: "string", description: "Public resource id, for example github:obra/superpowers" },
+                  collection: { type: "string", description: "Workspace collection slug; defaults to approved" },
+                  name: { type: "string", description: "Optional workspace-local resource name" },
+                  note: { type: "string" }
+                },
+                required: ["resourceId"]
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Workspace approval created",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    workspace: { $ref: "#/components/schemas/Workspace" },
+                    collection: { $ref: "#/components/schemas/WorkspaceCollection" },
+                    item: { $ref: "#/components/schemas/WorkspaceCollectionItem" },
+                    resource: { $ref: "#/components/schemas/Resource" },
+                    approvalState: { type: "string" },
+                    verified: { type: "boolean", const: false },
+                    next: { type: "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
     "/workspaces/{slug}/resources/{id}": {
       get: {
         summary: "Read workspace resource detail",
@@ -898,6 +949,103 @@ export const openapi = {
         parameters: [pathParam("slug"), pathParam("id")],
         responses: {
           "200": { description: "Gzip tar archive" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/workspaces/{slug}/collections": {
+      get: {
+        summary: "List workspace collections",
+        description: "Lists workspace collections such as the default approved collection. Requires workspace read access.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Workspace collections",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    workspace: { $ref: "#/components/schemas/Workspace" },
+                    collections: { type: "array", items: { $ref: "#/components/schemas/WorkspaceCollection" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      },
+      post: {
+        summary: "Create or update a workspace collection",
+        description: "Creates a workspace collection. Collection approval is workspace-scoped curation, not OnlyHarness verification.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  slug: { type: "string" },
+                  title: { type: "string" },
+                  summary: { type: "string" },
+                  visibility: { type: "string", enum: ["workspace", "public", "unlisted"] }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Workspace collection",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, collection: { $ref: "#/components/schemas/WorkspaceCollection" } } } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/collections/{collection}": {
+      get: {
+        summary: "Read workspace collection detail",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug"), pathParam("collection")],
+        responses: {
+          "200": {
+            description: "Workspace collection",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, collection: { $ref: "#/components/schemas/WorkspaceCollection" } } } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/collections/{collection}/items": {
+      post: {
+        summary: "Approve a public resource into a workspace collection",
+        description: "Shortcut for adding a public marketplace resource to a named workspace collection. Uses the same trust snapshot and failed-scan blocking rules as /workspaces/{slug}/resources/approve.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug"), pathParam("collection")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { resourceId: { type: "string" }, name: { type: "string" }, note: { type: "string" } }, required: ["resourceId"] } } }
+        },
+        responses: {
+          "201": {
+            description: "Workspace collection item approved",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, collection: { $ref: "#/components/schemas/WorkspaceCollection" }, item: { $ref: "#/components/schemas/WorkspaceCollectionItem" }, resource: { $ref: "#/components/schemas/Resource" }, approvalState: { type: "string" }, verified: { type: "boolean", const: false }, next: { type: "string" } } } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
@@ -1440,6 +1588,39 @@ export const openapi = {
         },
         required: ["slug", "action", "token_name", "subject", "target", "at"]
       },
+      WorkspaceCollection: {
+        type: "object",
+        properties: {
+          slug: { type: "string" },
+          title: { type: "string" },
+          summary: { type: "string", nullable: true },
+          visibility: { type: "string", enum: ["workspace", "public", "unlisted"] },
+          createdAt: { type: "string" },
+          updatedAt: { type: "string" },
+          archivedAt: { type: "string", nullable: true },
+          items: { type: "array", items: { $ref: "#/components/schemas/WorkspaceCollectionItem" } }
+        },
+        required: ["slug", "title", "visibility", "createdAt", "updatedAt", "items"]
+      },
+      WorkspaceCollectionItem: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          itemRef: { type: "string" },
+          itemSource: { type: "string", enum: ["public_resource", "workspace_resource", "native_harness", "external_url"] },
+          sourceResourceId: { type: "string" },
+          pinnedVersion: { type: "string", nullable: true },
+          pinnedArchiveHash: { type: "string", nullable: true },
+          approvalState: { type: "string", enum: ["pending_review", "approved", "approved_with_warning", "blocked", "blocked_by_scan", "deprecated"] },
+          approvedBy: { type: "string", nullable: true },
+          approvedAt: { type: "string", nullable: true },
+          note: { type: "string", nullable: true },
+          riskSnapshot: { type: "object" },
+          createdAt: { type: "string" },
+          updatedAt: { type: "string" }
+        },
+        required: ["id", "itemRef", "itemSource", "approvalState", "createdAt", "updatedAt"]
+      },
       RegistryItem: {
         type: "object",
         properties: {
@@ -1578,6 +1759,20 @@ export const openapi = {
               installVerifiedAt: { type: "string", description: "OnlyHarness install verification evidence, when present." },
               gateVerifiedAt: { type: "string" },
               riskTier: { type: "string" }
+            }
+          },
+          workspaceApproval: {
+            type: "object",
+            properties: {
+              workspaceSlug: { type: "string" },
+              workspaceName: { type: "string" },
+              collectionSlug: { type: "string" },
+              sourceResourceId: { type: "string" },
+              approvalState: { type: "string", enum: ["pending_review", "approved", "approved_with_warning", "blocked", "blocked_by_scan", "deprecated"] },
+              approvedBy: { type: "string" },
+              approvedAt: { type: "string" },
+              note: { type: "string" },
+              riskSnapshot: { type: "object" }
             }
           },
           actions: { type: "array", items: { type: "object" } },
