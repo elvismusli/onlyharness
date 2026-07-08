@@ -13,7 +13,7 @@ import type { ResourceItem, WorkspaceCollection, WorkspaceMember } from "../../.
  * store only as a compatibility path; this surface is the company/community UI.
  */
 
-const NETWORK_TABS = ["Resources", "Approvals", "Members", "Invites", "Audit", "Access"] as const;
+const NETWORK_TABS = ["Resources", "Approvals", "Members", "Invites", "Audit", "Setup", "Access"] as const;
 type NetworkTab = (typeof NETWORK_TABS)[number];
 const MEMBER_ROLES: WorkspaceMember["role"][] = ["owner", "admin", "moderator", "publisher", "member", "viewer"];
 
@@ -387,6 +387,33 @@ export function NeutralNetwork() {
         </div>
       )}
 
+      {tab === "Setup" && (
+        <div className="ohn-grid" style={{ marginTop: 12 }}>
+          <div className="ohn-col">
+            <section className="ohn-box">
+              <h4 className="ohn-box-title">Install workspace setup</h4>
+              <pre className="ohn-pre">{workspaceSetupCommand(connectedSlug, "claude-code")}</pre>
+              <div className="ohn-btnrow" style={{ marginTop: 10 }}>
+                <button type="button" className="ohn-btn ohn-btn-mono" onClick={() => h.copyText(workspaceSetupCommand(connectedSlug, "claude-code"), "Workspace setup command copied", "workspace-setup-command")}>
+                  Copy setup command
+                </button>
+              </div>
+              <p className="ohn-note">Setup installs workspace-hosted packages and writes instructions for approved public resources. It does not invent workspace archives for public listings.</p>
+            </section>
+          </div>
+          <aside className="ohn-aside">
+            <section className="ohn-box">
+              <h4 className="ohn-box-title">Bundle summary</h4>
+              <InfoLine label="Target" value="claude-code" />
+              <InfoLine label="Hosted packages" value={String(catalog?.permissions.hostedArchives ?? 0)} />
+              <InfoLine label="Approved/public refs" value={String((catalog?.resources ?? []).filter((item) => item.workspaceApproval).length)} />
+              <InfoLine label="Auth" value="HH_WORKSPACE_TOKEN or signed-in membership" />
+              <p className="ohn-note">CLI setup is token-based in this phase. Web/API membership can read the bundle, but local CLI writes need a workspace token.</p>
+            </section>
+          </aside>
+        </div>
+      )}
+
       {tab === "Access" && (
         <div className="ohn-grid" style={{ marginTop: 12 }}>
           <div className="ohn-col">
@@ -505,10 +532,16 @@ function workspaceCommands(workspaceSlug: string): string {
   const slug = workspaceSlug || "<workspace>";
   return [
     `export HH_WORKSPACE_TOKEN=<token>`,
+    `npx onlyharness@latest workspace setup ${slug} --target claude-code --json`,
     `npx onlyharness@latest resources search --workspace ${slug}`,
     `npx onlyharness@latest publish-resource ./agent-resource --workspace ${slug} --name my-agent-tool --type command_pack`,
     `npx onlyharness@latest resources detail @${slug}/my-agent-tool --json`
   ].join("\n");
+}
+
+function workspaceSetupCommand(workspaceSlug: string, target: string): string {
+  const slug = workspaceSlug || "<workspace>";
+  return `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${slug} --target ${target} --json`;
 }
 
 function collectionApproveCommand(workspaceSlug: string, resourceId: string, collectionSlug: string, name: string): string {

@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { workspaceRoot } from "./registry.js";
 import { cleanOrgSlug, tokenHash, authorizeOrgToken, appendOrgAudit, readOrgAudit, type OrgRecord, type OrgAuditEntry } from "./orgs.js";
 import * as resources from "./resources.js";
@@ -97,6 +97,39 @@ export type WorkspaceCollection = {
   items: WorkspaceCollectionItem[];
 };
 
+export type WorkspaceSetupBundleConfig = {
+  path: string;
+  content: string;
+};
+
+export type WorkspaceSetupBundleResource = {
+  id: string;
+  name: string;
+  title: string;
+  resourceType: resources.Resource["resourceType"];
+  source: "workspace_private" | "workspace_approved";
+  hostedArchive: boolean;
+  sourceResourceId?: string;
+  approvalState?: WorkspaceApprovalState;
+  collections: string[];
+  detailCommand: string;
+  openCommand: string;
+  installCommand?: string;
+  note?: string | null;
+};
+
+export type WorkspaceSetupBundle = {
+  version: string;
+  generatedAt: string;
+  target: string;
+  resources: WorkspaceSetupBundleResource[];
+  configs: WorkspaceSetupBundleConfig[];
+};
+
+export type WorkspaceSetupBundleUpdateResult =
+  | { ok: true; bundle: WorkspaceSetupBundle }
+  | { ok: false; status: number; error: string; code: string };
+
 type WorkspaceStore = {
   workspaces?: WorkspaceRecord[];
   members?: WorkspaceMember[];
@@ -116,6 +149,10 @@ type ResourceCatalogFile = {
 type WorkspaceCollectionsFile = {
   generatedAt: string;
   collections: WorkspaceCollection[];
+};
+
+type WorkspaceSetupBundleOverride = {
+  configs: WorkspaceSetupBundleConfig[];
 };
 
 type SupabaseWorkspaceRow = {
@@ -171,6 +208,11 @@ type SupabaseAuditRow = {
     subject?: unknown;
   } | null;
   created_at?: string;
+};
+
+type SupabaseSetupBundleRow = {
+  version?: string;
+  bundle?: unknown;
 };
 
 type SupabaseLoad<T> =
@@ -612,6 +654,41 @@ export function workspaceResourceDetail(slugValue: string, idValue: string): res
   return readWorkspaceResourceCatalog(slug).resources.find((resource) => resource.id === decoded || resource.id === expectedId || resource.upstreamRepo === normalized);
 }
 
+export async function workspaceSetupBundle(workspace: WorkspaceRecord, targetValue?: string): Promise<WorkspaceSetupBundle> {
+  const target = cleanSetupTarget(targetValue) ?? "cli";
+  const resources = readWorkspaceResourceCatalog(workspace.slug).resources.slice(0, 200);
+  const collections = listWorkspaceCollections(workspace.slug);
+  const override = await readWorkspaceSetupBundleOverride(workspace);
+  const bundleResources = resources.map((resource) => setupBundleResource(workspace, resource, collections, target));
+  const configs = dedupeSetupConfigs([
+    defaultWorkspaceReadmeConfig(workspace, bundleResources, target),
+    defaultWorkspaceCommandsConfig(workspace, bundleResources, target),
+    ...(override?.configs ?? [])
+  ]);
+  const hash = createHash("sha256")
+    .update(JSON.stringify({ target, resources: bundleResources, configs }))
+    .digest("hex")
+    .slice(0, 12);
+  return {
+    version: `workspace-${hash}`,
+    generatedAt: new Date().toISOString(),
+    target,
+    resources: bundleResources,
+    configs
+  };
+}
+
+export async function upsertWorkspaceSetupBundle(workspace: WorkspaceRecord, input: { configs?: WorkspaceSetupBundleConfig[]; target?: string }): Promise<WorkspaceSetupBundleUpdateResult> {
+  const configs = normalizeSetupConfigs(input.configs);
+  if (!configs) {
+    return { ok: false, status: 400, error: "Invalid setup bundle configs", code: "INVALID_SETUP_CONFIG" };
+  }
+  const override: WorkspaceSetupBundleOverride = { configs };
+  const remote = workspace.id ? await upsertSupabaseWorkspaceSetupBundle(workspace, override) : undefined;
+  if (!remote) writeLocalWorkspaceSetupBundleOverride(workspace.slug, override);
+  return { ok: true, bundle: await workspaceSetupBundle(workspace, input.target) };
+}
+
 function removeWorkspaceResourceIfOrphanedApproval(slug: string, item: WorkspaceCollectionItem): string | undefined {
   if (item.itemSource !== "public_resource") return undefined;
   const collections = withDefaultCollection(readWorkspaceCollectionsFile(slug).collections).filter((collection) => !collection.archivedAt);
@@ -789,7 +866,7 @@ function authorizeTokenFromWorkspace(workspace: WorkspaceRecord, token: string, 
 function scopeAllowed(required: string, scopes: string[]): boolean {
   if (scopes.includes(required) || scopes.includes("workspace:*")) return true;
   if (required === "workspace:read") return scopes.includes("read");
-  if (required === "workspace:setup") return scopes.includes("setup");
+  if (required === "workspace:setup") return scopes.some((scope) => ["setup", "workspace:setup"].includes(scope));
   if (required === "resource:publish") return scopes.includes("publish");
   if (required === "resource:read" || required === "resource:archive") return scopes.some((scope) => ["read", "setup", "publish"].includes(scope));
   if (required === "collection:write") return scopes.some((scope) => ["publish", "collection:write"].includes(scope));
@@ -1027,6 +1104,40 @@ async function readSupabaseWorkspaceAudit(slugValue: string | undefined, limit: 
   }));
 }
 
+async function readWorkspaceSetupBundleOverride(workspace: WorkspaceRecord): Promise<WorkspaceSetupBundleOverride | undefined> {
+  if (workspace.id) {
+    const remote = await readSupabaseWorkspaceSetupBundle(workspace.id);
+    if (remote) return remote;
+  }
+  return readLocalWorkspaceSetupBundleOverride(workspace.slug);
+}
+
+async function readSupabaseWorkspaceSetupBundle(workspaceId: string): Promise<WorkspaceSetupBundleOverride | undefined> {
+  const rows = await supabaseRows<SupabaseSetupBundleRow>("workspace_setup_bundles", {
+    select: "version,bundle",
+    workspace_id: `eq.${workspaceId}`,
+    limit: "1"
+  });
+  if (!rows) return undefined;
+  return normalizeSetupBundleOverride(rows[0]?.bundle);
+}
+
+async function upsertSupabaseWorkspaceSetupBundle(workspace: WorkspaceRecord, override: WorkspaceSetupBundleOverride): Promise<WorkspaceSetupBundleOverride | undefined> {
+  if (!workspace.id) return undefined;
+  const response = await supabaseRequest("workspace_setup_bundles", { on_conflict: "workspace_id" }, {
+    method: "POST",
+    headers: { ...supabaseHeaders(), "content-type": "application/json", prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({
+      workspace_id: workspace.id,
+      version: "manual-config",
+      bundle: override,
+      updated_at: new Date().toISOString()
+    })
+  });
+  if (!response?.ok) return undefined;
+  return override;
+}
+
 function appendLocalWorkspaceAudit(input: { slug: string; action: string; tokenName?: string; subject?: string; target?: string }) {
   mkdirSync(path.dirname(localWorkspaceAuditPath()), { recursive: true });
   appendFileSync(localWorkspaceAuditPath(), `${JSON.stringify({
@@ -1062,6 +1173,22 @@ function readLocalWorkspaceAudit(slugValue: string | undefined, limit = 50): Wor
       }
     });
   return rows.slice(-boundedLimit(limit)).reverse();
+}
+
+function readLocalWorkspaceSetupBundleOverride(slug: string): WorkspaceSetupBundleOverride | undefined {
+  const filePath = workspaceSetupBundlePath(slug);
+  if (!existsSync(filePath)) return undefined;
+  try {
+    return normalizeSetupBundleOverride(JSON.parse(readFileSync(filePath, "utf8")));
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLocalWorkspaceSetupBundleOverride(slug: string, override: WorkspaceSetupBundleOverride) {
+  const filePath = workspaceSetupBundlePath(slug);
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(override, null, 2)}\n`);
 }
 
 async function supabaseRows<T>(table: string, params: Record<string, string>): Promise<T[] | undefined> {
@@ -1399,6 +1526,119 @@ function normalizeApprovalState(value: unknown): WorkspaceApprovalState {
   return ["pending_review", "approved", "approved_with_warning", "blocked", "blocked_by_scan", "deprecated"].includes(String(value)) ? value as WorkspaceApprovalState : "pending_review";
 }
 
+function cleanSetupTarget(value: string | undefined): string | undefined {
+  return value && /^(cli|claude-code|codex|cursor|mcp)$/.test(value) ? value : undefined;
+}
+
+function setupBundleResource(workspace: WorkspaceRecord, resource: resources.Resource, collections: WorkspaceCollection[], target: string): WorkspaceSetupBundleResource {
+  const name = resource.id.replace(/^@[^/]+\//, "");
+  const collectionSlugs = collections
+    .filter((collection) => collection.items.some((item) => item.itemRef === resource.id))
+    .map((collection) => collection.slug);
+  const installAction = resource.actions.find((action) => action.id === "install" && "command" in action) as Extract<resources.ResourceAction, { id: "install" }> | undefined;
+  const hostedArchive = Boolean(workspaceResourceArchivePath(workspace.slug, resource.id));
+  return {
+    id: resource.id,
+    name,
+    title: resource.title,
+    resourceType: resource.resourceType,
+    source: resource.workspaceApproval ? "workspace_approved" : "workspace_private",
+    hostedArchive,
+    sourceResourceId: resource.workspaceApproval?.sourceResourceId,
+    approvalState: resource.workspaceApproval?.approvalState,
+    collections: collectionSlugs,
+    detailCommand: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest resources detail ${resource.id} --json`,
+    openCommand: `npx onlyharness@latest resources open ${resource.id}`,
+    ...(installAction?.command ? { installCommand: installAction.command } : hostedArchive ? { installCommand: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${workspace.slug} --target ${target} --json` } : {}),
+    note: resource.workspaceApproval?.note ?? null
+  };
+}
+
+function defaultWorkspaceReadmeConfig(workspace: WorkspaceRecord, bundleResources: WorkspaceSetupBundleResource[], target: string): WorkspaceSetupBundleConfig {
+  const hosted = bundleResources.filter((resource) => resource.hostedArchive);
+  const approved = bundleResources.filter((resource) => resource.source === "workspace_approved");
+  const lines = [
+    `# ${workspace.name} OnlyHarness Setup`,
+    "",
+    `Workspace: @${workspace.slug}`,
+    `Target: ${target}`,
+    "",
+    "This setup was generated by OnlyHarness from workspace-private packages and workspace-approved public resources.",
+    "Workspace approval is not an OnlyHarness Verified badge.",
+    "",
+    "## Hosted Workspace Packages",
+    hosted.length ? hosted.map((resource) => `- ${resource.id} (${resource.resourceType})`).join("\n") : "- None",
+    "",
+    "## Approved Public Resources",
+    approved.length ? approved.map((resource) => `- ${resource.id}${resource.sourceResourceId ? ` from ${resource.sourceResourceId}` : ""} (${resource.approvalState ?? "approved"})`).join("\n") : "- None",
+    "",
+    "## Commands",
+    "",
+    `- Search: \`HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest resources search --workspace ${workspace.slug}\``,
+    `- Setup: \`HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${workspace.slug} --target ${target} --json\``,
+    ""
+  ];
+  return { path: "README.md", content: `${lines.join("\n")}\n` };
+}
+
+function defaultWorkspaceCommandsConfig(workspace: WorkspaceRecord, bundleResources: WorkspaceSetupBundleResource[], target: string): WorkspaceSetupBundleConfig {
+  return {
+    path: `.onlyharness/workspaces/${workspace.slug}.md`,
+    content: [
+      `# @${workspace.slug} commands`,
+      "",
+      `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${workspace.slug} --target ${target} --json`,
+      `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest resources search --workspace ${workspace.slug}`,
+      "",
+      ...bundleResources.flatMap((resource) => [
+        `## ${resource.id}`,
+        "",
+        `- Detail: \`${resource.detailCommand}\``,
+        `- Open: \`${resource.openCommand}\``,
+        resource.hostedArchive
+          ? `- Hosted archive: installed by workspace setup into \`resources/${resource.name}\`.`
+          : "- Hosted archive: not provided by this workspace; use the public/resource-specific instructions above.",
+        ""
+      ])
+    ].join("\n")
+  };
+}
+
+function normalizeSetupBundleOverride(value: unknown): WorkspaceSetupBundleOverride | undefined {
+  if (!value || typeof value !== "object") return { configs: [] };
+  const input = value as { configs?: unknown };
+  const configs = normalizeSetupConfigs(input.configs);
+  return configs ? { configs } : undefined;
+}
+
+function normalizeSetupConfigs(value: unknown): WorkspaceSetupBundleConfig[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 20) return undefined;
+  const configs: WorkspaceSetupBundleConfig[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return undefined;
+    const row = item as Partial<WorkspaceSetupBundleConfig>;
+    const cleanPath = cleanSetupConfigPath(row.path);
+    const content = typeof row.content === "string" ? row.content : undefined;
+    if (!cleanPath || content === undefined || Buffer.byteLength(content, "utf8") > 128 * 1024) return undefined;
+    configs.push({ path: cleanPath, content });
+  }
+  return dedupeSetupConfigs(configs);
+}
+
+function dedupeSetupConfigs(configs: WorkspaceSetupBundleConfig[]): WorkspaceSetupBundleConfig[] {
+  const rows = new Map<string, WorkspaceSetupBundleConfig>();
+  for (const config of configs) rows.set(config.path, config);
+  return [...rows.values()];
+}
+
+function cleanSetupConfigPath(value: string | undefined): string | undefined {
+  if (!value || value.includes("\0") || path.isAbsolute(value)) return undefined;
+  const normalized = path.posix.normalize(value.replace(/\\/g, "/"));
+  if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) return undefined;
+  return /^[a-zA-Z0-9._/@-]+$/.test(normalized) ? normalized : undefined;
+}
+
 function titleizeCollectionSlug(value: string): string {
   return value.split(/[-_.]+/).filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 }
@@ -1474,6 +1714,11 @@ function workspaceResourceCatalogPath(slug: string): string {
 function workspaceCollectionsPath(slug: string): string {
   const base = process.env.WORKSPACE_COLLECTIONS_PATH ? path.resolve(process.env.WORKSPACE_COLLECTIONS_PATH, slug) : workspaceDataRoot(slug);
   return path.join(base, "collections.json");
+}
+
+function workspaceSetupBundlePath(slug: string): string {
+  const base = process.env.WORKSPACE_SETUP_BUNDLES_PATH ? path.resolve(process.env.WORKSPACE_SETUP_BUNDLES_PATH, slug) : workspaceDataRoot(slug);
+  return path.join(base, "setup-bundle.json");
 }
 
 function localWorkspacesPath(): string {

@@ -110,6 +110,11 @@ type WorkspaceJoinRequest = {
   code?: string;
 };
 
+type WorkspaceSetupBundleRequest = {
+  target?: string;
+  configs?: workspaces.WorkspaceSetupBundleConfig[];
+};
+
 type CheckoutRequest = {
   owner?: string;
   repo?: string;
@@ -339,6 +344,44 @@ app.get("/workspaces/:slug/workspace", async (request, reply) => {
     collections: workspaces.listWorkspaceCollections(auth.workspace.slug),
     permissions: workspaceResourcePermissionsSummary(auth.workspace.slug, resourceResult.resources),
     audit: await workspaces.readWorkspaceAudit(auth.workspace.slug, 80)
+  };
+});
+
+app.get("/workspaces/:slug/setup-bundle", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace setup is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["workspace:setup"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "setup_bundle" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const query = request.query as { target?: string };
+  const bundle = await workspaces.workspaceSetupBundle(auth.workspace, query.target);
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "setup_bundle_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: bundle.target, via: auth.via });
+  await recordEvent({ kind: "install", owner: auth.workspace.slug, repo: "setup-bundle", version: bundle.version, subject: workspaceAuthSubject(auth), target: `workspace_setup:${bundle.target}`, client: "api" });
+  return {
+    workspace: publicWorkspace(auth.workspace),
+    bundle,
+    next: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${auth.workspace.slug} --target ${bundle.target} --json`
+  };
+});
+
+app.put("/workspaces/:slug/setup-bundle", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace setup is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["resource:publish", "collection:write"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "setup_bundle_update" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceSetupBundleRequest : {};
+  const result = await workspaces.upsertWorkspaceSetupBundle(auth.workspace, body);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "setup_bundle_updated", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: result.bundle.target, via: auth.via });
+  return {
+    workspace: publicWorkspace(auth.workspace),
+    bundle: result.bundle,
+    next: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${auth.workspace.slug} --target ${result.bundle.target} --json`
   };
 });
 

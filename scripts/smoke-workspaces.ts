@@ -49,7 +49,7 @@ function createWorkspaceStore(target: string) {
           {
             name: "smoke",
             hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
-            scopes: ["workspace:read", "resource:read", "resource:publish", "resource:archive", "collection:write", "member:write", "invite:write"],
+            scopes: ["workspace:read", "workspace:setup", "resource:read", "resource:publish", "resource:archive", "collection:write", "member:write", "invite:write"],
             expires_at: null
           }
         ]
@@ -80,6 +80,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "public-archives"),
     WORKSPACE_RESOURCES_PATH: path.join(tempRoot, "workspace-resources"),
     WORKSPACE_COLLECTIONS_PATH: path.join(tempRoot, "workspace-collections"),
+    WORKSPACE_SETUP_BUNDLES_PATH: path.join(tempRoot, "workspace-setup-bundles"),
     WORKSPACE_RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "workspace-archives")
   }
 });
@@ -96,6 +97,7 @@ try {
   const openapi = await fetch(`${baseUrl}/openapi.json`).then((response) => response.json()) as { paths?: Record<string, unknown> };
   for (const route of [
     "/workspaces/{slug}/workspace",
+    "/workspaces/{slug}/setup-bundle",
     "/workspaces/{slug}/members",
     "/workspaces/{slug}/invites",
     "/workspaces/{slug}/join",
@@ -218,6 +220,43 @@ try {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (approvedArchive.status !== 409) throw new Error(`Approved public resource should not pretend to have workspace archive, got ${approvedArchive.status}`);
+
+  const setupBundle = await fetch(`${baseUrl}/workspaces/acme/setup-bundle?target=claude-code`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { bundle?: { target?: string; resources?: Array<{ id?: string; hostedArchive?: boolean; source?: string }>; configs?: Array<{ path?: string; content?: string }> }; next?: string };
+  if (setupBundle.bundle?.target !== "claude-code" || !setupBundle.bundle.resources?.some((item) => item.id === "@acme/agent-tool" && item.hostedArchive === true) || !setupBundle.bundle.resources?.some((item) => item.id === "@acme/deep-market-researcher" && item.hostedArchive === false && item.source === "workspace_approved")) {
+    throw new Error(`Workspace setup bundle missing expected resources: ${JSON.stringify(setupBundle)}`);
+  }
+  if (!setupBundle.next?.includes("workspace setup acme") || JSON.stringify(setupBundle).includes(token)) {
+    throw new Error(`Workspace setup bundle next step wrong or leaked token: ${JSON.stringify(setupBundle)}`);
+  }
+
+  const setupUpdate = await fetch(`${baseUrl}/workspaces/acme/setup-bundle`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ target: "claude-code", configs: [{ path: ".onlyharness/workspaces/acme-extra.md", content: "# Extra\n\nWorkspace-local setup note.\n" }] })
+  }).then((response) => response.json()) as { bundle?: { configs?: Array<{ path?: string; content?: string }> } };
+  if (!setupUpdate.bundle?.configs?.some((item) => item.path === ".onlyharness/workspaces/acme-extra.md" && item.content?.includes("Workspace-local setup note"))) {
+    throw new Error(`Workspace setup PUT did not preserve config snippet: ${JSON.stringify(setupUpdate)}`);
+  }
+  if (JSON.stringify(setupUpdate).includes(token)) throw new Error("Workspace setup PUT leaked raw token");
+
+  const setupOut = path.join(tempRoot, "setup-out");
+  const setupCli = run("node", [cliBin, "workspace", "setup", "acme", "--target", "claude-code", "--out", setupOut, "--json"], { env: cliEnv });
+  const setupCliBody = JSON.parse(setupCli.stdout) as { workspace?: { slug?: string }; resources?: Array<{ id?: string; hostedArchive?: boolean; files?: number; skippedReason?: string }>; configs?: Array<{ path?: string }> };
+  if (setupCliBody.workspace?.slug !== "acme" || !setupCliBody.resources?.some((item) => item.id === "@acme/agent-tool" && item.hostedArchive === true && (item.files ?? 0) >= 2) || !setupCliBody.resources?.some((item) => item.id === "@acme/deep-market-researcher" && item.hostedArchive === false && item.skippedReason === "workspace archive not hosted")) {
+    throw new Error(`Workspace setup CLI returned wrong payload: ${setupCli.stdout}`);
+  }
+  if (setupCli.stdout.includes(token)) throw new Error("Workspace setup CLI leaked raw token");
+  const setupTarList = run("find", [setupOut, "-type", "f"]);
+  if (!setupTarList.stdout.includes("resources/agent-tool/README.md") || !setupTarList.stdout.includes("resources/agent-tool/scripts/run.sh") || setupTarList.stdout.includes(".env")) {
+    throw new Error(`Workspace setup output files are wrong:\n${setupTarList.stdout}`);
+  }
+  if (!setupTarList.stdout.includes(".onlyharness/workspaces/acme-extra.md") || !setupTarList.stdout.includes(".harnesshub/setup.json")) {
+    throw new Error(`Workspace setup config files missing:\n${setupTarList.stdout}`);
+  }
+  const setupCliAgain = run("node", [cliBin, "workspace", "setup", "acme", "--target", "claude-code", "--out", setupOut, "--json"], { env: cliEnv });
+  if (setupCliAgain.status !== 0 || setupCliAgain.stdout.includes(token)) throw new Error(`Workspace setup idempotent retry failed: ${setupCliAgain.stdout}\n${setupCliAgain.stderr}`);
 
   const collection = await fetch(`${baseUrl}/workspaces/acme/collections/approved`, {
     headers: { Authorization: `Bearer ${token}` }

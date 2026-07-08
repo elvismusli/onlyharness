@@ -32,7 +32,9 @@ mustInclude("apps/harness-api/src/server.ts", [
   "app.delete(\"/workspaces/:slug/collections/:collection/items/:itemId\"",
   "app.post(\"/workspaces/:slug/imports/resource-package\"",
   "workspaceTokenFromRequest",
-  "authorizeWorkspaceRequest"
+  "authorizeWorkspaceRequest",
+  "app.get(\"/workspaces/:slug/setup-bundle\"",
+  "app.put(\"/workspaces/:slug/setup-bundle\""
 ]);
 
 mustInclude("apps/harness-api/src/workspaces.ts", [
@@ -48,11 +50,15 @@ mustInclude("apps/harness-api/src/workspaces.ts", [
   "WORKSPACE_RESOURCE_ARCHIVE_DIR",
   "approveWorkspacePublicResource",
   "removeWorkspaceCollectionItem",
-  "listWorkspaceCollections"
+  "listWorkspaceCollections",
+  "workspaceSetupBundle",
+  "upsertWorkspaceSetupBundle",
+  "workspace_setup_bundles"
 ]);
 
 mustInclude("apps/harness-api/src/openapi.ts", [
   "\"/workspaces/{slug}/workspace\"",
+  "\"/workspaces/{slug}/setup-bundle\"",
   "\"/workspaces/{slug}/members\"",
   "\"/workspaces/{slug}/members/{userId}\"",
   "\"/workspaces/{slug}/invites\"",
@@ -72,6 +78,9 @@ mustInclude("packages/harness-cli/src/index.ts", [
   ".option(\"--workspace <slug>\"",
   "HH_WORKSPACE_TOKEN",
   "workspaceResourceRef",
+  "workspaceCommand.command(\"setup\")",
+  "setupWorkspaceBundle",
+  "/workspaces/${slug}/setup-bundle",
   "resourcesCommand.command(\"approve\")",
   "resourcesCommand.command(\"unapprove\")",
   "/workspaces/${input.workspace}/imports/resource-package"
@@ -100,6 +109,12 @@ mustInclude("supabase/migrations/20260708143000_workspace_collections.sql", [
   "blocked_by_scan"
 ]);
 
+mustInclude("supabase/migrations/20260708183000_workspace_setup_bundles.sql", [
+  "create table if not exists public.workspace_setup_bundles",
+  "workspace_id uuid primary key references public.workspaces(id) on delete cascade",
+  "bundle jsonb not null"
+]);
+
 mustInclude("apps/registry-web/src/core/useWorkspace.ts", [
   "/workspaces/${encodeURIComponent(slug)}/workspace",
   "/workspaces/${encodeURIComponent(slug)}/members",
@@ -121,6 +136,8 @@ mustInclude("apps/registry-web/src/skins/shared/neutral/network.tsx", [
   "h.createWorkspaceInvite",
   "h.joinWorkspace",
   "Approvals",
+  "Setup",
+  "workspaceSetupCommand",
   "resources detail"
 ]);
 
@@ -138,6 +155,21 @@ mustInclude("apps/registry-web/src/skins/modern/nav.tsx", [
 mustInclude("apps/registry-web/src/skins/fans/nav.tsx", [
   "Workspaces",
   "h.openNetwork"
+]);
+
+mustInclude("docs/plans/2026-07-08-workspaces-layer-plan.md", [
+  "workspace UI must follow the current `core/` + `win98|modern|fans` skin architecture",
+  "core/useWorkspace` already exists for new workspace endpoints",
+  "shared-neutral components",
+  "CLI remains token-based unless `hh login` ships in the same sprint",
+  "no hosted personal workspace",
+  "`workspace_collections` are not the same as public marketplace collections",
+  "recurring subscription lifecycle is not part of the current manual one-time checkout foundation",
+  "This is mostly greenfield in production",
+  "community `moderator` can propose/curate, but cannot approve installable resources",
+  "Paid resale is a separate creator/legal/billing track",
+  "Scale and performance guardrails",
+  "check:workspaces` wired into `npm run check`"
 ]);
 
 console.log("workspace contract ok");

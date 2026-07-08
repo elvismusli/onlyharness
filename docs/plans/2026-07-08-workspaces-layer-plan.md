@@ -1,13 +1,13 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, and workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`, and workspace setup bundles implemented for `onlyharness@0.2.9`.
 
 Current implementation status:
 
 - shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources unapprove`, `hh resources search --workspace`, `hh resources detail @workspace/name`, shared-neutral resource-first workspace UI across W98/Modern/Fans, workspace approval add/remove UI, members/invites/join UI, OpenAPI/check/smoke coverage;
 - prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
-- not done yet: setup bundles v2, community gates, subscription lifecycle.
+- not done yet: community gates, subscription lifecycle.
 
 Review corrections incorporated:
 
@@ -16,6 +16,8 @@ Review corrections incorporated:
 - hosted personal workspace is not v1 and must not be conflated with storefront/profile;
 - workspace collections are distinct from public marketplace collections;
 - marketplace approval requires a current trust/security snapshot; `not_scanned` and `fail` must fail closed for installable approval, `warn` becomes `approved_with_warning`;
+- community `moderator` can propose/curate, but cannot approve installable resources unless also granted publisher/admin/owner power;
+- private workspace packages are internal-use only in v1; paid resale is a separate legal/billing track;
 - recurring subscriptions are a separate billing track, not a community-gate footnote;
 - org-to-workspace migration is mostly greenfield on prod because orgs are disabled;
 - workspace list/search/audit APIs need pagination/index guardrails from the start.
@@ -1294,19 +1296,18 @@ Already shipped in the first production slice:
 16. Workspace-scoped `Approved by {workspace}` labels without implying OnlyHarness verification.
 17. Honest `409 not hosted by workspace` for approved listings without workspace-hosted archive files.
 18. Shared-neutral workspace approval UI and `hh resources unapprove` removal flow.
+19. Workspace setup bundle API `GET/PUT /workspaces/{slug}/setup-bundle`, shared-neutral Setup tab, and `hh workspace setup`.
 
 Remaining from the original first sprint:
 
 1. `/orgs/{slug}/workspace` alias to new `/workspaces/{slug}/workspace` semantics.
-2. Setup bundle UI and install-one-command flow.
-3. Community join policies beyond raw invite codes.
+2. Community join policies beyond raw invite codes.
 
 Recommended next production slice:
 
 1. Keep `HH_ORG_TOKEN` and `/orgs` compatibility.
-2. Generalize setup bundles from orgs to workspaces and expose copy/install commands in the same shared-neutral surface.
-3. Keep CLI token-based unless `hh login` is pulled forward.
-4. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
+2. Keep CLI token-based unless `hh login` is pulled forward.
+3. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
 
 Do not jump straight to a big admin UI. Private resource distribution and approved collection semantics are now the shipped baseline; the next admin UX should follow real member/invite access rules.
 

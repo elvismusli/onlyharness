@@ -359,6 +359,40 @@ type OrgSetupMetadata = {
   organization?: { slug?: string };
   bundleVersion?: string;
 };
+type WorkspaceSetupResource = {
+  id: string;
+  name: string;
+  title: string;
+  resourceType: string;
+  source: "workspace_private" | "workspace_approved";
+  hostedArchive: boolean;
+  sourceResourceId?: string;
+  approvalState?: string;
+  collections?: string[];
+  detailCommand?: string;
+  openCommand?: string;
+  installCommand?: string;
+  note?: string | null;
+};
+type WorkspaceSetupBundlePayload = {
+  workspace?: {
+    slug: string;
+    name: string;
+    plan: string;
+  };
+  bundle?: {
+    version: string;
+    generatedAt?: string;
+    target: string;
+    resources: WorkspaceSetupResource[];
+    configs?: Array<{ path: string; content: string }>;
+  };
+  next?: string;
+};
+type WorkspaceSetupMetadata = {
+  workspace?: { slug?: string };
+  bundleVersion?: string;
+};
 type OrgImportResult = {
   title: string;
   name: string;
@@ -584,7 +618,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.8");
+  .version("0.2.9");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -955,6 +989,35 @@ program.command("setup")
       return;
     }
     writeStdout(options.json ? result : `Installed ${result.organization.slug}@${result.bundleVersion} -> ${result.out}\n`);
+  });
+
+const workspaceCommand = program.command("workspace")
+  .description("manage OnlyHarness workspaces");
+
+workspaceCommand.command("setup")
+  .description("install a workspace setup bundle into a local directory")
+  .argument("<workspace>", "workspace slug, e.g. acme or @acme")
+  .option("--target <target>", "cli|claude-code|codex|cursor|mcp", "cli")
+  .option("--out <dir>", "output directory (default ./.harnesshub/workspaces/<workspace>)")
+  .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
+  .option("--force", "write into a non-empty output directory", false)
+  .option("--dry-run", "fetch and summarize without writing files", false)
+  .option("--json", "print JSON", false)
+  .action(async (workspace: string, options) => {
+    const result = await setupWorkspaceBundle({
+      workspace,
+      target: options.target,
+      out: options.out,
+      token: workspaceToken(options.workspaceToken),
+      force: options.force,
+      dryRun: options.dryRun,
+      json: options.json
+    });
+    if (options.dryRun) {
+      writeStdout(options.json ? result : `Would install @${result.workspace.slug}@${result.bundleVersion}: ${result.resources.length} resources, ${result.configs.length} configs\n`);
+      return;
+    }
+    writeStdout(options.json ? result : `Installed @${result.workspace.slug}@${result.bundleVersion} -> ${result.out}\n`);
   });
 
 program.command("sync")
@@ -2385,6 +2448,138 @@ async function setupOrgBundle(input: { org: string; out?: string; token?: string
   return setup;
 }
 
+async function setupWorkspaceBundle(input: { workspace: string; target?: string; out?: string; token?: string; force: boolean; dryRun: boolean; json: boolean }) {
+  const slug = cleanSetupOrg(input.workspace);
+  if (!slug) fail("Expected workspace slug, e.g. acme", EXIT.VALIDATION, "hh workspace setup acme --workspace-token <token>", input.json);
+  const target = cleanWorkspaceSetupTarget(input.target);
+  if (!target) fail("Unsupported workspace setup target.", EXIT.VALIDATION, "Use --target cli, claude-code, codex, cursor, or mcp.", input.json);
+  if (!input.token) fail("Workspace token required.", EXIT.AUTH, "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>.", input.json);
+  const bundleUrl = `${registryUrl}/workspaces/${slug}/setup-bundle?target=${encodeURIComponent(target)}`;
+  const response = await fetchRegistryResponse(bundleUrl, input.json, workspaceAuthInit(input.token));
+  if (response.status === 401 || response.status === 403) {
+    const body = await readResponseJson(response, bundleUrl, input.json).catch(() => ({})) as { error?: string };
+    fail(`Workspace setup failed (${response.status}): ${body.error ?? "workspace authorization failed"}`, EXIT.AUTH, "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>.", input.json);
+  }
+  if (response.status === 404) fail(`Workspace setup bundle not found: @${slug}`, EXIT.NOT_FOUND, "Ask a workspace admin to enable workspace setup bundles.", input.json);
+  if (!response.ok) fail(`Registry request failed: ${bundleUrl} -> ${response.status}`, EXIT.GENERAL, undefined, input.json);
+  const payload = await readResponseJson(response, bundleUrl, input.json) as WorkspaceSetupBundlePayload;
+  if (!payload.workspace || !payload.bundle) fail(`Workspace setup response was invalid: @${slug}`, EXIT.GENERAL, undefined, input.json);
+
+  const out = path.resolve(input.out ?? path.join(".harnesshub", "workspaces", slug));
+  const existingSetup = readJsonFile<WorkspaceSetupMetadata>(path.join(out, ".harnesshub/setup.json"));
+  const sameManagedSetup = existingSetup?.workspace?.slug === payload.workspace.slug && existingSetup.bundleVersion === payload.bundle.version;
+  if (!input.dryRun && existsSync(out) && readdirSync(out).length > 0 && !input.force && !sameManagedSetup) {
+    fail(`${displayPath(out)} exists and is not an idempotent @${slug} workspace setup.`, EXIT.VALIDATION, `hh workspace setup ${slug} --out ${displayPath(out)} --force`, input.json);
+  }
+
+  const resourceReports: Array<{ id: string; source: string; hostedArchive: boolean; path?: string; files: number; skipped: number; skippedReason?: string }> = [];
+  const configReports: Array<{ path: string }> = [];
+  if (!input.dryRun) mkdirSync(out, { recursive: true });
+
+  for (const resource of payload.bundle.resources ?? []) {
+    const name = cleanRegistrySegment(resource.name);
+    if (!name) continue;
+    const targetDir = path.resolve(out, "resources", name);
+    const targetRelative = path.relative(out, targetDir);
+    if (!targetRelative || targetRelative.startsWith("..") || path.isAbsolute(targetRelative)) continue;
+    if (!resource.hostedArchive) {
+      resourceReports.push({ id: resource.id, source: resource.source, hostedArchive: false, files: 0, skipped: 0, skippedReason: "workspace archive not hosted" });
+      continue;
+    }
+    if (input.dryRun) {
+      resourceReports.push({ id: resource.id, source: resource.source, hostedArchive: true, path: targetRelative.split(path.sep).join("/"), files: 0, skipped: 0 });
+      continue;
+    }
+    const archive = await fetchWorkspaceResourceArchive({
+      workspace: payload.workspace.slug,
+      resourceName: name,
+      token: input.token,
+      json: input.json
+    });
+    try {
+      const extracted = extractTarGzArchive(archive.path, targetDir, input.json);
+      writeJsonFile(path.join(targetDir, ".harnesshub/source.json"), {
+        workspace: payload.workspace.slug,
+        resourceId: resource.id,
+        resourceType: resource.resourceType,
+        source: resource.source,
+        sourceResourceId: resource.sourceResourceId,
+        registry: registryUrl,
+        pulledAt: new Date().toISOString(),
+        files: extracted.paths
+      });
+      resourceReports.push({ id: resource.id, source: resource.source, hostedArchive: true, path: targetRelative.split(path.sep).join("/"), files: extracted.files, skipped: 0 });
+    } finally {
+      rmSync(archive.tempDir, { recursive: true, force: true });
+    }
+  }
+
+  for (const config of payload.bundle.configs ?? []) {
+    const targetFile = path.resolve(out, config.path);
+    const relative = path.relative(out, targetFile);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    if (!input.dryRun) {
+      mkdirSync(path.dirname(targetFile), { recursive: true });
+      writeFileSync(targetFile, config.content);
+    }
+    configReports.push({ path: relative.split(path.sep).join("/") });
+  }
+
+  const setup = {
+    workspace: payload.workspace,
+    bundleVersion: payload.bundle.version,
+    target: payload.bundle.target,
+    registry: registryUrl,
+    out: path.relative(process.cwd(), out) || ".",
+    installedAt: new Date().toISOString(),
+    resources: resourceReports,
+    configs: configReports,
+    next: payload.next
+  };
+  if (!input.dryRun) writeJsonFile(path.join(out, ".harnesshub/setup.json"), setup);
+  return setup;
+}
+
+async function fetchWorkspaceResourceArchive(input: { workspace: string; resourceName: string; token: string; json: boolean }): Promise<{ path: string; tempDir: string }> {
+  const url = `${registryUrl}/workspaces/${input.workspace}/resources/${encodeURIComponent(input.resourceName)}/archive`;
+  const response = await fetchRegistryResponse(url, input.json, workspaceAuthInit(input.token));
+  if (response.status === 401 || response.status === 403) fail(`Workspace archive denied: @${input.workspace}/${input.resourceName}`, EXIT.AUTH, "Check HH_WORKSPACE_TOKEN/HH_ORG_TOKEN and workspace archive access.", input.json);
+  if (response.status === 404) fail(`Workspace resource not found: @${input.workspace}/${input.resourceName}`, EXIT.NOT_FOUND, `hh resources search --workspace ${input.workspace} ${input.resourceName}`, input.json);
+  if (response.status === 409) {
+    const body = await readResponseJson(response, url, input.json).catch(() => ({})) as { next?: string };
+    fail(`Workspace archive not hosted: @${input.workspace}/${input.resourceName}`, EXIT.VALIDATION, body.next ?? "This resource can be listed in setup instructions but cannot be downloaded from workspace storage.", input.json);
+  }
+  if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, input.json);
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "hh-workspace-archive-"));
+  const archivePath = path.join(tempDir, `${input.resourceName}.tar.gz`);
+  writeFileSync(archivePath, Buffer.from(await response.arrayBuffer()));
+  return { path: archivePath, tempDir };
+}
+
+function extractTarGzArchive(archivePath: string, out: string, json: boolean): { files: number; paths: string[] } {
+  const list = spawnSync("tar", ["-tzf", archivePath], { encoding: "utf8" });
+  if (list.status !== 0) fail(`Workspace archive is not a valid tar.gz: ${list.stderr || list.stdout || "tar failed"}`, EXIT.GENERAL, undefined, json);
+  const paths = safeTarPaths(list.stdout, json);
+  mkdirSync(out, { recursive: true });
+  const extract = spawnSync("tar", ["-xzf", archivePath, "-C", out], { encoding: "utf8" });
+  if (extract.status !== 0) fail(`Workspace archive extraction failed: ${extract.stderr || extract.stdout || "tar failed"}`, EXIT.GENERAL, undefined, json);
+  return { files: paths.length, paths };
+}
+
+function safeTarPaths(output: string, json: boolean): string[] {
+  const paths: string[] = [];
+  for (const raw of output.split(/\r?\n/).filter(Boolean)) {
+    const clean = raw.replace(/^\.\//, "").replace(/\/$/, "");
+    if (!clean || clean === ".") continue;
+    const normalized = path.posix.normalize(clean);
+    if (normalized.startsWith("../") || normalized === ".." || path.posix.isAbsolute(normalized) || normalized.includes("\0")) {
+      fail(`Workspace archive contains unsafe path: ${raw}`, EXIT.GENERAL, undefined, json);
+    }
+    if (!raw.endsWith("/")) paths.push(normalized);
+  }
+  return paths;
+}
+
 async function syncOrgRepo(input: { source: string; org: string; token: string; maxFiles: number; dryRun: boolean; json: boolean }): Promise<SyncReport> {
   const source = materializeSyncSource(input.source, input.json);
   try {
@@ -3140,6 +3335,10 @@ function syncReportText(report: SyncReport): string {
 function cleanSetupOrg(value: string): string | undefined {
   const cleaned = value.replace(/^@/, "");
   return /^[a-z][a-z0-9_-]{1,48}$/.test(cleaned) ? cleaned : undefined;
+}
+
+function cleanWorkspaceSetupTarget(value: string | undefined): string | undefined {
+  return value && /^(cli|claude-code|codex|cursor|mcp)$/.test(value) ? value : undefined;
 }
 
 function cleanRegistrySegment(value: string | undefined): string | undefined {

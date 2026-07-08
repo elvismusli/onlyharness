@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.8",
+    version: "0.2.9",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -844,6 +844,56 @@ export const openapi = {
               }
             }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/setup-bundle": {
+      get: {
+        summary: "Read a workspace setup bundle",
+        description: "Requires WORKSPACES_ENABLED=true and workspace setup access. The bundle installs workspace-hosted packages and returns instructions for approved public resources without inventing workspace archive downloads.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          pathParam("slug"),
+          queryParam("target", "Setup target: cli, claude-code, codex, cursor or mcp")
+        ],
+        responses: {
+          "200": {
+            description: "Workspace setup bundle",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/WorkspaceSetupBundleResponse" } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      },
+      put: {
+        summary: "Update workspace setup config snippets",
+        description: "Requires workspace publish/collection write access. Stores bounded setup config snippets; private archive access is still checked at install time.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  target: { type: "string", enum: ["cli", "claude-code", "codex", "cursor", "mcp"] },
+                  configs: { type: "array", maxItems: 20, items: { $ref: "#/components/schemas/WorkspaceSetupConfig" } }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Updated workspace setup bundle",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/WorkspaceSetupBundleResponse" } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" }
@@ -2469,6 +2519,53 @@ export const openapi = {
           bundle: { $ref: "#/components/schemas/OrgBundle" }
         },
         required: ["organization", "bundle"]
+      },
+      WorkspaceSetupBundleResponse: {
+        type: "object",
+        properties: {
+          workspace: { $ref: "#/components/schemas/Workspace" },
+          bundle: { $ref: "#/components/schemas/WorkspaceSetupBundle" },
+          next: { type: "string" }
+        },
+        required: ["workspace", "bundle", "next"]
+      },
+      WorkspaceSetupBundle: {
+        type: "object",
+        properties: {
+          version: { type: "string" },
+          generatedAt: { type: "string", format: "date-time" },
+          target: { type: "string", enum: ["cli", "claude-code", "codex", "cursor", "mcp"] },
+          resources: { type: "array", items: { $ref: "#/components/schemas/WorkspaceSetupResource" } },
+          configs: { type: "array", items: { $ref: "#/components/schemas/WorkspaceSetupConfig" } }
+        },
+        required: ["version", "generatedAt", "target", "resources", "configs"]
+      },
+      WorkspaceSetupResource: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          title: { type: "string" },
+          resourceType: { type: "string" },
+          source: { type: "string", enum: ["workspace_private", "workspace_approved"] },
+          hostedArchive: { type: "boolean" },
+          sourceResourceId: { type: "string" },
+          approvalState: { type: "string" },
+          collections: { type: "array", items: { type: "string" } },
+          detailCommand: { type: "string" },
+          openCommand: { type: "string" },
+          installCommand: { type: "string" },
+          note: { type: ["string", "null"] }
+        },
+        required: ["id", "name", "title", "resourceType", "source", "hostedArchive", "collections", "detailCommand", "openCommand"]
+      },
+      WorkspaceSetupConfig: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          content: { type: "string", maxLength: 131072 }
+        },
+        required: ["path", "content"]
       },
       OrgWorkspaceResponse: {
         type: "object",
