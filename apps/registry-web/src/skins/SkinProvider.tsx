@@ -1,6 +1,8 @@
 import { createContext, Suspense, useContext, useMemo, useState } from "react";
 
 import { SKINS, type SkinId } from "./registry";
+import { GlobalSkinSwitcher } from "./SkinSwitcher";
+import "./skin-switcher.css";
 
 const DEFAULT_SKIN: SkinId = "win98";
 const STORAGE_KEY = "oh:skin";
@@ -74,6 +76,9 @@ export function SkinProvider() {
       <Suspense fallback={null}>
         <Mount />
       </Suspense>
+      {/* One global switcher for every skin: fixed position, same viewport spot
+          on all skins, styled outside any `.skin-*` scope (skin-switcher.css). */}
+      <GlobalSkinSwitcher />
     </SkinContext.Provider>
   );
 }

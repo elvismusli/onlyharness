@@ -322,36 +322,14 @@
 .skin-fans .fa-login:hover {
   color: var(--fa-brand);
 }
-
-/* ---- SkinSwitcher (headless markup, styled here as a pill segment group) ---- */
-.skin-fans .skin-switcher {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--fa-switch-bg);
-  border-radius: var(--fa-r-pill);
-  padding: 3px;
-}
-.skin-fans .skin-switcher-btn {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-family: var(--fa-font-ui);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--fa-muted);
-  padding: 6px 12px;
-  border-radius: var(--fa-r-pill);
-  white-space: nowrap;
-  transition: background .15s, color .15s;
-}
-.skin-fans .skin-switcher-btn:hover {
-  background: var(--fa-switch-hover);
-}
-.skin-fans .skin-switcher-btn[data-active] {
-  background: var(--fa-brand);
-  color: #fff;
-  font-weight: 800;
+/* The skin switcher is now a single global floating control (skin-switcher.css),
+   so no per-skin `.skin-switcher` styling lives here anymore. On narrow viewports
+   tighten the nav padding so brand + Log in sit comfortably with no overflow. */
+@media (max-width: 560px) {
+  .skin-fans .fa-nav-inner {
+    padding: 0 16px;
+    gap: 12px;
+  }
 }
 
 /* ============================================================================

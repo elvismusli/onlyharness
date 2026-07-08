@@ -1,0 +1,114 @@
+/*
+ * Global skin switcher (GlobalSkinSwitcher, SkinSwitcher.tsx).
+ *
+ * Rendered ONCE at the SkinProvider level so it is in the exact same viewport
+ * position on every skin and never clipped by a skin's own chrome. These rules
+ * are deliberately NOT scoped under any `.skin-*` selector — this control lives
+ * outside the skins and owns its full appearance.
+ *
+ * Placement: fixed bottom-centre, lifted clear of the Win98 taskbar (36px) and
+ * respecting the mobile safe-area inset. Bottom-centre is empty chrome on all
+ * three skins (Modern/Fans have no bottom bar; Win98's taskbar sits below it),
+ * so nothing important is ever covered.
+ *
+ * Look: dark translucent blurred pill + light text with a white "active" chip.
+ * This one treatment reads clearly on the dark Modern (#0a0a0b), teal Win98 and
+ * light-blue Fans backgrounds alike. On narrow viewports (<=560px) the text
+ * labels are hidden so the pill stays compact and fully visible (icon-only).
+ */
+
+.gss {
+  position: fixed;
+  left: 50%;
+  bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 2147483000;
+
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 15, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 28px -8px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.gss-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+
+  padding: 7px 13px;
+  border-radius: 999px;
+
+  color: rgba(255, 255, 255, 0.82);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+
+  transition: background 0.15s, color 0.15s;
+}
+
+.gss-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.gss-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.gss-btn[data-active] {
+  background: #fff;
+  color: #101014;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.gss-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* Icon-only on narrow viewports so the pill stays compact and fully visible. */
+@media (max-width: 560px) {
+  .gss-label {
+    /* visually hidden but kept for assistive tech */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .gss-btn {
+    padding: 9px 11px;
+  }
+  .gss-icon {
+    font-size: 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gss-btn {
+    transition: none;
+  }
+}

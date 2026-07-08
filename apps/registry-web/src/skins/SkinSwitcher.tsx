@@ -2,26 +2,34 @@ import { SKINS } from "./registry";
 import { useSkin } from "./SkinProvider";
 
 /**
- * Headless skin switcher: one button per registered skin, calling `setSkin(id)`
- * and marking the active one (`aria-pressed` + `data-active`). Ships no visual
- * styling of its own — the consuming skin styles `.skin-switcher` / its buttons
- * to look native. With one skin registered this renders a single control.
+ * Global skin switcher: a single, self-styled floating pill rendered ONCE at the
+ * `SkinProvider` level (next to the active skin's mount) so it sits in the exact
+ * same viewport position on every skin and can never be clipped by a skin's own
+ * chrome. Its look is fully self-contained in `skin-switcher.css` (NOT scoped
+ * under any `.skin-*`): a dark translucent blurred pill with light text + a white
+ * "active" chip, which reads clearly on the dark Modern, teal Win98 and light
+ * Fans backgrounds alike. On narrow viewports the labels drop away (icon-only)
+ * so it stays compact and fully visible.
+ *
+ * One `<button>` per registered `SKINS` entry: clicking calls `setSkin(id)`, the
+ * active one is marked with `aria-pressed` + `data-active`.
  */
-export function SkinSwitcher() {
+export function GlobalSkinSwitcher() {
   const { skin, setSkin } = useSkin();
   return (
-    <div className="skin-switcher" role="group" aria-label="Skin">
+    <div className="gss" role="group" aria-label="Choose skin">
       {SKINS.map((entry) => (
         <button
           key={entry.id}
           type="button"
-          className="skin-switcher-btn"
+          className="gss-btn"
           data-active={entry.id === skin ? "" : undefined}
           aria-pressed={entry.id === skin}
           title={`Skin: ${entry.label}`}
           onClick={() => setSkin(entry.id)}
         >
-          {entry.icon} {entry.label}
+          <span className="gss-icon" aria-hidden>{entry.icon}</span>
+          <span className="gss-label">{entry.label}</span>
         </button>
       ))}
     </div>

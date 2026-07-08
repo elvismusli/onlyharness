@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND } from "../../core/constants";
 import { clockLabel, keyFor } from "../../core/format";
 import { useHarness } from "../../core/store";
-import { SkinSwitcher } from "../SkinSwitcher";
 import type { Surface } from "../../core/useAppNav";
 import type { WinKind } from "../../core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
@@ -420,7 +419,6 @@ function App() {
         onStart={() => setStartOpen((open) => !open)}
         time={time}
         onTrayFire={h.openLeaderboard}
-        trayExtra={<SkinSwitcher />}
       />
 
       {h.logon.open && (

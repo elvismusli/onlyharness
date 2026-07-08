@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 
 import { useHarness } from "../../core/store";
-import { SkinSwitcher } from "../SkinSwitcher";
 import { Btn } from "./primitives";
 
 const NAV_TABS = ["Explore", "Collections", "Leaderboard", "Docs"] as const;
@@ -10,8 +9,12 @@ const NAV_TABS = ["Explore", "Collections", "Leaderboard", "Docs"] as const;
  * Sticky top nav (60px, blurred, bottom hairline):
  * gradient "O" logo + "OnlyHarness" wordmark · nav tabs (Explore active pill) ·
  * a search field bound to `useHarness().query`/`setQuery` with a `/` key hint ·
- * an accent Publish button (`openPublish`) · the shared `<SkinSwitcher/>` styled
- * here as a rounded pill group.
+ * an accent Publish button (`openPublish`). The skin switcher is now a single
+ * global floating control (SkinProvider), not part of this nav.
+ *
+ * On narrow viewports the secondary tabs (Collections/Leaderboard/Docs) and the
+ * search field collapse away so brand + briefcase + Publish stay on one row with
+ * no horizontal overflow (see tokens.css responsive block).
  *
  * Only Explore is wired for now (it's the active tab); the other tabs are inert
  * labels until later tasks. The `/` shortcut focuses the search input from
@@ -117,8 +120,6 @@ export function Nav() {
         </Btn>
 
         <Btn variant="primary" onClick={h.openPublish}>Publish</Btn>
-
-        <SkinSwitcher />
       </div>
     </header>
   );
