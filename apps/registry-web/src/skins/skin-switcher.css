@@ -6,10 +6,11 @@
  * are deliberately NOT scoped under any `.skin-*` selector — this control lives
  * outside the skins and owns its full appearance.
  *
- * Placement: fixed bottom-centre, lifted clear of the Win98 taskbar (36px) and
- * respecting the mobile safe-area inset. Bottom-centre is empty chrome on all
- * three skins (Modern/Fans have no bottom bar; Win98's taskbar sits below it),
- * so nothing important is ever covered.
+ * Placement: fixed bottom-RIGHT, lifted clear of the Win98 taskbar (36px) and
+ * respecting the mobile safe-area inset. Bottom-right keeps it out of the
+ * centre column where each skin puts its primary CTAs (e.g. the Fans sign-up
+ * buttons) so it never overlaps or intercepts taps on a call-to-action; the
+ * lift keeps it above the Win98 taskbar.
  *
  * Look: dark translucent blurred pill + light text with a white "active" chip.
  * This one treatment reads clearly on the dark Modern (#0a0a0b), teal Win98 and
@@ -19,9 +20,8 @@
 
 .gss {
   position: fixed;
-  left: 50%;
+  right: max(12px, env(safe-area-inset-right, 0px));
   bottom: calc(48px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
   z-index: 2147483000;
 
   display: flex;
