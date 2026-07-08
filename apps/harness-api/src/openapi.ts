@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.0",
+    version: "0.2.1",
     description: "Search, inspect, pull and publish reusable AI-agent harnesses."
   },
   servers: [

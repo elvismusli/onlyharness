@@ -9,10 +9,18 @@ OnlyHarness is a registry for reusable AI-agent harnesses: manifests, prompts, e
 
 ## Fast Path
 
-Use the CLI first when shell access is available from a cloned `harness-hub` repo. The `onlyharness` npm package is not published yet; do not run `npx onlyharness` until npm publish is complete. If the repo is not present, use the HTTP/MCP fallback below.
+Use the CLI first for native harness workflows when shell access is available. The `onlyharness` npm package is published for search/suggest/install/run/eval/gate. Resource catalog commands are in the local 0.2.1 CLI build and MCP/HTTP surface; until npm 0.2.1 is published, use `search_resources`, `resource_detail`, `resource_use_instructions`, HTTP `/resources`, or the local `node packages/harness-cli/dist/hh.mjs resources ...` path for mixed resources. If shell access is not available, use the HTTP/MCP fallback below.
 
 ```bash
+npx onlyharness@latest suggest market research --json
+npx onlyharness@latest suggest market research --apply --out suggested-deep-market-researcher --json
+npx onlyharness@latest suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
+npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
+
 npm run build -w onlyharness
+node packages/harness-cli/dist/hh.mjs resources search superpowers --json
+node packages/harness-cli/dist/hh.mjs resources detail github:obra/superpowers --json
+node packages/harness-cli/dist/hh.mjs resources open github:obra/superpowers --json
 node packages/harness-cli/dist/hh.mjs suggest market research --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
@@ -88,6 +96,9 @@ Tools:
 - `harness_detail`: inspect manifest, trust, examples, files and read-only access/payment state.
 - `pull_instructions`: get CLI/archive commands plus entitlement-aware payment state.
 - `pull_harness`: get archive files; paid harnesses return payment requirements unless Bearer token is entitled.
+- `search_resources`: search mixed source-aware resources such as skills, plugins, workflows and MCP servers.
+- `resource_detail`: inspect provenance, trust, popularity and actions for one resource.
+- `resource_use_instructions`: get OnlyHarness-first use/open/install guidance without pulling non-harness archives.
 - `search_docs`: search OnlyHarness agent docs.
 - `publish_markdown_to_harness`: publish markdown; Bearer token required.
 

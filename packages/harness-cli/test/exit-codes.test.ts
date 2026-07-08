@@ -2,6 +2,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import os from "node:os";
@@ -636,6 +637,35 @@ test("install pulls a harness, writes adapter files, and records a privacy-safe 
       target: "codex",
       client: "hh"
     }]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("install preflights adapter collisions before writing harness files", async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), "hh-install-preflight-"));
+  const out = path.join(parent, "dmr");
+  const adapterOut = path.join(parent, "codex-adapter");
+  try {
+    await mkdir(adapterOut, { recursive: true });
+    await writeFile(path.join(adapterOut, "AGENTS.md"), "existing adapter");
+
+    const result = await runCli([
+      "install",
+      "harnesses/deep-market-researcher",
+      "--out",
+      out,
+      "--target",
+      "codex",
+      "--adapter-out",
+      adapterOut,
+      "--json"
+    ], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 3);
+    const body = JSON.parse(result.stderr) as { error?: string; next?: string };
+    assert.match(body.error ?? "", /AGENTS\.md already exists/);
+    assert.equal(existsSync(out), false);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -1467,9 +1497,9 @@ test("extract creates a valid harness with inferred depends_on and redacted sour
     const readme = await readFile(path.join(out, "README.md"), "utf8");
     assert.doesNotMatch(readme, new RegExp(sourceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     const workflow = await readFile(path.join(out, ".gitea/workflows/harness-ci.yml"), "utf8");
-    assert.match(workflow, /npm package is not published yet/);
-    assert.match(workflow, /scaffold CI is advisory/);
-    assert.doesNotMatch(workflow, /npm install -g onlyharness/);
+    assert.match(workflow, /npm install -g onlyharness/);
+    assert.match(workflow, /hh validate --strict --json/);
+    assert.doesNotMatch(workflow, /npm package is not published yet/);
 
     const validate = await runCli(["validate", out, "--strict", "--json"]);
     assert.equal(validate.status, 0, validate.stderr);

@@ -77,17 +77,19 @@ Use `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, or local JSON fixtures via `--
 
 ## CLI
 
-After the npm package is published:
+The npm package is published:
 
 ```bash
-npx onlyharness search market research
-npx onlyharness suggest market research --json
-npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
-npx onlyharness mcp-config deep-market-researcher --target claude-desktop --json
+npx onlyharness@latest search market research
+npx onlyharness@latest suggest market research --json
+npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
+npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop --json
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-This local branch prepares the `onlyharness` npm bundle but does not publish it. For local development, build the workspace bundle and run it directly:
+Resource catalog commands are in the local 0.2.1 build and MCP/HTTP surface; publish 0.2.1 to npm before documenting `npx onlyharness resources ...` as a clean-user path.
+
+For local development, build the workspace bundle and run it directly:
 
 ```bash
 npm run build -w onlyharness

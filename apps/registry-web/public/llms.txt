@@ -128,7 +128,7 @@ Initialize example:
 
 ## CLI (hh)
 
-After npm publish, agents can run the CLI without cloning the repo:
+The npm CLI is published for native harness workflows, so agents can run those without cloning the repo:
 
     npx onlyharness search market research
     npx onlyharness suggest market research --json
@@ -139,7 +139,8 @@ After npm publish, agents can run the CLI without cloning the repo:
     npx onlyharness run deep-market-researcher
     npm i -g onlyharness   # installs the hh command
 
-Local status: this branch prepares the onlyharness npm bundle but does not publish it.
+Resource catalog commands are live through MCP/HTTP and the local 0.2.1 CLI build. Until npm 0.2.1 is published, use MCP tools `search_resources`, `resource_detail`, `resource_use_instructions`, HTTP `/resources`, or local development commands for mixed resources.
+
 For local development from the repo:
 
     npm install
@@ -150,7 +151,7 @@ For local development from the repo:
 - hh resources search {terms} --json     search all resources, including skills/plugins/workflows/MCP servers
 - hh resources detail github:obra/superpowers --json
 - hh resources open github:obra/superpowers
-  Opens the OnlyHarness GitHub mirror when available; otherwise opens the upstream source.
+  Opens the OnlyHarness resource page first; upstream GitHub stays attribution/source, not the primary use path.
 - hh resources import https://github.com/acme/agent-skills --json   classify before adding/listing a GitHub resource
 - hh suggest {terms}        return ranked candidates with trust fields plus selected detail trust summary; use --pick {rank}; --apply installs through the pull archive path
 - hh suggest {terms} --apply --target cli|claude-code|codex|cursor    run the target adapter install path before recording applied

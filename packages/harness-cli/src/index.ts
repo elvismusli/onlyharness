@@ -530,7 +530,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, pull, run, eval and publish agent harnesses (onlyharness.com)")
-  .version("0.2.0");
+  .version("0.2.1");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -1861,6 +1861,15 @@ async function installHarness(input: {
   pay: boolean;
   json: boolean;
 }): Promise<InstallResult> {
+  if (input.target !== "cli") {
+    preflightAdapterWrite({
+      target: input.target,
+      harnessName: input.name,
+      out: input.adapterOut,
+      force: input.force,
+      json: input.json
+    });
+  }
   const pulled = await pullHarnessArchive({
     owner: input.owner,
     name: input.name,
@@ -3284,26 +3293,14 @@ function adaptHarness(input: { root: string; target: AdaptTarget; out?: string; 
   const manifest = validManifest(input.root, input.json);
   const out = path.resolve(input.out ?? defaultAdapterOut(input.target, manifest));
   const content = adapterContent(input.target, manifest, input.root);
-  const files: string[] = [];
-  if (input.target === "claude-code") {
-    const file = path.join(out, "SKILL.md");
-    writeGeneratedFile(file, content, input.force, input.json);
-    files.push(file);
-  } else if (input.target === "codex") {
-    const file = path.join(out, "AGENTS.md");
-    writeGeneratedFile(file, content, input.force, input.json);
-    files.push(file);
-  } else {
-    const file = path.join(out, `${manifest.name}.mdc`);
-    writeGeneratedFile(file, content, input.force, input.json);
-    files.push(file);
-  }
+  const file = adapterFileForName(input.target, out, manifest.name);
+  writeGeneratedFile(file, content, input.force, input.json);
   return {
     target: input.target,
     harness: manifest.name,
     root: input.root,
     out,
-    files,
+    files: [file],
     next: adapterNextSteps(input.target, input.root)
   };
 }
@@ -3359,9 +3356,22 @@ function cleanMcpConfigTarget(value: string | undefined): McpConfigTarget | unde
   return value === "claude-desktop" || value === "claude-code" || value === "cursor" ? value : undefined;
 }
 
+function preflightAdapterWrite(input: { target: AdaptTarget; harnessName: string; out?: string; force: boolean; json: boolean }): void {
+  if (input.force) return;
+  const out = path.resolve(input.out ?? defaultAdapterOutForName(input.target, input.harnessName));
+  const file = adapterFileForName(input.target, out, input.harnessName);
+  if (existsSync(file)) {
+    fail(`${displayPath(file)} already exists.`, EXIT.VALIDATION, "Pass --force to overwrite generated adapter files.", input.json);
+  }
+}
+
 function defaultAdapterOut(target: AdaptTarget, manifest: HarnessManifest): string {
-  if (target === "claude-code") return path.join(".claude", "skills", manifest.name);
-  if (target === "codex") return path.join(".codex", "harnesses", manifest.name);
+  return defaultAdapterOutForName(target, manifest.name);
+}
+
+function defaultAdapterOutForName(target: AdaptTarget, name: string): string {
+  if (target === "claude-code") return path.join(".claude", "skills", name);
+  if (target === "codex") return path.join(".codex", "harnesses", name);
   return path.join(".cursor", "rules");
 }
 
@@ -3369,6 +3379,12 @@ function adapterContent(target: AdaptTarget, manifest: HarnessManifest, root: st
   if (target === "claude-code") return claudeSkillAdapter(manifest, root);
   if (target === "codex") return codexAdapter(manifest, root);
   return cursorAdapter(manifest, root);
+}
+
+function adapterFileForName(target: AdaptTarget, out: string, name: string): string {
+  if (target === "claude-code") return path.join(out, "SKILL.md");
+  if (target === "codex") return path.join(out, "AGENTS.md");
+  return path.join(out, `${name}.mdc`);
 }
 
 function claudeSkillAdapter(manifest: HarnessManifest, root: string): string {
@@ -3690,16 +3706,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: OnlyHarness checks pending npm publish
+      - name: OnlyHarness checks
         run: |
-          echo "OnlyHarness npm package is not published yet; this scaffold CI is advisory."
-          echo "From the harness-hub repo, run:"
-          echo "  npm run build -w onlyharness"
-          echo "  node packages/harness-cli/dist/hh.mjs validate --strict --json"
-          echo "  node packages/harness-cli/dist/hh.mjs risk --format markdown"
-          echo "  node packages/harness-cli/dist/hh.mjs diff origin/main...HEAD --format markdown"
-          echo "  node packages/harness-cli/dist/hh.mjs eval --ci"
-          echo "  node packages/harness-cli/dist/hh.mjs gate --results .harnesshub/results.json"
+          npm install -g onlyharness
+          hh validate --strict --json
+          hh risk --format markdown
+          hh diff origin/main...HEAD --format markdown
+          hh eval --ci
+          hh gate --results .harnesshub/results.json
 `;
 }
 

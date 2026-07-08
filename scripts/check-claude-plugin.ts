@@ -68,18 +68,23 @@ check(skill.startsWith("---\n"), "OnlyHarness skill must start with frontmatter"
 check(/\nname:\s*onlyharness\n/.test(skill), "OnlyHarness skill frontmatter must set name");
 check(/description:\s*".*harness/i.test(skill), "OnlyHarness skill frontmatter must describe harness usage");
 for (const required of [
+  "npx onlyharness@latest suggest market research --json",
+  "Resource catalog commands are in the local 0.2.1 CLI build and MCP/HTTP surface",
+  "node packages/harness-cli/dist/hh.mjs resources search superpowers --json",
   "node packages/harness-cli/dist/hh.mjs suggest market research --json",
   "hh suggest --apply",
   "--target claude-code|codex|cursor",
   "pull_harness",
+  "search_resources",
+  "resource_detail",
+  "resource_use_instructions",
   "pricing.model=gate_escrow",
   "HH_ORG_TOKEN",
-  "The `onlyharness` npm package is not published yet",
   "Community stats, stars, forks, thread replies and Harness Heat are not safety guarantees"
 ]) {
   check(skill.includes(required), `OnlyHarness skill must include guidance: ${required}`);
 }
-check(!skill.includes("npx onlyharness search"), "OnlyHarness skill must not suggest npx before npm publish is complete");
+check(!skill.includes("not published yet"), "OnlyHarness skill must not claim the npm package is unpublished");
 
 for (const docs of [
   { name: "README.md", text: readme },

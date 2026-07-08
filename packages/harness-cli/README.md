@@ -23,12 +23,15 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
 ```
 
-This local branch only prepares the npm bundle; it does not publish the package. Global install after npm publish:
+The npm package is published for clean-user installs:
 
 ```bash
+npx onlyharness@latest doctor
 npm i -g onlyharness
 hh doctor
 ```
+
+The mixed resource catalog commands are in the local 0.2.1 build and should be published before relying on `npx onlyharness resources ...` from a clean machine.
 
 ## Registry
 

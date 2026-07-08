@@ -37,11 +37,17 @@ node packages/harness-cli/dist/hh.mjs doctor
 
 ## Agent Use
 
-Prefer the CLI for agent loops. The `onlyharness` npm package is not published yet; `npx onlyharness` is the post-publish path, not the current local path.
+Prefer the CLI for agent loops. The `onlyharness` npm package is published for native harness workflows; `npx onlyharness@latest` is the clean-user path for search/suggest/install/run/eval/gate. Mixed resource catalog commands are in the local 0.2.1 build and MCP/HTTP surface; until npm 0.2.1 is published, use `node packages/harness-cli/dist/hh.mjs resources ...` locally.
 
 ```bash
+npx onlyharness@latest suggest market research --json
+npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
+
 npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs search market research
+node packages/harness-cli/dist/hh.mjs resources search superpowers --json
+node packages/harness-cli/dist/hh.mjs resources detail github:obra/superpowers --json
+node packages/harness-cli/dist/hh.mjs resources open github:obra/superpowers --json
 node packages/harness-cli/dist/hh.mjs suggest market research --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json

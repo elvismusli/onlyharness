@@ -44,7 +44,7 @@ try {
     capabilities: {},
     clientInfo: { name: "onlyharness-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "onlyharness") {
+  if (initialize.result?.serverInfo?.name !== "onlyharness" || initialize.result?.serverInfo?.version !== "0.2.1") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 
@@ -117,8 +117,12 @@ try {
     arguments: { owner: "harnesses", name: "deep-market-researcher" }
   });
   const instructionsText = instructions.result?.content?.[0]?.text ?? "";
-  if (!instructionsText.includes("node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher") || instructionsText.includes("npx onlyharness")) {
-    throw new Error(`MCP pull_instructions returned a non-local CLI command: ${JSON.stringify(instructions)}`);
+  if (
+    !instructionsText.includes("\"command\": \"npx onlyharness install harnesses/deep-market-researcher\"")
+    || !instructionsText.includes("\"localCommand\": \"node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher\"")
+    || !instructionsText.includes("\"npmStatus\": \"published\"")
+  ) {
+    throw new Error(`MCP pull_instructions returned stale CLI guidance: ${JSON.stringify(instructions)}`);
   }
 
   const pull = await rpc(5, "tools/call", {

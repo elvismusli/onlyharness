@@ -1080,16 +1080,17 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
     };
   }
   const version = detail.manifest?.version ?? "current";
+  const command = `npx onlyharness install ${owner}/${name}`;
   const localCommand = `node packages/harness-cli/dist/hh.mjs install ${owner}/${name}`;
   return {
-    command: localCommand,
+    command,
     localCommand,
-    npmStatus: "pending_publish",
+    npmStatus: "published",
     archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
     contextCost: detail.contextCost,
     access: detail.access,
     payment: detail.access.payment,
-    next: ["npm run build -w onlyharness", `node packages/harness-cli/dist/hh.mjs run ${name} --json`, `node packages/harness-cli/dist/hh.mjs eval ${name} --json`, `node packages/harness-cli/dist/hh.mjs gate --dir ${name} --json`]
+    next: [`npx onlyharness run ${name} --json`, `npx onlyharness eval ${name} --json`, `npx onlyharness gate --dir ${name} --json`]
   };
 };
 
