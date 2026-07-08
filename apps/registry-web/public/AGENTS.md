@@ -44,6 +44,7 @@ npx onlyharness@latest suggest market research --json
 npx onlyharness@latest resources search superpowers --json
 npx onlyharness@latest resources detail github:obra/superpowers --json
 npx onlyharness@latest resources open github:obra/superpowers --json
+npx onlyharness@latest resources approve onlyharness:harnesses/deep-market-researcher --workspace acme --collection approved --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
 
@@ -159,7 +160,7 @@ Codex MCP setup: `codex mcp add onlyharness --url https://onlyharness.com/mcp --
 - Public API payloads must not expose server filesystem paths. Registry/detail may include public forge, OnlyHarness GitHub mirror, or upstream URLs only; `/healthz` returns status only; detail `prReview.source=local-demo` is a generated preview, not an open forge PR.
 - Category benchmarks are local declared-score comparisons until Owner-authored suites add external measurements; never present `hh benchmark` as an independent LLM quality proof. Add suites under `benchmarks/`; smoke requires at least 3 YAML suites and runs all of them.
 - Team `hh setup @org`, `hh install @org/name`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org auth/bundles/audit read Supabase service-role tables first, fall back to local JSON for smoke, are feature-flagged by `ORGS_ENABLED`, and must not log raw tokens.
-- Network Neighborhood still supports the legacy org token path through `/orgs/{slug}/workspace`; new resource-first workspace catalog flows use `/workspaces/{slug}/...` with `HH_WORKSPACE_TOKEN`, falling back to `HH_ORG_TOKEN` during migration. Audit rows must stay sanitized and permission summaries reuse schema risk/resource reports.
+- Network Neighborhood still supports the legacy org token path through `/orgs/{slug}/workspace`; new resource-first workspace catalog flows use `/workspaces/{slug}/...` with `HH_WORKSPACE_TOKEN`, falling back to `HH_ORG_TOKEN` during migration. `hh resources approve onlyharness:harnesses/deep-market-researcher --workspace acme --collection approved` adds a scanned public resource to a workspace collection as local curation only; approval is not an OnlyHarness Verified badge, `not_scanned`/`fail` resources must fail closed for installable approval, and workspace archive routes still return 409 when the approved listing is not workspace-hosted. Audit rows must stay sanitized and permission summaries reuse schema risk/resource reports.
 - `hh suggest`, `hh install`, `hh eval`, and `hh gate` may record `suggested`, `accepted`, `applied`, `install`, `eval`, or `gate` events; event payloads must stay owner/repo/version/target/client only, never local paths or prompts. `accepted` means the user chose `--apply`; `applied` is recorded only after local files are written.
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
 - `/community/invite-code` must only mint codes for the authenticated buyer after a live entitlement check. `/community/verify-code` must HMAC/TTL-check the code, re-check entitlement live, and never trust a subject typed into Telegram chat.

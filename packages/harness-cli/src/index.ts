@@ -567,7 +567,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.5");
+  .version("0.2.6");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -653,7 +653,7 @@ resourcesCommand.command("open")
 
 resourcesCommand.command("approve")
   .description("approve a public resource into a workspace collection")
-  .argument("<id>", "public resource id, e.g. github:obra/superpowers")
+  .argument("<id>", "scanned public resource id, e.g. onlyharness:harnesses/deep-market-researcher")
   .requiredOption("--workspace <slug>", "workspace slug")
   .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
   .option("--collection <slug>", "workspace collection slug", "approved")

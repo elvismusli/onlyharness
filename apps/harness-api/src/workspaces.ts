@@ -254,6 +254,14 @@ export function approveWorkspacePublicResource(slugValue: string, workspaceName:
   const slug = cleanWorkspaceSlug(slugValue);
   if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
   const scan = publicResource.trust?.securityScan ?? "not_scanned";
+  if (scan === "not_scanned") {
+    return {
+      ok: false,
+      status: 409,
+      error: "Resource has not been security scanned; it cannot be approved for workspace install paths.",
+      code: "RESOURCE_NOT_SCANNED"
+    };
+  }
   if (scan === "fail") {
     return {
       ok: false,

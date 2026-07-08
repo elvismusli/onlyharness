@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.5",
+    version: "0.2.6",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -876,7 +876,7 @@ export const openapi = {
     "/workspaces/{slug}/resources/approve": {
       post: {
         summary: "Approve a public marketplace resource into a workspace",
-        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is scoped to the workspace and is never an OnlyHarness Verified badge. Failed security scans are blocked; warnings become approved_with_warning.",
+        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is scoped to the workspace and is never an OnlyHarness Verified badge. Failed or missing security scans are blocked; warnings become approved_with_warning.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -886,7 +886,7 @@ export const openapi = {
               schema: {
                 type: "object",
                 properties: {
-                  resourceId: { type: "string", description: "Public resource id, for example github:obra/superpowers" },
+                  resourceId: { type: "string", description: "Scanned public resource id, for example onlyharness:harnesses/deep-market-researcher" },
                   collection: { type: "string", description: "Workspace collection slug; defaults to approved" },
                   name: { type: "string", description: "Optional workspace-local resource name" },
                   note: { type: "string" }
@@ -1033,7 +1033,7 @@ export const openapi = {
     "/workspaces/{slug}/collections/{collection}/items": {
       post: {
         summary: "Approve a public resource into a workspace collection",
-        description: "Shortcut for adding a public marketplace resource to a named workspace collection. Uses the same trust snapshot and failed-scan blocking rules as /workspaces/{slug}/resources/approve.",
+        description: "Shortcut for adding a public marketplace resource to a named workspace collection. Uses the same trust snapshot and failed/missing-scan blocking rules as /workspaces/{slug}/resources/approve.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug"), pathParam("collection")],
         requestBody: {

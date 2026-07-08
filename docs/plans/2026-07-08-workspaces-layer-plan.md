@@ -1,13 +1,13 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, and workspace-approval slice targeting `onlyharness@0.2.5`.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, and approval security hardening shipped/deployed in `onlyharness@0.2.6`.
 
 Current implementation status:
 
-- shipped: universal public resource packages, workspace token API foundation, workspace-private resource package publish/search/detail/archive, `hh publish-resource --workspace`, `hh resources search --workspace`, `hh resources detail @workspace/name`, OpenAPI/check/smoke coverage;
+- shipped: universal public resource packages, workspace token API foundation, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources search --workspace`, `hh resources detail @workspace/name`, OpenAPI/check/smoke coverage;
 - prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
-- not done yet: user membership/invites, workspace collections and approved marketplace resources, shared-neutral workspace management UI wiring, setup bundles v2, community gates, subscription lifecycle.
+- not done yet: user membership/invites, shared-neutral workspace management UI wiring, setup bundles v2, community gates, subscription lifecycle.
 
 Review corrections incorporated:
 
@@ -15,7 +15,7 @@ Review corrections incorporated:
 - Phase 1-3 CLI remains token-based unless `hh login` is explicitly pulled forward;
 - hosted personal workspace is not v1 and must not be conflated with storefront/profile;
 - workspace collections are distinct from public marketplace collections;
-- marketplace approval requires a current trust/security snapshot;
+- marketplace approval requires a current trust/security snapshot; `not_scanned` and `fail` must fail closed for installable approval, `warn` becomes `approved_with_warning`;
 - recurring subscriptions are a separate billing track, not a community-gate footnote;
 - org-to-workspace migration is mostly greenfield on prod because orgs are disabled;
 - workspace list/search/audit APIs need pagination/index guardrails from the start.
@@ -412,10 +412,19 @@ created_at timestamptz not null
 
 - `pending_review`
 - `approved`
+- `approved_with_warning`
 - `blocked`
+- `blocked_by_scan`
 - `deprecated`
 
 Important boundary: workspace approval is not OnlyHarness verification. Copy must say `Approved by Acme`, not `Verified by OnlyHarness`.
+
+Installable approval rules:
+
+- `securityScan=pass` -> `approved`;
+- `securityScan=warn` -> `approved_with_warning`;
+- `securityScan=fail` -> reject approval and store/emit `blocked_by_scan` where a review queue exists;
+- `securityScan=not_scanned` -> reject installable approval until a scan exists.
 
 #### `workspace_audit`
 
@@ -941,9 +950,11 @@ npm run smoke
 
 ### Phase 3: Workspace collections and approved marketplace resources
 
+Status: shipped as the `onlyharness@0.2.5` production slice for token-authenticated API/CLI flows; `onlyharness@0.2.6` hardens approval so `not_scanned` resources cannot become installable workspace approvals.
+
 Goal: a workspace can curate public and private resources.
 
-Security decision: approval requires a current security/trust verdict. `warn` can become `approved_with_warning`; `fail` stays blocked for workspace setup/install. This keeps workspace approval aligned with the product trust model.
+Security decision: approval requires a current security/trust verdict. `pass` can become `approved`, `warn` can become `approved_with_warning`, and `fail` or `not_scanned` stays blocked for workspace setup/install. This keeps workspace approval aligned with the product trust model.
 
 Tasks:
 
@@ -959,11 +970,11 @@ Tasks:
 
 Acceptance:
 
-- admin can add `github:obra/superpowers` to `@acme/approved`;
+- admin can add a scanned resource such as `onlyharness:harnesses/deep-market-researcher` to `@acme/approved`;
 - member sees it as “Approved by Acme”;
 - public users do not see Acme approval unless workspace is public;
 - blocked items cannot be installed through workspace setup;
-- failed security scan cannot be approved for install;
+- failed or missing security scan cannot be approved for install;
 - warning scan can be approved only with warning label;
 - audit records add/approve/block.
 
@@ -1246,7 +1257,7 @@ npm run check:workspaces
 2. Public community workspaces can appear in global search only when `visibility=public`, with a separate workspace/community facet and no implied OnlyHarness verification.
 3. Every workspace gets one default `approved` collection.
 4. `moderator` can propose and curate review queues. Approval for installable resources requires `owner`, `admin` or `publisher`.
-5. Marketplace approval requires a security/trust snapshot. `warn` can be `approved_with_warning`; `fail` is blocked for setup/install.
+5. Marketplace approval requires a security/trust snapshot. `pass` can be `approved`; `warn` can be `approved_with_warning`; `fail` and `not_scanned` are blocked for setup/install approval.
 6. Private workspace resource packages are internal-use only in v1. Paid resale is a separate creator/legal/billing track.
 7. Free plan can allow one small workspace and basic members. Invites, roles, audit retention, private packages and gates belong to Team/Community paid tiers unless intentionally comped for beta.
 
@@ -1271,6 +1282,12 @@ Already shipped in the first production slice:
 9. `core/useWorkspace` hook foundation.
 10. `check:workspaces` wired into `npm run check`.
 11. `smoke:workspaces`.
+12. `workspace_collections` and `workspace_collection_items`.
+13. Default `approved` workspace collection.
+14. API/CLI for approving a public resource into a workspace collection.
+15. Trust/security snapshot on approval, with `fail` and `not_scanned` failing closed for installable approval.
+16. Workspace-scoped `Approved by {workspace}` labels without implying OnlyHarness verification.
+17. Honest `409 not hosted by workspace` for approved listings without workspace-hosted archive files.
 
 Remaining from the original first sprint:
 
@@ -1281,14 +1298,13 @@ Remaining from the original first sprint:
 
 Recommended next production slice:
 
-1. Add `workspace_collections` and `workspace_collection_items`.
-2. Add a default `approved` workspace collection.
-3. Add API/CLI for approving a public marketplace resource into a workspace collection.
-4. Store a trust/security snapshot on approval.
-5. Show the item as `Approved by {workspace}`, never as `Verified by OnlyHarness`.
-6. Return honest `409 not hosted by workspace` for approved external listings without workspace-hosted archive files.
-7. Extend `smoke:workspaces` to approve `github:obra/superpowers` into `@acme/approved`.
+1. Add real `workspace_members` and `workspace_invites` API with local JSON fallback and Supabase-ready schema.
+2. Add membership resolver for web/API user auth beside workspace tokens; keep CLI token-based unless `hh login` is pulled forward.
+3. Keep `HH_ORG_TOKEN` and `/orgs` compatibility.
+4. Wire `core/useWorkspace` into the shared-neutral workspace surface consumed by W98, Modern and Fans.
+5. Add smoke coverage for member read, denied non-member, invite join and audit redaction.
+6. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
 
-Do not start with a big admin UI. The first value is private resource distribution plus approved collection semantics. Admin UX can follow once access rules are real.
+Do not jump straight to a big admin UI. Private resource distribution and approved collection semantics are now the shipped baseline; the next admin UX should follow real member/invite access rules.
 
 Do not block first alpha on full `hh login`; token-based CLI is acceptable if the plan labels it that way and web/API user membership work is tracked separately.

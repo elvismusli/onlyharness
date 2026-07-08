@@ -369,7 +369,7 @@ before(async () => {
       });
       request.on("end", () => {
         const body = JSON.parse(raw || "{}") as { resourceId?: string; collection?: string; name?: string; note?: string };
-        if (body.resourceId !== "github:obra/superpowers") {
+        if (body.resourceId !== "onlyharness:harnesses/deep-market-researcher") {
           response.statusCode = 404;
           response.end(JSON.stringify({ error: "Public resource not found" }));
           return;
@@ -379,39 +379,39 @@ before(async () => {
           workspace: { slug: "acme", name: "Acme Community" },
           collection: { slug: body.collection ?? "approved", title: "Approved resources" },
           item: {
-            itemRef: "@acme/superpowers",
-            sourceResourceId: "github:obra/superpowers",
+            itemRef: "@acme/deep-market-researcher",
+            sourceResourceId: "onlyharness:harnesses/deep-market-researcher",
             approvalState: "approved"
           },
           resource: {
-            id: "@acme/superpowers",
-            title: "superpowers",
-            summary: "Approved by Acme Community; public marketplace source remains github:obra/superpowers.",
-            resourceType: "skill",
-            sourcePlatform: "github",
-            canonicalUrl: "https://onlyharness.com/#/workspaces/acme/resources/superpowers",
-            upstreamId: "obra/superpowers",
-            upstreamOwner: "obra",
-            upstreamRepo: "superpowers",
+            id: "@acme/deep-market-researcher",
+            title: "Deep Market Researcher",
+            summary: "Approved by Acme Community; public marketplace source remains onlyharness:harnesses/deep-market-researcher.",
+            resourceType: "harness",
+            sourcePlatform: "manual",
+            canonicalUrl: "https://onlyharness.com/#/workspaces/acme/resources/deep-market-researcher",
+            upstreamId: "harnesses/deep-market-researcher",
+            upstreamOwner: "harnesses",
+            upstreamRepo: "deep-market-researcher",
             licenseStatus: "unknown",
             sourceCheckedAt: "2026-07-05",
             sourceCheckStatus: "active",
             lastSeenAt: "2026-07-05",
-            installability: "open_only",
-            tags: ["workspace-approved", "approved", "skill"],
+            installability: "installable",
+            tags: ["workspace-approved", "approved", "research"],
             worksWith: ["claude-code", "codex"],
-            upstreamPopularity: { githubStarsSnapshot: 1000, sourceLabel: "GitHub" },
+            upstreamPopularity: { sourceLabel: "OnlyHarness registry" },
             onlyHarnessSignals: { stars: 0, opens: 0, imports: 0, installs: 0, threads: 0, passedGates: 0 },
             popularityScore: 1,
-            trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+            trust: { sourceChecked: true, securityScan: "pass", riskTier: "LOW" },
             workspaceApproval: {
               workspaceSlug: "acme",
               workspaceName: "Acme Community",
               collectionSlug: body.collection ?? "approved",
-              sourceResourceId: "github:obra/superpowers",
+              sourceResourceId: "onlyharness:harnesses/deep-market-researcher",
               approvalState: "approved"
             },
-            actions: [{ id: "open_onlyharness", label: "Use via Acme Community", url: "https://onlyharness.com/#/workspaces/acme/resources/superpowers" }]
+            actions: [{ id: "open_onlyharness", label: "Use via Acme Community", url: "https://onlyharness.com/#/workspaces/acme/resources/deep-market-researcher" }]
           },
           approvalState: "approved",
           verified: false,
@@ -1301,13 +1301,13 @@ test("resources search/detail support workspace catalogs with workspace token", 
 test("resources approve adds a public resource to a workspace collection with workspace token", async () => {
   sawWorkspaceApproveToken = false;
 
-  const result = await runCli(["resources", "approve", "github:obra/superpowers", "--workspace", "acme", "--collection", "approved", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
+  const result = await runCli(["resources", "approve", "onlyharness:harnesses/deep-market-researcher", "--workspace", "acme", "--collection", "approved", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(sawWorkspaceApproveToken, true);
   assert.doesNotMatch(result.stdout, /workspace-token/);
   const body = JSON.parse(result.stdout) as { resource?: { id?: string; workspaceApproval?: { sourceResourceId?: string; approvalState?: string } }; collection?: { slug?: string }; verified?: boolean };
-  assert.equal(body.resource?.id, "@acme/superpowers");
-  assert.equal(body.resource?.workspaceApproval?.sourceResourceId, "github:obra/superpowers");
+  assert.equal(body.resource?.id, "@acme/deep-market-researcher");
+  assert.equal(body.resource?.workspaceApproval?.sourceResourceId, "onlyharness:harnesses/deep-market-researcher");
   assert.equal(body.resource?.workspaceApproval?.approvalState, "approved");
   assert.equal(body.collection?.slug, "approved");
   assert.equal(body.verified, false);
