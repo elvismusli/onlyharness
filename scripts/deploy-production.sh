@@ -11,6 +11,7 @@ DEPLOY_MODE="${DEPLOY_MODE:-system-caddy}"
 ONLYHARNESS_WEB_PORT="${ONLYHARNESS_WEB_PORT:-8097}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-https://onlyharness.com}"
 RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"
+RESOURCE_ARCHIVE_DIR="${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}"
 COMPOSE_FILES="-f infra/production-compose.yml"
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   COMPOSE_FILES="$COMPOSE_FILES -f infra/production-system-caddy.override.yml"
@@ -24,7 +25,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$SSH_TARGET" "mkdir -p '$SERVER_PATH'"
+ssh -o BatchMode=yes -o ConnectTimeout=10 "$SSH_TARGET" "mkdir -p '$SERVER_PATH' '$RESOURCE_ARCHIVE_DIR'"
+ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' RESOURCE_ARCHIVE_DIR='$RESOURCE_ARCHIVE_DIR' bash -s" <<'REMOTE_ARCHIVES_PREFLIGHT'
+set -euo pipefail
+mkdir -p "$RESOURCE_ARCHIVE_DIR"
+if [ -d "$SERVER_PATH/data/resources/archives" ]; then
+  find "$SERVER_PATH/data/resources/archives" -maxdepth 1 -name '*.tar.gz' -exec mv -n {} "$RESOURCE_ARCHIVE_DIR"/ \;
+fi
+REMOTE_ARCHIVES_PREFLIGHT
 
 ssh "$SSH_TARGET" "ALLOW_STOP_EXISTING_CADDY='$ALLOW_STOP_EXISTING_CADDY' DEPLOY_MODE='$DEPLOY_MODE' ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_PREFLIGHT'
 set -euo pipefail
@@ -82,6 +90,7 @@ fi
 REMOTE_PREFLIGHT
 
 rsync -az --delete \
+  --exclude .git \
   --exclude node_modules \
   --exclude .env \
   --exclude .env.local \
@@ -90,15 +99,26 @@ rsync -az --delete \
   --exclude .playwright-cli \
   --exclude output \
   --exclude supabase/.temp \
+  --exclude 'data/resources/archives/*.tar.gz' \
   ./ "$SSH_TARGET:$SERVER_PATH/"
 
 rsync -az "$ENV_FILE" "$SSH_TARGET:$SERVER_PATH/infra/production.env"
 
+ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' RESOURCE_ARCHIVE_DIR='$RESOURCE_ARCHIVE_DIR' bash -s" <<'REMOTE_ARCHIVES'
+set -euo pipefail
+mkdir -p "$RESOURCE_ARCHIVE_DIR"
+if [ -d "$SERVER_PATH/data/resources/archives" ]; then
+  find "$SERVER_PATH/data/resources/archives" -maxdepth 1 -name '*.tar.gz' -exec mv -n {} "$RESOURCE_ARCHIVE_DIR"/ \;
+fi
+REMOTE_ARCHIVES
+
 ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES up -d --build"
 
-# The api data volume shadows the image's /app/data: seed committed link-only
-# directory shelves into the volume so the directory shelf survives on prod.
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/directories ]; then docker compose --env-file infra/production.env $COMPOSE_FILES cp data/directories api:/app/data/; fi"
+# The api data volume shadows the image's /app/data: seed committed catalog
+# data into the volume so directory/resource shelves survive on prod.
+for seed_dir in directories resources; do
+  ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
+done
 
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
@@ -131,6 +151,8 @@ ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/producti
 
 if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
+  curl -fsS "$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
+  curl -fsS "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive" -o /dev/null
   curl -fsS "$PUBLIC_BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
   curl -fsS "$PUBLIC_BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
   curl -fsSI "$PUBLIC_BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep -qi '^content-type: application/json'
@@ -142,5 +164,10 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
     -H 'Accept: application/json, text/event-stream' \
     --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"0"}}}' \
     | grep -Eq '"name"[[:space:]]*:[[:space:]]*"onlyharness"'
+  curl -fsS -X POST "$PUBLIC_BASE_URL/mcp" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_resources","arguments":{"query":"superpowers","limit":1}}}' \
+    | grep -q 'github:obra/superpowers'
   echo "Deploy public smoke passed at $PUBLIC_BASE_URL"
 fi

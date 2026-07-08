@@ -57,6 +57,88 @@ type SearchItem = {
   };
 };
 
+type ResourceItem = {
+  id: string;
+  title: string;
+  summary: string;
+  resourceType: string;
+  sourcePlatform: string;
+  canonicalUrl: string;
+  mirror?: {
+    platform: "github";
+    owner: string;
+    repo: string;
+    fullName: string;
+    url: string;
+    cloneUrl?: string;
+    defaultBranch?: string;
+    defaultBranchOnly: boolean;
+    fork: boolean;
+    sourceUrl: string;
+    status: "ready" | "pending" | "failed";
+    syncedAt?: string;
+    error?: string;
+  };
+  upstreamId: string;
+  upstreamOwner: string;
+  upstreamRepo?: string;
+  licenseStatus: string;
+  sourceCheckedAt: string;
+  sourceCheckStatus: string;
+  lastSeenAt: string;
+  installability: "open_only" | "importable" | "installable" | "verified";
+  tags: string[];
+  worksWith: string[];
+  upstreamPopularity?: {
+    githubStarsSnapshot?: number;
+    githubStarsCurrent?: number;
+    sourceLabel?: string;
+  };
+  onlyHarnessSignals?: {
+    stars?: number;
+    opens?: number;
+    imports?: number;
+    installs?: number;
+    threads?: number;
+    passedGates?: number;
+  };
+  popularityScore?: number;
+  trust?: {
+    sourceChecked?: boolean;
+    installVerifiedAt?: string;
+    gateVerifiedAt?: string;
+    riskTier?: string;
+  };
+  actions?: Array<
+    | { id: "open_onlyharness"; label: string; url: string }
+    | { id: "open_mirror"; label: string; url: string }
+    | { id: "open_upstream"; label: string; url: string }
+    | { id: "download_archive"; label: string; url: string }
+    | { id: "copy_mcp_config"; label: string; command?: string }
+    | { id: "install"; label: string; command: string; target: string }
+    | { id: "import_github"; label: string; command: string }
+    | { id: "claim"; label: string; proofRequired: true }
+  >;
+};
+type ResourceSearchPayload = {
+  resources?: ResourceItem[];
+  items?: ResourceItem[];
+  counts?: {
+    externalSeed: number;
+    internal: number;
+    total: number;
+  };
+};
+type GitHubImportResult = {
+  url?: string;
+  path?: string;
+  classification?: string;
+  detectedFiles?: string[];
+  licenseStatus?: string;
+  recommendedAction?: string;
+  conversionBlocked?: string;
+};
+
 type ArchiveFile = { path: string; truncated: boolean; content: string };
 type ArchivePayload = { version?: string; files?: ArchiveFile[] };
 type PricingInfo = {
@@ -468,6 +550,88 @@ program.command("search")
       `  job ${item.job ?? item.outcome ?? "unknown"} · ★ ${item.stars} · ⑂ ${item.forks} · 💬 ${item.threads} · eval ${item.evalScore} · context ${contextCostLabel(item.contextCost)} · ${heatLabel(item)} · ${item.tags.map((tag) => `#${tag}`).join(" ")}`,
       `  ${item.cliCommand ?? (item.contentType === "directory" && item.directory?.url ? `open ${item.directory.url}` : `hh install ${item.owner}/${item.name}`)}`
     ].join("\n")).join("\n\n") + "\n");
+  });
+
+const resourcesCommand = program.command("resources")
+  .description("search and open the mixed agent resource catalog");
+
+resourcesCommand.command("search")
+  .description("search skills, plugins, workflows, MCP servers, guides, directories and harnesses")
+  .argument("[query...]", "search terms", [])
+  .option("--json", "print JSON", false)
+  .option("--limit <n>", "max results", "10")
+  .option("--type <type>", "resource type filter")
+  .option("--works-with <target>", "compatibility filter: claude-code|codex|cursor|mcp|cli|github")
+  .option("--source <source>", "source platform filter")
+  .option("--installability <status>", "open_only|importable|installable|verified")
+  .option("--sort <sort>", "popular|github-stars|new|source-checked|onlyharness", "popular")
+  .action(async (queryParts: string[], options) => {
+    const params = new URLSearchParams();
+    const query = queryParts.join(" ").trim();
+    if (query) params.set("q", query);
+    params.set("limit", String(boundedPositiveInt(options.limit, 10, 50)));
+    params.set("sort", options.sort);
+    if (options.type) params.set("type", options.type);
+    if (options.worksWith) params.set("worksWith", options.worksWith);
+    if (options.source) params.set("source", options.source);
+    if (options.installability) params.set("installability", options.installability);
+    const data = await fetchJson(`${registryUrl}/resources?${params.toString()}`, { json: options.json }) as ResourceSearchPayload;
+    const items = data.resources ?? data.items ?? [];
+    if (options.json) return writeStdout({ resources: items, counts: data.counts });
+    if (!items.length) return writeStdout("No resources found. Try another query or remove filters.\n");
+    writeStdout(items.map(resourceLine).join("\n\n") + "\n");
+  });
+
+resourcesCommand.command("detail")
+  .description("show resource detail")
+  .argument("<id>", "resource id, e.g. github:obra/superpowers")
+  .option("--json", "print JSON", false)
+  .action(async (id: string, options) => {
+    const resource = await fetchResourceDetail(id, options.json);
+    if (options.json) return writeStdout(resource);
+    writeStdout(resourceDetailText(resource));
+  });
+
+resourcesCommand.command("open")
+  .description("open a resource URL")
+  .argument("<id>", "resource id, e.g. github:obra/superpowers")
+  .option("--json", "print JSON", false)
+  .action(async (id: string, options) => {
+    const resource = await fetchResourceDetail(id, options.json);
+    const url = preferredResourceUrl(resource);
+    const opened = openUrl(url);
+    if (options.json) return writeStdout({ id: resource.id, url, opened });
+    writeStdout(opened ? `Opened ${url}\n` : `${url}\n`);
+  });
+
+resourcesCommand.command("import")
+  .description("classify a GitHub resource before adding it to an OnlyHarness listing")
+  .argument("<github-url>", "GitHub repository URL")
+  .option("--path <path>", "optional path inside the repository")
+  .option("--json", "print JSON", false)
+  .action(async (url: string, options) => {
+    const response = await fetchRegistryResponse(`${registryUrl}/imports/github-resource`, options.json, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, path: options.path, action: "classify" })
+    });
+    const data = await readResponseJson(response, `${registryUrl}/imports/github-resource`, options.json);
+    if (!response.ok) fail(`GitHub resource import failed (${response.status})`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION, undefined, options.json);
+    writeStdout(options.json ? data : githubImportText(data as GitHubImportResult));
+  });
+
+resourcesCommand.command("convert")
+  .description("deprecated: resources are listed by type; harness-format conversion is not the default path")
+  .argument("<id>", "resource id")
+  .option("--out <dir>", "output directory")
+  .option("--json", "print JSON", false)
+  .action((id: string, options) => {
+    fail(
+      `OnlyHarness does not convert ${id} into harness format by default.`,
+      EXIT.VALIDATION,
+      "Use hh resources open/detail/import. Package as a harness only when you explicitly need harness-format files.",
+      options.json
+    );
   });
 
 program.command("suggest")
@@ -1228,6 +1392,100 @@ program.parseAsync(process.argv).catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exit((error as { exitCode?: number }).exitCode ?? EXIT.GENERAL);
 });
+
+function resourceLine(resource: ResourceItem): string {
+  const githubStars = resource.upstreamPopularity?.githubStarsCurrent ?? resource.upstreamPopularity?.githubStarsSnapshot;
+  const stars = githubStars !== undefined ? `GitHub ★ ${compactNumber(githubStars)}` : `OnlyHarness ★ ${resource.onlyHarnessSignals?.stars ?? 0}`;
+  const worksWith = resource.worksWith.length ? ` · works with ${resource.worksWith.join(", ")}` : "";
+  const command = resource.actions?.find((action) => action.id === "install" && "command" in action)?.command;
+  const open = preferredResourceUrl(resource);
+  const useLine = command ?? `use in OnlyHarness ${open}`;
+  return [
+    `${resource.id} — ${resource.title}`,
+    `  ${resource.summary}`,
+    `  type ${resource.resourceType} · source ${resource.sourcePlatform} · ${stars} · source checked ${resource.sourceCheckedAt}`,
+    `  availability ${availabilityLabel(resource)} · license ${resource.licenseStatus}${worksWith}`,
+    `  ${useLine}`
+  ].join("\n");
+}
+
+function resourceDetailText(resource: ResourceItem): string {
+  const actions = (resource.actions ?? []).map((action) => {
+    if (action.id === "open_onlyharness" && "url" in action) return `- ${action.label || "Use in OnlyHarness"}: ${action.url}`;
+    if (action.id === "download_archive" && "url" in action) return `- ${action.label || "Download from OnlyHarness"}: ${action.url}`;
+    if (action.id === "open_mirror" && "url" in action) return `- ${action.label || "Use via OnlyHarness"}: ${action.url}`;
+    if (action.id === "open_upstream" && "url" in action) return `- ${action.label || "Use upstream"}: ${action.url}`;
+    if (action.id === "install" && "command" in action) return `- Install: ${action.command}`;
+    if (action.id === "copy_mcp_config" && "command" in action && action.command) return `- Copy MCP config: ${action.command}`;
+    if (action.id === "claim") return "- Claim as creator: proof required";
+    return `- ${action.label}`;
+  });
+  return [
+    `${resource.id} — ${resource.title}`,
+    resource.summary,
+    "",
+    `Type: ${resource.resourceType}`,
+    `Source: ${resource.sourcePlatform} · ${resource.canonicalUrl}`,
+    `Popularity: ${resource.upstreamPopularity?.githubStarsCurrent ?? resource.upstreamPopularity?.githubStarsSnapshot ?? 0} GitHub stars · score ${resource.popularityScore ?? 0}`,
+    `Trust: source checked ${resource.sourceCheckedAt}; verified install ${resource.trust?.installVerifiedAt ?? "no"}`,
+    `Availability: ${availabilityLabel(resource)}`,
+    `License: ${resource.licenseStatus}`,
+    "Actions:",
+    ...(actions.length ? actions : ["- No action available"]),
+    ""
+  ].join("\n");
+}
+
+function availabilityLabel(resource: ResourceItem): string {
+  if (resource.actions?.some((action) => action.id === "open_onlyharness")) return "OnlyHarness listing";
+  if (resource.installability === "verified") return "verified install";
+  if (resource.installability === "installable") return resource.resourceType === "harness" ? "native install" : "installable";
+  if (resource.installability === "importable") return "ready to add";
+  return "upstream listing";
+}
+
+function preferredResourceUrl(resource: ResourceItem): string {
+  return resource.actions?.find((action) => action.id === "open_onlyharness" && "url" in action)?.url
+    ?? resource.actions?.find((action) => action.id === "open_mirror" && "url" in action)?.url
+    ?? resource.actions?.find((action) => action.id === "open_upstream" && "url" in action)?.url
+    ?? resource.canonicalUrl;
+}
+
+async function fetchResourceDetail(id: string, json = false): Promise<ResourceItem> {
+  const url = `${registryUrl}/resources/${encodeURIComponent(id)}`;
+  const response = await fetchRegistryResponse(url, json);
+  if (response.status === 404) fail(`Resource ${id} not found.`, EXIT.NOT_FOUND, `hh resources search ${id.replace(/^github:/, "").replace("/", " ")}`, json);
+  if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
+  return readResponseJson(response, url, json) as Promise<ResourceItem>;
+}
+
+function openUrl(url: string): boolean {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  const result = spawnSync(command, args, { stdio: "ignore" });
+  return result.status === 0;
+}
+
+function githubImportText(result: GitHubImportResult): string {
+  return [
+    `Classification: ${result.classification ?? "unknown"}`,
+    `License: ${result.licenseStatus ?? "unknown"}`,
+    `Recommended action: ${result.recommendedAction ?? "review"}`,
+    ...(result.detectedFiles?.length ? ["Detected files:", ...result.detectedFiles.map((file) => `- ${file}`)] : []),
+    ...(result.conversionBlocked ? [`Packaging blocked: ${result.conversionBlocked}`] : []),
+    ""
+  ].join("\n");
+}
+
+function compactNumber(value: number): string {
+  if (value >= 1_000_000) return `${roundCompact(value / 1_000_000)}m`;
+  if (value >= 1_000) return `${roundCompact(value / 1_000)}k`;
+  return String(value);
+}
+
+function roundCompact(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, "");
+}
 
 async function fetchJson(url: string, options: { json?: boolean } = {}): Promise<unknown> {
   const response = await fetchRegistryResponse(url, options.json);

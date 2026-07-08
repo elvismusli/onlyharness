@@ -7,7 +7,9 @@ apps/registry-web/.env.local
 infra/production.env
 .playwright-cli
 output
+.tmp
 supabase/.temp
+data/resources/archives/*.tar.gz
 .DS_Store
 coverage
 .harnesshub-smoke-diff.json

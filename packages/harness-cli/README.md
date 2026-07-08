@@ -53,6 +53,10 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 ## Agent Contract
 
 - `hh search <terms> --json` prints machine-readable registry results.
+- `hh resources search <terms> --json` searches the mixed source-aware catalog: skills, plugins, workflows, MCP servers, configs, guides, runtimes, directories and native harness-format packages.
+- `hh resources detail github:obra/superpowers --json` prints provenance, sourceCheckedAt, GitHub popularity, availability, license status and actions. Source checked is not Verified install.
+- `hh resources open github:obra/superpowers` opens the OnlyHarness resource page. Hosted resources expose an OnlyHarness archive URL; upstream GitHub remains attribution/source, not the primary use path.
+- `hh resources import https://github.com/acme/agent-skills --json` classifies a GitHub repo through the guarded read-only server path before adding/listing it.
 - `hh suggest <terms> --json` searches, returns a ranked candidate shortlist with trust fields, fetches detail, and prints a full trust summary for the selected harness. Use `--pick <rank>` to inspect or apply another candidate.
 - `hh suggest <terms> --apply --out <dir>` installs through the same archive path as `hh pull`, preserves paid 402/directory 409 behavior, records `accepted` when `--apply` is chosen, and records `applied` only after files are written.
 - `hh suggest <terms> --apply --target cli|claude-code|codex|cursor` runs the full `hh install --target` adapter path before recording `applied`.

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -14,12 +14,14 @@ import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } 
 import { createCommunityInviteCode, verifyCommunityInviteCode } from "./community.js";
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
+import { classifyGitHubResource, GitHubImportError, type GitHubResourceImportRequest } from "./github-import.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, hostedExecutionUnavailableBody, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { verifyGateReceipt } from "./receipts.js";
 import { fetchCountersMap, HEAT_SIGNAL_THRESHOLD } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
+import * as resources from "./resources.js";
 
 const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -43,6 +45,8 @@ type HarnessDirPublishRequest = {
     truncated?: boolean;
   }>;
 };
+
+type GitHubResourceRequest = GitHubResourceImportRequest;
 
 type ImportOptions = {
   orgSlug?: string;
@@ -210,6 +214,50 @@ app.get("/registry", async (request) => {
   const query = request.query as { q?: string; risk?: string; eval?: string; runtime?: string; job?: string; outcome?: string; sort?: string };
   const counters = await fetchCountersMap();
   return { items: registry.searchRegistry(query, counters) };
+});
+
+app.get("/resources", async (request) => {
+  const query = request.query as resources.ResourceQuery;
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  return resources.searchResources(query, registryItems);
+});
+
+app.get("/resources/:id", async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  const resource = resources.resourceDetail(id, registryItems);
+  if (!resource) return reply.code(404).send({ error: "Resource not found" });
+  return resource;
+});
+
+app.get("/resources/:id/archive", async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  const resource = resources.resourceDetail(id, registryItems);
+  if (!resource) return reply.code(404).send({ error: "Resource not found" });
+  const archivePath = resources.resourceArchivePath(resource.id);
+  if (!archivePath) {
+    return reply.code(409).send({
+      error: "Resource archive not hosted",
+      code: "RESOURCE_ARCHIVE_NOT_HOSTED",
+      id: resource.id,
+      next: "This resource is listed in OnlyHarness, but its files are not hosted by OnlyHarness yet."
+    });
+  }
+  await recordEvent({
+    kind: "pull",
+    owner: resource.upstreamOwner,
+    repo: resource.upstreamRepo ?? resource.title,
+    target: "resource-archive",
+    client: "api"
+  });
+  return reply
+    .header("content-type", "application/gzip")
+    .header("content-disposition", `attachment; filename="${resources.resourceArchiveFileName(resource)}"`)
+    .send(createReadStream(archivePath));
 });
 
 app.get("/leaderboard", async (request) => {
@@ -815,6 +863,19 @@ app.post("/imports/harness-dir", async (request, reply) => {
     return reply.code(result.status ?? 500).send(payload);
   }
   return result;
+});
+
+app.post("/imports/github-resource", async (request, reply) => {
+  const body = request.body && typeof request.body === "object" ? request.body as GitHubResourceRequest : {};
+  try {
+    return await classifyGitHubResource(body);
+  } catch (error) {
+    if (error instanceof GitHubImportError) {
+      return reply.code(error.status).send({ error: error.message, code: error.code });
+    }
+    request.log.error({ error }, "GitHub resource classify failed");
+    return reply.code(500).send({ error: "GitHub resource classify failed" });
+  }
 });
 
 app.post("/events", async (request, reply) => {

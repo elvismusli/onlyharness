@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 
 const root = path.resolve(import.meta.dirname, "..");
 const seedRoot = path.join(root, "seed-harnesses");
@@ -18,6 +19,7 @@ const cliBin = path.join(root, "packages/harness-cli/dist/hh.mjs");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-smoke-data-"));
 const verifiedPublishSource = path.join(smokeDataRoot, "verified-publish-source");
 const gitPublishRepo = path.join(smokeDataRoot, "git-publish-repo");
+const resourceArchiveRoot = path.join(smokeDataRoot, "resource-archives");
 
 function run(command: string, args: string[], options: { cwd?: string; allowFailure?: boolean; env?: NodeJS.ProcessEnv } = {}) {
   const result = spawnSync(command, args, { cwd: options.cwd ?? root, encoding: "utf8", env: options.env ?? process.env });
@@ -55,6 +57,8 @@ rmSync(orgVerifiedPublishRoot, { recursive: true, force: true });
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const orgAuditPath = path.join(smokeDataRoot, "org-audit.jsonl");
 createOrgStore(orgsPath, "smoke-org-token");
+mkdirSync(resourceArchiveRoot, { recursive: true });
+writeFileSync(path.join(resourceArchiveRoot, `${Buffer.from("github:obra/superpowers", "utf8").toString("base64url")}.tar.gz`), gzipSync("onlyharness smoke resource archive\n"));
 
 const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
   cwd: root,
@@ -78,6 +82,7 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_LOCAL_STOREFRONT_PATH: path.join(smokeDataRoot, "storefront.json"),
     HARNESS_ORGS_PATH: orgsPath,
     HARNESS_ORG_AUDIT_PATH: orgAuditPath,
+    RESOURCE_ARCHIVE_DIR: resourceArchiveRoot,
     ORGS_ENABLED: "true",
     COMMUNITY_INVITE_SECRET: "smoke-community-invite-secret-32-bytes",
     HARNESS_WEBHOOK_TOKEN: "smoke-webhook-token",
@@ -97,7 +102,25 @@ try {
     minimumSignals?: number;
   };
   const openapi = await fetch("http://127.0.0.1:8799/openapi.json").then((response) => response.json()) as { openapi?: string; paths?: Record<string, unknown> };
-  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/repos/{owner}/{repo}/star"] || !openapi.paths?.["/repos/{owner}/{repo}/thread"] || !openapi.paths?.["/prs/{owner}/{repo}/{number}/semantic-diff"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  if (openapi.openapi !== "3.1.0" || !openapi.paths?.["/registry"] || !openapi.paths?.["/resources"] || !openapi.paths?.["/resources/{id}"] || !openapi.paths?.["/resources/{id}/archive"] || !openapi.paths?.["/orgs/{slug}/bundle"] || !openapi.paths?.["/orgs/{slug}/workspace"] || !openapi.paths?.["/orgs/{slug}/imports/harness-dir"] || !openapi.paths?.["/imports/harness-dir"] || !openapi.paths?.["/imports/github-resource"] || !openapi.paths?.["/repos/{owner}/{repo}/remixes"] || !openapi.paths?.["/repos/{owner}/{repo}/star"] || !openapi.paths?.["/repos/{owner}/{repo}/thread"] || !openapi.paths?.["/prs/{owner}/{repo}/{number}/semantic-diff"] || !openapi.paths?.["/billing/receipt"] || !openapi.paths?.["/billing/escrow/receipt"] || !openapi.paths?.["/billing/escrow/timeout"] || !openapi.paths?.["/receipts"] || !openapi.paths?.["/bounties"] || !openapi.paths?.["/bounties/{id}/accept"] || !openapi.paths?.["/entitlements/check"] || !openapi.paths?.["/community/invite-code"] || !openapi.paths?.["/community/verify-code"]) throw new Error("OpenAPI endpoint returned an invalid contract");
+  const resources = await fetch("http://127.0.0.1:8799/resources?q=superpowers").then((response) => response.json()) as {
+    counts?: { externalSeed?: number; total?: number };
+    resources?: Array<{ id?: string; resourceType?: string; installability?: string; licenseStatus?: string; sourceCheckedAt?: string; trust?: { installVerifiedAt?: string } }>;
+  };
+  if (resources.counts?.externalSeed !== 253 || !resources.resources?.some((item) => item.id === "github:obra/superpowers" && item.resourceType === "skill" && item.installability === "open_only" && item.licenseStatus === "unknown" && item.sourceCheckedAt === "2026-07-05" && !item.trust?.installVerifiedAt)) {
+    throw new Error(`/resources did not return source-aware superpowers seed: ${JSON.stringify(resources)}`);
+  }
+  const resourceDetail = await fetch("http://127.0.0.1:8799/resources/github%3Aobra%2Fsuperpowers").then((response) => response.json()) as { id?: string; mirror?: { status?: string; url?: string }; actions?: Array<{ id?: string; url?: string }> };
+  if (resourceDetail.id !== "github:obra/superpowers" || !resourceDetail.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("onlyharness.com/#/resources/github%3Aobra%2Fsuperpowers")) || !resourceDetail.actions?.some((action) => action.id === "open_upstream" && action.url?.includes("github.com/obra/superpowers"))) {
+    throw new Error(`/resources/{id} did not return resource detail: ${JSON.stringify(resourceDetail)}`);
+  }
+  if (resourceDetail.mirror?.status === "ready" && !resourceDetail.actions?.some((action) => action.id === "download_archive" && action.url?.includes("/api/resources/github%3Aobra%2Fsuperpowers/archive"))) {
+    throw new Error(`/resources/{id} did not return hosted archive action: ${JSON.stringify(resourceDetail)}`);
+  }
+  const resourceArchive = await fetch("http://127.0.0.1:8799/resources/github%3Aobra%2Fsuperpowers/archive");
+  if (resourceArchive.status !== 200 || !resourceArchive.headers.get("content-type")?.includes("application/gzip")) {
+    throw new Error(`Resource archive is not hosted by API: ${resourceArchive.status} ${resourceArchive.headers.get("content-type")}`);
+  }
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.repoPath || item.forgeUrl?.startsWith("file://"))) throw new Error(`Registry leaked local paths: ${JSON.stringify(registry.items.filter((item) => item.repoPath || item.forgeUrl?.startsWith("file://")))}`);
   if (registry.items.some((item) => item.name === "smoke-malicious-harness")) throw new Error("Malicious harness must not be listed in registry");

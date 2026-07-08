@@ -50,7 +50,7 @@ try {
 
   const tools = await rpc(2, "tools/list", {});
   const names = tools.result?.tools?.map((tool: { name: string }) => tool.name) ?? [];
-  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness"]) {
+  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "search_resources", "resource_detail", "resource_use_instructions"]) {
     if (!names.includes(expected)) throw new Error(`MCP tool missing: ${expected}`);
   }
 
@@ -73,6 +73,34 @@ try {
   }
   if (!searchText.includes("\"contextCost\"")) {
     throw new Error(`MCP search_harnesses did not include context cost: ${JSON.stringify(search)}`);
+  }
+
+  const resourceSearch = await rpc(31, "tools/call", {
+    name: "search_resources",
+    arguments: { query: "superpowers", limit: 5 }
+  });
+  const resourceSearchText = resourceSearch.result?.content?.[0]?.text ?? "";
+  if (!resourceSearchText.includes("github:obra/superpowers") || !resourceSearchText.includes("\"sourceCheckedAt\"") || resourceSearchText.includes("\"installVerifiedAt\"")) {
+    throw new Error(`MCP search_resources returned wrong provenance: ${JSON.stringify(resourceSearch)}`);
+  }
+  const resourceSearchAlias = await rpc(311, "tools/call", {
+    name: "search_resources",
+    arguments: { q: "superpowers", limit: 1 }
+  });
+  const resourceSearchAliasText = resourceSearchAlias.result?.content?.[0]?.text ?? "";
+  if (!resourceSearchAliasText.includes("github:obra/superpowers")) {
+    throw new Error(`MCP search_resources q alias ignored query: ${JSON.stringify(resourceSearchAlias)}`);
+  }
+
+  const resourceInstructions = await rpc(32, "tools/call", {
+    name: "resource_use_instructions",
+    arguments: { id: "github:obra/superpowers" }
+  });
+  const resourceInstructionsText = resourceInstructions.result?.content?.[0]?.text ?? "";
+  const hasResourceUsePath = resourceInstructionsText.includes("Use in OnlyHarness");
+  const hasResourceAvailability = resourceInstructionsText.includes("hosted resource archive") || resourceInstructionsText.includes("upstream resource listing");
+  if (!hasResourceUsePath || !hasResourceAvailability || !resourceInstructionsText.includes("upstream attribution")) {
+    throw new Error(`MCP resource_use_instructions returned unsafe guidance: ${JSON.stringify(resourceInstructions)}`);
   }
 
   const detail = await rpc(4, "tools/call", {
@@ -207,7 +235,7 @@ try {
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, search_docs public source, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
+  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, search_resources, resource instructions, search_docs public source, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
 } finally {
   api.kill("SIGTERM");
   rmSync(paidRoot, { recursive: true, force: true });

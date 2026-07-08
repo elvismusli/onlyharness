@@ -28,8 +28,10 @@ services:
       ORGS_ENABLED: ${ORGS_ENABLED:-false}
       COMMUNITY_INVITE_SECRET: ${COMMUNITY_INVITE_SECRET:-}
       HARNESS_WEBHOOK_TOKEN: ${HARNESS_WEBHOOK_TOKEN:?HARNESS_WEBHOOK_TOKEN is required}
+      RESOURCE_ARCHIVE_DIR: ${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}
     volumes:
       - onlyharness_data:/app/data
+      - ${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:ro
     expose:
       - "8787"
 

@@ -2,8 +2,8 @@
 
 ## What This Repo Is
 
-OnlyHarness is a registry, web app, API, and CLI for reusable AI-agent harnesses.
-A harness is a directory with a manifest, prompts, examples, eval cases, permissions, and gates.
+OnlyHarness is a registry, web app, API, and CLI for reusable AI-agent resources: skills, plugins, workflows, MCP servers, runtimes, guides, directories, and native harness-format packages.
+A native harness is a directory with a manifest, prompts, examples, eval cases, permissions, and gates; it is one resource type, not the whole product.
 
 ## Dev Commands
 
@@ -72,6 +72,8 @@ Core endpoints:
 | --- | --- | --- |
 | GET | `/healthz` | API health |
 | GET | `/registry?q={terms}` | Search harnesses |
+| GET | `/resources?q={terms}` | Search mixed source-aware resources: harnesses, skills, plugins, workflows, MCP servers, configs, guides, runtimes and directories |
+| GET | `/resources/{id}` | Resource detail; IDs with `/` must be URL-encoded, e.g. `github%3Aobra%2Fsuperpowers` |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/security-report` | Static security report for install/apply gating |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
@@ -99,11 +101,13 @@ Core endpoints:
 | GET | `/storefront/{handle}` | Public creator storefront with referral attribution code |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
 | POST | `/imports/harness-dir` | Publish a verified public harness directory after eval/gate; Bearer token required |
+| POST | `/imports/github-resource` | Read-only GitHub resource classifier; GitHub allowlist, redirect, traversal, symlink and size guardrails apply |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
-Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`.
+Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_resources`, `resource_detail`, `resource_use_instructions`, `search_docs`, `publish_markdown_to_harness`.
 `harness_detail` and `pull_instructions` include read-only access/payment state; they must not grant entitlement or return archive files. `pull_harness` and HTTP archive delivery are the file-returning entitlement gates.
+Resource tools are source-aware. They can list/open upstream skills, plugins, workflows and MCP servers; only native harness-format resources should be pulled as archive files.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
 MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
 OAuth protected-resource metadata is available at `https://onlyharness.com/.well-known/oauth-protected-resource`; OAuth authorization-server metadata is available at `https://onlyharness.com/.well-known/oauth-authorization-server`; Caddy must serve both extensionless files as `application/json`.
@@ -130,7 +134,7 @@ Codex MCP setup: `codex mcp add onlyharness --url https://onlyharness.com/mcp --
 - `hh install` is the primary user-facing install path: it pulls the harness, may generate adapter files with `--target claude-code|codex|cursor`, and records a privacy-safe `install` event only after local writes succeed. `hh install owner/name --version <semver>` and `hh pull owner/name --version <semver>` request the same `/archive?version=` path; require `snapshot:true` when immutability matters.
 - Directory shelf entries use manifest `content.type: directory` and `source.vendor_policy: link-only`; they must stay free, expose `open <url>`, and must not return archive files.
 - `/repos/{owner}/{repo}/remixes` is the server-side fork graph for local remix drafts: it may create only free unverified `local/{name}` copies from archive files, must strip `.harnesshub/*`, records a source -> fork edge in `harness_forks`/local state, and must reject paid, org/private, directory, link-only, and `UNSPECIFIED` license sources. Copied fallback recipes must not increment forks.
-- Public API payloads must not expose server filesystem paths. Registry/detail may include public forge or upstream URLs only; `/healthz` returns status only; detail `prReview.source=local-demo` is a generated preview, not an open forge PR.
+- Public API payloads must not expose server filesystem paths. Registry/detail may include public forge, OnlyHarness GitHub mirror, or upstream URLs only; `/healthz` returns status only; detail `prReview.source=local-demo` is a generated preview, not an open forge PR.
 - Category benchmarks are local declared-score comparisons until Owner-authored suites add external measurements; never present `hh benchmark` as an independent LLM quality proof. Add suites under `benchmarks/`; smoke requires at least 3 YAML suites and runs all of them.
 - Team `hh setup @org`, `hh install @org/name`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org auth/bundles/audit read Supabase service-role tables first, fall back to local JSON for smoke, are feature-flagged by `ORGS_ENABLED`, and must not log raw tokens.
 - Network Neighborhood uses the same org token path through `/orgs/{slug}/workspace`; audit rows must stay sanitized and permission summaries reuse schema risk reports.

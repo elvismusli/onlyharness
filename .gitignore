@@ -17,6 +17,8 @@ data/gitea-proof.json
 data/imports/*
 !data/imports/.gitkeep
 data/orgs/*
+data/resources/archives/*.tar.gz
+.tmp/
 .harnesshub-smoke-diff.json
 apps/registry-web/.vite
 coverage

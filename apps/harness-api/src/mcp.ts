@@ -3,6 +3,7 @@ import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import * as registry from "./registry.js";
+import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
 type PublishMarkdownInput = {
@@ -57,6 +58,69 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     async ({ owner, name }, extra) => {
       const authorization = headerValue(extra.requestInfo?.headers.authorization);
       return json(await options.harnessDetail({ owner, name }, authorization));
+    }
+  );
+
+  server.registerTool(
+    "search_resources",
+    {
+      title: "Search agent resources",
+      description: "Search mixed source-aware resources: harnesses, skills, plugins, workflows, MCP servers, configs, guides, runtimes and directories.",
+      inputSchema: {
+        query: z.string().default("").describe("Search terms such as superpowers, MCP browser, workflow or Claude skill."),
+        q: z.string().optional().describe("Alias for query, matching the HTTP /resources?q= contract."),
+        type: z.string().optional().describe("Optional resource type filter, for example skill, plugin, workflow, mcp_server or harness."),
+        worksWith: z.string().optional().describe("Optional compatibility filter: claude-code, codex, cursor, mcp, cli or github."),
+        limit: z.number().int().min(1).max(20).default(10)
+      }
+    },
+    async ({ query, q, type, worksWith, limit }) => {
+      const counters = await fetchCountersMap();
+      const registryItems = registry.scanRegistry(counters);
+      const result = resources.searchResources({ q: query || q || "", type, worksWith, limit }, registryItems);
+      return json(result);
+    }
+  );
+
+  server.registerTool(
+    "resource_detail",
+    {
+      title: "Resource detail",
+      description: "Return provenance, trust, popularity and actions for one mixed resource.",
+      inputSchema: {
+        id: z.string().describe("Resource id, for example github:obra/superpowers or onlyharness:harnesses/deep-market-researcher.")
+      }
+    },
+    async ({ id }) => {
+      const counters = await fetchCountersMap();
+      const resource = resources.resourceDetail(id, registry.scanRegistry(counters));
+      return json(resource ?? { error: "Resource not found", id });
+    }
+  );
+
+  server.registerTool(
+    "resource_use_instructions",
+    {
+      title: "Resource use instructions",
+      description: "Return the best safe next action for a mixed resource without trying to pull non-harness archive files.",
+      inputSchema: {
+        id: z.string().describe("Resource id, for example github:obra/superpowers.")
+      }
+    },
+    async ({ id }) => {
+      const counters = await fetchCountersMap();
+      const resource = resources.resourceDetail(id, registry.scanRegistry(counters));
+      if (!resource) return json({ error: "Resource not found", id });
+      return json({
+        id: resource.id,
+        title: resource.title,
+        resourceType: resource.resourceType,
+        installability: resource.installability,
+        licenseStatus: resource.licenseStatus,
+        sourceCheckedAt: resource.sourceCheckedAt,
+        verifiedInstall: resource.trust.installVerifiedAt ?? null,
+        instructions: resourceInstructions(resource)
+      });
     }
   );
 
@@ -141,6 +205,40 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
   );
 
   return server;
+}
+
+function resourceInstructions(resource: resources.Resource): string[] {
+  const lines: string[] = [];
+  const install = resource.actions.find((action) => action.id === "install");
+  const onlyHarness = resource.actions.find((action) => action.id === "open_onlyharness");
+  const archive = resource.actions.find((action) => action.id === "download_archive");
+  const mirror = resource.actions.find((action) => action.id === "open_mirror");
+  const open = resource.actions.find((action) => action.id === "open_upstream");
+  const mcp = resource.actions.find((action) => action.id === "copy_mcp_config");
+  if (install && "command" in install) {
+    lines.push(`Install with: ${install.command}`);
+  } else if (mcp && "command" in mcp && mcp.command) {
+    lines.push(`Copy MCP config or command: ${mcp.command}`);
+  } else if (onlyHarness && "url" in onlyHarness) {
+    lines.push(`Use in OnlyHarness: ${onlyHarness.url}`);
+  } else if (mirror && "url" in mirror) {
+    lines.push(`Use via OnlyHarness mirror: ${mirror.url}`);
+  } else if (open && "url" in open) {
+    lines.push(`Use upstream: ${open.url}`);
+  }
+  if (resource.installability === "open_only") {
+    lines.push("This is an upstream resource listing in OnlyHarness. Use the OnlyHarness resource page first; upstream author/source remains authoritative.");
+  }
+  if (archive && "url" in archive) {
+    lines.push(`Download hosted resource archive from OnlyHarness: ${archive.url}`);
+  }
+  if (open && "url" in open) {
+    lines.push(`Upstream source: ${open.url}`);
+  }
+  if (resource.licenseStatus === "unknown") {
+    lines.push("License is unknown; keep upstream attribution visible and do not sell, claim ownership, or present this as Verified install evidence.");
+  }
+  return lines;
 }
 
 function json(value: unknown) {

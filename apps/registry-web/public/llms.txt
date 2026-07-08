@@ -1,6 +1,6 @@
 # OnlyHarness
 
-> Community hub for reusable AI-agent harnesses: versioned agent workflows with a manifest, prompts, examples, eval cases, a permissions profile and quality gates. Search a harness, pull it, run its bundled example, gate it, remix it.
+> Community hub for reusable AI-agent resources: skills, plugins, workflows, MCP servers, runtimes, guides, directories, and native harness-format packages. Search resources, open upstream sources, and pull native harness packages when a resource is actually packaged as one.
 
 OnlyHarness is built for agents as much as for humans. Everything below works without a browser. Reads are anonymous; only publishing needs an account.
 
@@ -21,6 +21,12 @@ OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-a
 - Search the registry: GET /registry?q={terms}&job={job}&sort={trending|stars|forks|threads|new}
   Multi-word queries AND-match against name, title, summary, job and tags. `outcome` remains a legacy alias for the job filter.
   Response: { items: [{ owner, name, title, summary, tags, job, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
+- Search mixed resources: GET /resources?q={terms}&type={skill|plugin|workflow|mcp_server|harness|directory}&sort={popular|github-stars|new|source-checked|onlyharness}
+  Response: { resources, counts }. Resources include source provenance, optional OnlyHarness hosted archive/mirror metadata, GitHub stars snapshot/current fields, sourceCheckedAt, sourceCheckStatus, raw installability/availability state, licenseStatus and actions. Source checked is not Verified install.
+- Resource detail: GET /resources/{url-encoded-id}
+  Example id: `github:obra/superpowers` must be requested as `/resources/github%3Aobra%2Fsuperpowers`.
+- Resource archive: GET /resources/{url-encoded-id}/archive
+  Returns a tar.gz hosted by OnlyHarness when the resource has been materialized into OnlyHarness storage. It must not redirect clients to GitHub.
 - Harness detail: GET /repos/{owner}/{name}/harness
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost, file list, versions[] archive history and prReview. Registry/detail never expose server filesystem paths; forgeUrl is present only for public forge/upstream URLs. prReview.source=local-demo means generated preview, not an open forge PR.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
@@ -84,10 +90,13 @@ OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-a
   JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.
 - Verified publish (auth required): POST /imports/harness-dir
   Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts only bounded harness files plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
+- GitHub resource classify: POST /imports/github-resource
+  Body { url, path?, action:"classify" }. Read-only. Uses GitHub API with host allowlist, redirect blocking, path traversal checks, symlink/special-file blocking and response/decompression limits. Upstream listing is allowed; re-hosting or packaging copied files remains blocked until license review passes.
 
 End-to-end example:
 
     curl -s 'https://onlyharness.com/api/registry?q=market%20research'
+    curl -s 'https://onlyharness.com/api/resources?q=superpowers'
     curl -s 'https://onlyharness.com/api/repos/harnesses/deep-market-researcher/archive'
 
 ## MCP
@@ -104,6 +113,9 @@ Tools:
 - harness_detail: inspect manifest, trust signals, contextCost, examples, files and read-only access/payment summary.
 - pull_instructions: return CLI/archive commands plus entitlement-aware payment state and contextCost for a harness.
 - pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.
+- search_resources: search the mixed source-aware resource catalog.
+- resource_detail: return provenance, trust, popularity and actions for one resource.
+- resource_use_instructions: return safe use/open/install guidance without pulling non-harness archives.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
 
@@ -135,6 +147,11 @@ For local development from the repo:
     node packages/harness-cli/dist/hh.mjs <command>
 
 - hh search {terms}         find harnesses (--json for machine-readable output)
+- hh resources search {terms} --json     search all resources, including skills/plugins/workflows/MCP servers
+- hh resources detail github:obra/superpowers --json
+- hh resources open github:obra/superpowers
+  Opens the OnlyHarness GitHub mirror when available; otherwise opens the upstream source.
+- hh resources import https://github.com/acme/agent-skills --json   classify before adding/listing a GitHub resource
 - hh suggest {terms}        return ranked candidates with trust fields plus selected detail trust summary; use --pick {rank}; --apply installs through the pull archive path
 - hh suggest {terms} --apply --target cli|claude-code|codex|cursor    run the target adapter install path before recording applied
 - hh install {owner}/{name} --target cli|claude-code|codex|cursor    primary install path; pulls files, optionally writes adapter files, then records a privacy-safe install event

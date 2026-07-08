@@ -41,6 +41,60 @@ export const openapi = {
         }
       }
     },
+    "/resources": {
+      get: {
+        summary: "Search mixed agent resources",
+        description: "Search source-aware agent resources across skills, plugins, workflows, MCP servers, configs, guides, runtimes, directories and harness-format packages. `sourceCheckedAt` means upstream existence/activity was checked; it is not a Verified install badge.",
+        parameters: [
+          queryParam("q", "Search terms"),
+          queryParam("type", "Resource type filter, for example skill, plugin, workflow, mcp_server, harness or directory"),
+          queryParam("source", "Source platform filter, for example github or manual"),
+          queryParam("installability", "Machine filter: open_only/upstream listing, importable, installable, verified"),
+          queryParam("worksWith", "Compatibility filter: claude-code, codex, cursor, mcp, cli or github"),
+          queryParam("license", "License status filter"),
+          queryParam("sort", "Sort: popular, github-stars, new, source-checked, onlyharness"),
+          queryParam("limit", "Maximum result count")
+        ],
+        responses: {
+          "200": {
+            description: "Mixed resource search results",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ResourceSearchResult" } } }
+          }
+        }
+      }
+    },
+    "/resources/{id}": {
+      get: {
+        summary: "Resource detail",
+        description: "Return one mixed resource. Resource ids containing slashes must be URL-encoded, for example github%3Aobra%2Fsuperpowers.",
+        parameters: [pathParam("id")],
+        responses: {
+          "200": {
+            description: "Resource detail with provenance, trust and actions",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Resource" } } }
+          },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/resources/{id}/archive": {
+      get: {
+        summary: "Download hosted resource archive",
+        description: "Return a tar.gz archive hosted by OnlyHarness for resources that have been materialized into OnlyHarness storage. Does not redirect to upstream GitHub.",
+        parameters: [pathParam("id")],
+        responses: {
+          "200": {
+            description: "Resource archive tarball",
+            content: { "application/gzip": { schema: { type: "string", format: "binary" } } }
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": {
+            description: "Resource is listed but archive is not hosted yet",
+            content: { "application/json": { schema: { type: "object" } } }
+          }
+        }
+      }
+    },
     "/leaderboard": {
       get: {
         summary: "Top harnesses by qualified heat",
@@ -580,6 +634,60 @@ export const openapi = {
         }
       }
     },
+    "/imports/github-resource": {
+      post: {
+        summary: "Classify a GitHub resource",
+        description: "Read-only classifier for GitHub resources. Uses GitHub API only, blocks unsafe hosts, redirects, traversal, symlinks and oversized responses. Upstream listing is allowed; re-hosting/packaging copied files remains blocked until license review passes.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  url: { type: "string" },
+                  path: { type: "string" },
+                  action: { type: "string", enum: ["classify"] }
+                },
+                required: ["url"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "GitHub resource classification",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    url: { type: "string" },
+                    owner: { type: "string" },
+                    repo: { type: "string" },
+                    path: { type: "string" },
+                    classification: { type: "string" },
+                    detectedFiles: { type: "array", items: { type: "string" } },
+                    unsafeFiles: { type: "array", items: { type: "string" } },
+                    licenseStatus: { type: "string" },
+                    licenseName: { type: "string" },
+                    recommendedAction: { type: "string" },
+                    conversionBlocked: { type: "string" },
+                    archiveFetch: { type: "boolean", const: false }
+                  },
+                  required: ["url", "owner", "repo", "path", "classification", "detectedFiles", "unsafeFiles", "licenseStatus", "recommendedAction", "archiveFetch"]
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "413": { $ref: "#/components/responses/BadRequest" },
+          "451": { $ref: "#/components/responses/Forbidden" },
+          "502": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
     "/imports/harness-dir": {
       post: {
         summary: "Publish a verified harness directory",
@@ -964,7 +1072,7 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness.",
+        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, pull_harness, search_resources, resource_detail, resource_use_instructions, search_docs, publish_markdown_to_harness.",
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream" }
         }
@@ -1129,6 +1237,85 @@ export const openapi = {
           updatedAt: { type: "string" }
         },
         required: ["owner", "name", "title", "summary", "tags", "contentType", "compatibility", "valid", "riskTier", "evalStatus", "contextCost", "standard", "cliCommand"]
+      },
+      ResourceSearchResult: {
+        type: "object",
+        properties: {
+          resources: { type: "array", items: { $ref: "#/components/schemas/Resource" } },
+          items: { type: "array", items: { $ref: "#/components/schemas/Resource" } },
+          counts: {
+            type: "object",
+            properties: {
+              externalSeed: { type: "integer" },
+              internal: { type: "integer" },
+              total: { type: "integer" }
+            },
+            required: ["externalSeed", "internal", "total"]
+          }
+        },
+        required: ["resources", "items", "counts"]
+      },
+      Resource: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          identity: { type: "object" },
+          sourceCatalogId: { type: "string" },
+          title: { type: "string" },
+          summary: { type: "string" },
+          summaryOriginal: { type: "string" },
+          resourceType: { type: "string", enum: ["harness", "skill", "plugin", "workflow", "mcp_server", "service_endpoint", "agent_team", "subagent_pack", "command_pack", "config", "guide", "framework", "agent_runtime", "directory"] },
+          sourcePlatform: { type: "string" },
+          canonicalUrl: { type: "string" },
+          mirror: {
+            type: "object",
+            properties: {
+              platform: { type: "string", enum: ["github"] },
+              owner: { type: "string" },
+              repo: { type: "string" },
+              fullName: { type: "string" },
+              url: { type: "string" },
+              cloneUrl: { type: "string" },
+              defaultBranch: { type: "string" },
+              defaultBranchOnly: { type: "boolean" },
+              fork: { type: "boolean" },
+              sourceUrl: { type: "string" },
+              status: { type: "string", enum: ["ready", "pending", "failed"] },
+              syncedAt: { type: "string" },
+              error: { type: "string" }
+            }
+          },
+          upstreamId: { type: "string" },
+          upstreamOwner: { type: "string" },
+          upstreamRepo: { type: "string" },
+          creatorName: { type: "string" },
+          licenseStatus: { type: "string", enum: ["permissive", "copyleft", "proprietary", "unknown", "blocked", "manual_review"] },
+          licenseName: { type: "string" },
+          sourceCheckedAt: { type: "string", description: "Date upstream existence/activity was checked. This is not product install verification." },
+          sourceCheckMethod: { type: "string", enum: ["github_api", "marketplace_api", "manual_research"] },
+          sourceCheckStatus: { type: "string", enum: ["active", "stale", "archived", "unavailable"] },
+          lastSeenAt: { type: "string" },
+          installability: { type: "string", enum: ["open_only", "importable", "installable", "verified"] },
+          tags: { type: "array", items: { type: "string" } },
+          worksWith: { type: "array", items: { type: "string", enum: ["claude-code", "codex", "cursor", "mcp", "cli", "github"] } },
+          upstreamPopularity: { type: "object" },
+          onlyHarnessSignals: { type: "object" },
+          popularityScore: { type: "number" },
+          popularityBreakdown: { type: "object" },
+          trust: {
+            type: "object",
+            properties: {
+              sourceChecked: { type: "boolean" },
+              securityScan: { type: "string", enum: ["pass", "warn", "fail", "not_scanned"] },
+              installVerifiedAt: { type: "string", description: "OnlyHarness install verification evidence, when present." },
+              gateVerifiedAt: { type: "string" },
+              riskTier: { type: "string" }
+            }
+          },
+          actions: { type: "array", items: { type: "object" } },
+          source: { type: "object" }
+        },
+        required: ["id", "identity", "title", "summary", "resourceType", "sourcePlatform", "canonicalUrl", "licenseStatus", "sourceCheckedAt", "sourceCheckStatus", "lastSeenAt", "installability", "tags", "worksWith", "popularityScore", "trust", "actions"]
       },
       HarnessDetail: {
         type: "object",

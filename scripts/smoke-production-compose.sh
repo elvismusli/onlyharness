@@ -6,7 +6,9 @@ PROJECT_NAME="${COMPOSE_PROJECT_NAME:-onlyharness-smoke}"
 ENV_FILE="${ENV_FILE:-$ROOT/infra/production.env}"
 BASE_URL="${SMOKE_BASE_URL:-http://127.0.0.1:8088}"
 VITE_HARNESS_API_URL="${VITE_HARNESS_API_URL:-$BASE_URL/api}"
+RESOURCE_ARCHIVE_DIR="${RESOURCE_ARCHIVE_DIR:-$ROOT/.tmp/resource-archives-smoke}"
 export VITE_HARNESS_API_URL
+export RESOURCE_ARCHIVE_DIR
 
 cleanup() {
   docker compose \
@@ -15,6 +17,7 @@ cleanup() {
     -f "$ROOT/infra/production-compose.yml" \
     -f "$ROOT/infra/production-smoke.override.yml" \
     down -v >/dev/null 2>&1 || true
+  rm -rf "$RESOURCE_ARCHIVE_DIR"
 }
 
 wait_for() {
@@ -32,6 +35,9 @@ wait_for() {
 
 trap cleanup EXIT
 
+mkdir -p "$RESOURCE_ARCHIVE_DIR"
+RESOURCE_ARCHIVE_MAX_BYTES=10000000 npx tsx "$ROOT/scripts/sync-resource-archives.ts" --only github:obra/superpowers >/dev/null
+
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$ENV_FILE" \
@@ -39,7 +45,20 @@ docker compose \
   -f "$ROOT/infra/production-smoke.override.yml" \
   up -d --build
 
+for seed_dir in directories resources; do
+  if [ -d "$ROOT/data/$seed_dir" ]; then
+    docker compose \
+      --project-name "$PROJECT_NAME" \
+      --env-file "$ENV_FILE" \
+      -f "$ROOT/infra/production-compose.yml" \
+      -f "$ROOT/infra/production-smoke.override.yml" \
+      cp "$ROOT/data/$seed_dir" api:/app/data/
+  fi
+done
+
 wait_for "$BASE_URL/api/healthz"
+curl -fsS "$BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
+curl -fsS "$BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive" -o /dev/null
 curl -fsS "$BASE_URL/api/leaderboard?limit=1" | grep -q '"items"'
 curl -fsS "$BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
 curl -fsS "$BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://onlyharness.com/mcp"'
