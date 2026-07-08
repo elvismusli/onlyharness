@@ -82,7 +82,10 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     WORKSPACE_COLLECTIONS_PATH: path.join(tempRoot, "workspace-collections"),
     WORKSPACE_SETUP_BUNDLES_PATH: path.join(tempRoot, "workspace-setup-bundles"),
     WORKSPACE_JOIN_POLICIES_PATH: path.join(tempRoot, "workspace-join-policies"),
+    WORKSPACE_SUBSCRIPTIONS_ENABLED: "true",
+    WORKSPACE_SUBSCRIPTIONS_PATH: path.join(tempRoot, "workspace-subscriptions.json"),
     WORKSPACE_JOIN_SECRET: "workspace-join-secret-for-smoke-only",
+    HARNESS_WEBHOOK_TOKEN: "smoke-webhook-token",
     WORKSPACE_RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "workspace-archives")
   }
 });
@@ -103,6 +106,9 @@ try {
     "/workspaces/{slug}/members",
     "/workspaces/{slug}/invites",
     "/workspaces/{slug}/join-policies",
+    "/workspaces/{slug}/subscriptions/checkout",
+    "/workspaces/{slug}/subscriptions/me",
+    "/workspaces/{slug}/subscriptions/sweep",
     "/workspaces/{slug}/join-code",
     "/workspaces/{slug}/join-code/verify",
     "/workspaces/{slug}/join-grants",
@@ -119,6 +125,7 @@ try {
   ]) {
     if (!openapi.paths?.[route]) throw new Error(`OpenAPI missing ${route}`);
   }
+  if (!openapi.paths?.["/webhooks/workspace-subscriptions"]) throw new Error("OpenAPI missing /webhooks/workspace-subscriptions");
 
   const noToken = await fetch(`${baseUrl}/workspaces/acme/workspace`);
   if (noToken.status !== 401) throw new Error(`Workspace without token should be 401, got ${noToken.status}`);
@@ -360,13 +367,6 @@ try {
   });
   if (viewerArchive.status !== 403) throw new Error(`Viewer archive access should be 403, got ${viewerArchive.status}`);
 
-  const paidPolicyBlocked = await fetch(`${baseUrl}/workspaces/acme/join-policies`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ policies: [{ kind: "paid_subscription", status: "active", role: "member", title: "Paid members" }] })
-  });
-  if (paidPolicyBlocked.status !== 409) throw new Error(`Active subscription policy should fail closed, got ${paidPolicyBlocked.status}`);
-
   const policyUpdate = await fetch(`${baseUrl}/workspaces/acme/join-policies`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -374,11 +374,12 @@ try {
       policies: [
         { id: "invite", kind: "invite", status: "active", role: "member", title: "Invite code" },
         { id: "telegram-main", kind: "telegram", status: "active", role: "member", title: "Telegram members", config: { provider: "telegram", chatId: "onlyharness-smoke" } },
-        { id: "paid-disabled", kind: "paid_subscription", status: "disabled", role: "member", title: "Paid members later" }
+        { id: "paid-main", kind: "paid_subscription", status: "active", role: "member", title: "Paid members", config: { subscriptionProduct: "acme-pro", periodDays: 30, graceDays: 2 } }
       ]
     })
   }).then((response) => response.json()) as { policies?: Array<{ id?: string; kind?: string; status?: string; role?: string; config?: Record<string, unknown> }> };
-  if (!policyUpdate.policies?.some((policy) => policy.id === "telegram-main" && policy.kind === "telegram" && policy.status === "active" && policy.role === "member")) {
+  if (!policyUpdate.policies?.some((policy) => policy.id === "telegram-main" && policy.kind === "telegram" && policy.status === "active" && policy.role === "member")
+    || !policyUpdate.policies?.some((policy) => policy.id === "paid-main" && policy.kind === "paid_subscription" && policy.status === "active" && policy.role === "member" && policy.config?.subscriptionProduct === "acme-pro")) {
     throw new Error(`Workspace join policy update failed: ${JSON.stringify(policyUpdate)}`);
   }
   if (JSON.stringify(policyUpdate).includes(token)) throw new Error("Workspace join policy update leaked raw token");
@@ -389,6 +390,153 @@ try {
   if (!listedPolicies.policies?.some((policy) => policy.id === "telegram-main" && policy.kind === "telegram")) {
     throw new Error(`Workspace join policy list missing telegram policy: ${JSON.stringify(listedPolicies)}`);
   }
+
+  const beforePaidCheckoutArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:paid-user" }
+  });
+  if (beforePaidCheckoutArchive.status !== 403) throw new Error(`Paid user archive before subscription should be 403, got ${beforePaidCheckoutArchive.status}`);
+
+  const subscriptionCheckout = await fetch(`${baseUrl}/workspaces/acme/subscriptions/checkout`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:paid-user", "content-type": "application/json" },
+    body: JSON.stringify({ policyId: "paid-main", provider: "manual" })
+  }).then((response) => response.json()) as { subscription?: { providerSubscriptionRef?: string; status?: string; checkoutUrl?: string | null; accessUntil?: string | null }; checkout_url?: string; next?: string };
+  const subscriptionRef = subscriptionCheckout.subscription?.providerSubscriptionRef;
+  if (!subscriptionRef?.startsWith("manual_sub_") || subscriptionCheckout.subscription?.status !== "incomplete" || !subscriptionCheckout.checkout_url?.includes("subscription_ref=") || subscriptionCheckout.subscription.accessUntil !== null || !subscriptionCheckout.next?.includes("webhook")) {
+    throw new Error(`Workspace subscription checkout returned wrong payload: ${JSON.stringify(subscriptionCheckout)}`);
+  }
+
+  const afterPaidCheckoutArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:paid-user" }
+  });
+  if (afterPaidCheckoutArchive.status !== 403) throw new Error(`Subscription checkout must not grant archive access, got ${afterPaidCheckoutArchive.status}`);
+
+  const subscriptionReceipt = await fetch(`${baseUrl}/workspaces/acme/subscriptions/me`, {
+    headers: { Authorization: "Bearer local:paid-user" }
+  }).then((response) => response.json()) as { subscriptions?: Array<{ providerSubscriptionRef?: string; status?: string; portalUrl?: string | null }> };
+  if (!subscriptionReceipt.subscriptions?.some((subscription) => subscription.providerSubscriptionRef === subscriptionRef && subscription.status === "incomplete" && subscription.portalUrl?.includes("subscription_ref="))) {
+    throw new Error(`Workspace subscription receipt missing checkout: ${JSON.stringify(subscriptionReceipt)}`);
+  }
+
+  const activePeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const subscriptionActive = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_subscription_ref: subscriptionRef, provider_event_ref: "evt-paid-active", event_type: "invoice.paid", status: "active", current_period_end: activePeriodEnd })
+  }).then((response) => response.json()) as { status?: string; member?: { user_id?: string; source?: string; expires_at?: string | null }; subscription?: { status?: string; accessUntil?: string | null } };
+  if (subscriptionActive.status !== "activated" || subscriptionActive.member?.user_id !== "paid-user" || subscriptionActive.member.source !== "paid_entitlement" || subscriptionActive.subscription?.status !== "active" || !subscriptionActive.subscription.accessUntil?.startsWith(activePeriodEnd.slice(0, 10))) {
+    throw new Error(`Workspace subscription activation failed: ${JSON.stringify(subscriptionActive)}`);
+  }
+
+  const afterPaidActiveArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:paid-user" }
+  });
+  if (!afterPaidActiveArchive.ok) throw new Error(`Active paid subscription should grant archive access, got ${afterPaidActiveArchive.status}`);
+
+  const duplicateSubscriptionWebhook = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider: "manual", provider_subscription_ref: subscriptionRef, provider_event_ref: "evt-paid-active", event_type: "invoice.paid", status: "active", current_period_end: activePeriodEnd })
+  }).then((response) => response.json()) as { status?: string; member?: unknown };
+  if (duplicateSubscriptionWebhook.status !== "already_processed" || duplicateSubscriptionWebhook.member) {
+    throw new Error(`Duplicate subscription webhook should be idempotent and non-mutating: ${JSON.stringify(duplicateSubscriptionWebhook)}`);
+  }
+
+  const renewedPeriodEnd = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+  const removedCheckout = await fetch(`${baseUrl}/workspaces/acme/subscriptions/checkout`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:removed-user", "content-type": "application/json" },
+    body: JSON.stringify({ policyId: "paid-main" })
+  }).then((response) => response.json()) as { subscription?: { providerSubscriptionRef?: string } };
+  const removedRef = removedCheckout.subscription?.providerSubscriptionRef;
+  if (!removedRef) throw new Error(`Removed-member subscription checkout failed: ${JSON.stringify(removedCheckout)}`);
+  const removedActive = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider_subscription_ref: removedRef, provider_event_ref: "evt-removed-active", event_type: "invoice.paid", status: "active", current_period_end: activePeriodEnd })
+  }).then((response) => response.json()) as { member?: { user_id?: string } };
+  if (removedActive.member?.user_id !== "removed-user") {
+    throw new Error(`Removed-member active subscription should initially grant access: ${JSON.stringify(removedActive)}`);
+  }
+  const removedMember = await fetch(`${baseUrl}/workspaces/acme/members/removed-user`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { member?: { status?: string; removed_at?: string | null } };
+  if (removedMember.member?.status !== "removed" || !removedMember.member.removed_at) {
+    throw new Error(`Workspace member removal failed before subscription renewal: ${JSON.stringify(removedMember)}`);
+  }
+  const removedRenewal = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider_subscription_ref: removedRef, provider_event_ref: "evt-removed-renewed", event_type: "subscription.renewed", status: "active", current_period_end: renewedPeriodEnd })
+  }).then((response) => response.json()) as { status?: string; member?: unknown; next?: string };
+  if (removedRenewal.status !== "renewed" || removedRenewal.member || !removedRenewal.next?.includes("not restored")) {
+    throw new Error(`Subscription webhook must not restore a removed member: ${JSON.stringify(removedRenewal)}`);
+  }
+  const removedArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:removed-user" }
+  });
+  if (removedArchive.status !== 403) throw new Error(`Removed paid member should stay denied after renewal webhook, got ${removedArchive.status}`);
+
+  const subscriptionRenewed = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider_subscription_ref: subscriptionRef, provider_event_ref: "evt-paid-renewed", event_type: "subscription.renewed", status: "active", current_period_end: renewedPeriodEnd })
+  }).then((response) => response.json()) as { status?: string; subscription?: { accessUntil?: string | null } };
+  if (subscriptionRenewed.status !== "renewed" || !subscriptionRenewed.subscription?.accessUntil?.startsWith(renewedPeriodEnd.slice(0, 10))) {
+    throw new Error(`Workspace subscription renewal failed: ${JSON.stringify(subscriptionRenewed)}`);
+  }
+
+  const graceUntil = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+  const subscriptionPastDue = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider_subscription_ref: subscriptionRef, provider_event_ref: "evt-paid-past-due", event_type: "invoice.payment_failed", status: "past_due", current_period_end: new Date(Date.now() - 1000).toISOString(), grace_until: graceUntil })
+  }).then((response) => response.json()) as { status?: string; subscription?: { status?: string; accessUntil?: string | null } };
+  if (subscriptionPastDue.status !== "past_due" || subscriptionPastDue.subscription?.status !== "past_due" || !subscriptionPastDue.subscription.accessUntil?.startsWith(graceUntil.slice(0, 10))) {
+    throw new Error(`Workspace subscription grace period failed: ${JSON.stringify(subscriptionPastDue)}`);
+  }
+  const graceArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:paid-user" }
+  });
+  if (!graceArchive.ok) throw new Error(`Past-due grace subscription should still allow archive access, got ${graceArchive.status}`);
+
+  const subscriptionCanceled = await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider_subscription_ref: subscriptionRef, provider_event_ref: "evt-paid-canceled", event_type: "subscription.canceled", status: "canceled" })
+  }).then((response) => response.json()) as { status?: string; subscription?: { status?: string; accessUntil?: string | null } };
+  if (subscriptionCanceled.status !== "canceled" || subscriptionCanceled.subscription?.status !== "canceled") {
+    throw new Error(`Workspace subscription cancellation failed: ${JSON.stringify(subscriptionCanceled)}`);
+  }
+  const canceledArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:paid-user" }
+  });
+  if (canceledArchive.status !== 403) throw new Error(`Canceled paid subscription should remove archive access, got ${canceledArchive.status}`);
+
+  const sweepCheckout = await fetch(`${baseUrl}/workspaces/acme/subscriptions/checkout`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:sweep-user", "content-type": "application/json" },
+    body: JSON.stringify({ policyId: "paid-main" })
+  }).then((response) => response.json()) as { subscription?: { providerSubscriptionRef?: string } };
+  const sweepRef = sweepCheckout.subscription?.providerSubscriptionRef;
+  if (!sweepRef) throw new Error(`Sweep subscription checkout failed: ${JSON.stringify(sweepCheckout)}`);
+  await fetch(`${baseUrl}/webhooks/workspace-subscriptions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-harness-token": "smoke-webhook-token" },
+    body: JSON.stringify({ provider_subscription_ref: sweepRef, provider_event_ref: "evt-sweep-active-past", event_type: "invoice.paid", status: "active", current_period_end: "2000-01-01T00:00:00.000Z" })
+  });
+  const sweep = await fetch(`${baseUrl}/workspaces/acme/subscriptions/sweep`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { checked?: number; expired?: Array<{ providerSubscriptionRef?: string; status?: string }> };
+  if (!sweep.expired?.some((subscription) => subscription.providerSubscriptionRef === sweepRef && subscription.status === "expired")) {
+    throw new Error(`Workspace subscription sweep did not expire past access: ${JSON.stringify(sweep)}`);
+  }
+  const sweepArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:sweep-user" }
+  });
+  if (sweepArchive.status !== 403) throw new Error(`Swept expired subscription should deny archive access, got ${sweepArchive.status}`);
 
   const gateCode = await fetch(`${baseUrl}/workspaces/acme/join-code`, {
     method: "POST",

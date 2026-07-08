@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { useHarness } from "../../../core/store";
-import type { ResourceItem, WorkspaceCollection, WorkspaceMember } from "../../../core/types";
+import type { ResourceItem, WorkspaceCollection, WorkspaceMember, WorkspaceSubscription } from "../../../core/types";
 
 /*
  * Shared-neutral Network / Workspace — the "serious" admin surface
@@ -13,7 +13,7 @@ import type { ResourceItem, WorkspaceCollection, WorkspaceMember } from "../../.
  * store only as a compatibility path; this surface is the company/community UI.
  */
 
-const NETWORK_TABS = ["Resources", "Approvals", "Members", "Invites", "Audit", "Setup", "Access"] as const;
+const NETWORK_TABS = ["Resources", "Approvals", "Members", "Invites", "Billing", "Audit", "Setup", "Access"] as const;
 type NetworkTab = (typeof NETWORK_TABS)[number];
 const MEMBER_ROLES: WorkspaceMember["role"][] = ["owner", "admin", "moderator", "publisher", "member", "viewer"];
 
@@ -36,6 +36,8 @@ export function NeutralNetwork() {
   const riskyCount = (riskCounts?.HIGH ?? 0) + (riskCounts?.CRITICAL ?? 0);
   const riskClass = riskyCount > 0 ? "warn" : "safe";
   const connectedSlug = workspace?.slug ?? h.workspaceSlug.replace(/^@/, "").trim().toLowerCase();
+  const paidPolicies = h.workspaceJoinPolicies.filter((policy) => policy.kind === "paid_subscription" && policy.status === "active");
+  const selectedPaidPolicy = h.workspaceSubscriptionPolicyId || paidPolicies[0]?.id || "";
 
   return (
     <div className="oh-neutral">
@@ -436,6 +438,91 @@ export function NeutralNetwork() {
         </div>
       )}
 
+      {tab === "Billing" && (
+        <div className="ohn-grid" style={{ marginTop: 12 }}>
+          <div className="ohn-col">
+            <section className="ohn-box">
+              <h4 className="ohn-box-title">Workspace subscription</h4>
+              <form
+                className="ohn-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void h.createWorkspaceSubscriptionCheckout();
+                }}
+              >
+                <div className="ohn-field">
+                  <label className="ohn-label" htmlFor="ohn-subscription-policy">Paid policy</label>
+                  <select
+                    id="ohn-subscription-policy"
+                    className="ohn-input"
+                    value={selectedPaidPolicy}
+                    onChange={(event) => h.setWorkspaceSubscriptionPolicyId(event.target.value)}
+                    disabled={!paidPolicies.length}
+                  >
+                    {!paidPolicies.length && <option value="">No active paid policy</option>}
+                    {paidPolicies.map((policy) => (
+                      <option key={policy.id} value={policy.id}>
+                        {policy.title ?? policy.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" className="ohn-btn ohn-btn-primary" disabled={h.workspaceBusy || !h.workspaceSlug.trim() || !selectedPaidPolicy}>
+                  Start subscription
+                </button>
+                <button type="button" className="ohn-btn ohn-btn-secondary" disabled={h.workspaceBusy || !h.workspaceSlug.trim()} onClick={() => void h.loadWorkspaceSubscriptions()}>
+                  Refresh receipts
+                </button>
+              </form>
+              {h.workspaceSubscriptionStatus && <p className={`ohn-status${isErrorStatus(h.workspaceSubscriptionStatus) ? " is-error" : ""}`}>{h.workspaceSubscriptionStatus}</p>}
+              <p className="ohn-note">Checkout creates a receipt only. Workspace access starts after the payment provider webhook marks the subscription active, renewed or inside grace.</p>
+            </section>
+
+            <section className="ohn-box" style={{ marginTop: 12 }}>
+              <h4 className="ohn-box-title">Paid policies</h4>
+              <div className="ohn-rows">
+                {paidPolicies.map((policy) => (
+                  <div className="ohn-row" key={policy.id}>
+                    <span className="ohn-row-glyph">◇</span>
+                    <span className="ohn-row-main">
+                      <span><b>{policy.title ?? policy.id}</b></span>
+                      <span className="ohn-tagrow" style={{ marginTop: 0 }}>
+                        <span className="ohn-tag safe">{policy.status}</span>
+                        <span className="ohn-tag">{policy.role}</span>
+                        <span className="ohn-tag">{String(policy.config.subscriptionProduct ?? "manual")}</span>
+                        <span className="ohn-tag">{String(policy.config.periodDays ?? 30)} days</span>
+                        <span className="ohn-tag">{String(policy.config.graceDays ?? 0)} grace</span>
+                      </span>
+                      {policy.instructions && <span className="ohn-note">{policy.instructions}</span>}
+                    </span>
+                  </div>
+                ))}
+                {catalog && !paidPolicies.length && (
+                  <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No active paid_subscription join policy is configured for this workspace.</span></div>
+                )}
+                {!catalog && (
+                  <div className="ohn-row"><span className="ohn-row-glyph">◇</span><span className="ohn-row-main">Connect first to read paid workspace policies.</span></div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <aside className="ohn-aside">
+            <section className="ohn-box">
+              <h4 className="ohn-box-title">My subscription receipts</h4>
+              <div className="ohn-rows">
+                {h.workspaceSubscriptions.map((subscription) => (
+                  <SubscriptionRows key={subscription.id} subscription={subscription} onCopy={(text, label, tag) => h.copyText(text, label, tag)} />
+                ))}
+                {!h.workspaceSubscriptions.length && (
+                  <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No receipts loaded for the signed-in user.</span></div>
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
+      )}
+
       {tab === "Audit" && (
         <div className="ohn-rows" style={{ marginTop: 12 }}>
           {(catalog?.audit ?? []).map((row) => (
@@ -572,8 +659,61 @@ function CollectionRows({ collection, workspaceSlug, busy, onRemove, onCopy }: {
   );
 }
 
+function SubscriptionRows({ subscription, onCopy }: {
+  subscription: WorkspaceSubscription;
+  onCopy: (text: string, label: string, tag: string) => void;
+}) {
+  return (
+    <div className="ohn-row">
+      <span className="ohn-row-glyph">◈</span>
+      <span className="ohn-row-main">
+        <span><b>{subscription.status}</b> · {subscription.providerSubscriptionRef}</span>
+        <span className="ohn-tagrow" style={{ marginTop: 0 }}>
+          <span className={`ohn-tag ${subscriptionStatusClass(subscription.status)}`}>{subscription.status}</span>
+          <span className="ohn-tag">{subscription.provider}</span>
+          <span className="ohn-tag">{subscription.policyId}</span>
+          <span className="ohn-tag">access {formatMaybeDate(subscription.accessUntil)}</span>
+          <span className="ohn-tag">period {formatMaybeDate(subscription.currentPeriodEnd)}</span>
+          {subscription.graceUntil && <span className="ohn-tag warn">grace {formatMaybeDate(subscription.graceUntil)}</span>}
+        </span>
+        {(subscription.checkoutUrl || subscription.portalUrl) && (
+          <span className="ohn-btnrow" style={{ marginTop: 8 }}>
+            {subscription.checkoutUrl && (
+              <>
+                <button type="button" className="ohn-btn ohn-btn-secondary" onClick={() => window.open(subscription.checkoutUrl ?? "", "_blank", "noopener,noreferrer")}>
+                  Open checkout
+                </button>
+                <button type="button" className="ohn-btn ohn-btn-mono" onClick={() => onCopy(subscription.checkoutUrl ?? "", "Subscription checkout copied", `subscription:${subscription.id}:checkout`)}>
+                  Copy checkout
+                </button>
+              </>
+            )}
+            {subscription.portalUrl && (
+              <button type="button" className="ohn-btn ohn-btn-mono" onClick={() => onCopy(subscription.portalUrl ?? "", "Subscription portal copied", `subscription:${subscription.id}:portal`)}>
+                Copy portal
+              </button>
+            )}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 function isErrorStatus(value: string): boolean {
   return /failed|required|denied|not enabled|not found|invalid|expired|error/i.test(value);
+}
+
+function subscriptionStatusClass(status: WorkspaceSubscription["status"]): "safe" | "warn" | "danger" {
+  if (status === "active") return "safe";
+  if (status === "incomplete" || status === "past_due") return "warn";
+  return "danger";
+}
+
+function formatMaybeDate(value?: string | null): string {
+  if (!value) return "none";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
 function resourceGlyph(item: ResourceItem): string {

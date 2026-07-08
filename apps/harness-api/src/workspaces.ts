@@ -429,7 +429,7 @@ export async function upsertWorkspaceJoinPolicies(slugValue: string | undefined,
   if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
   const policies = normalizeJoinPolicies(input.policies, workspace.value);
   if (!policies) return { ok: false, status: 400, error: "Invalid workspace join policies", code: "INVALID_JOIN_POLICIES" };
-  if (policies.some((policy) => policy.kind === "paid_subscription" && policy.status === "active")) {
+  if (!workspaceSubscriptionsEnabled() && policies.some((policy) => policy.kind === "paid_subscription" && policy.status === "active")) {
     return { ok: false, status: 409, error: "Subscription-gated workspace joins are not available until subscription lifecycle is implemented", code: "SUBSCRIPTION_GATES_NOT_AVAILABLE" };
   }
   const remote = workspace.value.id ? await replaceSupabaseWorkspaceJoinPolicies(workspace.value, policies) : undefined;
@@ -490,9 +490,6 @@ export async function grantWorkspaceJoinPolicy(slugValue: string | undefined, in
       && (!input.policyId || row.id === input.policyId)
   );
   if (!policy) return { ok: false, status: 403, error: "Workspace join policy does not allow this source", code: "JOIN_POLICY_DENIED" };
-  if (policy.kind === "paid_subscription") {
-    return { ok: false, status: 409, error: "Subscription-gated workspace joins are not available until subscription lifecycle is implemented", code: "SUBSCRIPTION_GATES_NOT_AVAILABLE" };
-  }
   const member = await upsertWorkspaceMember(workspace.value.slug, { userId, role: policy.role, source });
   if (!member.ok) return member;
   return { ok: true, workspace: workspace.value, policy, member: member.member };
@@ -844,7 +841,7 @@ async function readSupabaseWorkspaceBySlug(slug: string, withTokens: boolean): P
   return { status: "found", value: { ...workspace, tokens: tokenRows.flatMap(normalizeSupabaseToken) } };
 }
 
-async function readWorkspaceMember(workspace: WorkspaceRecord, userId: string): Promise<WorkspaceMember | undefined> {
+export async function readWorkspaceMember(workspace: WorkspaceRecord, userId: string): Promise<WorkspaceMember | undefined> {
   if (workspace.id) {
     const rows = await supabaseRows<SupabaseMemberRow>("workspace_members", {
       select: "id,workspace_id,user_id,role,status,source,joined_at,expires_at,removed_at",
@@ -1650,6 +1647,10 @@ function sanitizeJoinPolicyConfig(value: unknown): Record<string, unknown> {
       .slice(0, 20);
     if (domains.length) output.emailDomains = Array.from(new Set(domains));
   }
+  const periodDays = Number(input.periodDays);
+  if (Number.isInteger(periodDays) && periodDays > 0 && periodDays <= 366) output.periodDays = periodDays;
+  const graceDays = Number(input.graceDays);
+  if (Number.isInteger(graceDays) && graceDays >= 0 && graceDays <= 60) output.graceDays = graceDays;
   return output;
 }
 
@@ -1855,6 +1856,10 @@ function workspaceMemberExpired(member: WorkspaceMember): boolean {
   if (!member.expires_at) return false;
   const ms = Date.parse(member.expires_at);
   return !Number.isFinite(ms) || ms <= Date.now();
+}
+
+function workspaceSubscriptionsEnabled(): boolean {
+  return process.env.WORKSPACE_SUBSCRIPTIONS_ENABLED === "true";
 }
 
 function cleanInviteCodeHash(code: string | undefined): string | undefined {

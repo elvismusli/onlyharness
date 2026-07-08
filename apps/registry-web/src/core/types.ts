@@ -333,6 +333,26 @@ export type WorkspaceJoinPolicy = {
   updatedAt: string;
 };
 
+export type WorkspaceSubscription = {
+  id: string;
+  workspaceSlug: string;
+  userId: string;
+  policyId: string;
+  provider: "manual";
+  providerSubscriptionRef: string;
+  status: "incomplete" | "active" | "past_due" | "canceled" | "expired";
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  graceUntil?: string | null;
+  accessUntil?: string | null;
+  cancelAtPeriodEnd: boolean;
+  canceledAt?: string | null;
+  checkoutUrl?: string | null;
+  portalUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type WorkspaceCollectionItem = {
   id: string;
   itemRef: string;

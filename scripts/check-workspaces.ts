@@ -22,6 +22,10 @@ mustInclude("apps/harness-api/src/server.ts", [
   "app.post(\"/workspaces/:slug/invites\"",
   "app.get(\"/workspaces/:slug/join-policies\"",
   "app.put(\"/workspaces/:slug/join-policies\"",
+  "app.post(\"/workspaces/:slug/subscriptions/checkout\"",
+  "app.get(\"/workspaces/:slug/subscriptions/me\"",
+  "app.post(\"/workspaces/:slug/subscriptions/sweep\"",
+  "app.post(\"/webhooks/workspace-subscriptions\"",
   "app.post(\"/workspaces/:slug/join-code\"",
   "app.post(\"/workspaces/:slug/join-code/verify\"",
   "app.post(\"/workspaces/:slug/join-grants\"",
@@ -42,10 +46,22 @@ mustInclude("apps/harness-api/src/server.ts", [
   "app.put(\"/workspaces/:slug/setup-bundle\""
 ]);
 
+mustInclude("apps/harness-api/src/workspace-subscriptions.ts", [
+  "WORKSPACE_SUBSCRIPTIONS_ENABLED",
+  "createWorkspaceSubscriptionCheckout",
+  "settleWorkspaceSubscriptionWebhook",
+  "sweepExpiredWorkspaceSubscriptions",
+  "provider_subscription_ref",
+  "already_processed",
+  "removed_or_suspended",
+  "applySubscriptionMembership"
+]);
+
 mustInclude("apps/harness-api/src/workspaces.ts", [
   "authorizeWorkspaceToken",
   "authorizeWorkspaceMember",
   "workspaceMemberExpired",
+  "readWorkspaceMember",
   "listWorkspaceMembers",
   "createWorkspaceInvite",
   "joinWorkspaceWithInvite",
@@ -74,6 +90,11 @@ mustInclude("apps/harness-api/src/openapi.ts", [
   "\"/workspaces/{slug}/members/{userId}\"",
   "\"/workspaces/{slug}/invites\"",
   "\"/workspaces/{slug}/join-policies\"",
+  "\"/workspaces/{slug}/subscriptions/checkout\"",
+  "\"/workspaces/{slug}/subscriptions/me\"",
+  "\"/workspaces/{slug}/subscriptions/sweep\"",
+  "\"/webhooks/workspace-subscriptions\"",
+  "WorkspaceSubscription",
   "\"/workspaces/{slug}/join-code\"",
   "\"/workspaces/{slug}/join-code/verify\"",
   "\"/workspaces/{slug}/join-grants\"",
@@ -138,14 +159,26 @@ mustInclude("supabase/migrations/20260708190000_workspace_join_policies.sql", [
   "paid_subscription"
 ]);
 
+mustInclude("supabase/migrations/20260708203000_workspace_subscriptions.sql", [
+  "create table if not exists public.workspace_subscriptions",
+  "create table if not exists public.workspace_subscription_events",
+  "provider_subscription_ref",
+  "access_until",
+  "Users read own workspace subscriptions"
+]);
+
 mustInclude("apps/registry-web/src/core/useWorkspace.ts", [
   "/workspaces/${encodeURIComponent(slug)}/workspace",
   "/workspaces/${encodeURIComponent(slug)}/members",
   "/workspaces/${encodeURIComponent(slug)}/invites",
   "/workspaces/${encodeURIComponent(slug)}/join-policies",
+  "/workspaces/${encodeURIComponent(slug)}/subscriptions/checkout",
+  "/workspaces/${encodeURIComponent(slug)}/subscriptions/me",
   "/workspaces/${encodeURIComponent(slug)}/join",
   "/workspaces/${encodeURIComponent(slug)}/join-code",
   "/workspaces/${encodeURIComponent(slug)}/join-grants",
+  "workspaceSubscriptions",
+  "createWorkspaceSubscriptionCheckout",
   "approveWorkspaceResource",
   "removeWorkspaceCollectionItem",
   "workspaceHeadersForOwner"
@@ -162,6 +195,9 @@ mustInclude("apps/registry-web/src/skins/shared/neutral/network.tsx", [
   "h.createWorkspaceInvite",
   "h.joinWorkspace",
   "h.workspaceJoinPolicies",
+  "Billing",
+  "h.workspaceSubscriptions",
+  "h.createWorkspaceSubscriptionCheckout",
   "Approvals",
   "Setup",
   "workspaceSetupCommand",
@@ -191,7 +227,7 @@ mustInclude("docs/plans/2026-07-08-workspaces-layer-plan.md", [
   "CLI remains token-based unless `hh login` ships in the same sprint",
   "no hosted personal workspace",
   "`workspace_collections` are not the same as public marketplace collections",
-  "recurring subscription lifecycle is not part of the current manual one-time checkout foundation",
+  "recurring workspace subscription lifecycle is now implemented as a manual/provider-agnostic track",
   "This is mostly greenfield in production",
   "community `moderator` can propose/curate, but cannot approve installable resources",
   "Paid resale is a separate creator/legal/billing track",

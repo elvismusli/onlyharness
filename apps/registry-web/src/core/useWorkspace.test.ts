@@ -130,6 +130,69 @@ test("joinWorkspace uses the signed-in user session, not the automation token", 
   expect(result.current.workspaceJoinCode).toBe("");
 });
 
+test("createWorkspaceSubscriptionCheckout creates a receipt without claiming access", async () => {
+  const onFlash = vi.fn();
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/workspace")) {
+      return responseJson({
+        workspace: { slug: "acme", name: "Acme Agents", type: "company", visibility: "private", plan: "team" },
+        resources: [],
+        items: [],
+        collections: [],
+        joinPolicies: [{ id: "paid-main", kind: "paid_subscription", status: "active", role: "member", title: "Paid members", config: { subscriptionProduct: "acme-pro" }, createdAt: "2026-07-08T00:00:00.000Z", updatedAt: "2026-07-08T00:00:00.000Z" }],
+        permissions: { totalResources: 0, hostedArchives: 0, unscanned: 0, riskTiers: { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0, UNKNOWN: 0 } },
+        audit: []
+      });
+    }
+    if (url.includes("/members")) return responseJson({ members: [] });
+    if (url.includes("/subscriptions/me")) {
+      expect(init?.headers).toEqual({ Authorization: "Bearer member-jwt" });
+      return responseJson({ subscriptions: [] });
+    }
+    if (url.includes("/subscriptions/checkout")) {
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toEqual({ Authorization: "Bearer member-jwt", "content-type": "application/json" });
+      expect(JSON.parse(String(init?.body))).toEqual({ policyId: "paid-main" });
+      return responseJson({
+        policy: { id: "paid-main" },
+        checkout_url: "https://onlyharness.com/workspaces/acme/checkout/manual_sub_test",
+        subscription: {
+          id: "sub-1",
+          workspaceSlug: "acme",
+          userId: "user-1",
+          policyId: "paid-main",
+          provider: "manual",
+          providerSubscriptionRef: "manual_sub_test",
+          status: "incomplete",
+          accessUntil: null,
+          cancelAtPeriodEnd: false,
+          checkoutUrl: "https://onlyharness.com/workspaces/acme/checkout/manual_sub_test",
+          portalUrl: "https://onlyharness.com/workspaces/acme/subscriptions/manual_sub_test",
+          createdAt: "2026-07-08T00:00:00.000Z",
+          updatedAt: "2026-07-08T00:00:00.000Z"
+        }
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", onFlash }));
+
+  await act(async () => {
+    await result.current.loadWorkspace();
+  });
+
+  await act(async () => {
+    await result.current.createWorkspaceSubscriptionCheckout();
+  });
+
+  expect(result.current.workspaceSubscriptions[0]?.status).toBe("incomplete");
+  expect(result.current.workspaceSubscriptions[0]?.accessUntil).toBeNull();
+  expect(result.current.workspaceSubscriptionStatus).toContain("Access starts only after provider webhook confirms payment");
+  expect(onFlash).toHaveBeenCalledWith("Workspace subscription checkout created");
+});
+
 test("approveWorkspaceResource adds a public resource to a workspace approval list", async () => {
   const onFlash = vi.fn();
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {

@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.11",
+    version: "0.2.12",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -995,7 +995,7 @@ export const openapi = {
       },
       put: {
         summary: "Replace workspace join policies",
-        description: "Requires member/invite administration access. Active paid_subscription policies are rejected until subscription lifecycle is implemented and smoked end-to-end.",
+        description: "Requires member/invite administration access. Active paid_subscription policies require WORKSPACE_SUBSCRIPTIONS_ENABLED=true and grant access only through subscription checkout/webhook lifecycle.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -1012,6 +1012,61 @@ export const openapi = {
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/workspaces/{slug}/subscriptions/checkout": {
+      post: {
+        summary: "Create a workspace subscription checkout",
+        description: "Requires a signed-in user. Creates an incomplete manual subscription for an active paid_subscription join policy. It does not grant membership; only the signed subscription webhook can activate or renew access.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { policyId: { type: "string" }, provider: { type: "string", enum: ["manual"] } } } } }
+        },
+        responses: {
+          "201": {
+            description: "Workspace subscription checkout",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, policy: { $ref: "#/components/schemas/WorkspaceJoinPolicy" }, subscription: { $ref: "#/components/schemas/WorkspaceSubscription" }, checkout_url: { type: "string" }, next: { type: "string" } }, required: ["workspace", "policy", "subscription", "checkout_url", "next"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/subscriptions/me": {
+      get: {
+        summary: "Read signed-in user's workspace subscription receipts",
+        description: "Read-only receipt/customer portal metadata for the signed-in user. It never grants membership.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Workspace subscriptions for current user",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, subscriptions: { type: "array", items: { $ref: "#/components/schemas/WorkspaceSubscription" } } }, required: ["workspace", "subscriptions"] } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/subscriptions/sweep": {
+      post: {
+        summary: "Expire workspace subscriptions whose access window has ended",
+        description: "Requires member:write/workspace admin access. This is the cron/admin expiry job path; it updates subscription status and membership expiry without charging money.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Workspace subscription sweep",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, checked: { type: "integer" }, expired: { type: "array", items: { $ref: "#/components/schemas/WorkspaceSubscription" } } }, required: ["workspace", "checked", "expired"] } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
         }
       }
     },
@@ -1728,6 +1783,44 @@ export const openapi = {
         }
       }
     },
+    "/webhooks/workspace-subscriptions": {
+      post: {
+        summary: "Settle a workspace subscription lifecycle webhook",
+        description: "Requires HARNESS_WEBHOOK_TOKEN via x-harness-token. Activates, renews, marks past_due, cancels or expires a workspace subscription idempotently; membership expiry is updated only here or by the sweep endpoint, and removed/suspended members are not restored by provider webhooks.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  provider: { type: "string", enum: ["manual"] },
+                  provider_subscription_ref: { type: "string" },
+                  provider_event_ref: { type: "string" },
+                  event_type: { type: "string" },
+                  status: { type: "string", enum: ["active", "past_due", "canceled", "expired"] },
+                  current_period_start: { type: ["string", "null"], format: "date-time" },
+                  current_period_end: { type: ["string", "null"], format: "date-time" },
+                  grace_until: { type: ["string", "null"], format: "date-time" },
+                  cancel_at_period_end: { type: "boolean" },
+                  provider_customer_ref: { type: ["string", "null"] }
+                },
+                required: ["provider_subscription_ref"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Workspace subscription lifecycle applied",
+            content: { "application/json": { schema: { type: "object", properties: { status: { type: "string" }, workspace: { $ref: "#/components/schemas/Workspace" }, policy: { $ref: "#/components/schemas/WorkspaceJoinPolicy" }, subscription: { $ref: "#/components/schemas/WorkspaceSubscription" }, member: { $ref: "#/components/schemas/WorkspaceMember" }, next: { type: "string" } }, required: ["status", "workspace", "subscription", "next"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
@@ -1943,6 +2036,30 @@ export const openapi = {
           config: { type: "object", additionalProperties: true }
         },
         required: ["kind"]
+      },
+      WorkspaceSubscription: {
+        type: "object",
+        description: "Read-only workspace subscription receipt and access window. Membership is granted only by webhook/sweep lifecycle, never by read endpoints.",
+        properties: {
+          id: { type: "string" },
+          workspaceSlug: { type: "string" },
+          userId: { type: "string" },
+          policyId: { type: "string" },
+          provider: { type: "string", enum: ["manual"] },
+          providerSubscriptionRef: { type: "string" },
+          status: { type: "string", enum: ["incomplete", "active", "past_due", "canceled", "expired"] },
+          currentPeriodStart: { type: ["string", "null"], format: "date-time" },
+          currentPeriodEnd: { type: ["string", "null"], format: "date-time" },
+          graceUntil: { type: ["string", "null"], format: "date-time" },
+          accessUntil: { type: ["string", "null"], format: "date-time" },
+          cancelAtPeriodEnd: { type: "boolean" },
+          canceledAt: { type: ["string", "null"], format: "date-time" },
+          checkoutUrl: { type: ["string", "null"] },
+          portalUrl: { type: ["string", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        },
+        required: ["id", "workspaceSlug", "userId", "policyId", "provider", "providerSubscriptionRef", "status", "cancelAtPeriodEnd", "createdAt", "updatedAt"]
       },
       WorkspaceCollection: {
         type: "object",

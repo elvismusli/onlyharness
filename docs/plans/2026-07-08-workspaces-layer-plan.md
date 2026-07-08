@@ -1,13 +1,13 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`, workspace setup bundles implemented for `onlyharness@0.2.9`, community join policies/gate codes implemented for `onlyharness@0.2.10`, and membership expiry handling implemented for `onlyharness@0.2.11`.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`, workspace setup bundles implemented for `onlyharness@0.2.9`, community join policies/gate codes implemented for `onlyharness@0.2.10`, membership expiry handling implemented for `onlyharness@0.2.11`, and recurring workspace subscription lifecycle implemented as a manual/provider-agnostic track for `onlyharness@0.2.12`.
 
 Current implementation status:
 
-- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources unapprove`, `hh resources search --workspace`, `hh resources detail @workspace/name`, shared-neutral resource-first workspace UI across W98/Modern/Fans, workspace approval add/remove UI, members/invites/join UI, workspace setup bundles, community join policies, short-lived workspace gate codes, read-only gate verification, explicit gate grants, org route compatibility aliasing, OpenAPI/check/smoke coverage;
+- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources unapprove`, `hh resources search --workspace`, `hh resources detail @workspace/name`, shared-neutral resource-first workspace UI across W98/Modern/Fans, workspace approval add/remove UI, members/invites/join UI, workspace setup bundles, community join policies, short-lived workspace gate codes, read-only gate verification, explicit gate grants, recurring workspace subscription lifecycle, org route compatibility aliasing, OpenAPI/check/smoke coverage;
 - prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
-- not done yet: subscription lifecycle and production workspace enablement seed/policy.
+- not done yet: production workspace enablement seed/policy and real recurring charge provider integration.
 
 Review corrections incorporated:
 
@@ -1054,7 +1054,7 @@ Tasks:
 - support one-time entitlement/manual entitlement join;
 - add bot-facing verification with workspace token scopes;
 - add membership expiry handling.
-- leave recurring subscription join for the separate billing lifecycle track from section 10.4.
+- add recurring paid subscription checkout/webhook/sweep lifecycle.
 
 Acceptance:
 
@@ -1062,6 +1062,7 @@ Acceptance:
 - non-member cannot access private install paths;
 - expired/revoked membership removes archive access;
 - bot verification is read-only except explicit membership grant endpoint.
+- paid subscription checkout alone does not grant access; webhook renewal/grace/cancel/expiry and sweep drive membership expiry.
 
 ### Phase 7: Production enablement
 
@@ -1299,10 +1300,12 @@ Already shipped in the first production slice:
 19. Workspace setup bundle API `GET/PUT /workspaces/{slug}/setup-bundle`, shared-neutral Setup tab, and `hh workspace setup`.
 20. Community join policy API `GET/PUT /workspaces/{slug}/join-policies`, short-lived `ohwj_` gate codes, read-only `/join-code/verify`, explicit `/join-grants`, shared-neutral gate UI, and org workspace/setup aliasing to workspace semantics.
 21. Workspace membership expiry handling: `POST /workspaces/{slug}/members` accepts `expiresAt`, active member lists hide expired rows, and member-session reads/private archive paths fail closed for expired or removed members.
+22. The recurring workspace subscription lifecycle is now implemented as a manual/provider-agnostic track: `POST /workspaces/{slug}/subscriptions/checkout`, read-only `GET /workspaces/{slug}/subscriptions/me`, idempotent `POST /webhooks/workspace-subscriptions`, admin/cron `POST /workspaces/{slug}/subscriptions/sweep`, Supabase `workspace_subscriptions`/`workspace_subscription_events`, active `paid_subscription` policies behind `WORKSPACE_SUBSCRIPTIONS_ENABLED=true`, and smoke coverage for checkout/no-access, activation, renewal, grace, cancellation, expiry, and sweep.
 
 Remaining from the original first sprint:
 
-1. Subscription lifecycle for paid community membership.
+1. Production workspace enablement seed/policy.
+2. Real recurring charge provider integration if/when a provider is selected; the shipped lifecycle is provider-agnostic and does not charge money by itself.
 
 Recommended next production slice:
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { apiUrl } from "./constants";
-import type { WorkspaceCatalog, WorkspaceInvite, WorkspaceJoinPolicy, WorkspaceMember } from "./types";
+import type { WorkspaceCatalog, WorkspaceInvite, WorkspaceJoinPolicy, WorkspaceMember, WorkspaceSubscription } from "./types";
 
 export type UseWorkspaceOptions = {
   accessToken?: string;
@@ -33,6 +33,10 @@ export type UseWorkspaceResult = {
   workspaceGateCode: string;
   setWorkspaceGateCode: (value: string) => void;
   workspaceGateStatus: string;
+  workspaceSubscriptions: WorkspaceSubscription[];
+  workspaceSubscriptionPolicyId: string;
+  setWorkspaceSubscriptionPolicyId: (value: string) => void;
+  workspaceSubscriptionStatus: string;
   workspaceCollectionSlug: string;
   setWorkspaceCollectionSlug: (value: string) => void;
   workspaceApprovalResourceId: string;
@@ -49,6 +53,8 @@ export type UseWorkspaceResult = {
   joinWorkspace: () => Promise<void>;
   createWorkspaceJoinCode: () => Promise<void>;
   grantWorkspaceJoinCode: () => Promise<void>;
+  createWorkspaceSubscriptionCheckout: () => Promise<void>;
+  loadWorkspaceSubscriptions: () => Promise<void>;
   approveWorkspaceResource: () => Promise<void>;
   removeWorkspaceCollectionItem: (collectionSlug: string, itemId: string) => Promise<void>;
   workspaceHeadersForOwner: (owner: string) => Record<string, string>;
@@ -73,6 +79,9 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
   const [workspaceGateSource, setWorkspaceGateSourceState] = useState<"telegram" | "discord" | "entitlement">("telegram");
   const [workspaceGateCode, setWorkspaceGateCode] = useState("");
   const [workspaceGateStatus, setWorkspaceGateStatus] = useState("");
+  const [workspaceSubscriptions, setWorkspaceSubscriptions] = useState<WorkspaceSubscription[]>([]);
+  const [workspaceSubscriptionPolicyId, setWorkspaceSubscriptionPolicyId] = useState("");
+  const [workspaceSubscriptionStatus, setWorkspaceSubscriptionStatus] = useState("");
   const [workspaceCollectionSlug, setWorkspaceCollectionSlug] = useState("approved");
   const [workspaceApprovalResourceId, setWorkspaceApprovalResourceId] = useState("");
   const [workspaceApprovalName, setWorkspaceApprovalName] = useState("");
@@ -102,6 +111,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
       setWorkspaceSlug(catalog.workspace.slug);
       localStorage.setItem("hh:workspaceSlug", catalog.workspace.slug);
       await loadWorkspaceMembersFor(catalog.workspace.slug);
+      if (opts.accessToken) await loadWorkspaceSubscriptionsFor(catalog.workspace.slug).catch(() => []);
       setWorkspaceStatus(`Loaded ${catalog.resources.length} workspace resources · ${catalog.audit.length} audit rows`);
       opts.onFlash?.(`Loaded @${catalog.workspace.slug}`);
     } catch (error) {
@@ -117,6 +127,22 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
 
   async function loadWorkspaceJoinPolicies() {
     await loadWorkspaceJoinPoliciesFor(cleanSlug(workspaceSlug));
+  }
+
+  async function loadWorkspaceSubscriptions() {
+    const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
+    if (!slug) return;
+    if (!opts.accessToken && !opts.requireUser?.("Log on to read your workspace subscription receipts.")) return;
+    setWorkspaceBusy(true);
+    setWorkspaceSubscriptionStatus("");
+    try {
+      const subscriptions = await loadWorkspaceSubscriptionsFor(slug);
+      setWorkspaceSubscriptionStatus(`Loaded ${subscriptions.length} subscription receipt${subscriptions.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setWorkspaceSubscriptionStatus(error instanceof Error ? error.message : "Subscription receipts failed");
+    } finally {
+      setWorkspaceBusy(false);
+    }
   }
 
   async function createWorkspaceInvite() {
@@ -227,6 +253,41 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     }
   }
 
+  async function createWorkspaceSubscriptionCheckout() {
+    const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
+    const policyId = workspaceSubscriptionPolicyId.trim()
+      || workspaceJoinPolicies.find((policy) => policy.kind === "paid_subscription" && policy.status === "active")?.id
+      || "";
+    if (!slug || !policyId) return setWorkspaceSubscriptionStatus("Workspace and active paid subscription policy are required.");
+    if (!opts.accessToken && !opts.requireUser?.("Log on before starting a workspace subscription checkout.")) return;
+    setWorkspaceBusy(true);
+    setWorkspaceSubscriptionStatus("");
+    try {
+      const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/subscriptions/checkout`, {
+        method: "POST",
+        headers: { ...sessionHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ policyId })
+      });
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        policy?: WorkspaceJoinPolicy;
+        subscription?: WorkspaceSubscription;
+        checkout_url?: string;
+        next?: string;
+      };
+      if (!response.ok) throw new Error(data.error ?? `Subscription checkout failed (${response.status})`);
+      if (!data.subscription) throw new Error("Subscription checkout response did not include a receipt.");
+      setWorkspaceSubscriptionPolicyId(data.policy?.id ?? data.subscription.policyId);
+      setWorkspaceSubscriptions((current) => upsertSubscription(current, data.subscription as WorkspaceSubscription));
+      setWorkspaceSubscriptionStatus(`Checkout created. Access starts only after provider webhook confirms payment.${data.checkout_url ? ` Open: ${data.checkout_url}` : ""}`);
+      opts.onFlash?.("Workspace subscription checkout created");
+    } catch (error) {
+      setWorkspaceSubscriptionStatus(error instanceof Error ? error.message : "Subscription checkout failed");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   async function approveWorkspaceResource() {
     const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
     const collection = cleanCollectionSlug(workspaceCollectionSlug);
@@ -310,6 +371,21 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     setWorkspaceJoinPolicies([]);
   }
 
+  async function loadWorkspaceSubscriptionsFor(slug: string): Promise<WorkspaceSubscription[]> {
+    if (!slug || !opts.accessToken) return [];
+    const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/subscriptions/me`, {
+      headers: sessionHeaders()
+    });
+    const data = await response.json().catch(() => ({})) as { error?: string; subscriptions?: WorkspaceSubscription[] };
+    if (!response.ok) {
+      setWorkspaceSubscriptions([]);
+      throw new Error(data.error ?? `Subscription receipts failed (${response.status})`);
+    }
+    const subscriptions = data.subscriptions ?? [];
+    setWorkspaceSubscriptions(subscriptions);
+    return subscriptions;
+  }
+
   function setWorkspaceInviteRole(value: WorkspaceMember["role"]) {
     setWorkspaceInviteRoleState(MEMBER_ROLES.includes(value) ? value : "member");
   }
@@ -350,6 +426,10 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceGateCode,
     setWorkspaceGateCode,
     workspaceGateStatus,
+    workspaceSubscriptions,
+    workspaceSubscriptionPolicyId,
+    setWorkspaceSubscriptionPolicyId,
+    workspaceSubscriptionStatus,
     workspaceCollectionSlug,
     setWorkspaceCollectionSlug,
     workspaceApprovalResourceId,
@@ -366,10 +446,17 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     joinWorkspace,
     createWorkspaceJoinCode,
     grantWorkspaceJoinCode,
+    createWorkspaceSubscriptionCheckout,
+    loadWorkspaceSubscriptions,
     approveWorkspaceResource,
     removeWorkspaceCollectionItem,
     workspaceHeadersForOwner
   };
+}
+
+function upsertSubscription(current: WorkspaceSubscription[], next: WorkspaceSubscription): WorkspaceSubscription[] {
+  const withoutCurrent = current.filter((subscription) => subscription.id !== next.id);
+  return [next, ...withoutCurrent].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
 }
 
 function cleanSlug(value: string): string {

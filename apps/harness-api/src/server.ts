@@ -22,6 +22,7 @@ import { fetchCountersMap, HEAT_SIGNAL_THRESHOLD } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
 import * as resources from "./resources.js";
+import * as workspaceSubscriptions from "./workspace-subscriptions.js";
 import * as workspaces from "./workspaces.js";
 
 const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
@@ -114,6 +115,24 @@ type WorkspaceJoinRequest = {
 
 type WorkspaceJoinPolicyRequest = {
   policies?: unknown[];
+};
+
+type WorkspaceSubscriptionCheckoutRequest = {
+  policyId?: string;
+  provider?: string;
+};
+
+type WorkspaceSubscriptionWebhookRequest = {
+  provider?: string;
+  provider_subscription_ref?: string;
+  provider_event_ref?: string;
+  event_type?: string;
+  status?: string;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  grace_until?: string | null;
+  cancel_at_period_end?: boolean;
+  provider_customer_ref?: string | null;
 };
 
 type WorkspaceJoinCodeRequest = {
@@ -494,6 +513,53 @@ app.put("/workspaces/:slug/join-policies", async (request, reply) => {
   if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "join_policies_updated", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: "join_policies", via: auth.via });
   return { workspace: publicWorkspace(auth.workspace), policies: result.policies.map(publicWorkspaceJoinPolicy) };
+});
+
+app.post("/workspaces/:slug/subscriptions/checkout", async (request, reply) => {
+  if (!workspacesEnabled || !workspaceSubscriptions.workspaceSubscriptionsEnabled()) return reply.code(404).send({ error: "Workspace subscriptions are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceSubscriptionCheckoutRequest : {};
+  const result = await workspaceSubscriptions.createWorkspaceSubscriptionCheckout(slug, { userId: user.id, policyId: body.policyId, provider: body.provider });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: result.workspace.slug, action: "subscription_checkout_created", subject: eventSubject(user.id), target: result.policy.id, via: "workspace_member" });
+  return reply.code(201).send({
+    workspace: publicWorkspace(result.workspace),
+    policy: publicWorkspaceJoinPolicy(result.policy),
+    subscription: publicWorkspaceSubscription(result.subscription),
+    checkout_url: result.checkout_url,
+    next: result.next
+  });
+});
+
+app.get("/workspaces/:slug/subscriptions/me", async (request, reply) => {
+  if (!workspacesEnabled || !workspaceSubscriptions.workspaceSubscriptionsEnabled()) return reply.code(404).send({ error: "Workspace subscriptions are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const result = await workspaceSubscriptions.listWorkspaceSubscriptions(slug, { userId: user.id });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: result.workspace.slug, action: "subscriptions_read_self", subject: eventSubject(user.id), target: "subscriptions", via: "workspace_member" });
+  return { workspace: publicWorkspace(result.workspace), subscriptions: result.subscriptions.map(publicWorkspaceSubscription) };
+});
+
+app.post("/workspaces/:slug/subscriptions/sweep", async (request, reply) => {
+  if (!workspacesEnabled || !workspaceSubscriptions.workspaceSubscriptionsEnabled()) return reply.code(404).send({ error: "Workspace subscriptions are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["member:write", "workspace:admin"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "subscription_sweep" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const result = await workspaceSubscriptions.sweepExpiredWorkspaceSubscriptions(auth.workspace.slug);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "subscription_sweep", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: String(result.expired.length), via: auth.via });
+  return {
+    workspace: publicWorkspace(result.workspace),
+    checked: result.checked,
+    expired: result.expired.map(publicWorkspaceSubscription)
+  };
 });
 
 app.post("/workspaces/:slug/join-code", async (request, reply) => {
@@ -1547,6 +1613,28 @@ app.post("/webhooks/payments", async (request, reply) => {
   if (!result.ok) return reply.code(result.status).send({ error: result.error });
   await recordPaymentTransitionEvent(result.status, result.owner, result.repo, result.version, eventSubject(result.subject_id), "webhook", "api");
   return result;
+});
+
+app.post("/webhooks/workspace-subscriptions", async (request, reply) => {
+  if (!workspacesEnabled || !workspaceSubscriptions.workspaceSubscriptionsEnabled()) return reply.code(404).send({ error: "Workspace subscriptions are not enabled" });
+  if (!requirePaymentWebhookToken(request, reply)) return;
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceSubscriptionWebhookRequest : {};
+  const result = await workspaceSubscriptions.settleWorkspaceSubscriptionWebhook(body);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({
+    slug: result.workspace.slug,
+    action: `subscription_${result.status}`,
+    subject: eventSubject(result.subscription.user_id),
+    target: result.subscription.provider_subscription_ref
+  });
+  return {
+    status: result.status,
+    workspace: publicWorkspace(result.workspace),
+    policy: result.policy ? publicWorkspaceJoinPolicy(result.policy) : undefined,
+    subscription: publicWorkspaceSubscription(result.subscription),
+    member: result.member,
+    next: result.next
+  };
 });
 
 app.post("/internal/eval-result", async (request, reply) => {
@@ -2741,6 +2829,28 @@ function publicWorkspaceJoinPolicy(policy: workspaces.WorkspaceJoinPolicy) {
     config: policy.config,
     createdAt: policy.created_at,
     updatedAt: policy.updated_at
+  };
+}
+
+function publicWorkspaceSubscription(subscription: workspaceSubscriptions.WorkspaceSubscription) {
+  return {
+    id: subscription.id,
+    workspaceSlug: subscription.workspace_slug,
+    userId: subscription.user_id,
+    policyId: subscription.policy_id,
+    provider: subscription.provider,
+    providerSubscriptionRef: subscription.provider_subscription_ref,
+    status: subscription.status,
+    currentPeriodStart: subscription.current_period_start ?? null,
+    currentPeriodEnd: subscription.current_period_end ?? null,
+    graceUntil: subscription.grace_until ?? null,
+    accessUntil: subscription.access_until ?? null,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    canceledAt: subscription.canceled_at ?? null,
+    checkoutUrl: subscription.checkout_url ?? null,
+    portalUrl: subscription.portal_url ?? null,
+    createdAt: subscription.created_at,
+    updatedAt: subscription.updated_at
   };
 }
 
