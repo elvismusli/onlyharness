@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.7",
+    version: "0.2.8",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -1148,6 +1148,37 @@ export const openapi = {
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/workspaces/{slug}/collections/{collection}/items/{itemId}": {
+      delete: {
+        summary: "Remove a resource from a workspace collection",
+        description: "Removes a workspace-scoped approval or collection entry. If a public marketplace approval is no longer referenced by any workspace collection, the derived workspace resource is removed from workspace search/detail as well.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug"), pathParam("collection"), pathParam("itemId")],
+        responses: {
+          "200": {
+            description: "Workspace collection item removed",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    workspace: { $ref: "#/components/schemas/Workspace" },
+                    collection: { $ref: "#/components/schemas/WorkspaceCollection" },
+                    item: { $ref: "#/components/schemas/WorkspaceCollectionItem" },
+                    removedResourceId: { type: "string" },
+                    next: { type: "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
         }
       }
     },

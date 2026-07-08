@@ -1,13 +1,13 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, and shared-neutral workspace UI wiring shipped in the web app.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, and workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`.
 
 Current implementation status:
 
-- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources search --workspace`, `hh resources detail @workspace/name`, shared-neutral resource-first workspace UI across W98/Modern/Fans, members/invites/join UI, OpenAPI/check/smoke coverage;
+- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources unapprove`, `hh resources search --workspace`, `hh resources detail @workspace/name`, shared-neutral resource-first workspace UI across W98/Modern/Fans, workspace approval add/remove UI, members/invites/join UI, OpenAPI/check/smoke coverage;
 - prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
-- not done yet: workspace collection admin UI, setup bundles v2, community gates, subscription lifecycle.
+- not done yet: setup bundles v2, community gates, subscription lifecycle.
 
 Review corrections incorporated:
 
@@ -544,6 +544,7 @@ DELETE /workspaces/{slug}/collections/{collection_slug}/items/{item_id}
 Primary flows:
 
 - add public marketplace resource to workspace collection;
+- remove approved public marketplace resource from workspace collection;
 - add workspace private resource to collection;
 - approve/block/deprecate item;
 - pin version/archive hash where applicable.
@@ -598,6 +599,8 @@ HH_ORG_TOKEN -> HH_WORKSPACE_TOKEN fallback
 hh resources search "market research" --workspace acme
 hh resources detail @acme/deploy-tools
 hh resources open @acme/deploy-tools
+hh resources approve onlyharness:harnesses/deep-market-researcher --workspace acme --collection approved
+hh resources unapprove @acme/deep-market-researcher --workspace acme --collection approved
 hh install @acme/deploy-checklist --target claude-code
 hh pull @acme/deploy-checklist
 ```
@@ -692,19 +695,19 @@ V1 can avoid a permanent global selector and put workspace switching inside the 
 Tabs:
 
 ```text
-Catalog | Workspace collections | Members | Access | Audit | Setup | Settings
+Catalog | Approvals | Members | Access | Audit | Setup | Settings
 ```
 
 For community/public workspaces:
 
 ```text
-Catalog | Workspace collections | Join | Moderation | Setup
+Catalog | Approvals | Join | Moderation | Setup
 ```
 
 For viewer/member:
 
 ```text
-Catalog | Workspace collections | Setup
+Catalog | Approvals | Setup
 ```
 
 ### 9.4 Resource card labels
@@ -950,7 +953,7 @@ npm run smoke
 
 ### Phase 3: Workspace collections and approved marketplace resources
 
-Status: shipped as the `onlyharness@0.2.5` production slice for token-authenticated API/CLI flows; `onlyharness@0.2.6` hardens approval so `not_scanned` resources cannot become installable workspace approvals.
+Status: shipped as the `onlyharness@0.2.5` production slice for token-authenticated API/CLI flows; `onlyharness@0.2.6` hardens approval so `not_scanned` resources cannot become installable workspace approvals; the current web/CLI slice adds approval removal.
 
 Goal: a workspace can curate public and private resources.
 
@@ -961,6 +964,7 @@ Tasks:
 - add `workspace_collections`;
 - add `workspace_collection_items`;
 - add API for collection CRUD;
+- add CLI/UI remove flow for approved public marketplace resources;
 - add “Add to workspace” action on public resource detail;
 - support approval states;
 - add `approved_with_warning` and `blocked_by_scan` states;
@@ -976,7 +980,7 @@ Acceptance:
 - blocked items cannot be installed through workspace setup;
 - failed or missing security scan cannot be approved for install;
 - warning scan can be approved only with warning label;
-- audit records add/approve/block.
+- audit records add/approve/remove/block.
 
 ### Phase 4: Web workspace UI
 
@@ -991,7 +995,8 @@ Tasks:
 - workspace switcher;
 - workspace home tabs;
 - members/invites UI;
-- collections UI;
+- approvals add/remove UI;
+- full collection CRUD UI;
 - access/roles UI;
 - setup bundle UI;
 - audit UI;
@@ -1288,21 +1293,20 @@ Already shipped in the first production slice:
 15. Trust/security snapshot on approval, with `fail` and `not_scanned` failing closed for installable approval.
 16. Workspace-scoped `Approved by {workspace}` labels without implying OnlyHarness verification.
 17. Honest `409 not hosted by workspace` for approved listings without workspace-hosted archive files.
+18. Shared-neutral workspace approval UI and `hh resources unapprove` removal flow.
 
 Remaining from the original first sprint:
 
 1. `/orgs/{slug}/workspace` alias to new `/workspaces/{slug}/workspace` semantics.
-2. Workspace collection admin UI for approval/add/remove flows.
-3. Setup bundle UI and install-one-command flow.
-4. Community join policies beyond raw invite codes.
+2. Setup bundle UI and install-one-command flow.
+3. Community join policies beyond raw invite codes.
 
 Recommended next production slice:
 
 1. Keep `HH_ORG_TOKEN` and `/orgs` compatibility.
-2. Add workspace collection admin UI for approving/removing public marketplace resources inside the workspace surface.
-3. Generalize setup bundles from orgs to workspaces and expose copy/install commands in the same shared-neutral surface.
-4. Keep CLI token-based unless `hh login` is pulled forward.
-5. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
+2. Generalize setup bundles from orgs to workspaces and expose copy/install commands in the same shared-neutral surface.
+3. Keep CLI token-based unless `hh login` is pulled forward.
+4. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
 
 Do not jump straight to a big admin UI. Private resource distribution and approved collection semantics are now the shipped baseline; the next admin UX should follow real member/invite access rules.
 

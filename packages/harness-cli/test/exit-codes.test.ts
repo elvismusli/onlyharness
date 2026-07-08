@@ -27,6 +27,7 @@ let sawResourcePackagePublishToken = false;
 let sawWorkspaceResourcePackagePublishToken = false;
 let sawWorkspaceResourcesToken = false;
 let sawWorkspaceApproveToken = false;
+let sawWorkspaceUnapproveToken = false;
 let sawClaudeInstallToken = false;
 let orgPublishedNames: string[] = [];
 let resourcePackagePublishPaths: string[] = [];
@@ -418,6 +419,52 @@ before(async () => {
           next: "Workspace approval is a local recommendation. It is not an OnlyHarness Verified badge."
         }));
       });
+      return;
+    }
+
+    if (request.url === "/workspaces/acme/collections/approved" && request.method === "GET") {
+      if (request.headers.authorization !== "Bearer workspace-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid workspace token" }));
+        return;
+      }
+      response.end(JSON.stringify({
+        workspace: { slug: "acme", name: "Acme Community" },
+        collection: {
+          slug: "approved",
+          title: "Approved resources",
+          items: [
+            {
+              id: "approved:deep-market-researcher",
+              itemRef: "@acme/deep-market-researcher",
+              sourceResourceId: "onlyharness:harnesses/deep-market-researcher",
+              approvalState: "approved"
+            }
+          ]
+        }
+      }));
+      return;
+    }
+
+    if (request.url === "/workspaces/acme/collections/approved/items/approved%3Adeep-market-researcher" && request.method === "DELETE") {
+      if (request.headers.authorization !== "Bearer workspace-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid workspace token" }));
+        return;
+      }
+      sawWorkspaceUnapproveToken = true;
+      response.end(JSON.stringify({
+        workspace: { slug: "acme", name: "Acme Community" },
+        collection: { slug: "approved", title: "Approved resources" },
+        item: {
+          id: "approved:deep-market-researcher",
+          itemRef: "@acme/deep-market-researcher",
+          sourceResourceId: "onlyharness:harnesses/deep-market-researcher",
+          approvalState: "approved"
+        },
+        removedResourceId: "@acme/deep-market-researcher",
+        next: "Workspace approval removed."
+      }));
       return;
     }
 
@@ -1311,6 +1358,19 @@ test("resources approve adds a public resource to a workspace collection with wo
   assert.equal(body.resource?.workspaceApproval?.approvalState, "approved");
   assert.equal(body.collection?.slug, "approved");
   assert.equal(body.verified, false);
+});
+
+test("resources unapprove removes a workspace collection item with workspace token", async () => {
+  sawWorkspaceUnapproveToken = false;
+
+  const result = await runCli(["resources", "unapprove", "@acme/deep-market-researcher", "--workspace", "acme", "--collection", "approved", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(sawWorkspaceUnapproveToken, true);
+  assert.doesNotMatch(result.stdout, /workspace-token/);
+  const body = JSON.parse(result.stdout) as { item?: { itemRef?: string; sourceResourceId?: string }; removedResourceId?: string };
+  assert.equal(body.item?.itemRef, "@acme/deep-market-researcher");
+  assert.equal(body.item?.sourceResourceId, "onlyharness:harnesses/deep-market-researcher");
+  assert.equal(body.removedResourceId, "@acme/deep-market-researcher");
 });
 
 test("sync imports local repo markdown candidates into an org namespace", async () => {

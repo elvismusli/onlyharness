@@ -318,6 +318,33 @@ export type WorkspaceInvite = {
   revokedAt?: string | null;
 };
 
+export type WorkspaceCollectionItem = {
+  id: string;
+  itemRef: string;
+  itemSource: "public_resource" | "workspace_resource" | "native_harness" | "external_url";
+  sourceResourceId?: string;
+  pinnedVersion?: string | null;
+  pinnedArchiveHash?: string | null;
+  approvalState: "pending_review" | "approved" | "approved_with_warning" | "blocked" | "blocked_by_scan" | "deprecated";
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  note?: string | null;
+  riskSnapshot?: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceCollection = {
+  slug: string;
+  title: string;
+  summary?: string | null;
+  visibility: "workspace" | "public" | "unlisted";
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string | null;
+  items: WorkspaceCollectionItem[];
+};
+
 export type WorkspaceCatalog = {
   workspace: {
     slug: string;
@@ -330,6 +357,7 @@ export type WorkspaceCatalog = {
   };
   resources: ResourceItem[];
   items: ResourceItem[];
+  collections: WorkspaceCollection[];
   permissions: {
     totalResources: number;
     hostedArchives: number;

@@ -1,6 +1,6 @@
 {
   "name": "onlyharness",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "OnlyHarness CLI (hh) — find, inspect, install and publish reusable AI-agent resources from onlyharness.com",
   "type": "module",
   "license": "MIT",

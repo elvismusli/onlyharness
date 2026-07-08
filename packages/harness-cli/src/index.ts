@@ -380,10 +380,27 @@ type ResourcePackageImportResult = {
 type WorkspaceApprovalResult = {
   workspace?: { slug?: string; name?: string };
   collection?: { slug?: string; title?: string };
-  item?: { itemRef?: string; approvalState?: string; sourceResourceId?: string };
+  item?: { id?: string; itemRef?: string; approvalState?: string; sourceResourceId?: string };
   resource?: ResourceItem;
   approvalState?: string;
   verified?: boolean;
+  next?: string;
+};
+type WorkspaceCollectionItem = {
+  id?: string;
+  itemRef?: string;
+  sourceResourceId?: string;
+  approvalState?: string;
+};
+type WorkspaceCollectionPayload = {
+  workspace?: { slug?: string; name?: string };
+  collection?: { slug?: string; title?: string; items?: WorkspaceCollectionItem[] };
+};
+type WorkspaceCollectionRemoveResult = {
+  workspace?: { slug?: string; name?: string };
+  collection?: { slug?: string; title?: string };
+  item?: WorkspaceCollectionItem;
+  removedResourceId?: string;
   next?: string;
 };
 type PublishGateResult = {
@@ -567,7 +584,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.7");
+  .version("0.2.8");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -684,6 +701,37 @@ resourcesCommand.command("approve")
       result.next ?? "Workspace approval is not an OnlyHarness Verified badge.",
       ""
     ].join("\n"));
+  });
+
+resourcesCommand.command("unapprove")
+  .description("remove a resource from a workspace collection")
+  .argument("<id>", "collection item id, workspace resource id, or source resource id")
+  .requiredOption("--workspace <slug>", "workspace slug")
+  .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
+  .option("--collection <slug>", "workspace collection slug", "approved")
+  .option("--json", "print JSON", false)
+  .action(async (id: string, options) => {
+    const workspace = cleanSetupOrg(options.workspace);
+    if (!workspace) fail("Invalid workspace slug.", EXIT.VALIDATION, "Use --workspace acme", options.json);
+    const collection = cleanWorkspaceCollectionSlug(options.collection, options.json);
+    const token = workspaceToken(options.workspaceToken);
+    if (!token) fail("Workspace token required.", EXIT.AUTH, "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>.", options.json);
+    const result = await removeWorkspaceCollectionItem({
+      itemId: id,
+      workspace,
+      collection,
+      token,
+      json: options.json
+    });
+    if (options.json) return writeStdout(result);
+    const collectionSlug = result.collection?.slug ?? collection;
+    const removed = result.item?.itemRef ?? id;
+    writeStdout([
+      `Removed ${removed} from @${workspace}/${collectionSlug}.`,
+      result.removedResourceId ? `Removed workspace listing ${result.removedResourceId}.` : "Workspace listing remains if another collection still references it.",
+      result.next ?? "",
+      ""
+    ].filter(Boolean).join("\n"));
   });
 
 resourcesCommand.command("import")
@@ -2544,6 +2592,80 @@ async function approveWorkspaceResource(input: {
     );
   }
   return body;
+}
+
+async function removeWorkspaceCollectionItem(input: {
+  itemId: string;
+  workspace: string;
+  collection: string;
+  token: string;
+  json: boolean;
+}): Promise<WorkspaceCollectionRemoveResult> {
+  const item = await resolveWorkspaceCollectionItem(input);
+  const response = await fetchRegistryResponse(`${registryUrl}/workspaces/${input.workspace}/collections/${input.collection}/items/${encodeURIComponent(item.id ?? input.itemId)}`, input.json, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${input.token}`
+    }
+  });
+  const body = await response.json().catch(() => ({})) as WorkspaceCollectionRemoveResult & { error?: string; code?: string };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `Workspace removal failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token> with collection:write/resource:publish.",
+        input.json
+      );
+    }
+    if (response.status === 404) {
+      fail(`Workspace removal failed (404): ${body.error ?? "workspace collection item not found"}`, EXIT.NOT_FOUND, `hh resources search --workspace ${input.workspace} ${input.itemId}`, input.json);
+    }
+    fail(`Workspace removal failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, EXIT.GENERAL, "Check the workspace collection and resource id.", input.json);
+  }
+  return body;
+}
+
+async function resolveWorkspaceCollectionItem(input: {
+  itemId: string;
+  workspace: string;
+  collection: string;
+  token: string;
+  json: boolean;
+}): Promise<WorkspaceCollectionItem> {
+  const response = await fetchRegistryResponse(`${registryUrl}/workspaces/${input.workspace}/collections/${input.collection}`, input.json, {
+    headers: {
+      Authorization: `Bearer ${input.token}`
+    }
+  });
+  const body = await response.json().catch(() => ({})) as WorkspaceCollectionPayload & { error?: string; code?: string };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `Workspace collection read failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>.",
+        input.json
+      );
+    }
+    if (response.status === 404) {
+      fail(`Workspace collection read failed (404): ${body.error ?? "workspace collection not found"}`, EXIT.NOT_FOUND, `hh resources approve <id> --workspace ${input.workspace} --collection ${input.collection}`, input.json);
+    }
+    fail(`Workspace collection read failed (${response.status}): ${body.error ?? JSON.stringify(body)}`, EXIT.GENERAL, "Check workspace access and collection name.", input.json);
+  }
+
+  const needle = input.itemId.trim();
+  const workspaceRef = needle.startsWith("@") ? needle : `@${input.workspace}/${needle.replace(/^\/+/, "")}`;
+  const item = (body.collection?.items ?? []).find((row) =>
+    row.id === needle ||
+    row.itemRef === needle ||
+    row.itemRef === workspaceRef ||
+    row.sourceResourceId === needle
+  );
+  if (!item?.id) {
+    fail(`Workspace collection item not found: ${input.itemId}`, EXIT.NOT_FOUND, `hh resources search --workspace ${input.workspace} ${input.itemId}`, input.json);
+  }
+  return item;
 }
 
 async function publishOrgMarkdown(input: { org: string; token: string; name: string; markdown: string; json: boolean; command: "Publish" | "Sync" }): Promise<OrgImportResult> {

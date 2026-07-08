@@ -244,8 +244,9 @@
   border-radius: var(--neutral-r-terminal);
   padding: 14px 16px;
   margin: 0;
-  overflow-x: auto;
-  white-space: pre;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .oh-neutral .ohn-btnrow {

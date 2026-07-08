@@ -27,10 +27,21 @@ export type UseWorkspaceResult = {
   workspaceJoinCode: string;
   setWorkspaceJoinCode: (value: string) => void;
   workspaceJoinStatus: string;
+  workspaceCollectionSlug: string;
+  setWorkspaceCollectionSlug: (value: string) => void;
+  workspaceApprovalResourceId: string;
+  setWorkspaceApprovalResourceId: (value: string) => void;
+  workspaceApprovalName: string;
+  setWorkspaceApprovalName: (value: string) => void;
+  workspaceApprovalNote: string;
+  setWorkspaceApprovalNote: (value: string) => void;
+  workspaceCollectionStatus: string;
   loadWorkspace: () => Promise<void>;
   loadWorkspaceMembers: () => Promise<void>;
   createWorkspaceInvite: () => Promise<void>;
   joinWorkspace: () => Promise<void>;
+  approveWorkspaceResource: () => Promise<void>;
+  removeWorkspaceCollectionItem: (collectionSlug: string, itemId: string) => Promise<void>;
   workspaceHeadersForOwner: (owner: string) => Record<string, string>;
 };
 
@@ -49,6 +60,11 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
   const [workspaceInviteStatus, setWorkspaceInviteStatus] = useState("");
   const [workspaceJoinCode, setWorkspaceJoinCode] = useState("");
   const [workspaceJoinStatus, setWorkspaceJoinStatus] = useState("");
+  const [workspaceCollectionSlug, setWorkspaceCollectionSlug] = useState("approved");
+  const [workspaceApprovalResourceId, setWorkspaceApprovalResourceId] = useState("");
+  const [workspaceApprovalName, setWorkspaceApprovalName] = useState("");
+  const [workspaceApprovalNote, setWorkspaceApprovalNote] = useState("");
+  const [workspaceCollectionStatus, setWorkspaceCollectionStatus] = useState("");
 
   function workspaceHeadersForOwner(owner: string): Record<string, string> {
     const slug = owner.startsWith("@") ? owner.slice(1) : "";
@@ -142,6 +158,63 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     }
   }
 
+  async function approveWorkspaceResource() {
+    const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
+    const collection = cleanCollectionSlug(workspaceCollectionSlug);
+    const resourceId = workspaceApprovalResourceId.trim();
+    if (!slug || !collection || !resourceId) return setWorkspaceCollectionStatus("Workspace, collection and public resource ID are required.");
+    if (!workspaceToken && !opts.accessToken && !opts.requireUser?.("Log on as a workspace admin or paste a workspace token to approve resources.")) return;
+    setWorkspaceBusy(true);
+    setWorkspaceCollectionStatus("");
+    try {
+      const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/collections/${encodeURIComponent(collection)}/items`, {
+        method: "POST",
+        headers: { ...authHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({
+          resourceId,
+          name: workspaceApprovalName.trim() || undefined,
+          note: workspaceApprovalNote.trim() || undefined
+        })
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; resource?: { id?: string }; approvalState?: string };
+      if (!response.ok) throw new Error(data.error ?? `Approval failed (${response.status})`);
+      setWorkspaceApprovalResourceId("");
+      setWorkspaceApprovalName("");
+      setWorkspaceApprovalNote("");
+      setWorkspaceCollectionStatus(`Approved ${data.resource?.id ?? resourceId} as ${data.approvalState ?? "workspace curation"}.`);
+      opts.onFlash?.("Workspace resource approved");
+      await loadWorkspace();
+    } catch (error) {
+      setWorkspaceCollectionStatus(error instanceof Error ? error.message : "Approval failed");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function removeWorkspaceCollectionItem(collectionSlug: string, itemId: string) {
+    const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
+    const collection = cleanCollectionSlug(collectionSlug);
+    if (!slug || !collection || !itemId) return setWorkspaceCollectionStatus("Workspace collection item is required.");
+    if (!workspaceToken && !opts.accessToken && !opts.requireUser?.("Log on as a workspace admin or paste a workspace token to remove approved resources.")) return;
+    setWorkspaceBusy(true);
+    setWorkspaceCollectionStatus("");
+    try {
+      const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/collections/${encodeURIComponent(collection)}/items/${encodeURIComponent(itemId)}`, {
+        method: "DELETE",
+        headers: authHeaders()
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; item?: { itemRef?: string }; removedResourceId?: string };
+      if (!response.ok) throw new Error(data.error ?? `Remove failed (${response.status})`);
+      setWorkspaceCollectionStatus(`Removed ${data.item?.itemRef ?? itemId}${data.removedResourceId ? ` and ${data.removedResourceId}` : ""}.`);
+      opts.onFlash?.("Workspace collection item removed");
+      await loadWorkspace();
+    } catch (error) {
+      setWorkspaceCollectionStatus(error instanceof Error ? error.message : "Remove failed");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   async function loadWorkspaceMembersFor(slug: string) {
     if (!slug) return;
     const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/members`, {
@@ -185,14 +258,29 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceJoinCode,
     setWorkspaceJoinCode,
     workspaceJoinStatus,
+    workspaceCollectionSlug,
+    setWorkspaceCollectionSlug,
+    workspaceApprovalResourceId,
+    setWorkspaceApprovalResourceId,
+    workspaceApprovalName,
+    setWorkspaceApprovalName,
+    workspaceApprovalNote,
+    setWorkspaceApprovalNote,
+    workspaceCollectionStatus,
     loadWorkspace,
     loadWorkspaceMembers,
     createWorkspaceInvite,
     joinWorkspace,
+    approveWorkspaceResource,
+    removeWorkspaceCollectionItem,
     workspaceHeadersForOwner
   };
 }
 
 function cleanSlug(value: string): string {
   return value.replace(/^@/, "").trim().toLowerCase();
+}
+
+function cleanCollectionSlug(value: string): string {
+  return value.toLowerCase().trim().replace(/^@/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "approved";
 }

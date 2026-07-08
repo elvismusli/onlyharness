@@ -590,6 +590,29 @@ app.post("/workspaces/:slug/collections/:collection/items", async (request, repl
   });
 });
 
+app.delete("/workspaces/:slug/collections/:collection/items/:itemId", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace collections are not enabled" });
+  const { slug, collection, itemId } = request.params as { slug: string; collection: string; itemId: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["collection:write", "resource:publish"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "collection_item_remove" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const result = workspaces.removeWorkspaceCollectionItem(auth.workspace.slug, collection, itemId);
+  if (!result.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_remove_missing", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: `${collection}:${itemId}`, via: auth.via });
+    return reply.code(result.status).send({ error: result.error, code: result.code });
+  }
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_removed", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: `${collection}:${result.item.itemRef}`, via: auth.via });
+  return {
+    workspace: publicWorkspace(auth.workspace),
+    collection: result.collection,
+    item: result.item,
+    removedResourceId: result.removedResourceId,
+    next: "Workspace approval removed. If no other collection references it, the derived workspace resource is removed too."
+  };
+});
+
 app.get("/leaderboard", async (request) => {
   const query = request.query as { limit?: string };
   const limit = Math.min(Number(query.limit ?? 10), 50);

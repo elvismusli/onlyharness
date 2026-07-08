@@ -29,6 +29,7 @@ mustInclude("apps/harness-api/src/server.ts", [
   "app.post(\"/workspaces/:slug/collections\"",
   "app.get(\"/workspaces/:slug/collections/:collection\"",
   "app.post(\"/workspaces/:slug/collections/:collection/items\"",
+  "app.delete(\"/workspaces/:slug/collections/:collection/items/:itemId\"",
   "app.post(\"/workspaces/:slug/imports/resource-package\"",
   "workspaceTokenFromRequest",
   "authorizeWorkspaceRequest"
@@ -46,6 +47,7 @@ mustInclude("apps/harness-api/src/workspaces.ts", [
   "workspaceResourceArchivePath",
   "WORKSPACE_RESOURCE_ARCHIVE_DIR",
   "approveWorkspacePublicResource",
+  "removeWorkspaceCollectionItem",
   "listWorkspaceCollections"
 ]);
 
@@ -62,6 +64,7 @@ mustInclude("apps/harness-api/src/openapi.ts", [
   "\"/workspaces/{slug}/collections\"",
   "\"/workspaces/{slug}/collections/{collection}\"",
   "\"/workspaces/{slug}/collections/{collection}/items\"",
+  "\"/workspaces/{slug}/collections/{collection}/items/{itemId}\"",
   "\"/workspaces/{slug}/imports/resource-package\""
 ]);
 
@@ -70,6 +73,7 @@ mustInclude("packages/harness-cli/src/index.ts", [
   "HH_WORKSPACE_TOKEN",
   "workspaceResourceRef",
   "resourcesCommand.command(\"approve\")",
+  "resourcesCommand.command(\"unapprove\")",
   "/workspaces/${input.workspace}/imports/resource-package"
 ]);
 
@@ -101,6 +105,8 @@ mustInclude("apps/registry-web/src/core/useWorkspace.ts", [
   "/workspaces/${encodeURIComponent(slug)}/members",
   "/workspaces/${encodeURIComponent(slug)}/invites",
   "/workspaces/${encodeURIComponent(slug)}/join",
+  "approveWorkspaceResource",
+  "removeWorkspaceCollectionItem",
   "workspaceHeadersForOwner"
 ]);
 
@@ -114,6 +120,7 @@ mustInclude("apps/registry-web/src/skins/shared/neutral/network.tsx", [
   "h.workspaceMembers",
   "h.createWorkspaceInvite",
   "h.joinWorkspace",
+  "Approvals",
   "resources detail"
 ]);
 

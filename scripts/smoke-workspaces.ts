@@ -106,6 +106,7 @@ try {
     "/workspaces/{slug}/collections",
     "/workspaces/{slug}/collections/{collection}",
     "/workspaces/{slug}/collections/{collection}/items",
+    "/workspaces/{slug}/collections/{collection}/items/{itemId}",
     "/workspaces/{slug}/imports/resource-package"
   ]) {
     if (!openapi.paths?.[route]) throw new Error(`OpenAPI missing ${route}`);
@@ -223,6 +224,29 @@ try {
   }).then((response) => response.json()) as { collection?: { slug?: string; items?: Array<{ sourceResourceId?: string; approvalState?: string }> } };
   if (collection.collection?.slug !== "approved" || !collection.collection.items?.some((item) => item.sourceResourceId === approvedSourceId && item.approvalState === "approved")) {
     throw new Error(`Workspace collection missing approved item: ${JSON.stringify(collection)}`);
+  }
+
+  const removableSourceId = "onlyharness:harnesses/launch-readiness-reviewer";
+  const approveRemovable = run("node", [cliBin, "resources", "approve", removableSourceId, "--workspace", "acme", "--collection", "approved", "--name", "launch-review", "--json"], { env: cliEnv });
+  const removableApproval = JSON.parse(approveRemovable.stdout) as { resource?: { id?: string }; item?: { id?: string; sourceResourceId?: string }; approvalState?: string };
+  if (removableApproval.resource?.id !== "@acme/launch-review" || removableApproval.item?.sourceResourceId !== removableSourceId || removableApproval.approvalState !== "approved") {
+    throw new Error(`Workspace removable approval returned wrong payload: ${approveRemovable.stdout}`);
+  }
+  const removeApproval = run("node", [cliBin, "resources", "unapprove", "@acme/launch-review", "--workspace", "acme", "--collection", "approved", "--json"], { env: cliEnv });
+  const removedApproval = JSON.parse(removeApproval.stdout) as { item?: { itemRef?: string }; removedResourceId?: string };
+  if (removedApproval.item?.itemRef !== "@acme/launch-review" || removedApproval.removedResourceId !== "@acme/launch-review") {
+    throw new Error(`Workspace unapprove returned wrong payload: ${removeApproval.stdout}`);
+  }
+  const removedSearch = run("node", [cliBin, "resources", "search", "launch readiness", "--workspace", "acme", "--json"], { env: cliEnv });
+  const removedSearchBody = JSON.parse(removedSearch.stdout) as { resources?: Array<{ id?: string }> };
+  if (removedSearchBody.resources?.some((item) => item.id === "@acme/launch-review")) {
+    throw new Error(`Workspace search still includes removed approval: ${removedSearch.stdout}`);
+  }
+  const collectionAfterRemove = await fetch(`${baseUrl}/workspaces/acme/collections/approved`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { collection?: { items?: Array<{ sourceResourceId?: string; itemRef?: string }> } };
+  if (collectionAfterRemove.collection?.items?.some((item) => item.sourceResourceId === removableSourceId || item.itemRef === "@acme/launch-review")) {
+    throw new Error(`Workspace collection still includes removed approval: ${JSON.stringify(collectionAfterRemove)}`);
   }
 
   const invite = await fetch(`${baseUrl}/workspaces/acme/invites`, {

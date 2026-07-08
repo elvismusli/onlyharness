@@ -186,6 +186,10 @@ export type WorkspaceApprovalResult =
   | { ok: true; collection: WorkspaceCollection; item: WorkspaceCollectionItem; resource: resources.Resource; approvalState: WorkspaceApprovalState }
   | { ok: false; status: number; error: string; code: string };
 
+export type WorkspaceCollectionItemRemoveResult =
+  | { ok: true; collection: WorkspaceCollection; item: WorkspaceCollectionItem; removedResourceId?: string }
+  | { ok: false; status: number; error: string; code: string };
+
 export type WorkspaceMemberResult =
   | { ok: true; workspace: WorkspaceRecord; member: WorkspaceMember }
   | { ok: false; status: number; error: string; code: string };
@@ -531,6 +535,31 @@ export function approveWorkspacePublicResource(slugValue: string, workspaceName:
   return { ok: true, collection: updatedCollection, item, resource, approvalState };
 }
 
+export function removeWorkspaceCollectionItem(slugValue: string, collectionSlugValue: string, itemIdValue: string): WorkspaceCollectionItemRemoveResult {
+  const slug = cleanWorkspaceSlug(slugValue);
+  const collectionSlug = cleanCollectionSlug(collectionSlugValue);
+  const itemId = decodeURIComponent(itemIdValue).trim();
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  if (!collectionSlug) return { ok: false, status: 400, error: "Invalid workspace collection", code: "INVALID_COLLECTION" };
+  if (!itemId) return { ok: false, status: 400, error: "Invalid workspace collection item", code: "INVALID_COLLECTION_ITEM" };
+
+  const collections = withDefaultCollection(readWorkspaceCollectionsFile(slug).collections);
+  const collection = collections.find((row) => row.slug === collectionSlug && !row.archivedAt);
+  if (!collection) return { ok: false, status: 404, error: "Workspace collection not found", code: "COLLECTION_NOT_FOUND" };
+  const item = collection.items.find((row) => row.id === itemId || row.itemRef === itemId || row.sourceResourceId === itemId);
+  if (!item) return { ok: false, status: 404, error: "Workspace collection item not found", code: "COLLECTION_ITEM_NOT_FOUND" };
+
+  const now = new Date().toISOString();
+  const updated: WorkspaceCollection = {
+    ...collection,
+    updatedAt: now,
+    items: collection.items.filter((row) => row.id !== item.id)
+  };
+  writeWorkspaceCollectionsFile(slug, [updated, ...collections.filter((row) => row.slug !== collectionSlug)]);
+  const removedResourceId = removeWorkspaceResourceIfOrphanedApproval(slug, item);
+  return { ok: true, collection: workspaceCollectionDetail(slug, collectionSlug) ?? updated, item, removedResourceId };
+}
+
 export function searchWorkspaceResources(slugValue: string, query: resources.ResourceQuery): resources.ResourceSearchResult {
   const slug = cleanWorkspaceSlug(slugValue);
   const all = slug ? readWorkspaceResourceCatalog(slug).resources : [];
@@ -581,6 +610,18 @@ export function workspaceResourceDetail(slugValue: string, idValue: string): res
   const normalized = decoded.replace(/^@[^/]+\//, "").replace(/^packages\//, "");
   const expectedId = workspaceResourceId(slug, normalized);
   return readWorkspaceResourceCatalog(slug).resources.find((resource) => resource.id === decoded || resource.id === expectedId || resource.upstreamRepo === normalized);
+}
+
+function removeWorkspaceResourceIfOrphanedApproval(slug: string, item: WorkspaceCollectionItem): string | undefined {
+  if (item.itemSource !== "public_resource") return undefined;
+  const collections = withDefaultCollection(readWorkspaceCollectionsFile(slug).collections).filter((collection) => !collection.archivedAt);
+  const stillReferenced = collections.some((collection) => collection.items.some((row) => row.itemRef === item.itemRef));
+  if (stillReferenced) return undefined;
+  const catalog = readWorkspaceResourceCatalog(slug);
+  const resource = catalog.resources.find((row) => row.id === item.itemRef && row.sourceCatalogId === item.sourceResourceId);
+  if (!resource) return undefined;
+  writeWorkspaceResourceCatalog(slug, catalog.resources.filter((row) => row.id !== resource.id));
+  return resource.id;
 }
 
 async function readWorkspaceBySlug(slug: string, withTokens: boolean): Promise<SupabaseLoad<WorkspaceRecord>> {
@@ -874,6 +915,21 @@ function readWorkspaceResourceCatalog(slug: string): ResourceCatalogFile {
       resources: []
     };
   }
+}
+
+function writeWorkspaceResourceCatalog(slug: string, rows: resources.Resource[]) {
+  const catalogPath = workspaceResourceCatalogPath(slug);
+  const now = new Date().toISOString();
+  mkdirSync(path.dirname(catalogPath), { recursive: true });
+  writeFileSync(catalogPath, `${JSON.stringify({
+    generatedAt: now,
+    source: {
+      catalog: path.relative(workspaceRoot, catalogPath),
+      sourceCheckedAt: now,
+      externalSeedCount: rows.length
+    },
+    resources: rows
+  }, null, 2)}\n`);
 }
 
 function readWorkspaceCollectionsFile(slug: string): WorkspaceCollectionsFile {
