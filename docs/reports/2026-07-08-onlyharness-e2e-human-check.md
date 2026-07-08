@@ -8,7 +8,7 @@ OnlyHarness is usable end-to-end for the core free native harness path and the m
 - API: pass. Health, OpenAPI, registry/resources, hosted archives and not-hosted guards work on prod.
 - MCP: pass after fix. Prod JSON-RPC exposes harness and resource tools, and now reports version `0.2.1`.
 - CLI/npm: partial. Published npm `onlyharness@0.2.0` works for native harness workflows but does not include `hh resources`; local `0.2.1` has it. Publishing `0.2.1` is blocked by npm auth.
-- Claude plugin: partial. Local plugin validates and source guidance was updated; already installed client copies still need refresh, and npm resource command guidance remains blocked on npm `0.2.1`.
+- Claude plugin: pass with restart note. Local plugin validates, GitHub marketplace source was pushed, and installed `onlyharness@onlyharness` updated to `1.0.1`; Claude Code says restart is required to apply it.
 - Paid/auth: anonymous guards pass; no QA credentials and no live paid harness fixture were available, so no real signup/payment mutation was performed.
 - Storage safety: pass. No local catalog archive download. Only two tiny sample archives were downloaded to `/tmp` and removed.
 
@@ -114,6 +114,9 @@ Partial.
 - `claude plugin validate .`: pass.
 - `claude plugin marketplace add elvismusli/onlyharness`: pass.
 - `claude plugin install onlyharness@onlyharness`: pass.
+- `claude plugin marketplace update onlyharness`: pass.
+- `claude plugin update onlyharness@onlyharness`: pass, updated `1.0.0 -> 1.0.1`; restart required to apply.
+- `claude plugin list`: pass, installed `onlyharness@onlyharness` version `1.0.1`.
 
 Found and fixed in source:
 
@@ -129,7 +132,7 @@ Current source now says:
 
 Remaining operational blocker:
 
-- Already installed Claude plugin copies can remain stale until users refresh or reinstall the plugin after the GitHub source update.
+- Other already installed Claude plugin copies can remain stale until users refresh/reinstall and restart Claude Code.
 
 ### 6. MCP Agent Path
 
@@ -196,7 +199,7 @@ Prod after deploy:
 ### P1
 
 - npm latest is stale for resource catalog commands. Published `onlyharness@0.2.0` lacks `hh resources`; local `0.2.1` works. Blocker is npm auth for publishing.
-- Already installed Claude plugin copies can still show stale skill guidance until refreshed/reinstalled.
+- Other already installed Claude plugin copies can still show stale skill guidance until refreshed/reinstalled and Claude Code is restarted.
 
 ### P2
 
@@ -217,5 +220,5 @@ Prod after deploy:
 ## Remaining Blockers
 
 - Publish `onlyharness@0.2.1` to npm once npm auth/2FA/token is available.
-- Refresh/reinstall already installed Claude plugin copies after the GitHub source update.
+- Refresh/reinstall other already installed Claude plugin copies after the GitHub source update; Claude Code restart is required to apply.
 - Add or expose a safe paid prod fixture if live paid `402` needs continuous public smoke coverage.
