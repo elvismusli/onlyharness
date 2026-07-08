@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { HarnessStore, useHarness } from "./store";
 import type { HarnessStoreValue } from "./store";
-import type { RegistryItem } from "./types";
+import type { RegistryItem, ResourceItem } from "./types";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -59,4 +59,41 @@ test("openHarness pushes a harness surface onto the stack", async () => {
     expect(surfaces[0]).toMatchObject({ id: "harness:acme/widget", kind: "harness", key: "acme/widget" });
   });
   expect(get().activeId).toBe("harness:acme/widget");
+});
+
+test("openResource shows copyable OnlyHarness-first resource use rows", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) }));
+
+  const get = renderStore();
+  const item = {
+    id: "github:obra/superpowers",
+    title: "superpowers",
+    canonicalUrl: "https://github.com/obra/superpowers",
+    upstreamOwner: "obra",
+    upstreamRepo: "superpowers",
+    actions: [
+      { id: "open_onlyharness", label: "Use in OnlyHarness", url: "https://onlyharness.com/#/resources/github%3Aobra%2Fsuperpowers" },
+      { id: "download_archive", label: "Download archive", url: "https://onlyharness.com/api/resources/github%3Aobra%2Fsuperpowers/archive" },
+      { id: "open_upstream", label: "Open upstream", url: "https://github.com/obra/superpowers" }
+    ]
+  } as ResourceItem;
+
+  act(() => {
+    get().openResource(item);
+  });
+
+  await waitFor(() => {
+    const dialog = get().dialog;
+    expect(dialog?.title).toBe("Use superpowers");
+    expect(dialog?.resourceUse?.rows.map((row) => row.label)).toEqual([
+      "OnlyHarness page",
+      "CLI detail",
+      "CLI open",
+      "Hosted archive",
+      "Upstream source"
+    ]);
+    expect(dialog?.resourceUse?.rows[1].value).toBe("npx onlyharness@latest resources detail github:obra/superpowers --json");
+    expect(dialog?.resourceUse?.rows[2].value).toBe("npx onlyharness@latest resources open github:obra/superpowers --json");
+    expect(dialog?.resourceUse?.rows[3].muted).toBeFalsy();
+  });
 });

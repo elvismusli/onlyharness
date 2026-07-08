@@ -3,7 +3,7 @@ import { apiUrl, CLAUDE_PLUGIN_INSTALL_COMMAND, CODEX_MCP_INSTALL_COMMAND } from
 import { clockLabel, keyFor } from "../../core/format";
 import { useHarness } from "../../core/store";
 import type { Surface } from "../../core/useAppNav";
-import type { WinKind } from "../../core/types";
+import type { DialogSpec, WinKind } from "../../core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
@@ -440,6 +440,7 @@ function App() {
           icon={h.dialog.icon}
           body={h.dialog.body}
           onClose={h.closeDialog}
+          wide={Boolean(h.dialog.resourceUse)}
           actions={
             h.dialog.onOk ? (
               <>
@@ -448,7 +449,16 @@ function App() {
               </>
             ) : undefined
           }
-        />
+        >
+          {h.dialog.resourceUse ? (
+            <ResourceUseDialogBody
+              icon={h.dialog.icon}
+              resourceUse={h.dialog.resourceUse}
+              copiedTag={h.copiedTag}
+              onCopy={(value, label, tag) => h.copyText(value, label, tag)}
+            />
+          ) : undefined}
+        </Dialog>
       )}
 
       {h.copyFallback && (
@@ -472,6 +482,39 @@ function App() {
           </div>
         </Dialog>
       )}
+    </div>
+  );
+}
+
+function ResourceUseDialogBody({ icon, resourceUse, copiedTag, onCopy }: {
+  icon: string;
+  resourceUse: NonNullable<DialogSpec["resourceUse"]>;
+  copiedTag: string;
+  onCopy: (value: string, label: string, tag: string) => void;
+}) {
+  return (
+    <div className="dialog-body resource-use-dialog">
+      <span className="di">{icon}</span>
+      <div className="resource-use-body">
+        {resourceUse.note && <p className="resource-use-note">{resourceUse.note}</p>}
+        <div className="resource-use-list">
+          {resourceUse.rows.map((row) => {
+            const copyable = !row.muted;
+            return (
+              <div className="resource-use-row" key={row.label}>
+                <span className="resource-use-label">{row.label}</span>
+                <code className={row.muted ? "resource-use-value muted" : "resource-use-value"}>{row.value}</code>
+                <Btn
+                  onClick={() => copyable && onCopy(row.value, row.copyLabel, row.copyTag)}
+                  disabled={!copyable}
+                >
+                  {copiedTag === row.copyTag ? "✓ Copied" : "Copy"}
+                </Btn>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

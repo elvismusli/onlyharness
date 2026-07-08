@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { useHarness } from "../../core/store";
+import type { DialogSpec } from "../../core/types";
 import { Btn } from "./primitives";
 
 /**
@@ -36,7 +37,7 @@ export function FansChrome() {
       {h.dialog && (
         <div className="fac-scrim" role="presentation" onClick={h.closeDialog}>
           <div
-            className="fac-modal"
+            className={h.dialog.resourceUse ? "fac-modal fac-modal-wide" : "fac-modal"}
             role="dialog"
             aria-modal="true"
             aria-label={h.dialog.title}
@@ -46,7 +47,15 @@ export function FansChrome() {
               {h.dialog.icon && <span className="fac-modal-icon" aria-hidden>{h.dialog.icon}</span>}
               <h2 className="fac-modal-title">{h.dialog.title}</h2>
             </div>
-            <p className="fac-modal-body">{h.dialog.body}</p>
+            {h.dialog.resourceUse ? (
+              <FansResourceUse
+                resourceUse={h.dialog.resourceUse}
+                copiedTag={h.copiedTag}
+                onCopy={(value, label, tag) => h.copyText(value, label, tag)}
+              />
+            ) : (
+              <p className="fac-modal-body">{h.dialog.body}</p>
+            )}
             <div className="fac-modal-actions">
               {h.dialog.onOk ? (
                 <>
@@ -95,5 +104,35 @@ export function FansChrome() {
         </div>
       )}
     </>
+  );
+}
+
+function FansResourceUse({ resourceUse, copiedTag, onCopy }: {
+  resourceUse: NonNullable<DialogSpec["resourceUse"]>;
+  copiedTag: string;
+  onCopy: (value: string, label: string, tag: string) => void;
+}) {
+  return (
+    <div className="fac-resource-use">
+      {resourceUse.note && <p className="fac-resource-note">{resourceUse.note}</p>}
+      <div className="fac-resource-list">
+        {resourceUse.rows.map((row) => {
+          const copyable = !row.muted;
+          return (
+            <div className="fac-resource-row" key={row.label}>
+              <span className="fac-resource-label">{row.label}</span>
+              <code className={row.muted ? "fac-resource-value muted" : "fac-resource-value"}>{row.value}</code>
+              <Btn
+                variant="outline"
+                disabled={!copyable}
+                onClick={() => copyable && onCopy(row.value, row.copyLabel, row.copyTag)}
+              >
+                {copiedTag === row.copyTag ? "Copied" : "Copy"}
+              </Btn>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

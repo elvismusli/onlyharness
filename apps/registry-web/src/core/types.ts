@@ -300,4 +300,14 @@ export type DialogSpec = {
   icon: string;
   body: string;
   cancel?: boolean;
+  resourceUse?: {
+    note?: string;
+    rows: Array<{
+      label: string;
+      value: string;
+      copyLabel: string;
+      copyTag: string;
+      muted?: boolean;
+    }>;
+  };
 };

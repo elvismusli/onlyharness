@@ -212,6 +212,8 @@ function useHarnessStore() {
       ?? `https://onlyharness.com/#/resources/${encodeURIComponent(item.id)}`;
     const archiveUrl = item.actions?.find((action) => action.id === "download_archive" && "url" in action)?.url;
     const upstreamUrl = item.actions?.find((action) => action.id === "open_upstream" && "url" in action)?.url ?? item.canonicalUrl;
+    const cliDetail = `npx onlyharness@latest resources detail ${item.id} --json`;
+    const cliOpen = `npx onlyharness@latest resources open ${item.id} --json`;
     window.history.replaceState(null, "", `#/resources/${encodeURIComponent(item.id)}`);
     showDialog({
       title: `Use ${item.title}`,
@@ -220,9 +222,46 @@ function useHarnessStore() {
         "Use this resource from OnlyHarness.",
         `OnlyHarness: ${onlyHarnessUrl}`,
         archiveUrl ? `Download from OnlyHarness: ${archiveUrl}` : "Download from OnlyHarness: not hosted yet",
-        `CLI: hh resources detail ${item.id}`,
+        `CLI detail: ${cliDetail}`,
+        `CLI open: ${cliOpen}`,
         `Upstream attribution: ${upstreamUrl}`
-      ].join("\n")
+      ].join("\n"),
+      resourceUse: {
+        note: "Use the OnlyHarness page and CLI first; upstream stays attribution/source.",
+        rows: [
+          {
+            label: "OnlyHarness page",
+            value: onlyHarnessUrl,
+            copyLabel: "OnlyHarness URL copied",
+            copyTag: `resource:page:${item.id}`
+          },
+          {
+            label: "CLI detail",
+            value: cliDetail,
+            copyLabel: "Resource detail command copied",
+            copyTag: `resource:detail:${item.id}`
+          },
+          {
+            label: "CLI open",
+            value: cliOpen,
+            copyLabel: "Resource open command copied",
+            copyTag: `resource:open:${item.id}`
+          },
+          {
+            label: "Hosted archive",
+            value: archiveUrl ?? "Not hosted yet",
+            copyLabel: archiveUrl ? "Archive URL copied" : "Archive is not hosted yet",
+            copyTag: `resource:archive:${item.id}`,
+            muted: !archiveUrl
+          },
+          {
+            label: "Upstream source",
+            value: upstreamUrl,
+            copyLabel: "Upstream URL copied",
+            copyTag: `resource:upstream:${item.id}`
+          }
+        ]
+      }
     });
     void fetch(`${apiUrl}/events`, {
       method: "POST",

@@ -22,7 +22,7 @@
   position: fixed;
   right: max(12px, env(safe-area-inset-right, 0px));
   bottom: calc(48px + env(safe-area-inset-bottom, 0px));
-  z-index: 2147483000;
+  z-index: 55;
 
   display: flex;
   align-items: center;

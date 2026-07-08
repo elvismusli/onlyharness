@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { useHarness } from "../../core/store";
+import type { DialogSpec } from "../../core/types";
 import { Btn } from "./primitives";
 
 /**
@@ -36,7 +37,7 @@ export function ModernChrome() {
       {h.dialog && (
         <div className="ohc-scrim" role="presentation" onClick={h.closeDialog}>
           <div
-            className="ohc-modal"
+            className={h.dialog.resourceUse ? "ohc-modal ohc-modal-wide" : "ohc-modal"}
             role="dialog"
             aria-modal="true"
             aria-label={h.dialog.title}
@@ -46,7 +47,15 @@ export function ModernChrome() {
               {h.dialog.icon && <span className="ohc-modal-icon" aria-hidden>{h.dialog.icon}</span>}
               <h2 className="ohc-modal-title">{h.dialog.title}</h2>
             </div>
-            <p className="ohc-modal-body">{h.dialog.body}</p>
+            {h.dialog.resourceUse ? (
+              <ModernResourceUse
+                resourceUse={h.dialog.resourceUse}
+                copiedTag={h.copiedTag}
+                onCopy={(value, label, tag) => h.copyText(value, label, tag)}
+              />
+            ) : (
+              <p className="ohc-modal-body">{h.dialog.body}</p>
+            )}
             <div className="ohc-modal-actions">
               {h.dialog.onOk ? (
                 <>
@@ -95,5 +104,36 @@ export function ModernChrome() {
         </div>
       )}
     </>
+  );
+}
+
+function ModernResourceUse({ resourceUse, copiedTag, onCopy }: {
+  resourceUse: NonNullable<DialogSpec["resourceUse"]>;
+  copiedTag: string;
+  onCopy: (value: string, label: string, tag: string) => void;
+}) {
+  return (
+    <div className="ohc-resource-use">
+      {resourceUse.note && <p className="ohc-resource-note">{resourceUse.note}</p>}
+      <div className="ohc-resource-list">
+        {resourceUse.rows.map((row) => {
+          const copyable = !row.muted;
+          return (
+            <div className="ohc-resource-row" key={row.label}>
+              <span className="ohc-resource-label">{row.label}</span>
+              <code className={row.muted ? "ohc-resource-value muted" : "ohc-resource-value"}>{row.value}</code>
+              <Btn
+                variant="secondary"
+                size="sm"
+                disabled={!copyable}
+                onClick={() => copyable && onCopy(row.value, row.copyLabel, row.copyTag)}
+              >
+                {copiedTag === row.copyTag ? "Copied" : "Copy"}
+              </Btn>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

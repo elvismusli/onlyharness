@@ -1208,6 +1208,72 @@ button.status-plate { cursor: pointer; }
   font: 12px "Courier New", monospace;
 }
 
+.resource-use-dialog {
+  align-items: flex-start;
+}
+
+.resource-use-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  width: min(720px, calc(100vw - 126px));
+}
+
+.resource-use-note {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.resource-use-list {
+  display: grid;
+  gap: 8px;
+}
+
+.resource-use-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) 82px;
+  align-items: start;
+  gap: 8px;
+}
+
+.resource-use-label {
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.resource-use-value {
+  display: block;
+  min-width: 0;
+  max-height: 92px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: #fff;
+  box-shadow: var(--bevel-sunken);
+  padding: 6px 7px;
+  color: var(--ink);
+  font: 12px "Courier New", monospace;
+}
+
+.resource-use-value.muted {
+  color: #666;
+  background: #e8e8e8;
+}
+
+@media (max-width: 680px) {
+  .resource-use-body {
+    width: calc(100vw - 86px);
+  }
+
+  .resource-use-row {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-use-row .b98 {
+    justify-self: start;
+  }
+}
+
 .logon-form { display: flex; flex-direction: column; gap: 8px; padding: 4px 16px 12px; }
 
 .logon-row { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 8px; font-size: 12px; }
