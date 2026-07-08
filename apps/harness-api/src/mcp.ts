@@ -43,7 +43,7 @@ type BuildMcpServerOptions = {
 let docsCache: { source: string; text: string; loadedAt: number } | undefined;
 
 export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
-  const server = new McpServer({ name: "onlyharness", version: "0.2.6" });
+  const server = new McpServer({ name: "onlyharness", version: "0.2.7" });
 
   server.registerTool(
     "search_harnesses",

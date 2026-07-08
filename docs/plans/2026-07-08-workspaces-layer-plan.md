@@ -1,13 +1,13 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, and approval security hardening shipped/deployed in `onlyharness@0.2.6`.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, and workspace membership/invites shipped in `onlyharness@0.2.7`.
 
 Current implementation status:
 
-- shipped: universal public resource packages, workspace token API foundation, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources search --workspace`, `hh resources detail @workspace/name`, OpenAPI/check/smoke coverage;
+- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources search --workspace`, `hh resources detail @workspace/name`, OpenAPI/check/smoke coverage;
 - prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
-- not done yet: user membership/invites, shared-neutral workspace management UI wiring, setup bundles v2, community gates, subscription lifecycle.
+- not done yet: shared-neutral workspace management UI wiring, setup bundles v2, community gates, subscription lifecycle.
 
 Review corrections incorporated:
 
@@ -1291,19 +1291,18 @@ Already shipped in the first production slice:
 
 Remaining from the original first sprint:
 
-1. Real user membership authorization in web/API, not only token access.
-2. `/orgs/{slug}/workspace` alias to new `/workspaces/{slug}/workspace` semantics.
-3. Shared-neutral web surface wired through `core/useWorkspace` across W98, Modern and Fans.
-4. Minimal workspace UI: connect workspace, list resources, copy install commands.
+1. `/orgs/{slug}/workspace` alias to new `/workspaces/{slug}/workspace` semantics.
+2. Shared-neutral web surface wired through `core/useWorkspace` across W98, Modern and Fans.
+3. Minimal workspace UI: connect workspace, list resources, copy install commands.
+4. Admin UI for members/invites using the shipped API, without exposing raw stored invite material.
 
 Recommended next production slice:
 
-1. Add real `workspace_members` and `workspace_invites` API with local JSON fallback and Supabase-ready schema.
-2. Add membership resolver for web/API user auth beside workspace tokens; keep CLI token-based unless `hh login` is pulled forward.
-3. Keep `HH_ORG_TOKEN` and `/orgs` compatibility.
-4. Wire `core/useWorkspace` into the shared-neutral workspace surface consumed by W98, Modern and Fans.
-5. Add smoke coverage for member read, denied non-member, invite join and audit redaction.
-6. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
+1. Keep `HH_ORG_TOKEN` and `/orgs` compatibility.
+2. Wire `core/useWorkspace` into the shared-neutral workspace surface consumed by W98, Modern and Fans.
+3. Add minimal web UI for member list, invite creation, join flow, resource list, and install command copy.
+4. Keep CLI token-based unless `hh login` is pulled forward.
+5. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
 
 Do not jump straight to a big admin UI. Private resource distribution and approved collection semantics are now the shipped baseline; the next admin UX should follow real member/invite access rules.
 

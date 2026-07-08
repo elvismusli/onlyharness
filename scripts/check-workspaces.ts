@@ -16,6 +16,11 @@ function mustInclude(file: string, needles: string[]) {
 mustInclude("apps/harness-api/src/server.ts", [
   "const workspacesEnabled = process.env.WORKSPACES_ENABLED === \"true\"",
   "app.get(\"/workspaces/:slug/workspace\"",
+  "app.get(\"/workspaces/:slug/members\"",
+  "app.post(\"/workspaces/:slug/members\"",
+  "app.delete(\"/workspaces/:slug/members/:userId\"",
+  "app.post(\"/workspaces/:slug/invites\"",
+  "app.post(\"/workspaces/:slug/join\"",
   "app.get(\"/workspaces/:slug/resources\"",
   "app.post(\"/workspaces/:slug/resources/approve\"",
   "app.get(\"/workspaces/:slug/resources/:id\"",
@@ -25,11 +30,16 @@ mustInclude("apps/harness-api/src/server.ts", [
   "app.get(\"/workspaces/:slug/collections/:collection\"",
   "app.post(\"/workspaces/:slug/collections/:collection/items\"",
   "app.post(\"/workspaces/:slug/imports/resource-package\"",
-  "workspaceTokenFromRequest"
+  "workspaceTokenFromRequest",
+  "authorizeWorkspaceRequest"
 ]);
 
 mustInclude("apps/harness-api/src/workspaces.ts", [
   "authorizeWorkspaceToken",
+  "authorizeWorkspaceMember",
+  "listWorkspaceMembers",
+  "createWorkspaceInvite",
+  "joinWorkspaceWithInvite",
   "legacy_org_token",
   "workspaceResourceId",
   "upsertWorkspaceResource",
@@ -41,6 +51,10 @@ mustInclude("apps/harness-api/src/workspaces.ts", [
 
 mustInclude("apps/harness-api/src/openapi.ts", [
   "\"/workspaces/{slug}/workspace\"",
+  "\"/workspaces/{slug}/members\"",
+  "\"/workspaces/{slug}/members/{userId}\"",
+  "\"/workspaces/{slug}/invites\"",
+  "\"/workspaces/{slug}/join\"",
   "\"/workspaces/{slug}/resources\"",
   "\"/workspaces/{slug}/resources/approve\"",
   "\"/workspaces/{slug}/resources/{id}\"",
@@ -62,9 +76,16 @@ mustInclude("packages/harness-cli/src/index.ts", [
 mustInclude("supabase/migrations/20260708120000_workspaces_layer.sql", [
   "create table if not exists public.workspaces",
   "create table if not exists public.workspace_members",
+  "create table if not exists public.workspace_invites",
   "create table if not exists public.workspace_tokens",
   "create table if not exists public.workspace_audit",
   "create table if not exists public.workspace_resources"
+]);
+
+mustInclude("supabase/migrations/20260708170000_workspace_member_invite_scopes.sql", [
+  "member:write",
+  "invite:write",
+  "workspace:admin"
 ]);
 
 mustInclude("supabase/migrations/20260708143000_workspace_collections.sql", [

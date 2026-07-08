@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.6",
+    version: "0.2.7",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -822,7 +822,7 @@ export const openapi = {
     "/workspaces/{slug}/workspace": {
       get: {
         summary: "Read a workspace catalog and audit summary",
-        description: "Requires WORKSPACES_ENABLED=true and a Bearer workspace token with workspace:read, read, setup or publish-compatible scope. Legacy org tokens are accepted as a compatibility bridge.",
+        description: "Requires WORKSPACES_ENABLED=true and either a Bearer workspace token with workspace:read/read/setup/publish-compatible scope or an active signed-in workspace member. Legacy org tokens are accepted as a compatibility bridge.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         responses: {
@@ -844,6 +844,104 @@ export const openapi = {
               }
             }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/members": {
+      get: {
+        summary: "List active workspace members",
+        description: "Requires workspace read access by token or active member session. Returns role/status/source metadata, not invite codes or tokens.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Workspace members",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, members: { type: "array", items: { $ref: "#/components/schemas/WorkspaceMember" } } } } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      },
+      post: {
+        summary: "Add or update a workspace member",
+        description: "Requires member:write token scope or owner/admin member role. This is the direct admin path; invite join is separate.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { userId: { type: "string" }, role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] }, source: { type: "string" } }, required: ["userId"] } } }
+        },
+        responses: {
+          "201": {
+            description: "Workspace member",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, member: { $ref: "#/components/schemas/WorkspaceMember" } } } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/members/{userId}": {
+      delete: {
+        summary: "Remove a workspace member",
+        description: "Marks a member removed. Requires member:write token scope or owner/admin member role.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug"), pathParam("userId")],
+        responses: {
+          "200": {
+            description: "Removed workspace member",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, member: { $ref: "#/components/schemas/WorkspaceMember" } } } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/invites": {
+      post: {
+        summary: "Create a workspace invite code",
+        description: "Requires invite:write/member:write token scope or owner/admin member role. The raw code is returned once; OnlyHarness stores only a hash.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] }, maxUses: { type: "integer" }, expiresInSeconds: { type: "integer" }, email: { type: "string" } } } } }
+        },
+        responses: {
+          "201": {
+            description: "Workspace invite code",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, invite: { $ref: "#/components/schemas/WorkspaceInvite" }, code: { type: "string" }, next: { type: "string" } } } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/join": {
+      post: {
+        summary: "Join a workspace with an invite code",
+        description: "Requires a signed-in user session. Validates the invite hash, expiry and use limit before writing membership.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { code: { type: "string" } }, required: ["code"] } } }
+        },
+        responses: {
+          "201": {
+            description: "Joined workspace member",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, member: { $ref: "#/components/schemas/WorkspaceMember" }, next: { type: "string" } } } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" }
@@ -1587,6 +1685,39 @@ export const openapi = {
           at: { type: "string" }
         },
         required: ["slug", "action", "token_name", "subject", "target", "at"]
+      },
+      WorkspaceMember: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          workspace_id: { type: "string" },
+          workspace_slug: { type: "string" },
+          user_id: { type: "string" },
+          role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] },
+          status: { type: "string", enum: ["invited", "active", "suspended", "removed"] },
+          source: { type: "string", enum: ["direct", "invite", "email_domain", "telegram", "discord", "entitlement", "paid_entitlement", "token_bootstrap"] },
+          joined_at: { type: "string" },
+          removed_at: { type: "string", nullable: true }
+        },
+        required: ["user_id", "role", "status", "source", "joined_at"]
+      },
+      WorkspaceInvite: {
+        type: "object",
+        description: "Public invite metadata. The stored code hash is intentionally not exposed.",
+        properties: {
+          id: { type: "string" },
+          workspaceId: { type: "string" },
+          workspaceSlug: { type: "string" },
+          email: { type: "string", nullable: true },
+          role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] },
+          maxUses: { type: "integer", nullable: true },
+          usesCount: { type: "integer" },
+          expiresAt: { type: "string", nullable: true },
+          createdBy: { type: "string", nullable: true },
+          createdAt: { type: "string" },
+          revokedAt: { type: "string", nullable: true }
+        },
+        required: ["role", "usesCount", "createdAt"]
       },
       WorkspaceCollection: {
         type: "object",

@@ -49,7 +49,7 @@ function createWorkspaceStore(target: string) {
           {
             name: "smoke",
             hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
-            scopes: ["workspace:read", "resource:read", "resource:publish", "resource:archive", "collection:write"],
+            scopes: ["workspace:read", "resource:read", "resource:publish", "resource:archive", "collection:write", "member:write", "invite:write"],
             expires_at: null
           }
         ]
@@ -96,6 +96,9 @@ try {
   const openapi = await fetch(`${baseUrl}/openapi.json`).then((response) => response.json()) as { paths?: Record<string, unknown> };
   for (const route of [
     "/workspaces/{slug}/workspace",
+    "/workspaces/{slug}/members",
+    "/workspaces/{slug}/invites",
+    "/workspaces/{slug}/join",
     "/workspaces/{slug}/resources",
     "/workspaces/{slug}/resources/approve",
     "/workspaces/{slug}/resources/{id}",
@@ -110,6 +113,27 @@ try {
 
   const noToken = await fetch(`${baseUrl}/workspaces/acme/workspace`);
   if (noToken.status !== 401) throw new Error(`Workspace without token should be 401, got ${noToken.status}`);
+
+  const outsider = await fetch(`${baseUrl}/workspaces/acme/workspace`, {
+    headers: { Authorization: "Bearer local:outsider" }
+  });
+  if (outsider.status !== 403) throw new Error(`Non-member workspace read should be 403, got ${outsider.status}`);
+
+  const memberAdd = await fetch(`${baseUrl}/workspaces/acme/members`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ userId: "member-1", role: "member", source: "direct" })
+  }).then((response) => response.json()) as { member?: { user_id?: string; role?: string; status?: string } };
+  if (memberAdd.member?.user_id !== "member-1" || memberAdd.member.role !== "member" || memberAdd.member.status !== "active") {
+    throw new Error(`Workspace member add returned wrong payload: ${JSON.stringify(memberAdd)}`);
+  }
+
+  const members = await fetch(`${baseUrl}/workspaces/acme/members`, {
+    headers: { Authorization: "Bearer local:member-1" }
+  }).then((response) => response.json()) as { members?: Array<{ user_id?: string; role?: string }> };
+  if (!members.members?.some((member) => member.user_id === "member-1" && member.role === "member")) {
+    throw new Error(`Workspace member list missing joined member: ${JSON.stringify(members)}`);
+  }
 
   const packageDir = path.join(tempRoot, "agent-tool");
   mkdirSync(path.join(packageDir, "scripts"), { recursive: true });
@@ -184,6 +208,11 @@ try {
     throw new Error(`Workspace archive contents are wrong:\n${tar.stdout}`);
   }
 
+  const memberArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:member-1" }
+  });
+  if (!memberArchive.ok) throw new Error(`Workspace member archive download failed: ${memberArchive.status}`);
+
   const approvedArchive = await fetch(`${baseUrl}/workspaces/acme/resources/deep-market-researcher/archive`, {
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -196,13 +225,37 @@ try {
     throw new Error(`Workspace collection missing approved item: ${JSON.stringify(collection)}`);
   }
 
+  const invite = await fetch(`${baseUrl}/workspaces/acme/invites`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ role: "viewer", maxUses: 1, expiresInSeconds: 3600 })
+  }).then((response) => response.json()) as { code?: string; invite?: { role?: string; usesCount?: number; code_hash?: string } };
+  if (!invite.code?.startsWith("ohwi_") || invite.invite?.role !== "viewer" || invite.invite.usesCount !== 0 || JSON.stringify(invite).includes("code_hash")) {
+    throw new Error(`Workspace invite returned unsafe payload: ${JSON.stringify(invite)}`);
+  }
+
+  const join = await fetch(`${baseUrl}/workspaces/acme/join`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:invite-user", "content-type": "application/json" },
+    body: JSON.stringify({ code: invite.code })
+  }).then((response) => response.json()) as { member?: { user_id?: string; role?: string; source?: string } };
+  if (join.member?.user_id !== "invite-user" || join.member.role !== "viewer" || join.member.source !== "invite") {
+    throw new Error(`Workspace invite join failed: ${JSON.stringify(join)}`);
+  }
+
+  const viewerArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:invite-user" }
+  });
+  if (viewerArchive.status !== 403) throw new Error(`Viewer archive access should be 403, got ${viewerArchive.status}`);
+
   const workspace = await fetch(`${baseUrl}/workspaces/acme/workspace`, {
     headers: { Authorization: `Bearer ${token}` }
   }).then((response) => response.json()) as { resources?: Array<{ id?: string }>; collections?: Array<{ slug?: string }>; audit?: unknown[]; permissions?: { totalResources?: number; hostedArchives?: number } };
   if (!workspace.resources?.some((item) => item.id === "@acme/agent-tool") || !workspace.resources?.some((item) => item.id === "@acme/deep-market-researcher") || !workspace.collections?.some((item) => item.slug === "approved") || workspace.permissions?.hostedArchives !== 1) {
     throw new Error(`Workspace overview missing published resource: ${JSON.stringify(workspace)}`);
   }
-  if (JSON.stringify(workspace.audit ?? []).includes(token)) throw new Error("Workspace audit leaked raw token");
+  const auditJson = JSON.stringify(workspace.audit ?? []);
+  if (auditJson.includes(token) || auditJson.includes(invite.code ?? "")) throw new Error("Workspace audit leaked raw token or invite code");
 
 } finally {
   api.kill();

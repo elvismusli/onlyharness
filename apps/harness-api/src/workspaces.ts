@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { workspaceRoot } from "./registry.js";
 import { cleanOrgSlug, tokenHash, authorizeOrgToken, appendOrgAudit, readOrgAudit, type OrgRecord, type OrgAuditEntry } from "./orgs.js";
 import * as resources from "./resources.js";
@@ -8,6 +8,8 @@ import * as resources from "./resources.js";
 export type WorkspaceType = "company" | "community" | "team" | "course" | "agency" | "chat";
 export type WorkspaceVisibility = "private" | "invite_only" | "gated" | "public" | "unlisted";
 export type WorkspaceRole = "owner" | "admin" | "moderator" | "publisher" | "member" | "viewer";
+export type WorkspaceMemberStatus = "invited" | "active" | "suspended" | "removed";
+export type WorkspaceMemberSource = "direct" | "invite" | "email_domain" | "telegram" | "discord" | "entitlement" | "paid_entitlement" | "token_bootstrap";
 
 export type WorkspaceRecord = {
   id?: string;
@@ -27,6 +29,33 @@ export type WorkspaceToken = {
   hash: string;
   scopes: string[];
   expires_at?: string | null;
+};
+
+export type WorkspaceMember = {
+  id?: string;
+  workspace_id?: string;
+  workspace_slug?: string;
+  user_id: string;
+  role: WorkspaceRole;
+  status: WorkspaceMemberStatus;
+  source: WorkspaceMemberSource;
+  joined_at: string;
+  removed_at?: string | null;
+};
+
+export type WorkspaceInvite = {
+  id?: string;
+  workspace_id?: string;
+  workspace_slug?: string;
+  email?: string | null;
+  code_hash: string;
+  role: WorkspaceRole;
+  max_uses?: number | null;
+  uses_count: number;
+  expires_at?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  revoked_at?: string | null;
 };
 
 export type WorkspaceAuditEntry = {
@@ -70,6 +99,8 @@ export type WorkspaceCollection = {
 
 type WorkspaceStore = {
   workspaces?: WorkspaceRecord[];
+  members?: WorkspaceMember[];
+  invites?: WorkspaceInvite[];
 };
 
 type ResourceCatalogFile = {
@@ -107,6 +138,31 @@ type SupabaseTokenRow = {
   expires_at?: string | null;
 };
 
+type SupabaseMemberRow = {
+  id?: string;
+  workspace_id?: string;
+  user_id?: string;
+  role?: string;
+  status?: string;
+  source?: string;
+  joined_at?: string;
+  removed_at?: string | null;
+};
+
+type SupabaseInviteRow = {
+  id?: string;
+  workspace_id?: string;
+  email?: string | null;
+  code_hash?: string;
+  role?: string;
+  max_uses?: number | null;
+  uses_count?: number;
+  expires_at?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  revoked_at?: string | null;
+};
+
 type SupabaseAuditRow = {
   action?: string;
   target?: string | null;
@@ -123,11 +179,23 @@ type SupabaseLoad<T> =
   | { status: "unavailable" };
 
 export type WorkspaceAuthResult =
-  | { ok: true; workspace: WorkspaceRecord; tokenName: string; via: "workspace_token" | "legacy_org_token" }
+  | { ok: true; workspace: WorkspaceRecord; tokenName?: string; userId?: string; role?: WorkspaceRole; via: "workspace_token" | "legacy_org_token" | "workspace_member" }
   | { ok: false; status: number; error: string; slug?: string; tokenName?: string; auditAction: string };
 
 export type WorkspaceApprovalResult =
   | { ok: true; collection: WorkspaceCollection; item: WorkspaceCollectionItem; resource: resources.Resource; approvalState: WorkspaceApprovalState }
+  | { ok: false; status: number; error: string; code: string };
+
+export type WorkspaceMemberResult =
+  | { ok: true; workspace: WorkspaceRecord; member: WorkspaceMember }
+  | { ok: false; status: number; error: string; code: string };
+
+export type WorkspaceInviteResult =
+  | { ok: true; workspace: WorkspaceRecord; invite: WorkspaceInvite; code: string }
+  | { ok: false; status: number; error: string; code: string };
+
+export type WorkspaceJoinResult =
+  | { ok: true; workspace: WorkspaceRecord; invite: WorkspaceInvite; member: WorkspaceMember }
   | { ok: false; status: number; error: string; code: string };
 
 export function cleanWorkspaceSlug(value: string | undefined): string | undefined {
@@ -157,7 +225,118 @@ export async function authorizeWorkspaceToken(slugValue: string | undefined, tok
   return { ok: false, status: 404, error: "Workspace not found", slug, auditAction: "workspace_missing" };
 }
 
-export async function appendWorkspaceAudit(input: { slug: string; action: string; tokenName?: string; subject?: string; target?: string; via?: "workspace_token" | "legacy_org_token" }): Promise<void> {
+export async function authorizeWorkspaceMember(slugValue: string | undefined, userIdValue: string | undefined, requiredScopes: string[]): Promise<WorkspaceAuthResult> {
+  const slug = cleanWorkspaceSlug(slugValue);
+  const userId = cleanUserId(userIdValue);
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", auditAction: "workspace_invalid_slug" };
+  if (!userId) return { ok: false, status: 401, error: "Workspace member session required", slug, auditAction: "workspace_member_missing" };
+
+  const workspace = await readWorkspaceBySlug(slug, false);
+  if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", slug, auditAction: workspace.status === "missing" ? "workspace_missing" : "workspace_unavailable" };
+  const member = await readWorkspaceMember(workspace.value, userId);
+  if (!member || member.status !== "active" || member.removed_at) {
+    return { ok: false, status: 403, error: "Workspace membership required", slug, auditAction: "workspace_member_denied" };
+  }
+  if (!requiredScopes.some((scope) => roleAllowsScope(member.role, scope))) {
+    return { ok: false, status: 403, error: "Workspace role cannot perform this action", slug, auditAction: "workspace_role_denied" };
+  }
+  return { ok: true, workspace: workspace.value, userId, role: member.role, via: "workspace_member" };
+}
+
+export async function listWorkspaceMembers(slugValue: string | undefined): Promise<WorkspaceMember[]> {
+  const slug = cleanWorkspaceSlug(slugValue);
+  if (!slug) return [];
+  const workspace = await readWorkspaceBySlug(slug, false);
+  if (workspace.status !== "found") return [];
+  const remote = workspace.value.id ? await readSupabaseWorkspaceMembers(workspace.value.id) : undefined;
+  if (remote) return remote;
+  return readLocalWorkspaceMembers(workspace.value);
+}
+
+export async function upsertWorkspaceMember(slugValue: string | undefined, input: { userId?: string; role?: string; source?: string }): Promise<WorkspaceMemberResult> {
+  const slug = cleanWorkspaceSlug(slugValue);
+  const userId = cleanUserId(input.userId);
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  if (!userId) return { ok: false, status: 400, error: "userId is required", code: "INVALID_USER" };
+  const workspace = await readWorkspaceBySlug(slug, false);
+  if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
+  const role = normalizeWorkspaceRole(input.role);
+  const source = normalizeMemberSource(input.source);
+  const member: WorkspaceMember = {
+    id: existingLocalMember(workspace.value, userId)?.id,
+    workspace_id: workspace.value.id,
+    workspace_slug: workspace.value.slug,
+    user_id: userId,
+    role,
+    status: "active",
+    source,
+    joined_at: new Date().toISOString(),
+    removed_at: null
+  };
+  const remote = workspace.value.id ? await upsertSupabaseWorkspaceMember(workspace.value, member) : undefined;
+  return { ok: true, workspace: workspace.value, member: remote ?? upsertLocalWorkspaceMember(workspace.value, member) };
+}
+
+export async function removeWorkspaceMember(slugValue: string | undefined, userIdValue: string | undefined): Promise<WorkspaceMemberResult> {
+  const slug = cleanWorkspaceSlug(slugValue);
+  const userId = cleanUserId(userIdValue);
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  if (!userId) return { ok: false, status: 400, error: "Invalid user id", code: "INVALID_USER" };
+  const workspace = await readWorkspaceBySlug(slug, false);
+  if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
+  const existing = await readWorkspaceMember(workspace.value, userId);
+  if (!existing) return { ok: false, status: 404, error: "Workspace member not found", code: "MEMBER_NOT_FOUND" };
+  const removed: WorkspaceMember = { ...existing, status: "removed", removed_at: new Date().toISOString() };
+  const remote = workspace.value.id ? await removeSupabaseWorkspaceMember(workspace.value, userId, removed.removed_at ?? new Date().toISOString()) : undefined;
+  return { ok: true, workspace: workspace.value, member: remote ?? upsertLocalWorkspaceMember(workspace.value, removed) };
+}
+
+export async function createWorkspaceInvite(slugValue: string | undefined, input: { role?: string; maxUses?: number | null; expiresInSeconds?: number | null; email?: string | null; createdBy?: string | null }): Promise<WorkspaceInviteResult> {
+  const slug = cleanWorkspaceSlug(slugValue);
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  const workspace = await readWorkspaceBySlug(slug, false);
+  if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
+  const code = `ohwi_${randomBytes(18).toString("base64url")}`;
+  const now = new Date().toISOString();
+  const invite: WorkspaceInvite = {
+    id: cryptoRandomId("invite"),
+    workspace_id: workspace.value.id,
+    workspace_slug: workspace.value.slug,
+    email: cleanEmail(input.email),
+    code_hash: tokenHash(code),
+    role: normalizeWorkspaceRole(input.role, "member"),
+    max_uses: normalizeMaxUses(input.maxUses),
+    uses_count: 0,
+    expires_at: expiresAtFromSeconds(input.expiresInSeconds),
+    created_by: cleanUserId(input.createdBy) ?? null,
+    created_at: now,
+    revoked_at: null
+  };
+  const remote = workspace.value.id ? await createSupabaseWorkspaceInvite(workspace.value, invite) : undefined;
+  return { ok: true, workspace: workspace.value, invite: remote ?? upsertLocalWorkspaceInvite(workspace.value, invite), code };
+}
+
+export async function joinWorkspaceWithInvite(slugValue: string | undefined, input: { code?: string; userId?: string }): Promise<WorkspaceJoinResult> {
+  const slug = cleanWorkspaceSlug(slugValue);
+  const userId = cleanUserId(input.userId);
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  if (!userId) return { ok: false, status: 401, error: "Sign in required before joining workspace", code: "AUTH_REQUIRED" };
+  const inviteHash = cleanInviteCodeHash(input.code);
+  if (!inviteHash) return { ok: false, status: 400, error: "Invite code is required", code: "INVALID_INVITE" };
+  const workspace = await readWorkspaceBySlug(slug, false);
+  if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
+  const invite = await readWorkspaceInviteByHash(workspace.value, inviteHash);
+  if (!invite || invite.revoked_at) return { ok: false, status: 404, error: "Invite not found", code: "INVITE_NOT_FOUND" };
+  if (invite.expires_at && Date.parse(invite.expires_at) <= Date.now()) return { ok: false, status: 403, error: "Invite expired", code: "INVITE_EXPIRED" };
+  if (invite.max_uses !== null && invite.max_uses !== undefined && invite.uses_count >= invite.max_uses) return { ok: false, status: 403, error: "Invite already used", code: "INVITE_EXHAUSTED" };
+  const member = await upsertWorkspaceMember(workspace.value.slug, { userId, role: invite.role, source: "invite" });
+  if (!member.ok) return member;
+  const updatedInvite: WorkspaceInvite = { ...invite, uses_count: invite.uses_count + 1 };
+  const persistedInvite = workspace.value.id ? await updateSupabaseWorkspaceInviteUses(workspace.value, updatedInvite) : undefined;
+  return { ok: true, workspace: workspace.value, invite: persistedInvite ?? upsertLocalWorkspaceInvite(workspace.value, updatedInvite), member: member.member };
+}
+
+export async function appendWorkspaceAudit(input: { slug: string; action: string; tokenName?: string; subject?: string; target?: string; via?: "workspace_token" | "legacy_org_token" | "workspace_member" }): Promise<void> {
   if (input.via === "legacy_org_token") {
     await appendOrgAudit({ slug: input.slug, action: `workspace_${input.action}`, tokenName: input.tokenName, subject: input.subject, target: input.target });
     return;
@@ -431,6 +610,126 @@ async function readSupabaseWorkspaceBySlug(slug: string, withTokens: boolean): P
   return { status: "found", value: { ...workspace, tokens: tokenRows.flatMap(normalizeSupabaseToken) } };
 }
 
+async function readWorkspaceMember(workspace: WorkspaceRecord, userId: string): Promise<WorkspaceMember | undefined> {
+  if (workspace.id) {
+    const rows = await supabaseRows<SupabaseMemberRow>("workspace_members", {
+      select: "id,workspace_id,user_id,role,status,source,joined_at,removed_at",
+      workspace_id: `eq.${workspace.id}`,
+      user_id: `eq.${userId}`,
+      limit: "1"
+    });
+    if (rows) return normalizeSupabaseMember(rows[0], workspace.slug)[0];
+  }
+  return existingLocalMember(workspace, userId);
+}
+
+async function readSupabaseWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[] | undefined> {
+  const rows = await supabaseRows<SupabaseMemberRow>("workspace_members", {
+    select: "id,workspace_id,user_id,role,status,source,joined_at,removed_at",
+    workspace_id: `eq.${workspaceId}`,
+    removed_at: "is.null",
+    order: "joined_at.desc",
+    limit: "200"
+  });
+  return rows?.flatMap((row) => normalizeSupabaseMember(row));
+}
+
+async function upsertSupabaseWorkspaceMember(workspace: WorkspaceRecord, member: WorkspaceMember): Promise<WorkspaceMember | undefined> {
+  if (!workspace.id) return undefined;
+  const response = await supabaseRequest("workspace_members", { on_conflict: "workspace_id,user_id" }, {
+    method: "POST",
+    headers: { ...supabaseHeaders(), "content-type": "application/json", prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({
+      workspace_id: workspace.id,
+      user_id: member.user_id,
+      role: member.role,
+      status: member.status,
+      source: member.source,
+      joined_at: member.joined_at,
+      removed_at: member.removed_at ?? null
+    })
+  });
+  if (!response?.ok) return undefined;
+  try {
+    const body = await response.json() as SupabaseMemberRow[];
+    return normalizeSupabaseMember(body[0], workspace.slug)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+async function removeSupabaseWorkspaceMember(workspace: WorkspaceRecord, userId: string, removedAt: string): Promise<WorkspaceMember | undefined> {
+  if (!workspace.id) return undefined;
+  const response = await supabaseRequest("workspace_members", { workspace_id: `eq.${workspace.id}`, user_id: `eq.${userId}` }, {
+    method: "PATCH",
+    headers: { ...supabaseHeaders(), "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({ status: "removed", removed_at: removedAt })
+  });
+  if (!response?.ok) return undefined;
+  try {
+    const body = await response.json() as SupabaseMemberRow[];
+    return normalizeSupabaseMember(body[0], workspace.slug)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+async function createSupabaseWorkspaceInvite(workspace: WorkspaceRecord, invite: WorkspaceInvite): Promise<WorkspaceInvite | undefined> {
+  if (!workspace.id) return undefined;
+  const response = await supabaseRequest("workspace_invites", undefined, {
+    method: "POST",
+    headers: { ...supabaseHeaders(), "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({
+      workspace_id: workspace.id,
+      email: invite.email ?? null,
+      code_hash: invite.code_hash,
+      role: invite.role,
+      max_uses: invite.max_uses ?? null,
+      uses_count: invite.uses_count,
+      expires_at: invite.expires_at ?? null,
+      created_by: invite.created_by ?? null,
+      created_at: invite.created_at,
+      revoked_at: invite.revoked_at ?? null
+    })
+  });
+  if (!response?.ok) return undefined;
+  try {
+    const body = await response.json() as SupabaseInviteRow[];
+    return normalizeSupabaseInvite(body[0], workspace.slug)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+async function readWorkspaceInviteByHash(workspace: WorkspaceRecord, codeHash: string): Promise<WorkspaceInvite | undefined> {
+  if (workspace.id) {
+    const rows = await supabaseRows<SupabaseInviteRow>("workspace_invites", {
+      select: "id,workspace_id,email,code_hash,role,max_uses,uses_count,expires_at,created_by,created_at,revoked_at",
+      workspace_id: `eq.${workspace.id}`,
+      code_hash: `eq.${codeHash}`,
+      limit: "1"
+    });
+    if (rows) return normalizeSupabaseInvite(rows[0], workspace.slug)[0];
+  }
+  return readLocalWorkspaceInvites(workspace).find((invite) => tokenMatchesRawHash(codeHash, invite.code_hash));
+}
+
+async function updateSupabaseWorkspaceInviteUses(workspace: WorkspaceRecord, invite: WorkspaceInvite): Promise<WorkspaceInvite | undefined> {
+  if (!workspace.id || !invite.id) return undefined;
+  const response = await supabaseRequest("workspace_invites", { id: `eq.${invite.id}` }, {
+    method: "PATCH",
+    headers: { ...supabaseHeaders(), "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({ uses_count: invite.uses_count })
+  });
+  if (!response?.ok) return undefined;
+  try {
+    const body = await response.json() as SupabaseInviteRow[];
+    return normalizeSupabaseInvite(body[0], workspace.slug)[0];
+  } catch {
+    return undefined;
+  }
+}
+
 function authorizeTokenFromWorkspace(workspace: WorkspaceRecord, token: string, requiredScopes: string[]): WorkspaceAuthResult {
   const tokenRow = (workspace.tokens ?? []).find((row) => tokenMatches(token, row.hash));
   if (!tokenRow) return { ok: false, status: 403, error: "Invalid workspace token", slug: workspace.slug, auditAction: "workspace_token_denied" };
@@ -453,6 +752,18 @@ function scopeAllowed(required: string, scopes: string[]): boolean {
   if (required === "resource:publish") return scopes.includes("publish");
   if (required === "resource:read" || required === "resource:archive") return scopes.some((scope) => ["read", "setup", "publish"].includes(scope));
   if (required === "collection:write") return scopes.some((scope) => ["publish", "collection:write"].includes(scope));
+  if (required === "member:write") return scopes.some((scope) => ["member:write", "workspace:admin"].includes(scope));
+  if (required === "invite:write") return scopes.some((scope) => ["invite:write", "member:write", "workspace:admin"].includes(scope));
+  return false;
+}
+
+function roleAllowsScope(role: WorkspaceRole, required: string): boolean {
+  if (role === "owner") return true;
+  if (required === "workspace:read" || required === "resource:read") return ["admin", "moderator", "publisher", "member", "viewer"].includes(role);
+  if (required === "workspace:setup" || required === "resource:archive") return ["admin", "publisher", "member"].includes(role);
+  if (required === "resource:publish" || required === "collection:write") return ["admin", "publisher"].includes(role);
+  if (required === "member:write" || required === "invite:write") return role === "admin";
+  if (required === "audit:read") return role === "admin";
   return false;
 }
 
@@ -462,6 +773,7 @@ function mapWorkspaceScopesToLegacyOrgScopes(scopes: string[]): string[] {
     if (scope === "workspace:read" || scope === "resource:read" || scope === "resource:archive") mapped.add("read");
     if (scope === "workspace:setup") mapped.add("setup");
     if (scope === "resource:publish" || scope === "collection:write") mapped.add("publish");
+    if (scope === "member:write" || scope === "invite:write") mapped.add("publish");
   }
   if (!mapped.size) mapped.add("read");
   return [...mapped];
@@ -475,10 +787,72 @@ function readWorkspaceStore(): WorkspaceStore {
   if (!existsSync(localWorkspacesPath())) return { workspaces: [] };
   try {
     const parsed = JSON.parse(readFileSync(localWorkspacesPath(), "utf8")) as WorkspaceStore;
-    return { workspaces: Array.isArray(parsed.workspaces) ? parsed.workspaces.map(normalizeLocalWorkspace).filter((item): item is WorkspaceRecord => Boolean(item)) : [] };
+    return {
+      workspaces: Array.isArray(parsed.workspaces) ? parsed.workspaces.map(normalizeLocalWorkspace).filter((item): item is WorkspaceRecord => Boolean(item)) : [],
+      members: Array.isArray(parsed.members) ? parsed.members.flatMap(normalizeLocalMember) : [],
+      invites: Array.isArray(parsed.invites) ? parsed.invites.flatMap(normalizeLocalInvite) : []
+    };
   } catch {
     return { workspaces: [] };
   }
+}
+
+function writeWorkspaceStore(store: WorkspaceStore) {
+  mkdirSync(path.dirname(localWorkspacesPath()), { recursive: true });
+  writeFileSync(localWorkspacesPath(), `${JSON.stringify({
+    workspaces: store.workspaces ?? [],
+    members: store.members ?? [],
+    invites: store.invites ?? []
+  }, null, 2)}\n`);
+}
+
+function readLocalWorkspaceMembers(workspace: WorkspaceRecord): WorkspaceMember[] {
+  return (readWorkspaceStore().members ?? [])
+    .filter((member) => memberBelongsToWorkspace(member, workspace) && member.removed_at === null)
+    .sort((a, b) => Date.parse(b.joined_at) - Date.parse(a.joined_at));
+}
+
+function readLocalWorkspaceInvites(workspace: WorkspaceRecord): WorkspaceInvite[] {
+  return (readWorkspaceStore().invites ?? [])
+    .filter((invite) => inviteBelongsToWorkspace(invite, workspace));
+}
+
+function existingLocalMember(workspace: WorkspaceRecord, userId: string): WorkspaceMember | undefined {
+  return (readWorkspaceStore().members ?? []).find((member) => memberBelongsToWorkspace(member, workspace) && member.user_id === userId);
+}
+
+function upsertLocalWorkspaceMember(workspace: WorkspaceRecord, member: WorkspaceMember): WorkspaceMember {
+  const store = readWorkspaceStore();
+  const normalized = normalizeLocalMember({
+    ...member,
+    id: member.id ?? cryptoRandomId("member"),
+    workspace_id: member.workspace_id ?? workspace.id,
+    workspace_slug: workspace.slug
+  })[0];
+  if (!normalized) throw new Error("Invalid workspace member");
+  const members = store.members ?? [];
+  writeWorkspaceStore({
+    ...store,
+    members: [normalized, ...members.filter((row) => !(memberBelongsToWorkspace(row, workspace) && row.user_id === normalized.user_id))]
+  });
+  return normalized;
+}
+
+function upsertLocalWorkspaceInvite(workspace: WorkspaceRecord, invite: WorkspaceInvite): WorkspaceInvite {
+  const store = readWorkspaceStore();
+  const normalized = normalizeLocalInvite({
+    ...invite,
+    id: invite.id ?? cryptoRandomId("invite"),
+    workspace_id: invite.workspace_id ?? workspace.id,
+    workspace_slug: workspace.slug
+  })[0];
+  if (!normalized) throw new Error("Invalid workspace invite");
+  const invites = store.invites ?? [];
+  writeWorkspaceStore({
+    ...store,
+    invites: [normalized, ...invites.filter((row) => row.id !== normalized.id && row.code_hash !== normalized.code_hash)]
+  });
+  return normalized;
 }
 
 function readWorkspaceResourceCatalog(slug: string): ResourceCatalogFile {
@@ -695,6 +1069,74 @@ function normalizeLocalWorkspace(row: WorkspaceRecord | undefined): WorkspaceRec
   };
 }
 
+function normalizeSupabaseMember(row: SupabaseMemberRow | undefined, workspaceSlug?: string): WorkspaceMember[] {
+  const userId = cleanUserId(row?.user_id);
+  if (!row || !userId || !row.workspace_id) return [];
+  return [{
+    id: row.id,
+    workspace_id: row.workspace_id,
+    workspace_slug: workspaceSlug,
+    user_id: userId,
+    role: normalizeWorkspaceRole(row.role),
+    status: normalizeMemberStatus(row.status),
+    source: normalizeMemberSource(row.source),
+    joined_at: typeof row.joined_at === "string" ? row.joined_at : new Date().toISOString(),
+    removed_at: typeof row.removed_at === "string" ? row.removed_at : null
+  }];
+}
+
+function normalizeLocalMember(row: WorkspaceMember | undefined): WorkspaceMember[] {
+  const userId = cleanUserId(row?.user_id);
+  if (!row || !userId || (!row.workspace_id && !cleanWorkspaceSlug(row.workspace_slug))) return [];
+  return [{
+    id: typeof row.id === "string" && row.id ? row.id : cryptoRandomId("member"),
+    workspace_id: typeof row.workspace_id === "string" ? row.workspace_id : undefined,
+    workspace_slug: cleanWorkspaceSlug(row.workspace_slug),
+    user_id: userId,
+    role: normalizeWorkspaceRole(row.role),
+    status: normalizeMemberStatus(row.status),
+    source: normalizeMemberSource(row.source),
+    joined_at: typeof row.joined_at === "string" ? row.joined_at : new Date().toISOString(),
+    removed_at: typeof row.removed_at === "string" ? row.removed_at : null
+  }];
+}
+
+function normalizeSupabaseInvite(row: SupabaseInviteRow | undefined, workspaceSlug?: string): WorkspaceInvite[] {
+  if (!row?.workspace_id || !row.code_hash?.startsWith("sha256:")) return [];
+  return [{
+    id: row.id,
+    workspace_id: row.workspace_id,
+    workspace_slug: workspaceSlug,
+    email: cleanEmail(row.email),
+    code_hash: row.code_hash,
+    role: normalizeWorkspaceRole(row.role, "member"),
+    max_uses: normalizeMaxUses(row.max_uses),
+    uses_count: normalizeUsesCount(row.uses_count),
+    expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
+    created_by: cleanUserId(row.created_by) ?? null,
+    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+    revoked_at: typeof row.revoked_at === "string" ? row.revoked_at : null
+  }];
+}
+
+function normalizeLocalInvite(row: WorkspaceInvite | undefined): WorkspaceInvite[] {
+  if (!row?.code_hash?.startsWith("sha256:") || (!row.workspace_id && !cleanWorkspaceSlug(row.workspace_slug))) return [];
+  return [{
+    id: typeof row.id === "string" && row.id ? row.id : cryptoRandomId("invite"),
+    workspace_id: typeof row.workspace_id === "string" ? row.workspace_id : undefined,
+    workspace_slug: cleanWorkspaceSlug(row.workspace_slug),
+    email: cleanEmail(row.email),
+    code_hash: row.code_hash,
+    role: normalizeWorkspaceRole(row.role, "member"),
+    max_uses: normalizeMaxUses(row.max_uses),
+    uses_count: normalizeUsesCount(row.uses_count),
+    expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
+    created_by: cleanUserId(row.created_by) ?? null,
+    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+    revoked_at: typeof row.revoked_at === "string" ? row.revoked_at : null
+  }];
+}
+
 function normalizeWorkspaceCollection(row: WorkspaceCollection | undefined): WorkspaceCollection[] {
   const slug = cleanCollectionSlug(row?.slug);
   if (!row || !slug) return [];
@@ -782,6 +1224,13 @@ function tokenMatches(token: string, storedHash: string | undefined): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+function tokenMatchesRawHash(actualHash: string, storedHash: string | undefined): boolean {
+  if (!actualHash.startsWith("sha256:") || typeof storedHash !== "string" || !storedHash.startsWith("sha256:")) return false;
+  const actual = Buffer.from(actualHash);
+  const expected = Buffer.from(storedHash);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
 function normalizeWorkspaceType(value: unknown): WorkspaceType {
   return ["company", "community", "team", "course", "agency", "chat"].includes(String(value)) ? value as WorkspaceType : "team";
 }
@@ -790,8 +1239,65 @@ function normalizeWorkspaceVisibility(value: unknown): WorkspaceVisibility {
   return ["private", "invite_only", "gated", "public", "unlisted"].includes(String(value)) ? value as WorkspaceVisibility : "private";
 }
 
+function normalizeWorkspaceRole(value: unknown, fallback: WorkspaceRole = "member"): WorkspaceRole {
+  return ["owner", "admin", "moderator", "publisher", "member", "viewer"].includes(String(value)) ? value as WorkspaceRole : fallback;
+}
+
+function normalizeMemberStatus(value: unknown): WorkspaceMemberStatus {
+  return ["invited", "active", "suspended", "removed"].includes(String(value)) ? value as WorkspaceMemberStatus : "active";
+}
+
+function normalizeMemberSource(value: unknown): WorkspaceMemberSource {
+  return ["direct", "invite", "email_domain", "telegram", "discord", "entitlement", "paid_entitlement", "token_bootstrap"].includes(String(value)) ? value as WorkspaceMemberSource : "direct";
+}
+
 function normalizePlan(value: unknown): WorkspaceRecord["plan"] {
   return value === "team" || value === "enterprise" ? value : "free";
+}
+
+function cleanUserId(value: string | undefined | null): string | undefined {
+  const clean = value?.trim();
+  return clean && /^[A-Za-z0-9._:@-]{2,128}$/.test(clean) ? clean : undefined;
+}
+
+function cleanEmail(value: string | undefined | null): string | null {
+  const clean = value?.trim().toLowerCase();
+  return clean && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean) && clean.length <= 254 ? clean : null;
+}
+
+function normalizeMaxUses(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 && number <= 10_000 ? number : null;
+}
+
+function normalizeUsesCount(value: unknown): number {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : 0;
+}
+
+function expiresAtFromSeconds(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 60 * 60 * 24 * 365) return null;
+  return new Date(Date.now() + Math.floor(seconds) * 1000).toISOString();
+}
+
+function cleanInviteCodeHash(code: string | undefined): string | undefined {
+  const clean = code?.trim();
+  return clean && /^ohwi_[A-Za-z0-9_-]{16,80}$/.test(clean) ? tokenHash(clean) : undefined;
+}
+
+function cryptoRandomId(prefix: string): string {
+  return `${prefix}_${randomBytes(12).toString("base64url")}`;
+}
+
+function memberBelongsToWorkspace(member: WorkspaceMember, workspace: WorkspaceRecord): boolean {
+  return Boolean((workspace.id && member.workspace_id === workspace.id) || (member.workspace_slug && member.workspace_slug === workspace.slug));
+}
+
+function inviteBelongsToWorkspace(invite: WorkspaceInvite, workspace: WorkspaceRecord): boolean {
+  return Boolean((workspace.id && invite.workspace_id === workspace.id) || (invite.workspace_slug && invite.workspace_slug === workspace.slug));
 }
 
 function cleanAuditText(value: string | undefined, fallback: string): string {
