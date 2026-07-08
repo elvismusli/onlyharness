@@ -4,9 +4,9 @@
 
 The UI ships as **OnlyHarness 98** — a deliberately playful Windows 98 / MS Paint / WordArt desktop (per `design_handoff_harness_hub_98`): every surface is a window, harnesses open as draggable windows with a taskbar, auth is a Log On dialog, and the share card is `harness_flex.exe`. Design decisions live in [docs/plans/2026-07-04-win98-redesign-design.md](docs/plans/2026-07-04-win98-redesign-design.md). Internal package names still use `@harnesshub/*`, except the public CLI workspace/package is `onlyharness`.
 
-## What is a harness?
+## What is a native harness package?
 
-A harness is a versioned agent workflow package:
+A native harness package is the strict, verified package format inside the broader OnlyHarness resource catalog:
 
 - `harness.yaml` manifest with runtime, tools, permissions, quality gates, and risk profile.
 - Prompt, examples, eval cases, and expected outputs.
@@ -23,12 +23,12 @@ Supabase auth is enabled for signup/login, stars, local remix drafts, thread pos
 
 ## Features
 
-- HuggingFace-style discovery for agent harnesses, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
+- HuggingFace-style discovery for agent resources, wrapped in a Win98 desktop with a real window manager (drag, minimize, z-order, taskbar, Start menu).
 - Outcome filters, global search, leaderboard, Harness Heat, stars, server-side remix fork counters, threads, and verified gate-run counters.
 - Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel; Versions is backed by archive snapshot history.
-- Authenticated publish flow (`New Harness Wizard`) that imports markdown into a harness scaffold.
+- Authenticated quick publish flow (`New Resource Wizard`) that imports markdown into a small unverified scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
-- CLI package `onlyharness` with `hh search`, `hh resources search/detail/open/import`, `hh suggest`, `hh pull`, `hh run`, `hh publish`, `hh doctor`, `hh audit-setup`, `hh benchmark`, `hh extract`, `hh setup @org`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
+- CLI package `onlyharness` with `hh search`, `hh resources search/detail/open/import`, `hh suggest`, `hh pull`, `hh run`, `hh publish`, `hh publish-resource`, `hh doctor`, `hh audit-setup`, `hh benchmark`, `hh extract`, `hh setup @org`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
 - Agent-friendly discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), [`/server.json`](https://onlyharness.com/server.json), and `/mcp` document the HTTP/MCP surfaces so an AI agent can find and pull a harness without a browser.
 - Local bounty flow: create/claim/deliver/accept work-state over the existing `gate_escrow` rail; `paid` is set only after a matching escrow purchase captures against the delivered gate receipt.
 - Semantic PR review and quality gate sidecar API.
@@ -86,11 +86,12 @@ npx onlyharness@latest resources search superpowers --json
 npx onlyharness@latest resources detail github:obra/superpowers --json
 npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
+npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
 npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop --json
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-Resource catalog commands are available in published `onlyharness@0.2.1` and through MCP/HTTP.
+Resource catalog and `publish-resource` commands are available in published `onlyharness@0.2.3` and through MCP/HTTP.
 
 For local development, build the workspace bundle and run it directly:
 
@@ -106,6 +107,8 @@ node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
 HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish git@github.com:acme/harnesses.git --path harnesses/my-harness --name my-harness --json
+HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
+HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name my-private-harness
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
@@ -115,12 +118,13 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 ## For agents
 
 - Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json), OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://onlyharness.com/.well-known/oauth-protected-resource), and authorization-server metadata at [`/.well-known/oauth-authorization-server`](https://onlyharness.com/.well-known/oauth-authorization-server).
-- MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_docs`, and `publish_markdown_to_harness`. `harness_detail`/`pull_instructions` expose read-only access/payment state; only `pull_harness`/archive delivery returns files after entitlement.
+- MCP: `https://onlyharness.com/mcp` with `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_resources`, `resource_detail`, `resource_use_instructions`, `search_docs`, `publish_markdown_to_harness`, and `publish_resource_package`. `harness_detail`/`pull_instructions` expose read-only access/payment state; only `pull_harness`/archive delivery returns native harness files after entitlement.
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`. Org auth/bundles/audit read Supabase service-role tables first and keep `HARNESS_ORGS_PATH`/`HARNESS_ORG_AUDIT_PATH` as the local smoke fallback.
 - Team workspace UI/API: Network Neighborhood uses `GET /api/orgs/{slug}/workspace` with the same org token and returns org-private cards, sanitized audit rows, and a permission/risk summary.
 - Team git sync: `hh sync <git-url-or-local-path> --org acme` clones/scans markdown skills and runbooks, then imports them through the org publish endpoint. First version has no webhooks.
 - Maintainer publish: `hh publish <harness-dir>` requires local `.harnesshub/results.json`; `hh publish <git-url> --path <harness-dir>` clones to a temp dir, runs local eval/gate there, then publishes only if the server rechecks schema, security and gate successfully.
+- Resource package publish: `hh publish-resource <dir-or-git-url> --name <slug> --type <type>` packages safe bounded text files from skills, plugins, workflows, MCP servers, command packs, scripts, docs or source bundles into OnlyHarness archive storage and lists the result in `/api/resources`. It is not a Verified harness badge.
 - Org-private pulls use the same token path: `HH_ORG_TOKEN=<org-token> hh pull @acme/private-harness`.
 - Directory shelf entries are link-only discovery indexes under owner `directories`. They show `open <url>` in search results and `GET /api/repos/directories/{name}/archive` returns `409 DIRECTORY_LINK_ONLY` instead of runnable files.
 - Server-side remix is a local draft flow with a real fork graph row: `POST /api/repos/{owner}/{repo}/remixes` creates a free unverified `local/{name}` copy from archive files only and records the source -> fork edge. Paid, org/private, directory, link-only and unspecified-license sources fail closed; copied fallback recipes do not increment forks or store prompts/local paths.

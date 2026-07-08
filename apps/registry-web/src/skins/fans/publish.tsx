@@ -15,8 +15,7 @@ const CREATED: { emoji: string; line: string }[] = [
 ];
 
 /**
- * Fans Publish surface — the New Harness Wizard reimagined as the playful "Start
- * your harness" post box. A full-viewport overlay on the blue wash (rendered on
+ * Fans Publish surface — the quick markdown scaffold as a compact post box. A full-viewport overlay on the blue wash (rendered on
  * top of the landing by the surface router), driving the SAME shared publish
  * state as every other skin: `importName`, `importMarkdown`, `importStatus`,
  * `importBusy` and `submitImport`.
@@ -34,15 +33,15 @@ export function FansPublish({ surface }: { surface: Surface }) {
   const close = () => h.closeSurface(surface.id);
 
   return (
-    <div className="fa-overlay fans-publish" role="dialog" aria-label="Start your harness">
+    <div className="fa-overlay fans-publish" role="dialog" aria-label="Quick markdown scaffold">
       <div className="fans-publish-card">
         <header className="fans-publish-head">
           <div className="fans-publish-head-main">
-            <span className="fans-publish-kicker">💙 New harness</span>
-            <h2 className="fans-publish-title">Start your harness</h2>
+            <span className="fans-publish-kicker">💙 New resource</span>
+            <h2 className="fans-publish-title">Quick markdown scaffold</h2>
             <p className="fans-publish-sub">
-              Paste a rough markdown workflow — we turn it into a real harness repo you can run,
-              then post &amp; flex. 🤠
+              Paste a rough workflow for a small scaffold. Full skills, plugins, MCP servers,
+              command packs and repos with scripts use <b>hh publish-resource</b>.
             </p>
           </div>
           <button type="button" className="fans-publish-close" aria-label="Close" onClick={close}>
@@ -51,7 +50,7 @@ export function FansPublish({ surface }: { surface: Surface }) {
         </header>
 
         <label className="fans-publish-field">
-          <span className="fans-publish-label">Harness name</span>
+          <span className="fans-publish-label">Resource name</span>
           <input
             className="fans-publish-name"
             value={h.importName}
@@ -101,7 +100,7 @@ export function FansPublish({ surface }: { surface: Surface }) {
             <Btn
               variant="primary"
               className="fans-publish-cta"
-              onClick={() => h.openLogon("Log in to publish a harness.")}
+              onClick={() => h.openLogon("Log in to publish a resource.")}
             >
               🔑 Log in to publish
             </Btn>
@@ -114,16 +113,15 @@ export function FansPublish({ surface }: { surface: Surface }) {
           ) : (
             <span className="fans-publish-hint">
               {loggedIn
-                ? "Fork responsibly, cowboy. 🤠"
+                ? "Hosted packages use hh publish-resource."
                 : "Publishing needs an account — it's free."}
             </span>
           )}
         </div>
 
         <p className="fans-publish-fine">
-          The scaffolded eval is <b>unverified</b>. Run{" "}
-          <span className="fans-publish-mono">hh eval</span> and{" "}
-          <span className="fans-publish-mono">hh gate</span> before you trust a published harness.
+          This web path creates a markdown-derived scaffold. Hosted multi-file packages use{" "}
+          <span className="fans-publish-mono">hh publish-resource</span>; verified native packages use eval and gate.
         </p>
       </div>
     </div>

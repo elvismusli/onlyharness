@@ -107,7 +107,7 @@ export function ExploreWindow({ items, resources, resourceCounts, resourceTab, s
         { icon: "💬", label: top ? `Thread: ${top.title}` : "Threads", onClick: () => top && actions.openHarness(top, "Thread") },
         { icon: "🏆", label: "Wild West leaderboard", onClick: actions.openLeaderboard },
         { icon: "🗂️", label: "My Briefcase...", onClick: actions.openProfile },
-        { icon: "★", label: "My starred harnesses", onClick: () => setJobFilter("starred") }
+        { icon: "★", label: "My starred resources", onClick: () => setJobFilter("starred") }
       ]
     },
     {
@@ -156,7 +156,7 @@ export function ExploreWindow({ items, resources, resourceCounts, resourceTab, s
                 <Btn strong big onClick={() => document.getElementById("trending")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                   🌐 Browse resources
                 </Btn>
-                <Btn big onClick={actions.openPublish}>＋ Publish a harness</Btn>
+                <Btn big onClick={actions.openPublish}>＋ Publish a resource</Btn>
                 <Btn big onClick={() => actions.openInstall(top)}>💿 Install Center</Btn>
               </div>
               <div className="marquee">
@@ -198,7 +198,7 @@ export function ExploreWindow({ items, resources, resourceCounts, resourceTab, s
               <div className="empty-state">
                 <span className="tumbleweed">🌵</span>
                 {jobFilter === "starred" && !session
-                  ? "Log on to see the harnesses you starred."
+                  ? "Log on to see the resources you starred."
                   : jobFilter === "starred"
                     ? "You haven't starred anything yet. Go warm something up."
                     : "No harnesses found on this frontier. Try another word, partner."}

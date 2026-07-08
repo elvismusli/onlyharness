@@ -44,13 +44,13 @@ try {
     capabilities: {},
     clientInfo: { name: "onlyharness-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "onlyharness" || initialize.result?.serverInfo?.version !== "0.2.1") {
+  if (initialize.result?.serverInfo?.name !== "onlyharness" || initialize.result?.serverInfo?.version !== "0.2.3") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 
   const tools = await rpc(2, "tools/list", {});
   const names = tools.result?.tools?.map((tool: { name: string }) => tool.name) ?? [];
-  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "search_resources", "resource_detail", "resource_use_instructions"]) {
+  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package", "search_resources", "resource_detail", "resource_use_instructions"]) {
     if (!names.includes(expected)) throw new Error(`MCP tool missing: ${expected}`);
   }
 
@@ -236,10 +236,23 @@ try {
     throw new Error(`MCP publish auth guard failed: ${JSON.stringify(publish)}`);
   }
 
+  const publishResource = await rpc(121, "tools/call", {
+    name: "publish_resource_package",
+    arguments: {
+      name: "no-auth-resource",
+      resourceType: "command_pack",
+      files: [{ path: "README.md", content: "# No Auth Resource\n\nThis should return an authorization error instead of publishing." }]
+    }
+  });
+  const publishResourceText = publishResource.result?.content?.[0]?.text ?? "";
+  if (!publishResourceText.includes("Authorization required") || !publishResourceText.includes("oauth-protected-resource")) {
+    throw new Error(`MCP resource package publish auth guard failed: ${JSON.stringify(publishResource)}`);
+  }
+
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, search_resources, resource instructions, search_docs public source, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guard, GET 405");
+  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, search_resources, resource instructions, search_docs public source, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guards, GET 405");
 } finally {
   api.kill("SIGTERM");
   rmSync(paidRoot, { recursive: true, force: true });

@@ -235,7 +235,7 @@ function compatibilityInfo(manifest: HarnessManifest, directory: RegistryItem["d
       { id: "cursor", name: "Cursor", status: "available", notes: "hh install --target cursor" },
       { id: "mcp", name: "MCP", status: "available", notes: "pull_instructions + pull_harness" },
       { id: "cli", name: "CLI", status: "available", notes: "hh install/run/eval/gate" },
-      { id: "github", name: "GitHub", status: "available", notes: "archive curl or verified git publish" }
+      { id: "github", name: "GitHub", status: "available", notes: "publish-resource or verified git publish" }
     ]
   };
 }

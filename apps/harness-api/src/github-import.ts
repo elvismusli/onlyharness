@@ -241,8 +241,8 @@ function licenseStatusFor(license: string): GitHubResourceImportResult["licenseS
 }
 
 function recommendedAction(classification: GitHubResourceImportResult["classification"], licenseStatus: GitHubResourceImportResult["licenseStatus"]): string {
-  if (classification === "harness_candidate") return "Can be listed as a harness-format resource; use publish only if you want OnlyHarness-hosted files.";
-  if (licenseStatus === "permissive") return "Can be listed as an upstream resource; package files only when explicitly needed.";
+  if (classification === "harness_candidate") return "Can be listed as a native package candidate; use hh publish after eval/gate for Verified, or hh publish-resource for an unverified hosted resource package.";
+  if (licenseStatus === "permissive") return "Can be listed as an upstream resource; use hh publish-resource only when you explicitly want an OnlyHarness-hosted package archive.";
   return "List as upstream-only and send users to the source URL; do not re-host files until license review passes.";
 }
 

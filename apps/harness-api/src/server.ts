@@ -9,7 +9,7 @@ import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff
 import { decodePaymentSignatureHeader, encodePaymentResponseHeader, HTTPFacilitatorClient } from "@x402/core/http";
 import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from "@x402/core/types";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { buildMcpServer, type PublishMarkdownHandler, type PullHarnessHandler } from "./mcp.js";
+import { buildMcpServer, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, verifyCommunityInviteCode } from "./community.js";
 import { openapi } from "./openapi.js";
@@ -39,6 +39,21 @@ type ImportRequest = {
 
 type HarnessDirPublishRequest = {
   name?: string;
+  files?: Array<{
+    path?: string;
+    content?: string;
+    truncated?: boolean;
+  }>;
+};
+
+type ResourcePackageImportRequest = {
+  name?: string;
+  title?: string;
+  summary?: string;
+  resourceType?: string;
+  sourceUrl?: string;
+  worksWith?: string[];
+  tags?: string[];
   files?: Array<{
     path?: string;
     content?: string;
@@ -813,6 +828,7 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
 app.post("/mcp", async (request, reply) => {
   const server = buildMcpServer({
     publishMarkdown: publishMarkdownFromMcp,
+    publishResourcePackage: publishResourcePackageFromMcp,
     pullHarness: pullHarnessFromMcp,
     harnessDetail: harnessDetailFromMcp,
     pullInstructions: pullInstructionsFromMcp
@@ -863,6 +879,20 @@ app.post("/imports/harness-dir", async (request, reply) => {
     return reply.code(result.status ?? 500).send(payload);
   }
   return result;
+});
+
+app.post("/imports/resource-package", async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as ResourcePackageImportRequest : {};
+  const result = await importResourcePackage(body, user);
+  if ("error" in result) {
+    const payload: { error: string; code?: string; failures?: string[] } = { error: result.error ?? "Resource package import failed" };
+    if ("code" in result && result.code) payload.code = result.code;
+    if ("failures" in result && result.failures) payload.failures = result.failures;
+    return reply.code(result.status ?? 500).send(payload);
+  }
+  return reply.code(201).send(result);
 });
 
 app.post("/imports/github-resource", async (request, reply) => {
@@ -1045,6 +1075,19 @@ const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorizatio
     };
   }
   const result = await importMarkdownToHarness(body, auth.user);
+  return "error" in result ? result : result;
+};
+
+const publishResourcePackageFromMcp: PublishResourcePackageHandler = async (body, authorization) => {
+  const auth = await userFromAuthorization(authorization);
+  if (!auth.user) {
+    return {
+      error: auth.error ?? "Authorization required",
+      status: auth.status ?? 401,
+      resource_metadata: resourceMetadataUrl
+    };
+  }
+  const result = await importResourcePackage(body, auth.user);
   return "error" in result ? result : result;
 };
 
@@ -1688,6 +1731,125 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
   }
 }
 
+async function importResourcePackage(body: ResourcePackageImportRequest, user: AuthUser) {
+  const files = Array.isArray(body.files) ? body.files : [];
+  if (!files.length) return { status: 400, error: "files are required" };
+  if (files.length > 120) return { status: 400, error: "too many files" };
+
+  const temp = path.join(registry.workspaceRoot, "data", `.resource-package-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const safeFiles: Array<{ path: string; content: string }> = [];
+  try {
+    for (const file of files) {
+      const safe = safeResourcePackageFile(file);
+      if (!safe.ok) return { status: safe.status, error: safe.error, code: safe.code };
+      const target = path.join(temp, safe.path);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, safe.content);
+      safeFiles.push({ path: safe.path, content: safe.content });
+    }
+
+    const readme = safeFiles.find((file) => /(^|\/)readme\.md$/i.test(file.path));
+    const requested = body.name ?? body.title ?? (readme ? firstHeading(readme.content) : undefined);
+    if (!requested) return { status: 400, error: "name or title is required" };
+    const name = slugify(requested);
+    if (!safePublicHarnessName(name)) return { status: 400, error: "name is not publishable" };
+
+    const resourceType = normalizeResourceType(body.resourceType, safeFiles.map((file) => file.path));
+    const title = cleanTitle(body.title) ?? (readme ? firstHeading(readme.content) : undefined) ?? titleizeName(name);
+    const summary = cleanSummary(body.summary) ?? `Hosted ${resourceType.replace(/_/g, " ")} package published to OnlyHarness.`;
+    const worksWith = normalizeWorksWith(body.worksWith, resourceType);
+    const sourceUrl = cleanPublicUrl(body.sourceUrl);
+    if (body.sourceUrl && !sourceUrl) return { status: 400, error: "sourceUrl must be a public http(s) URL without credentials" };
+
+    const id = `onlyharness:packages/${name}`;
+    const archiveRoot = resources.resourceArchiveRoot();
+    const archivePath = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.tar.gz`);
+    const archiveTemp = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.${Date.now()}.tmp`);
+    const tar = spawnSync("tar", ["-czf", archiveTemp, "-C", temp, "."], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
+    if (tar.status !== 0) {
+      rmSync(archiveTemp, { force: true });
+      return { status: 500, error: "failed to create hosted resource archive", failures: [tar.stderr || tar.stdout || "tar exited with an error"] };
+    }
+    renameSync(archiveTemp, archivePath);
+
+    const now = new Date().toISOString();
+    const signals = { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 };
+    const base: Omit<resources.Resource, "popularityScore" | "popularityBreakdown"> = {
+      id,
+      identity: { scheme: "onlyharness", key: `packages/${name}` },
+      title,
+      summary,
+      resourceType,
+      sourcePlatform: "manual",
+      canonicalUrl: `https://onlyharness.com/#/resources/${encodeURIComponent(id)}`,
+      upstreamId: `packages/${name}`,
+      upstreamOwner: "onlyharness",
+      upstreamRepo: name,
+      creatorName: user.email ?? "OnlyHarness user",
+      licenseStatus: "unknown",
+      sourceCheckedAt: now,
+      sourceCheckMethod: "manual_research",
+      sourceCheckStatus: "active",
+      lastSeenAt: now,
+      installability: "importable",
+      tags: dedupeStrings([resourceType, "hosted", "agent-resource", ...(body.tags ?? [])]),
+      worksWith,
+      upstreamPopularity: { sourceLabel: "OnlyHarness hosted resource package" },
+      onlyHarnessSignals: signals,
+      trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+      actions: [
+        { id: "open_onlyharness", label: "Use in OnlyHarness", url: `https://onlyharness.com/#/resources/${encodeURIComponent(id)}` },
+        { id: "download_archive", label: "Download archive", url: `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive` },
+        ...(sourceUrl ? [{ id: "open_upstream" as const, label: "Open source", url: sourceUrl }] : [])
+      ],
+      ...(sourceUrl ? {
+        source: {
+          platform: "manual",
+          url: sourceUrl,
+          checkedAt: now,
+          checkedBy: "manual_research"
+        }
+      } : {})
+    };
+    const score = resources.popularityScore(base);
+    const resource: resources.Resource = {
+      ...base,
+      popularityScore: score.total,
+      popularityBreakdown: {
+        upstreamScore: round2(score.upstreamScore),
+        onlyHarnessScore: round2(score.onlyHarnessScore),
+        freshnessBoost: score.freshnessBoost,
+        riskPenalty: score.riskPenalty
+      }
+    };
+    resources.upsertImportedResource(resource);
+    await recordEvent({ kind: "applied", owner: "onlyharness", repo: name, subject: eventSubject(user.id), target: "resource_package", client: "api" });
+    appendState({
+      type: "resource_package_import",
+      id,
+      name,
+      resourceType,
+      archive: archivePath,
+      files: safeFiles.length,
+      userId: user.id,
+      sourceUrl,
+      at: now
+    });
+    return {
+      resource,
+      archive: {
+        url: `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive`,
+        fileName: resources.resourceArchiveFileName(resource)
+      },
+      hosted: true,
+      verified: false,
+      next: "This is a hosted agent resource package, not a verified harness. Run eval/gate and publish a native verified package only when you need a Verified install badge."
+    };
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 function applyOrgManifest(root: string, orgSlug: string) {
   const manifestPath = path.join(root, "harness.yaml");
   const manifest = YAML.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
@@ -1715,18 +1877,153 @@ function safePublishFile(file: NonNullable<HarnessDirPublishRequest["files"]>[nu
   return { ok: true, path: normalized, content: file.content };
 }
 
+function safeResourcePackageFile(file: NonNullable<ResourcePackageImportRequest["files"]>[number]):
+  | { ok: true; path: string; content: string }
+  | { ok: false; status: number; error: string; code?: string } {
+  if (file.truncated) return { ok: false, status: 400, error: "truncated files cannot be published", code: "TRUNCATED_FILE" };
+  if (typeof file.path !== "string" || typeof file.content !== "string") return { ok: false, status: 400, error: "each file needs path and content", code: "INVALID_FILE" };
+  const normalized = file.path.split("\\").join("/");
+  if (!safeAgentResourcePath(normalized)) return { ok: false, status: 400, error: `unsafe resource package path: ${file.path}`, code: "UNSAFE_PATH" };
+  if (Buffer.byteLength(file.content, "utf8") > registry.MAX_ARCHIVE_FILE_BYTES) return { ok: false, status: 400, error: `file too large: ${normalized}`, code: "FILE_TOO_LARGE" };
+  return { ok: true, path: normalized, content: file.content };
+}
+
 function safePublishPath(file: string): boolean {
+  return safeAgentResourcePath(file);
+}
+
+function safeAgentResourcePath(file: string): boolean {
   if (!file || file.startsWith("/") || file.includes("\0")) return false;
   const normalized = path.posix.normalize(file);
   if (normalized !== file || normalized.startsWith("../") || normalized === "..") return false;
-  if (/(^|\/)(node_modules|\.git)(\/|$)/.test(file)) return false;
-  if (file === "harness.yaml" || file === "README.md" || file === "AGENTS.md" || file === "LICENSE" || file === "LICENSE.md") return true;
+  if (/(^|\/)(node_modules|\.git|dist|build|coverage|\.next)(\/|$)/i.test(file)) return false;
+  if (deniedAgentResourcePath(file)) return false;
+  if (!safeTextResourceExtension(file)) return false;
+  if (safeAgentResourceRootFile(file)) return true;
   if (file === ".harnesshub/results.json") return true;
-  return /^(agents|skills|prompts|tools|gates|evals|examples|runbooks|\.gitea\/workflows)\//.test(file);
+  return /^(agents|skills|prompts|tools|scripts|commands|gates|evals|examples|runbooks|workflows|mcp|plugins|docs|src|lib|bin|\.claude|\.codex|\.claude-plugin|\.codex-plugin|\.gitea\/workflows)\//.test(file);
 }
 
 function safePublicHarnessName(name: string): boolean {
   return /^[a-z0-9][a-z0-9-]{1,80}$/.test(name);
+}
+
+function safeAgentResourceRootFile(file: string): boolean {
+  return [
+    "harness.yaml",
+    "harness.yml",
+    "README.md",
+    "AGENTS.md",
+    "SKILL.md",
+    "CLAUDE.md",
+    "LICENSE",
+    "LICENSE.md",
+    "package.json",
+    "requirements.txt",
+    "pyproject.toml",
+    "tsconfig.json",
+    "server.json",
+    "plugin.json",
+    "workflow.md",
+    "Dockerfile",
+    "Makefile",
+    ".gitignore",
+    ".mcp.json"
+  ].includes(file);
+}
+
+function deniedAgentResourcePath(file: string): boolean {
+  const lower = file.toLowerCase();
+  const segments = lower.split("/");
+  if (segments.some((segment) => segment === ".env" || segment.startsWith(".env.") || segment === ".npmrc" || segment === ".pypirc" || segment === ".netrc")) return true;
+  if (segments.some((segment) => /^(id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts|secrets?|private|credentials?)$/.test(segment))) return true;
+  return /\.(pem|key|p12|pfx|crt|cer|sqlite|sqlite3|db|zip|tar|tgz|gz|png|jpe?g|gif|webp|pdf|mp4|mov|avi|dmg|pkg)$/i.test(file);
+}
+
+function safeTextResourceExtension(file: string): boolean {
+  const base = path.posix.basename(file);
+  if (["Dockerfile", "Makefile", "LICENSE"].includes(base)) return true;
+  if (base.startsWith(".")) return [".gitignore", ".mcp.json"].includes(base);
+  return /\.(md|mdx|txt|ya?ml|json|jsonc|toml|xml|js|mjs|cjs|ts|tsx|jsx|py|sh|bash|zsh|fish|rb|go|rs|java|cs|php|lua|sql|css|html|env\.example)$/i.test(base);
+}
+
+const resourceTypeValues = new Set<resources.ResourceType>([
+  "harness",
+  "skill",
+  "plugin",
+  "workflow",
+  "mcp_server",
+  "service_endpoint",
+  "agent_team",
+  "subagent_pack",
+  "command_pack",
+  "config",
+  "guide",
+  "framework",
+  "agent_runtime",
+  "directory"
+]);
+
+function normalizeResourceType(value: string | undefined, paths: string[]): resources.ResourceType {
+  if (value && resourceTypeValues.has(value as resources.ResourceType) && value !== "directory") return value as resources.ResourceType;
+  const lower = paths.map((item) => item.toLowerCase());
+  if (lower.some((file) => /(^|\/)harness\.ya?ml$/.test(file))) return "harness";
+  if (lower.some((file) => /(^|\/)skill\.md$/.test(file) || file.includes("/.claude/skills/") || file.includes("/.codex/skills/"))) return "skill";
+  if (lower.some((file) => file.endsWith(".claude-plugin/plugin.json") || file.endsWith(".codex-plugin/plugin.json") || file.includes("/plugins/"))) return "plugin";
+  if (lower.some((file) => file.endsWith(".mcp.json") || file.endsWith("server.json") || file.includes("/mcp/"))) return "mcp_server";
+  if (lower.some((file) => file.includes("/commands/") || file.includes("/scripts/") || file.includes("/bin/"))) return "command_pack";
+  if (lower.some((file) => file.includes("/workflows/") || file.endsWith("workflow.md"))) return "workflow";
+  if (lower.some((file) => file.includes("/docs/"))) return "guide";
+  return "workflow";
+}
+
+function normalizeWorksWith(input: string[] | undefined, resourceType: resources.ResourceType): resources.Resource["worksWith"] {
+  const allowed = new Set<resources.Resource["worksWith"][number]>(["claude-code", "codex", "cursor", "mcp", "cli", "github"]);
+  const explicit = (input ?? []).filter((value): value is resources.Resource["worksWith"][number] => allowed.has(value as resources.Resource["worksWith"][number]));
+  if (explicit.length) return [...new Set(explicit)];
+  if (resourceType === "mcp_server") return ["mcp", "claude-code", "codex"];
+  if (resourceType === "plugin" || resourceType === "skill") return ["claude-code", "codex", "github"];
+  if (resourceType === "command_pack") return ["cli", "claude-code", "codex", "cursor"];
+  return ["claude-code", "codex", "cursor", "cli", "github"];
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const result: string[] = [];
+  for (const value of values) {
+    const clean = value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+    if (clean && !result.includes(clean)) result.push(clean);
+  }
+  return result.slice(0, 12);
+}
+
+function cleanTitle(value: string | undefined): string | undefined {
+  const clean = value?.trim().replace(/\s+/g, " ");
+  return clean && clean.length <= 120 ? clean : undefined;
+}
+
+function cleanSummary(value: string | undefined): string | undefined {
+  const clean = value?.trim().replace(/\s+/g, " ");
+  return clean && clean.length <= 500 ? clean : undefined;
+}
+
+function cleanPublicUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return undefined;
+    if (url.username || url.password) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function titleizeName(value: string): string {
+  return value.split("-").filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function gateFailures(basics: ReturnType<typeof registry.registryDetailBasics>) {

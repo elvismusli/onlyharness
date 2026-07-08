@@ -6,8 +6,8 @@ OnlyHarness is usable end-to-end for the core free native harness path and the m
 
 - Web: pass. First screen communicates catalog/trust/install layer, not a GitHub redirect.
 - API: pass. Health, OpenAPI, registry/resources, hosted archives and not-hosted guards work on prod.
-- MCP: pass after fix. Prod JSON-RPC exposes harness and resource tools, and now reports version `0.2.1`.
-- CLI/npm: pass after npm publish. Published npm `onlyharness@0.2.1` works for native harness workflows and mixed `hh resources` commands.
+- MCP: pass after fix. Prod JSON-RPC exposes harness and resource tools; current package/server metadata is `0.2.3`.
+- CLI/npm: pass after npm publish. Published npm `onlyharness@0.2.3` works for native harness workflows, mixed `hh resources` commands, and `hh publish-resource`.
 - Claude plugin: pass with restart note. Local plugin validates, GitHub marketplace source was pushed, and installed `onlyharness@onlyharness` was updated to `1.0.2`; Claude Code says restart is required to apply it.
 - Paid/auth: anonymous guards pass; no QA credentials and no live paid harness fixture were available, so no real signup/payment mutation was performed.
 - Storage safety: pass. No local catalog archive download. Only two tiny sample archives were downloaded to `/tmp` and removed.
@@ -47,8 +47,8 @@ Screenshots:
 Pass.
 
 - `https://onlyharness.com/api/healthz`: `200 {"ok":true}`.
-- `https://onlyharness.com/server.json`: `200`, version `0.2.1`, MCP remote `https://onlyharness.com/mcp`.
-- `https://onlyharness.com/api/openapi.json`: `200`, OpenAPI version `0.2.1`.
+- `https://onlyharness.com/server.json`: `200`, MCP remote `https://onlyharness.com/mcp`; current expected version after follow-up is `0.2.3`.
+- `https://onlyharness.com/api/openapi.json`: `200`; current expected OpenAPI version after follow-up is `0.2.3`.
 - `GET https://onlyharness.com/mcp`: `405`, expected for JSON-RPC endpoint.
 - Local archives directory remains empty.
 
@@ -196,12 +196,12 @@ Deployed:
 - `SSH_TARGET=hetzner-root ./scripts/deploy-production.sh`: pass.
 - Deploy public smoke: pass at `https://onlyharness.com`.
 
-Prod after deploy:
+Prod after follow-up deploy:
 
 - Health: pass.
-- Server metadata: `0.2.1`.
-- OpenAPI: `0.2.1`.
-- MCP initialize: `0.2.1`.
+- Server metadata: `0.2.3`.
+- OpenAPI: `0.2.3`.
+- MCP initialize: `0.2.3`.
 - `/llms.txt` now states resource catalog commands are live through npm, MCP and HTTP.
 
 ## Bugs / Risks
@@ -209,7 +209,7 @@ Prod after deploy:
 ### P1
 
 - Other already installed Claude plugin copies can still show stale skill guidance until refreshed/reinstalled and Claude Code is restarted.
-- npmjs package page README for `onlyharness@0.2.1` is stale; the binary works, but fixing the npm page needs a future patch publish.
+- npmjs package page README was refreshed by `onlyharness@0.2.3`.
 
 ### P2
 
@@ -221,15 +221,49 @@ Prod after deploy:
 ## Fixed
 
 - Native harness MCP instructions now use the real published npm install path.
-- Docs/plugin copy now document npm `0.2.1` resource commands as the clean-user path.
+- Docs/plugin copy now document npm resource commands as the clean-user path.
 - Plugin skill now includes resource MCP tools and honest resource use paths.
 - CLI install/apply now preflights adapter collisions before writing harness files.
-- MCP/OpenAPI/server metadata are synced to `0.2.1`.
+- MCP/OpenAPI/server metadata are synced to the published package version.
 - Smoke coverage added for MCP version.
-- npm `onlyharness@0.2.1` publish verified clean-user `hh resources` commands.
+- npm `onlyharness@0.2.1` publish verified clean-user `hh resources` commands; `onlyharness@0.2.3` adds refreshed README, `publish-resource`, and correct `hh --version`.
 
 ## Remaining Blockers
 
 - Refresh/reinstall other already installed Claude plugin copies after the GitHub source update; Claude Code restart is required to apply.
 - Add or expose a safe paid prod fixture if live paid `402` needs continuous public smoke coverage.
-- Publish a future docs-only CLI patch if the npmjs package page README must match the now-fixed repo/web/plugin docs.
+- No npm docs-only patch remains; `onlyharness@0.2.3` includes refreshed README, `publish-resource`, and correct `hh --version`.
+
+## 2026-07-08 Follow-up: Universal Resource Package Publish
+
+Verdict: fixed and deployed.
+
+- Added `POST /imports/resource-package` for hosted agent resource packages that are not native verified harnesses.
+- Added `hh publish-resource <dir-or-git-url> --name <slug> --type <type>` for skills, plugins, workflows, MCP servers, command packs, scripts, docs and source bundles.
+- Added MCP tool `publish_resource_package`.
+- Extended safe publish paths to include `scripts/`, `commands/`, `workflows/`, `mcp/`, `plugins/`, `docs/`, `src/`, `lib/`, while rejecting secrets, generated folders, binaries and archives.
+- Kept `hh publish` strict: markdown scaffold or eval/gate-verified native package.
+- Updated web copy from harness-only to resource-first, and made the web publish surface explicit that it is a quick markdown scaffold.
+- Published `onlyharness@0.2.3` to npm.
+- Synced MCP/OpenAPI/server metadata to `0.2.3`.
+
+Verification:
+
+- `npm run check`: pass.
+- `npm run build`: pass.
+- `npm run smoke`: pass.
+- `npm run smoke:mcp`: pass.
+- Follow-up local storage check: `/System/Volumes/Data` `460Gi`, `320Gi` used, `104Gi` available, `76%`; local `data/resources/archives/*.tar.gz`: `0`.
+- Local `publish-resource` smoke wrote a hosted tar.gz, listed the resource, and verified archive contents included `README.md`, `commands/run.md`, `scripts/run.sh`, while excluding `.env` and `dist/`.
+- Browser screenshots saved at `/tmp/onlyharness-publish-desktop-2026-07-08.png` and `/tmp/onlyharness-publish-mobile-2026-07-08.png`; publish surface text wraps without horizontal overflow.
+- Prod `Use superpowers` screenshots saved at `/tmp/onlyharness-use-superpowers-desktop-2026-07-08.png` and `/tmp/onlyharness-use-superpowers-mobile-2026-07-08.png`; dialog has copy buttons for page, CLI detail, CLI open, hosted archive and upstream source, with no horizontal overflow at desktop or 390px mobile.
+- Prod deploy: `SSH_TARGET=hetzner-root bash scripts/deploy-production.sh` pass; deploy public smoke pass.
+- Prod OpenAPI exposes `/imports/resource-package`; prod MCP tools include `publish_resource_package`; no-auth prod package publish returns `401`.
+- `npm view onlyharness version`: `0.2.3`.
+- `npx onlyharness@latest --version`: `0.2.3`.
+- Prod server/OpenAPI/MCP metadata verified version: `0.2.3`.
+
+Updated blockers:
+
+- Prod authenticated `publish-resource` was not exercised because no `HH_TOKEN` was exported locally.
+- Already-installed Claude plugin copies still need refresh/reinstall and Claude Code restart to pick up the new skill text.

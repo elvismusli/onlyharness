@@ -32,7 +32,7 @@ test("submitImport gates on requireUser: no user means no fetch and no busy togg
     await result.current.submitImport();
   });
 
-  expect(opts.requireUser).toHaveBeenCalledWith("Log on to publish a harness.");
+  expect(opts.requireUser).toHaveBeenCalledWith("Log on to publish a resource.");
   expect(fetchMock).not.toHaveBeenCalled();
   expect(result.current.importBusy).toBe(false);
   expect(result.current.importStatus).toBe("");

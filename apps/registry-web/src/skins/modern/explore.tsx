@@ -463,14 +463,14 @@ export function ModernExplore() {
       <section className="oh-hero">
         <span className="oh-status-pill">
           <span className="oh-status-dot" aria-hidden />
-          {count > 0 ? `${fmtK(count)} harnesses` : "Loading harnesses"} · Season 4 live
+          {count > 0 ? `${fmtK(count)} native packages` : "Loading packages"} · resource catalog live
         </span>
         <h1 className="oh-hero-title">
-          The home for<br />agent <span className="oh-accent-text">harnesses</span>.
+          The home for<br />agent <span className="oh-accent-text">resources</span>.
         </h1>
         <p className="oh-hero-sub">
-          Discover, fork, run and improve proven AI-agent workflows. Every harness ships with eval
-          evidence — no repo archaeology required.
+          Find skills, plugins, workflows, MCP servers, command packs and verified native packages with
+          clear source and install paths.
         </p>
         <div className="oh-hero-actions">
           <Btn
@@ -521,12 +521,12 @@ export function ModernExplore() {
       ) : items.length === 0 ? (
         <div className="oh-empty">
           {h.jobFilter === "starred" && !h.session
-            ? "Log on to see the harnesses you starred."
+            ? "Log on to see the resources you starred."
             : h.jobFilter === "starred"
               ? "You haven't starred anything yet. Go warm something up."
               : h.query
-                ? "No harnesses match that search yet."
-                : "Warming up the frontier… harnesses will appear here."}
+                ? "No resources match that search yet."
+                : "Warming up the frontier... resources will appear here."}
         </div>
       ) : (
         <section className="oh-grid">

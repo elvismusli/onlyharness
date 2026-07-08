@@ -1,11 +1,11 @@
 ---
 name: onlyharness
-description: "Use when the user wants a ready-made AI-agent workflow/harness (research, support triage, finance safety review, GTM): suggest, pull, run, eval, gate, update, or publish one from onlyharness.com."
+description: "Use when the user wants a ready-made AI-agent resource or native harness package (research, support triage, finance safety review, GTM): search, suggest, pull, run, eval, gate, update, or publish one from onlyharness.com."
 ---
 
 # OnlyHarness
 
-OnlyHarness is a registry for reusable AI-agent harnesses: manifests, prompts, examples, eval cases, permissions and gates.
+OnlyHarness is a registry for reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides, runtimes and native harness packages. A native harness package is one strict format with manifest, prompts, examples, eval cases, permissions and gates.
 
 ## Fast Path
 
@@ -19,6 +19,7 @@ npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest suggest market research --apply --out suggested-deep-market-researcher --json
 npx onlyharness@latest suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
+npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
 
 npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs resources search superpowers --json
@@ -37,6 +38,8 @@ node packages/harness-cli/dist/hh.mjs gate --dir deep-market-researcher --receip
 node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --json
 node packages/harness-cli/dist/hh.mjs audit-setup --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness --json
+HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
+HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
 ```
@@ -58,9 +61,10 @@ Publishing needs an OnlyHarness account token:
 ```bash
 export HH_TOKEN=<access-token>
 node packages/harness-cli/dist/hh.mjs publish workflow.md --name my-harness --json
+node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
 ```
 
-Generated/imported harnesses are unverified until real eval scores are added and `hh gate` passes.
+`hh publish workflow.md` creates a small markdown-derived scaffold. `hh publish <dir>` is the strict native verified path and requires eval/gate. `hh publish-resource <dir-or-git-url>` publishes a hosted mixed resource package for skills, plugins, workflows, MCP servers, command packs, scripts, docs and source bundles; it does not grant a Verified harness badge.
 
 ## Exit Codes
 
@@ -101,9 +105,10 @@ Tools:
 - `pull_harness`: get archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - `search_resources`: search mixed source-aware resources such as skills, plugins, workflows and MCP servers.
 - `resource_detail`: inspect provenance, trust, popularity and actions for one resource.
-- `resource_use_instructions`: get OnlyHarness-first use/open/install guidance without pulling non-harness archives.
+- `resource_use_instructions`: get OnlyHarness-first use/open/install guidance; hosted packages expose OnlyHarness archive URLs, upstream-only resources stay open-only.
 - `search_docs`: search OnlyHarness agent docs.
 - `publish_markdown_to_harness`: publish markdown; Bearer token required.
+- `publish_resource_package`: publish a hosted resource package from bounded file contents; Bearer token required; not a Verified harness badge.
 
 ## Safety
 

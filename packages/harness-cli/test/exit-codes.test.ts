@@ -23,8 +23,10 @@ let sawOrgPublishToken = false;
 let sawOrgHarnessDirPublishToken = false;
 let sawOrgPullToken = false;
 let sawHarnessDirPublishToken = false;
+let sawResourcePackagePublishToken = false;
 let sawClaudeInstallToken = false;
 let orgPublishedNames: string[] = [];
+let resourcePackagePublishPaths: string[] = [];
 let verificationEvents: Array<{ kind?: string; owner?: string; repo?: string; version?: string; target?: string; client?: string; path?: string }> = [];
 
 before(async () => {
@@ -263,6 +265,52 @@ before(async () => {
           snapshotVersion: "0.1.0",
           verified: true,
           gate: { score: 0.9, risk: 10, cost: 0.03, failures: [] }
+        }));
+      });
+      return;
+    }
+
+    if (request.url === "/imports/resource-package" && request.method === "POST") {
+      if (request.headers.authorization !== "Bearer publish-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid publish token" }));
+        return;
+      }
+      sawResourcePackagePublishToken = true;
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { name?: string; title?: string; resourceType?: string; files?: Array<{ path?: string; content?: string; truncated?: boolean }> };
+        resourcePackagePublishPaths = (body.files ?? []).map((file) => file.path ?? "");
+        if (!resourcePackagePublishPaths.includes("README.md") || !resourcePackagePublishPaths.includes("scripts/run.sh")) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "missing resource package files", paths: resourcePackagePublishPaths }));
+          return;
+        }
+        if (resourcePackagePublishPaths.some((item) => item.includes(".env") || item.includes("dist/"))) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "unsafe resource package files", paths: resourcePackagePublishPaths }));
+          return;
+        }
+        const name = body.name ?? "agent-tool";
+        response.statusCode = 201;
+        response.end(JSON.stringify({
+          resource: {
+            id: `onlyharness:packages/${name}`,
+            title: body.title ?? titleizeTest(name),
+            upstreamRepo: name,
+            resourceType: body.resourceType ?? "command_pack"
+          },
+          archive: {
+            url: `https://onlyharness.com/api/resources/${encodeURIComponent(`onlyharness:packages/${name}`)}/archive`,
+            fileName: `onlyharness-${name}.tar.gz`
+          },
+          hosted: true,
+          verified: false,
+          next: "not verified"
         }));
       });
       return;
@@ -1022,6 +1070,41 @@ test("publish clones a git repo subdir and verifies before upload", async () => 
     assert.equal(body.verified, true);
     assert.equal(body.source, "git");
     assert.deepEqual(body.gate?.failures, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publish-resource sends a hosted agent package with scripts and skips unsafe local files", async () => {
+  sawResourcePackagePublishToken = false;
+  resourcePackagePublishPaths = [];
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-resource-package-"));
+  try {
+    await mkdir(path.join(root, "scripts"), { recursive: true });
+    await mkdir(path.join(root, "commands"), { recursive: true });
+    await mkdir(path.join(root, "dist"), { recursive: true });
+    await writeFile(path.join(root, "README.md"), "# Agent Tool\n\nReusable command pack for agents.\n");
+    await writeFile(path.join(root, "scripts/run.sh"), "#!/usr/bin/env bash\necho agent-tool\n");
+    await writeFile(path.join(root, "commands/research.md"), "# Research Command\n\nRun the research command.\n");
+    await writeFile(path.join(root, ".env"), "TOKEN=secret\n");
+    await writeFile(path.join(root, "dist/generated.js"), "console.log('skip');\n");
+
+    const result = await runCli(["publish-resource", root, "--name", "agent-tool", "--type", "command_pack", "--token", "publish-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawResourcePackagePublishToken, true);
+    assert.doesNotMatch(result.stdout, /publish-token/);
+    assert.ok(resourcePackagePublishPaths.includes("README.md"));
+    assert.ok(resourcePackagePublishPaths.includes("scripts/run.sh"));
+    assert.ok(resourcePackagePublishPaths.includes("commands/research.md"));
+    assert.ok(!resourcePackagePublishPaths.includes(".env"));
+    assert.ok(!resourcePackagePublishPaths.includes("dist/generated.js"));
+    const body = JSON.parse(result.stdout) as { id?: string; resourceType?: string; archiveUrl?: string; hosted?: boolean; verified?: boolean };
+    assert.equal(body.id, "onlyharness:packages/agent-tool");
+    assert.equal(body.resourceType, "command_pack");
+    assert.equal(body.hosted, true);
+    assert.equal(body.verified, false);
+    assert.match(body.archiveUrl ?? "", /onlyharness%3Apackages%2Fagent-tool\/archive/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

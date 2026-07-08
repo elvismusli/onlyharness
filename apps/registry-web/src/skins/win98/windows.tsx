@@ -4,7 +4,7 @@ import { fmtContextCost, fmtK, heatPct, isoWeek } from "../../core/format";
 import type { CheckoutLinkState, CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "../../core/types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
-/* ---------- New Harness Wizard (publish) ---------- */
+/* ---------- New Resource Wizard (publish) ---------- */
 
 export function PublishBody({ name, setName, markdown, setMarkdown, status, busy, loggedIn, onSubmit, onLogon }: {
   name: string;
@@ -22,15 +22,15 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
       <div className="wizard">
         <div className="wizard-side">
           <span className="big-glyph">🧷</span>
-          <span className="side-title">New Harness Wizard</span>
+          <span className="side-title">New Resource Wizard</span>
         </div>
         <div className="wizard-main">
           <p style={{ margin: 0, fontSize: 12.5 }}>
-            Paste a rough markdown workflow. The wizard turns it into a harness repo:
-            manifest, agent prompt, example and an unverified eval scaffold — ready to <b>run, then verify with eval and gate</b>.
+            Paste a rough workflow when you want a small markdown scaffold. Full skills, plugins,
+            MCP servers, command packs and repos with scripts use <b>hh publish-resource</b>.
           </p>
           <div>
-            <label htmlFor="wiz-name">Harness name</label>
+            <label htmlFor="wiz-name">Resource name</label>
             <div className="field98">
               <input id="wiz-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="customer-research-pipeline" />
             </div>
@@ -52,7 +52,7 @@ export function PublishBody({ name, setName, markdown, setMarkdown, status, busy
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {loggedIn ? (
-              <Btn strong big onClick={onSubmit} disabled={busy}>{busy ? "⌛ Publishing..." : "📦 Publish harness"}</Btn>
+              <Btn strong big onClick={onSubmit} disabled={busy}>{busy ? "⌛ Publishing..." : "📦 Publish scaffold"}</Btn>
             ) : (
               <>
                 <Btn strong big onClick={onLogon}>🔑 Log on to publish</Btn>

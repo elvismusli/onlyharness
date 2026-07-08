@@ -12,7 +12,7 @@ const CREATED = [
 ];
 
 /**
- * Modern Publish surface — the New Harness Wizard rebuilt on Modern tokens. A
+ * Modern Publish surface — the quick markdown scaffold rebuilt on Modern tokens. A
  * full-viewport layer above Explore (same `.ohd` canvas + top-right glow) that
  * drives the shared publish state: `importName`, `importMarkdown`, `importStatus`
  * and `submitImport`. Logged out it swaps the accent Publish action for "Log on
@@ -31,12 +31,12 @@ export function ModernPublish({ surface }: { surface: Surface }) {
 
       <header className="ohd-head">
         <div className="ohd-head-main">
-          <div className="ohd-owner">New Harness Wizard</div>
-          <h1 className="ohd-title">Publish a harness</h1>
+          <div className="ohd-owner">New Resource Wizard</div>
+          <h1 className="ohd-title">Quick markdown scaffold</h1>
           <p className="ohd-summary">
-            Paste a rough markdown workflow. The wizard turns it into a harness repo — manifest,
-            agent prompt, example and an unverified eval scaffold — ready to run, then verify with
-            eval and gate.
+            Paste a rough workflow when you want a small scaffold. For a full skill, plugin, MCP server,
+            command pack or repo with scripts, use the package path: npx onlyharness@latest
+            publish-resource ./repo --name my-agent-resource.
           </p>
         </div>
       </header>
@@ -44,7 +44,7 @@ export function ModernPublish({ surface }: { surface: Surface }) {
       <div className="oh-publish-grid">
         <section className="ohd-panel">
           <label className="oh-pub-field">
-            <span className="ohd-h" style={{ marginTop: 0 }}>Harness name</span>
+            <span className="ohd-h" style={{ marginTop: 0 }}>Resource name</span>
             <input
               className="ohd-input oh-pub-name"
               value={h.importName}
@@ -69,11 +69,11 @@ export function ModernPublish({ surface }: { surface: Surface }) {
           <div className="oh-pub-actions">
             {loggedIn ? (
               <Btn variant="primary" size="lg" onClick={h.submitImport} disabled={h.importBusy}>
-                {h.importBusy ? "⌛ Publishing…" : "📦 Publish harness"}
+                {h.importBusy ? "⌛ Publishing…" : "📦 Publish scaffold"}
               </Btn>
             ) : (
               <>
-                <Btn variant="primary" size="lg" onClick={() => h.openLogon("Log on to publish a harness.")}>
+                <Btn variant="primary" size="lg" onClick={() => h.openLogon("Log on to publish a resource.")}>
                   🔑 Log on to publish
                 </Btn>
                 <span className="ohd-fine">Publishing needs an account.</span>
@@ -96,8 +96,8 @@ export function ModernPublish({ surface }: { surface: Surface }) {
             </ul>
           </section>
           <p className="ohd-fine">
-            The scaffolded eval is unverified. Run <span className="oh-pub-mono">hh eval</span> and{" "}
-            <span className="oh-pub-mono">hh gate</span> before trusting a published harness.
+            This web path creates a markdown-derived scaffold. Hosted multi-file packages use{" "}
+            <span className="oh-pub-mono">hh publish-resource</span>; verified native packages use eval and gate.
           </p>
         </aside>
       </div>

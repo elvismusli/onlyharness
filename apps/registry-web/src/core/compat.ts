@@ -6,7 +6,7 @@ const DEFAULT_TARGETS: CompatibilityTarget[] = [
   { id: "cursor", name: "Cursor", status: "available", detail: "hh install --target cursor" },
   { id: "mcp", name: "MCP", status: "available", detail: "pull_instructions + pull_harness" },
   { id: "cli", name: "CLI", status: "available", detail: "local hh install/run/eval/gate" },
-  { id: "github", name: "GitHub", status: "available", detail: "archive curl or verified git publish" }
+  { id: "github", name: "GitHub", status: "available", detail: "publish-resource or verified git publish" }
 ];
 
 const DIRECTORY_TARGETS: CompatibilityTarget[] = [

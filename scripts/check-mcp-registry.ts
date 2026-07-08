@@ -39,6 +39,7 @@ const caddyfilePaths = [
   path.join(root, "infra/Caddyfile.local-smoke")
 ];
 const cliPackagePath = path.join(root, "packages/harness-cli/package.json");
+const cliSourcePath = path.join(root, "packages/harness-cli/src/index.ts");
 const llmsPath = path.join(root, "apps/registry-web/public/llms.txt");
 const readmePath = path.join(root, "README.md");
 
@@ -54,6 +55,7 @@ const protectedResource = JSON.parse(readFileSync(protectedResourcePath, "utf8")
 const authorizationServer = JSON.parse(readFileSync(authorizationServerPath, "utf8")) as AuthorizationServerMetadata;
 const caddyfiles = caddyfilePaths.map((file) => ({ file, text: readFileSync(file, "utf8") }));
 const cliPackage = JSON.parse(readFileSync(cliPackagePath, "utf8")) as { version?: string };
+const cliSource = readFileSync(cliSourcePath, "utf8");
 const llms = readFileSync(llmsPath, "utf8");
 const readme = readFileSync(readmePath, "utf8");
 
@@ -66,6 +68,7 @@ check(rootServer.websiteUrl === "https://onlyharness.com", "server.json websiteU
 check(rootServer.repository?.url === "https://github.com/elvismusli/onlyharness", "server.json repository URL must point to onlyharness GitHub repo");
 check(rootServer.repository?.source === "github", "server.json repository source must be github");
 check(rootServer.version === cliPackage.version, "server.json version must match packages/harness-cli/package.json version");
+check(cliSource.includes(`.version("${cliPackage.version}")`), "hh --version source must match packages/harness-cli/package.json version");
 
 check(Array.isArray(rootServer.remotes) && rootServer.remotes.length === 1, "server.json must expose exactly one remote transport");
 const remote = rootServer.remotes?.[0];

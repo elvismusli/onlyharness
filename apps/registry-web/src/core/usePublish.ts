@@ -14,7 +14,7 @@ export type UsePublishResult = {
 /**
  * Skin-agnostic publish/import logic extracted from the Win98 `App()`.
  *
- * Owns the New Harness Wizard form state (`importName`, `importMarkdown`) and the
+ * Owns the quick markdown scaffold form state (`importName`, `importMarkdown`) and the
  * `importStatus`/`importBusy` UI state around the publish call. `submitImport`
  * gates on `requireUser`, POSTs the markdown to `/imports/markdown-to-harness`,
  * and on success closes the publish window, resets the registry filters, bumps
@@ -36,7 +36,7 @@ export function usePublish(opts: {
   const [importBusy, setImportBusy] = useState(false);
 
   async function submitImport() {
-    if (!opts.requireUser("Log on to publish a harness.")) return;
+    if (!opts.requireUser("Log on to publish a resource.")) return;
     setImportBusy(true);
     setImportStatus("");
     try {
@@ -59,7 +59,7 @@ export function usePublish(opts: {
       opts.bumpRefresh();
       const warnings = Array.isArray(result.warnings) && result.warnings.length ? `\n\n${result.warnings.join("\n")}` : "";
       const next = typeof result.next === "string" ? `\n\n${result.next}` : "";
-      opts.showDialog({ title: "Harness published", icon: "📦", body: `${result.item.title} is live on the frontier. Give it a star before someone else does.${warnings}${next}` });
+      opts.showDialog({ title: "Markdown scaffold published", icon: "📦", body: `${result.item.title} is live as a markdown-derived scaffold.${warnings}${next}` });
     } catch {
       setImportStatus("Publish failed: the harness API is unreachable.");
     } finally {

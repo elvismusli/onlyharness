@@ -18,6 +18,8 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff
 node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
+HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
+HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
@@ -51,7 +53,16 @@ Publishing needs an OnlyHarness access token.
 
 ```bash
 HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
+HH_TOKEN=<access-token> hh publish <verified-harness-dir> --name my-harness
+HH_TOKEN=<access-token> hh publish-resource ./agent-tool --name agent-tool --type command_pack
+HH_TOKEN=<access-token> hh publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack
 ```
+
+Use `hh publish` for markdown scaffolds or eval/gate-verified native packages. Use
+`hh publish-resource` for universal hosted agent resource packages: skills,
+plugins, workflows, MCP servers, command packs, scripts, docs and source bundles.
+Resource packages are hosted archives in the mixed catalog, but they do not get a
+Verified harness badge.
 
 ## Agent Contract
 
@@ -80,6 +91,7 @@ HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
 - `hh audit-setup` scans local `~/.claude` and `./.claude` skills for trigger conflicts, stale skills and estimated markdown context cost. It stays local and emits a sanitized share card.
 - `hh benchmark <suite.yaml>` runs a local category benchmark suite across candidate and analog harness paths. It compares declared eval case scores and exits 3 for invalid, unverified, or below-threshold candidate suites.
 - `hh extract <skill-dir|SKILL.md>` creates a private `harness.v0.2` scaffold from local skill markdown, infers candidate `depends_on`, and redacts obvious token-shaped secrets.
+- `hh publish-resource <dir-or-git-url> --name <slug> --type <type>` publishes a bounded hosted resource package. It accepts safe text files under `scripts/`, `commands/`, `tools/`, `workflows/`, `mcp/`, `plugins/`, `docs/`, `src/`, `lib/`, `skills/`, `prompts/`, `examples/` and related agent directories; it rejects secrets, generated folders, binaries and archives.
 - `hh setup @org` installs a token-gated team bundle with pinned harnesses and config snippets; repeated runs of the same bundle are idempotent.
 - `hh publish --org <slug>` uses `HH_ORG_TOKEN` and publishes a private org harness.
 - `hh sync <git-url-or-local-path> --org <slug>` clones or scans a repo, imports markdown skills/runbooks/prompts into the org namespace, and prints an import report. The first version has no webhooks.

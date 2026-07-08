@@ -355,6 +355,16 @@ type OrgImportResult = {
   verified?: boolean;
   gate?: PublishGateResult;
 };
+type ResourcePackageImportResult = {
+  resource?: ResourceItem;
+  archive?: {
+    url?: string;
+    fileName?: string;
+  };
+  hosted?: boolean;
+  verified?: boolean;
+  next?: string;
+};
 type PublishGateResult = {
   score: number;
   risk: number;
@@ -376,6 +386,12 @@ type MaterializedPublishSource = {
   path: string;
   cloned: boolean;
   autoEval: boolean;
+  cleanup: () => void;
+};
+type MaterializedResourcePackageSource = {
+  path: string;
+  cloned: boolean;
+  sourceUrl?: string;
   cleanup: () => void;
 };
 type SyncCandidate = {
@@ -529,8 +545,8 @@ const program = new Command();
 
 program
   .name("hh")
-  .description("OnlyHarness CLI — find, pull, run, eval and publish agent harnesses (onlyharness.com)")
-  .version("0.2.1");
+  .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
+  .version("0.2.3");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -950,6 +966,55 @@ program.command("publish")
     }
   });
 
+program.command("publish-resource")
+  .description("publish a hosted agent resource package without native harness eval/gate")
+  .argument("<dir-or-git-url>", "local directory, local repo, or git URL to package")
+  .option("--name <name>", "resource slug")
+  .option("--title <title>", "display title")
+  .option("--summary <summary>", "short summary")
+  .option("--type <type>", "resource type: skill, plugin, workflow, mcp_server, command_pack, config, guide, framework, agent_runtime, subagent_pack, agent_team, service_endpoint, harness")
+  .option("--path <path>", "subdirectory inside a git repo or local directory")
+  .option("--source-url <url>", "public upstream/source URL for attribution")
+  .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .option("--json", "print JSON", false)
+  .action(async (sourceArg: string, options) => {
+    const token = options.token ?? process.env.HH_TOKEN;
+    const source = materializeResourcePackageSource(sourceArg, options.path, options.json);
+    try {
+      const files = collectResourcePackageFiles(source.path, options.json);
+      const name = options.name ? slugify(options.name) : undefined;
+      if (options.name && !name) fail("Invalid resource slug.", EXIT.VALIDATION, "Use --name my-agent-resource", options.json);
+      const result = await publishResourcePackage({
+        token,
+        name,
+        title: options.title,
+        summary: options.summary,
+        resourceType: options.type,
+        sourceUrl: options.sourceUrl ?? source.sourceUrl,
+        files,
+        json: options.json
+      });
+      if (options.json) {
+        writeStdout({
+          id: result.resource?.id,
+          title: result.resource?.title,
+          name: result.resource?.upstreamRepo ?? name,
+          resourceType: result.resource?.resourceType,
+          archiveUrl: result.archive?.url,
+          hosted: result.hosted === true,
+          verified: result.verified === true,
+          source: source.cloned ? "git" : "local",
+          next: result.next
+        });
+        return;
+      }
+      writeStdout(`Published resource package ${result.resource?.title ?? options.title ?? name ?? path.basename(source.path)} — ${result.archive?.url ?? "archive unavailable"}\n`);
+      if (result.next) writeStdout(`${result.next}\n`);
+    } finally {
+      source.cleanup();
+    }
+  });
+
 program.command("adapt")
   .description("generate local adapter files for an installed harness")
   .argument("[dir]", "harness directory", ".")
@@ -1024,7 +1089,7 @@ program.command("doctor")
       `  registry .......... ${registryUrl} ${registryOk ? "[OK]" : "[UNREACHABLE]"}`,
       `  harnesses indexed . ${indexed}`,
       `  node .............. ${process.version}`,
-      `  token ............. ${process.env.HH_TOKEN ? "HH_TOKEN set" : "not set (only needed for hh publish)"}`
+      `  token ............. ${process.env.HH_TOKEN ? "HH_TOKEN set" : "not set (only needed for hh publish / publish-resource)"}`
     ];
     if (payload.harness) {
       lines.push(
@@ -2273,6 +2338,47 @@ async function publishHarnessDir(input: { org?: string; token?: string; name?: s
   };
 }
 
+async function publishResourcePackage(input: {
+  token?: string;
+  name?: string;
+  title?: string;
+  summary?: string;
+  resourceType?: string;
+  sourceUrl?: string;
+  files: PublishFilePayload[];
+  json: boolean;
+}): Promise<ResourcePackageImportResult> {
+  const response = await fetchRegistryResponse(`${registryUrl}/imports/resource-package`, input.json, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(input.token ? { Authorization: `Bearer ${input.token}` } : {})
+    },
+    body: JSON.stringify({
+      name: input.name,
+      title: input.title,
+      summary: input.summary,
+      resourceType: input.resourceType,
+      sourceUrl: input.sourceUrl,
+      files: input.files
+    })
+  });
+  const body = await response.json().catch(() => ({})) as ResourcePackageImportResult & { error?: string; code?: string; failures?: string[] };
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        `Resource package publish failed (${response.status}): ${body.error ?? "authorization required"}`,
+        EXIT.AUTH,
+        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.json
+      );
+    }
+    const detail = body.failures?.length ? `${body.error ?? "publish rejected"}: ${body.failures.join("; ")}` : body.error ?? JSON.stringify(body);
+    fail(`Resource package publish failed (${response.status}): ${detail}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION, "Check file count, file sizes, secret files and --type.", input.json);
+  }
+  return body;
+}
+
 async function publishOrgMarkdown(input: { org: string; token: string; name: string; markdown: string; json: boolean; command: "Publish" | "Sync" }): Promise<OrgImportResult> {
   const publishUrl = `${registryUrl}/orgs/${input.org}/imports/markdown-to-harness`;
   const response = await fetchRegistryResponse(publishUrl, input.json, {
@@ -2383,18 +2489,99 @@ function collectPublishFiles(root: string, json: boolean): PublishFilePayload[] 
   return files;
 }
 
+function collectResourcePackageFiles(root: string, json: boolean): PublishFilePayload[] {
+  const files: PublishFilePayload[] = [];
+  const visit = (dir: string, depth: number) => {
+    if (depth > 10) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relative = path.relative(root, full).split(path.sep).join("/");
+      if (entry.isDirectory()) {
+        if (isIgnoredResourcePackageEntry(entry.name)) continue;
+        visit(full, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || !isPublishFilePath(relative)) continue;
+      const content = readFileSync(full, "utf8");
+      const bytes = Buffer.byteLength(content, "utf8");
+      if (bytes > MAX_PUBLISH_FILE_BYTES) {
+        fail(`Resource package publish failed: file too large: ${relative}`, EXIT.VALIDATION, "Keep package files under 256KB each.", json);
+      }
+      files.push({ path: relative, content, truncated: false });
+    }
+  };
+  visit(root, 0);
+  files.sort((left, right) => left.path.localeCompare(right.path));
+  if (!files.length) {
+    fail("Resource package publish failed: no publishable files found.", EXIT.VALIDATION, "Add README.md, SKILL.md, scripts/, commands/, tools/, workflows/, mcp/, plugins/, docs/, src/ or lib/ files.", json);
+  }
+  if (files.length > MAX_PUBLISH_FILES) {
+    fail(`Resource package publish failed: too many files (${files.length} > ${MAX_PUBLISH_FILES}).`, EXIT.VALIDATION, "Trim generated files or split the package.", json);
+  }
+  return files;
+}
+
 function isIgnoredPublishEntry(name: string): boolean {
   return [".git", "node_modules", "dist", "build", "coverage", ".next"].includes(name);
 }
 
+function isIgnoredResourcePackageEntry(name: string): boolean {
+  return [".git", "node_modules", "dist", "build", "coverage", ".next", ".harnesshub", ".cache"].includes(name);
+}
+
 function isPublishFilePath(file: string): boolean {
+  return isAgentResourceFilePath(file);
+}
+
+function isAgentResourceFilePath(file: string): boolean {
   if (!file || file.startsWith("/") || file.includes("\0")) return false;
   const normalized = path.posix.normalize(file);
   if (normalized !== file || normalized.startsWith("../") || normalized === "..") return false;
-  if (/(^|\/)(node_modules|\.git)(\/|$)/.test(file)) return false;
-  if (file === "harness.yaml" || file === "README.md" || file === "AGENTS.md" || file === "LICENSE" || file === "LICENSE.md") return true;
+  if (/(^|\/)(node_modules|\.git|dist|build|coverage|\.next)(\/|$)/i.test(file)) return false;
+  if (deniedAgentResourcePath(file)) return false;
+  if (!safeTextResourceExtension(file)) return false;
+  if (safeAgentResourceRootFile(file)) return true;
   if (file === ".harnesshub/results.json") return true;
-  return /^(agents|skills|prompts|tools|gates|evals|examples|runbooks|\.gitea\/workflows)\//.test(file);
+  return /^(agents|skills|prompts|tools|scripts|commands|gates|evals|examples|runbooks|workflows|mcp|plugins|docs|src|lib|bin|\.claude|\.codex|\.claude-plugin|\.codex-plugin|\.gitea\/workflows)\//.test(file);
+}
+
+function safeAgentResourceRootFile(file: string): boolean {
+  return [
+    "harness.yaml",
+    "harness.yml",
+    "README.md",
+    "AGENTS.md",
+    "SKILL.md",
+    "CLAUDE.md",
+    "LICENSE",
+    "LICENSE.md",
+    "package.json",
+    "requirements.txt",
+    "pyproject.toml",
+    "tsconfig.json",
+    "server.json",
+    "plugin.json",
+    "workflow.md",
+    "Dockerfile",
+    "Makefile",
+    ".gitignore",
+    ".mcp.json"
+  ].includes(file);
+}
+
+function deniedAgentResourcePath(file: string): boolean {
+  const lower = file.toLowerCase();
+  const segments = lower.split("/");
+  if (segments.some((segment) => segment === ".env" || segment.startsWith(".env.") || segment === ".npmrc" || segment === ".pypirc" || segment === ".netrc")) return true;
+  if (segments.some((segment) => /^(id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts|secrets?|private|credentials?)$/.test(segment))) return true;
+  return /\.(pem|key|p12|pfx|crt|cer|sqlite|sqlite3|db|zip|tar|tgz|gz|png|jpe?g|gif|webp|pdf|mp4|mov|avi|dmg|pkg)$/i.test(file);
+}
+
+function safeTextResourceExtension(file: string): boolean {
+  const base = path.posix.basename(file);
+  if (["Dockerfile", "Makefile", "LICENSE"].includes(base)) return true;
+  if (base.startsWith(".")) return [".gitignore", ".mcp.json"].includes(base);
+  return /\.(md|mdx|txt|ya?ml|json|jsonc|toml|xml|js|mjs|cjs|ts|tsx|jsx|py|sh|bash|zsh|fish|rb|go|rs|java|cs|php|lua|sql|css|html)$/i.test(base);
 }
 
 function materializePublishSource(source: string, subdir: string | undefined, json: boolean): MaterializedPublishSource {
@@ -2432,8 +2619,58 @@ function materializePublishSource(source: string, subdir: string | undefined, js
   };
 }
 
+function materializeResourcePackageSource(source: string, subdir: string | undefined, json: boolean): MaterializedResourcePackageSource {
+  const localPath = path.resolve(source);
+  if (existsSync(localPath)) {
+    const stats = statSync(localPath);
+    if (!stats.isDirectory()) {
+      fail("Resource package source must be a directory or git URL.", EXIT.VALIDATION, "hh publish-resource ./repo-or-package --name my-resource", json);
+    }
+    return {
+      path: resolveResourcePackageRoot(localPath, subdir, json),
+      cloned: false,
+      cleanup: () => undefined
+    };
+  }
+  if (!looksLikeGitSource(source)) {
+    fail(`Resource package source not found: ${localPath}`, EXIT.NOT_FOUND, "hh publish-resource https://github.com/acme/repo.git --path packages/agent-tool --name agent-tool", json);
+  }
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "hh-resource-publish-"));
+  const clone = spawnSync("git", ["clone", "--depth", "1", source, tmp], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024
+  });
+  if (clone.status !== 0) {
+    rmSync(tmp, { recursive: true, force: true });
+    fail(`Resource package clone failed: ${clone.stderr || clone.stdout || "git clone exited with an error"}`, EXIT.GENERAL, undefined, json);
+  }
+  return {
+    path: resolveResourcePackageRoot(tmp, subdir, json),
+    cloned: true,
+    sourceUrl: publicSourceUrl(source),
+    cleanup: () => rmSync(tmp, { recursive: true, force: true })
+  };
+}
+
 function looksLikeGitSource(source: string): boolean {
   return /^(git@|ssh:\/\/|https?:\/\/|file:\/\/)/.test(source) || source.endsWith(".git");
+}
+
+function resolveResourcePackageRoot(root: string, subdir: string | undefined, json: boolean): string {
+  if (!subdir) return root;
+  const normalized = normalizeRepoSubpath(subdir);
+  if (!normalized) fail("Unsafe publish --path.", EXIT.VALIDATION, "Use a relative path like packages/my-agent-tool", json);
+  const candidate = path.resolve(root, normalized);
+  if (!isPathInside(root, candidate) || !existsSync(candidate) || !statSync(candidate).isDirectory()) {
+    fail(`Resource package path not found at --path ${normalized}.`, EXIT.NOT_FOUND, "Point --path at a directory inside the repo.", json);
+  }
+  return candidate;
+}
+
+function publicSourceUrl(source: string): string | undefined {
+  if (/^https:\/\/github\.com\//i.test(source)) return source.replace(/\.git$/i, "");
+  if (/^http:\/\//i.test(source)) return undefined;
+  return undefined;
 }
 
 function resolvePublishHarnessRoot(repoRoot: string, subdir: string | undefined, json: boolean): string {

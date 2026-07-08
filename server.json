@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.onlyharness/registry",
   "title": "OnlyHarness Registry",
-  "description": "Search, inspect, pull and publish reusable AI-agent harnesses from onlyharness.com.",
+  "description": "Search, inspect, pull and publish reusable AI-agent resources from onlyharness.com: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages.",
   "websiteUrl": "https://onlyharness.com",
   "repository": {
     "url": "https://github.com/elvismusli/onlyharness",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.3",
   "remotes": [
     {
       "type": "streamable-http",

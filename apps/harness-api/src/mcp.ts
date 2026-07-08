@@ -11,13 +11,30 @@ type PublishMarkdownInput = {
   markdown: string;
 };
 
+type PublishResourcePackageInput = {
+  name?: string;
+  title?: string;
+  summary?: string;
+  resourceType?: string;
+  sourceUrl?: string;
+  worksWith?: string[];
+  tags?: string[];
+  files: Array<{
+    path: string;
+    content: string;
+    truncated?: boolean;
+  }>;
+};
+
 export type PublishMarkdownHandler = (input: PublishMarkdownInput, authorization?: string) => Promise<unknown>;
+export type PublishResourcePackageHandler = (input: PublishResourcePackageInput, authorization?: string) => Promise<unknown>;
 export type PullHarnessHandler = (input: { owner: string; name: string; version?: string }, authorization?: string) => Promise<unknown>;
 export type HarnessDetailHandler = (input: { owner: string; name: string }, authorization?: string) => Promise<unknown>;
 export type PullInstructionsHandler = (input: { owner: string; name: string }, authorization?: string) => Promise<unknown>;
 
 type BuildMcpServerOptions = {
   publishMarkdown: PublishMarkdownHandler;
+  publishResourcePackage: PublishResourcePackageHandler;
   pullHarness: PullHarnessHandler;
   harnessDetail: HarnessDetailHandler;
   pullInstructions: PullInstructionsHandler;
@@ -26,7 +43,7 @@ type BuildMcpServerOptions = {
 let docsCache: { source: string; text: string; loadedAt: number } | undefined;
 
 export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
-  const server = new McpServer({ name: "onlyharness", version: "0.2.1" });
+  const server = new McpServer({ name: "onlyharness", version: "0.2.3" });
 
   server.registerTool(
     "search_harnesses",
@@ -102,7 +119,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "resource_use_instructions",
     {
       title: "Resource use instructions",
-      description: "Return the best safe next action for a mixed resource without trying to pull non-harness archive files.",
+      description: "Return the best safe next action for a mixed resource. Hosted packages expose OnlyHarness archive URLs; upstream-only resources stay open-only.",
       inputSchema: {
         id: z.string().describe("Resource id, for example github:obra/superpowers.")
       }
@@ -201,6 +218,37 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         });
       }
       return json(await options.publishMarkdown({ name, markdown }, authorization));
+    }
+  );
+
+  server.registerTool(
+    "publish_resource_package",
+    {
+      title: "Publish agent resource package",
+      description: "Publish a hosted OnlyHarness resource package for a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle. Requires a Bearer token. Does not grant a Verified harness badge.",
+      inputSchema: {
+        name: z.string().optional(),
+        title: z.string().optional(),
+        summary: z.string().optional(),
+        resourceType: z.string().optional().describe("skill, plugin, workflow, mcp_server, command_pack, config, guide, framework, agent_runtime, subagent_pack, agent_team, service_endpoint or harness."),
+        sourceUrl: z.string().optional(),
+        worksWith: z.array(z.string()).optional(),
+        tags: z.array(z.string()).optional(),
+        files: z.array(z.object({
+          path: z.string(),
+          content: z.string(),
+          truncated: z.boolean().optional()
+        })).min(1).max(120)
+      }
+    },
+    async (input, extra) => {
+      const authorization = headerValue(extra.requestInfo?.headers.authorization);
+      if (!authorization) {
+        return json({
+          error: "Authorization required. Connect with a Bearer token from onlyharness.com. See https://onlyharness.com/.well-known/oauth-protected-resource."
+        });
+      }
+      return json(await options.publishResourcePackage(input, authorization));
     }
   );
 

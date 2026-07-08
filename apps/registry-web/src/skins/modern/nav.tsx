@@ -95,8 +95,8 @@ export function Nav() {
             ref={searchRef}
             value={h.query}
             onChange={(event) => h.setQuery(event.target.value)}
-            placeholder="Search harnesses"
-            aria-label="Search harnesses"
+            placeholder="Search resources"
+            aria-label="Search resources"
             spellCheck={false}
           />
           <span className="oh-search-kbd" aria-hidden>/</span>

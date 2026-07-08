@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { RegistryItem } from "./registry.js";
 import { workspaceRoot } from "./registry.js";
@@ -171,12 +171,54 @@ export type ResourceSearchResult = {
 };
 
 const catalogPath = path.join(workspaceRoot, "data/resources/verified-2026-07.json");
+const importedCatalogPath = path.resolve(process.env.RESOURCE_IMPORTS_PATH ?? path.join(workspaceRoot, "data/resources/imported.json"));
 const archiveRoot = process.env.RESOURCE_ARCHIVE_DIR
   ? path.resolve(process.env.RESOURCE_ARCHIVE_DIR)
   : path.join(workspaceRoot, "data/resources/archives");
 let catalogCache: { mtimeMs: number; catalog: ResourceCatalogFile } | undefined;
+let importedCatalogCache: { mtimeMs: number; catalog: ResourceCatalogFile } | undefined;
 
 export function readResourceCatalog(): ResourceCatalogFile {
+  const seed = readSeedResourceCatalog();
+  const imported = readImportedResourceCatalog();
+  if (!imported.resources.length) return seed;
+  const resources = dedupeResources([...imported.resources, ...seed.resources]);
+  return {
+    generatedAt: maxIso(seed.generatedAt, imported.generatedAt),
+    source: {
+      catalog: `${seed.source.catalog}+${path.relative(workspaceRoot, importedCatalogPath)}`,
+      sourceCheckedAt: maxIso(seed.source.sourceCheckedAt, imported.source.sourceCheckedAt),
+      externalSeedCount: seed.source.externalSeedCount + imported.resources.length
+    },
+    resources
+  };
+}
+
+export function upsertImportedResource(resource: Resource): ResourceCatalogFile {
+  const existing = readImportedResourceCatalog();
+  const resources = [resource, ...existing.resources.filter((item) => item.id !== resource.id)];
+  const now = new Date().toISOString();
+  const catalog: ResourceCatalogFile = {
+    generatedAt: now,
+    source: {
+      catalog: path.relative(workspaceRoot, importedCatalogPath),
+      sourceCheckedAt: now,
+      externalSeedCount: resources.length
+    },
+    resources
+  };
+  mkdirSync(path.dirname(importedCatalogPath), { recursive: true });
+  writeFileSync(importedCatalogPath, `${JSON.stringify(catalog, null, 2)}\n`);
+  importedCatalogCache = { mtimeMs: statSync(importedCatalogPath).mtimeMs, catalog };
+  return catalog;
+}
+
+export function resourceArchiveRoot(): string {
+  mkdirSync(archiveRoot, { recursive: true });
+  return archiveRoot;
+}
+
+function readSeedResourceCatalog(): ResourceCatalogFile {
   if (!existsSync(catalogPath)) {
     return {
       generatedAt: new Date(0).toISOString(),
@@ -188,6 +230,21 @@ export function readResourceCatalog(): ResourceCatalogFile {
   if (catalogCache && catalogCache.mtimeMs === mtimeMs) return catalogCache.catalog;
   const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as ResourceCatalogFile;
   catalogCache = { mtimeMs, catalog };
+  return catalog;
+}
+
+function readImportedResourceCatalog(): ResourceCatalogFile {
+  if (!existsSync(importedCatalogPath)) {
+    return {
+      generatedAt: new Date(0).toISOString(),
+      source: { catalog: path.relative(workspaceRoot, importedCatalogPath), sourceCheckedAt: "", externalSeedCount: 0 },
+      resources: []
+    };
+  }
+  const mtimeMs = statSync(importedCatalogPath).mtimeMs;
+  if (importedCatalogCache && importedCatalogCache.mtimeMs === mtimeMs) return importedCatalogCache.catalog;
+  const catalog = JSON.parse(readFileSync(importedCatalogPath, "utf8")) as ResourceCatalogFile;
+  importedCatalogCache = { mtimeMs, catalog };
   return catalog;
 }
 
@@ -417,4 +474,10 @@ function ageDays(date: string, now: Date): number {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function maxIso(left: string, right: string): string {
+  if (!left) return right;
+  if (!right) return left;
+  return Date.parse(right) > Date.parse(left) ? right : left;
 }

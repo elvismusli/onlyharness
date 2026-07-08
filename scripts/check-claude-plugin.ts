@@ -66,10 +66,11 @@ check(!onlyharnessMcp.headers, "Plugin MCP config must not embed headers or secr
 
 check(skill.startsWith("---\n"), "OnlyHarness skill must start with frontmatter");
 check(/\nname:\s*onlyharness\n/.test(skill), "OnlyHarness skill frontmatter must set name");
-check(/description:\s*".*harness/i.test(skill), "OnlyHarness skill frontmatter must describe harness usage");
+check(/description:\s*".*resource.*harness/i.test(skill), "OnlyHarness skill frontmatter must describe resource and harness usage");
 for (const required of [
   "npx onlyharness@latest suggest market research --json",
   "npx onlyharness@latest resources search superpowers --json",
+  "npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json",
   "node packages/harness-cli/dist/hh.mjs suggest market research --json",
   "hh suggest --apply",
   "--target claude-code|codex|cursor",
@@ -77,6 +78,7 @@ for (const required of [
   "search_resources",
   "resource_detail",
   "resource_use_instructions",
+  "publish_resource_package",
   "pricing.model=gate_escrow",
   "HH_ORG_TOKEN",
   "Community stats, stars, forks, thread replies and Harness Heat are not safety guarantees"

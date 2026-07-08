@@ -45,6 +45,7 @@ npx onlyharness@latest resources search superpowers --json
 npx onlyharness@latest resources detail github:obra/superpowers --json
 npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
+npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
 
 npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs search market research
@@ -67,6 +68,8 @@ node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my
 node packages/harness-cli/dist/hh.mjs setup @acme --json
 node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
 node packages/harness-cli/dist/hh.mjs publish ./team-harness --org acme --name team-harness --json
+node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
+node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme --json
 node packages/harness-cli/dist/hh.mjs pin deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs outdated deep-market-researcher --json
@@ -83,6 +86,7 @@ Core endpoints:
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/resources?q={terms}` | Search mixed source-aware resources: harnesses, skills, plugins, workflows, MCP servers, configs, guides, runtimes and directories |
 | GET | `/resources/{id}` | Resource detail; IDs with `/` must be URL-encoded, e.g. `github%3Aobra%2Fsuperpowers` |
+| GET | `/resources/{id}/archive` | Download OnlyHarness-hosted resource package archives; listed-but-not-hosted resources return 409 `RESOURCE_ARCHIVE_NOT_HOSTED` |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/security-report` | Static security report for install/apply gating |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
@@ -108,15 +112,16 @@ Core endpoints:
 | POST | `/orgs/{slug}/imports/harness-dir` | Publish verified org-private harness directory after eval/gate; requires org token with publish scope |
 | GET/PUT | `/me/storefront` | Authenticated creator storefront profile and referral code management |
 | GET | `/storefront/{handle}` | Public creator storefront with referral attribution code |
-| POST | `/imports/markdown-to-harness` | Publish markdown as a harness; Bearer token required |
-| POST | `/imports/harness-dir` | Publish a verified public harness directory after eval/gate; Bearer token required |
+| POST | `/imports/markdown-to-harness` | Publish markdown as a small unverified scaffold; Bearer token required |
+| POST | `/imports/harness-dir` | Publish a verified public native package directory after eval/gate; Bearer token required |
+| POST | `/imports/resource-package` | Publish a hosted agent resource package for skills, plugins, workflows, MCP servers, commands, scripts, docs, or source bundles; Bearer token required; no Verified badge |
 | POST | `/imports/github-resource` | Read-only GitHub resource classifier; GitHub allowlist, redirect, traversal, symlink and size guardrails apply |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
 MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
-Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_resources`, `resource_detail`, `resource_use_instructions`, `search_docs`, `publish_markdown_to_harness`.
+Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_resources`, `resource_detail`, `resource_use_instructions`, `search_docs`, `publish_markdown_to_harness`, `publish_resource_package`.
 `harness_detail` and `pull_instructions` include read-only access/payment state; they must not grant entitlement or return archive files. `pull_harness` and HTTP archive delivery are the file-returning entitlement gates.
-Resource tools are source-aware. They can list/open upstream skills, plugins, workflows and MCP servers; only native harness-format resources should be pulled as archive files.
+Resource tools are source-aware. They can list/open upstream skills, plugins, workflows and MCP servers. Hosted resource packages download through `/resources/{id}/archive`; upstream-only resources stay open-only and must not pretend to have an OnlyHarness archive.
 OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
 MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
 OAuth protected-resource metadata is available at `https://onlyharness.com/.well-known/oauth-protected-resource`; OAuth authorization-server metadata is available at `https://onlyharness.com/.well-known/oauth-authorization-server`; Caddy must serve both extensionless files as `application/json`.

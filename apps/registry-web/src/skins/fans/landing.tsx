@@ -37,7 +37,7 @@ const STEPS = [
   {
     n: "1",
     title: "Find your fave",
-    body: "Browse trending harnesses by outcome. Every one ships with eval evidence and a safety review."
+    body: "Browse skills, plugins, workflows, MCP servers and native packages with source and trust context."
   },
   {
     n: "2",
@@ -47,7 +47,7 @@ const STEPS = [
   {
     n: "3",
     title: "Post & flex",
-    body: "Publish your harness, climb the leaderboard, watch your Harness Heat rise. Bragging rights included."
+    body: "Publish a scaffold, verified native package, or hosted resource package without hiding its trust state."
   }
 ] as const;
 
@@ -205,7 +205,7 @@ function StatsBar() {
   const h = useHarness();
   const { indexed, stars, forks, threads } = h.totals;
   const figures = [
-    { value: fmtInt(indexed), label: "harnesses indexed" },
+    { value: fmtInt(indexed), label: "native packages indexed" },
     { value: fmtInt(stars), label: "stars given" },
     { value: fmtInt(forks), label: "total forks" },
     { value: fmtInt(threads), label: "thread posts" }
@@ -243,7 +243,7 @@ function HowItWorks() {
       </div>
       <div className="fa-how-cta">
         <Btn variant="primary" onClick={h.openPublish}>
-          Start your harness →
+          Start a resource →
         </Btn>
       </div>
     </section>
@@ -286,11 +286,11 @@ export function FansLanding() {
             <h1 className="fa-h1">
               Sign up to support
               <br />
-              your favorite <b>harnesses</b>.
+              your favorite <b>resources</b>.
             </h1>
             <p className="fa-lede">
-              OnlyHarness is the home for reusable AI-agent workflows. Subscribe, fork and flex —
-              creators ship the harness, you get the results. 🔥
+              OnlyHarness is the home for reusable AI-agent resources. Find skills, plugins,
+              workflows, MCP servers and verified native packages without guessing the install path. 🔥
             </p>
             <SignUpCard />
           </div>

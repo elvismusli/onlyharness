@@ -67,7 +67,7 @@ function surfaceTitle(surface: Surface, h: ReturnType<typeof useHarness>): strin
   const item = surface.key ? h.knownItems[surface.key] : undefined;
   const titles: Record<WinKind, string> = {
     harness: item?.title ?? "Harness",
-    publish: "Publish a harness",
+    publish: "Publish a resource",
     install: item ? `Install — ${item.title}` : "Install Center",
     checkout: "Checkout",
     cli: "CLI",
@@ -163,7 +163,7 @@ function renderSurface(surface: Surface) {
       /* Task 1.4: the real two-column Modern detail page. */
       return <ModernDetail surface={surface} />;
     case "publish":
-      /* Task 1.5a: the Modern New Harness Wizard. */
+      /* Task 1.5a: the Modern New Resource Wizard. */
       return <ModernPublish surface={surface} />;
     case "leaderboard":
       /* Task 1.5a: the Modern Harness-Heat leaderboard. */

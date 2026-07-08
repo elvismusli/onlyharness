@@ -87,11 +87,13 @@ OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-a
 - Leaderboard: GET /leaderboard?limit=10
   Returns only heatQualified items. Cold harnesses stay out of Top 10 until enough real social signals or a verified install confirm exists.
 - Publish (auth required): POST /imports/markdown-to-harness
-  JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}.
+  JSON body { name, markdown }, header Authorization: Bearer {access token from an onlyharness.com account}. This creates a small markdown-derived scaffold, not a full copied GitHub repo.
 - Verified publish (auth required): POST /imports/harness-dir
-  Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts only bounded harness files plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
+  Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts bounded native package files, including `scripts/`, plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
+- Resource package publish (auth required): POST /imports/resource-package
+  Use `HH_TOKEN=... hh publish-resource <dir-or-git-url> --name my-agent-tool --type command_pack`, with optional `--path` for a repo subdirectory. This packages safe bounded text files from skills, plugins, workflows, MCP servers, command packs, scripts, docs or source bundles into OnlyHarness archive storage and lists the item in `/resources`. It does not grant a Verified harness badge.
 - GitHub resource classify: POST /imports/github-resource
-  Body { url, path?, action:"classify" }. Read-only. Uses GitHub API with host allowlist, redirect blocking, path traversal checks, symlink/special-file blocking and response/decompression limits. Upstream listing is allowed; re-hosting or packaging copied files remains blocked until license review passes.
+  Body { url, path?, action:"classify" }. Read-only. Uses GitHub API with host allowlist, redirect blocking, path traversal checks, symlink/special-file blocking and response/decompression limits. Upstream listing is allowed; use `hh publish-resource` for an explicit hosted package upload when license and ownership allow it.
 
 End-to-end example:
 
@@ -115,9 +117,10 @@ Tools:
 - pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - search_resources: search the mixed source-aware resource catalog.
 - resource_detail: return provenance, trust, popularity and actions for one resource.
-- resource_use_instructions: return safe use/open/install guidance without pulling non-harness archives.
+- resource_use_instructions: return safe use/open/install guidance; hosted packages expose OnlyHarness archive URLs, upstream-only resources stay open-only.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
+- publish_resource_package: publish a hosted agent resource package from bounded file contents; auth required; not a Verified harness badge.
 
 Initialize example:
 
@@ -177,12 +180,14 @@ For local development from the repo:
 - hh extract <skill>        create a private harness.v0.2 scaffold from a local skill, with candidate depends_on and redacted markdown source
 - hh setup @org             install a token-gated team bundle; uses HH_ORG_TOKEN and writes managed setup metadata
 - hh publish --org <slug>   publish markdown into an org-private namespace; uses HH_ORG_TOKEN
+- hh publish-resource <dir-or-git-url> --name <slug> --type <type>   publish a hosted resource package; accepts safe bounded text files under scripts, commands, tools, workflows, mcp, plugins, docs, src/lib and agent directories
 - hh validate [dir]         schema and permission checks (--strict fails on warnings)
 - hh doctor --harness [dir] inspect registry connectivity and a local harness
 - hh pin [dir]              pin a pulled harness to its current registry version
 - hh outdated [dir]         exit 3 when a newer registry version exists
 - hh update [dir] --diff    preview semantic changes before applying an update
 - hh publish {file.md}      publish a markdown workflow (token via --token or HH_TOKEN)
+- hh publish {dir}          publish a verified native package only after eval/gate; use publish-resource for generic repos/packages without harness.yaml
 - hh doctor                 registry connectivity check
 
 Set HH_REGISTRY_URL to target another registry (default https://onlyharness.com/api).

@@ -121,7 +121,7 @@ function App() {
   const cantClose = () => h.showDialog({ title: "OnlyHarness", icon: "⚠️", body: "You can't close the Wild West, partner. Your harness is still on the leaderboard." });
   const shutDown = () => h.showDialog({ title: "Shut Down OnlyHarness", icon: "🤠", body: "It's now safe to turn off your agent. But the harnesses keep getting warmer without you..." });
   const binDialog = () => h.showDialog({ title: "Remix Bin", icon: "🗑️", body: "The bin is empty. Log on to create server-side local remix drafts; copied recipes stay as the fallback path." });
-  const aboutDialog = () => h.showDialog({ title: "About OnlyHarness 98", icon: "🧷", body: "The community hub for reusable agent harnesses: discover, install, remix, eval, improve. Lovingly wrapped in Windows 98 chrome, MS Paint colours and WordArt. No harnesses were harmed." });
+  const aboutDialog = () => h.showDialog({ title: "About OnlyHarness 98", icon: "🧷", body: "The community hub for reusable agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native packages. Wrapped in Windows 98 chrome, MS Paint colours and WordArt." });
 
   /* ---------- taskbar ---------- */
 
@@ -130,7 +130,7 @@ function App() {
     const item = checkout ? h.knownItems[`${checkout.owner}/${checkout.repo}`] : surface.key ? h.knownItems[surface.key] : undefined;
     switch (surface.kind) {
       case "harness": return { icon: "📦", title: item?.title ?? "Harness" };
-      case "publish": return { icon: "📄", title: "New Harness Wizard" };
+      case "publish": return { icon: "📄", title: "New Resource Wizard" };
       case "install": return { icon: "💿", title: item ? `Install Center — ${item.title}` : "Install Center" };
       case "checkout": return { icon: "💳", title: checkout ? `Manual Checkout — ${checkout.owner}/${checkout.repo}` : "Manual Checkout" };
       case "cli": return { icon: "🖥️", title: "MS-DOS Prompt — hh.exe" };
@@ -237,7 +237,7 @@ function App() {
             busy={h.importBusy}
             loggedIn={Boolean(h.user)}
             onSubmit={h.submitImport}
-            onLogon={() => h.openLogon("Log on to publish a harness.")}
+            onLogon={() => h.openLogon("Log on to publish a resource.")}
           />
         );
       case "install":

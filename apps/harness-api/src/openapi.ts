@@ -2,8 +2,8 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.1",
-    description: "Search, inspect, pull and publish reusable AI-agent harnesses."
+    version: "0.2.3",
+    description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
     { url: "https://onlyharness.com/api", description: "Production" },
@@ -637,7 +637,7 @@ export const openapi = {
     "/imports/github-resource": {
       post: {
         summary: "Classify a GitHub resource",
-        description: "Read-only classifier for GitHub resources. Uses GitHub API only, blocks unsafe hosts, redirects, traversal, symlinks and oversized responses. Upstream listing is allowed; re-hosting/packaging copied files remains blocked until license review passes.",
+        description: "Read-only classifier for GitHub resources. Uses GitHub API only, blocks unsafe hosts, redirects, traversal, symlinks and oversized responses. Upstream listing is allowed; use /imports/resource-package or hh publish-resource for explicit hosted package uploads when license and ownership allow it.",
         requestBody: {
           required: true,
           content: {
@@ -691,7 +691,7 @@ export const openapi = {
     "/imports/harness-dir": {
       post: {
         summary: "Publish a verified harness directory",
-        description: "Accepts bounded text files from hh publish <dir>. The server requires harness.yaml, .harnesshub/results.json, valid schema, passing security scan, and passing eval/gate before writing a public local harness.",
+        description: "Strict native verified package path. Accepts bounded text files from hh publish <dir>. The server requires harness.yaml, .harnesshub/results.json, valid schema, passing security scan, and passing eval/gate before writing a public local harness.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -748,6 +748,74 @@ export const openapi = {
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "422": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/imports/resource-package": {
+      post: {
+        summary: "Publish a hosted agent resource package",
+        description: "Auth required. Packages bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into OnlyHarness archive storage and lists it in the mixed resource catalog. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  title: { type: "string" },
+                  summary: { type: "string" },
+                  resourceType: { type: "string", enum: ["harness", "skill", "plugin", "workflow", "mcp_server", "service_endpoint", "agent_team", "subagent_pack", "command_pack", "config", "guide", "framework", "agent_runtime"] },
+                  sourceUrl: { type: "string" },
+                  worksWith: { type: "array", items: { type: "string" } },
+                  tags: { type: "array", items: { type: "string" } },
+                  files: {
+                    type: "array",
+                    maxItems: 120,
+                    items: {
+                      type: "object",
+                      properties: {
+                        path: { type: "string" },
+                        content: { type: "string" },
+                        truncated: { type: "boolean" }
+                      },
+                      required: ["path", "content"]
+                    }
+                  }
+                },
+                required: ["files"]
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Hosted agent resource package",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    resource: { $ref: "#/components/schemas/Resource" },
+                    archive: {
+                      type: "object",
+                      properties: {
+                        url: { type: "string" },
+                        fileName: { type: "string" }
+                      }
+                    },
+                    hosted: { type: "boolean" },
+                    verified: { type: "boolean", const: false },
+                    next: { type: "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "413": { $ref: "#/components/responses/BadRequest" }
         }
       }
     },
@@ -1072,7 +1140,7 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, pull_harness, search_resources, resource_detail, resource_use_instructions, search_docs, publish_markdown_to_harness.",
+        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, pull_harness, search_resources, resource_detail, resource_use_instructions, search_docs, publish_markdown_to_harness, publish_resource_package.",
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream" }
         }
