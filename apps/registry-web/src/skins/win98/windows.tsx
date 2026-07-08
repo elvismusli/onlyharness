@@ -467,7 +467,7 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
     <div className="win-body">
       <div className="detail-head">
         <div className="owner-line">Network Neighborhood</div>
-        <h2>{workspace ? workspace.organization.name : "Organization workspace"}</h2>
+        <h2>{workspace ? workspace.organization.name : "Workspace catalog"}</h2>
         <div className="tagrow">
           {workspace && <span className="tag98 safe">@{workspace.organization.slug}</span>}
           {workspace && <span className="tag98">{workspace.organization.plan}</span>}
@@ -478,11 +478,11 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
       <div className="trust-box" style={{ marginBottom: 8 }}>
         <form className="network-connect" onSubmit={(event) => { event.preventDefault(); onLoad(); }}>
           <div>
-            <label htmlFor="network-org">Org</label>
+            <label htmlFor="network-org">Workspace</label>
             <div className="field98"><input id="network-org" value={orgSlug} onChange={(event) => setOrgSlug(event.target.value)} placeholder="acme" autoComplete="organization" /></div>
           </div>
           <div>
-            <label htmlFor="network-token">Org token</label>
+            <label htmlFor="network-token">Workspace token</label>
             <div className="field98"><input id="network-token" type="password" value={orgToken} onChange={(event) => setOrgToken(event.target.value)} placeholder="Bearer token" autoComplete="current-password" /></div>
           </div>
           <Btn strong type="submit" disabled={busy || !orgSlug.trim()}>{busy ? "⌛ Loading" : "🌐 Connect"}</Btn>
@@ -508,8 +508,8 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
               </span>
             </button>
           ))}
-          {workspace && !workspace.items.length && <div className="file-row"><span>□</span><span>No org-private harnesses indexed yet.</span></div>}
-          {!workspace && <div className="file-row"><span>🌐</span><span>Connect with an org token to load private harnesses.</span></div>}
+          {workspace && !workspace.items.length && <div className="file-row"><span>□</span><span>No workspace-private resources indexed yet.</span></div>}
+          {!workspace && <div className="file-row"><span>🌐</span><span>Connect with a workspace token to load private resources.</span></div>}
         </div>
       )}
 
@@ -528,7 +528,7 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
               </span>
             </div>
           ))}
-          {workspace && !workspace.audit.length && <div className="file-row"><span>□</span><span>No audit rows for this org yet.</span></div>}
+          {workspace && !workspace.audit.length && <div className="file-row"><span>□</span><span>No audit rows for this workspace yet.</span></div>}
           {!workspace && <div className="file-row"><span>🧾</span><span>Audit appears after a successful connection.</span></div>}
         </div>
       )}
@@ -538,7 +538,7 @@ export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, worksp
           <section>
             <div className="trust-box">
               <h4>Permission summary</h4>
-              <InfoLine label="Harnesses" value={String(workspace?.permissions.totalHarnesses ?? 0)} />
+              <InfoLine label="Resources" value={String(workspace?.permissions.totalHarnesses ?? 0)} />
               <InfoLine label="Risk tiers" value={workspace ? `LOW ${workspace.permissions.riskTiers.LOW} · MED ${workspace.permissions.riskTiers.MEDIUM} · HIGH ${workspace.permissions.riskTiers.HIGH} · CRIT ${workspace.permissions.riskTiers.CRITICAL}` : "not loaded"} />
               <InfoLine label="External send" value={String(workspace?.permissions.permissionCounts.externalSend ?? 0)} />
               <InfoLine label="Credentials" value={String(workspace?.permissions.permissionCounts.credentials ?? 0)} />

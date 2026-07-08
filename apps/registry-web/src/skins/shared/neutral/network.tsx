@@ -5,10 +5,10 @@ import { fmtContextCost } from "../../../core/format";
 import { useHarness } from "../../../core/store";
 
 /*
- * Shared-neutral Network / Org workspace — the "serious" org-admin surface
+ * Shared-neutral Network / Workspace — the "serious" admin surface
  * rendered identically in every skin (only the `--neutral-*` palette changes).
- * Mirrors the Win98 `NetworkBody` field-for-field: the org header (name / @slug /
- * plan / max-risk tag), the Connect form (Org + Org-token password → connect),
+ * Mirrors the Win98 `NetworkBody` field-for-field: the workspace header (name / @slug /
+ * plan / max-risk tag), the Connect form (Workspace + token password -> connect),
  * the connection status line, and the Catalog / Audit / Permissions tabs.
  *
  * Pure consumer of `useHarness()`: the org connection form state
@@ -42,8 +42,8 @@ export function NeutralNetwork() {
   return (
     <div className="oh-neutral">
       <header className="ohn-head">
-        <div className="ohn-owner">Network / Org Workspace</div>
-        <h2 className="ohn-title">{workspace ? workspace.organization.name : "Organization workspace"}</h2>
+        <div className="ohn-owner">Network / Workspace</div>
+        <h2 className="ohn-title">{workspace ? workspace.organization.name : "Workspace catalog"}</h2>
         {workspace && (
           <div className="ohn-tagrow">
             <span className="ohn-tag safe">@{workspace.organization.slug}</span>
@@ -54,7 +54,7 @@ export function NeutralNetwork() {
       </header>
 
       <section className="ohn-box" style={{ marginBottom: 14 }}>
-        <h4 className="ohn-box-title">Connect an organization</h4>
+        <h4 className="ohn-box-title">Connect a workspace</h4>
         <form
           className="ohn-form"
           onSubmit={(event) => {
@@ -63,7 +63,7 @@ export function NeutralNetwork() {
           }}
         >
           <div className="ohn-field">
-            <label className="ohn-label" htmlFor="ohn-network-org">Org</label>
+            <label className="ohn-label" htmlFor="ohn-network-org">Workspace</label>
             <input
               id="ohn-network-org"
               className="ohn-input"
@@ -74,7 +74,7 @@ export function NeutralNetwork() {
             />
           </div>
           <div className="ohn-field">
-            <label className="ohn-label" htmlFor="ohn-network-token">Org token</label>
+            <label className="ohn-label" htmlFor="ohn-network-token">Workspace token</label>
             <input
               id="ohn-network-token"
               className="ohn-input"
@@ -127,10 +127,10 @@ export function NeutralNetwork() {
             </button>
           ))}
           {workspace && !workspace.items.length && (
-            <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No org-private harnesses indexed yet.</span></div>
+            <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No workspace-private resources indexed yet.</span></div>
           )}
           {!workspace && (
-            <div className="ohn-row"><span className="ohn-row-glyph">🌐</span><span className="ohn-row-main">Connect with an org token to load private harnesses.</span></div>
+            <div className="ohn-row"><span className="ohn-row-glyph">🌐</span><span className="ohn-row-main">Connect with a workspace token to load private resources.</span></div>
           )}
         </div>
       )}
@@ -151,7 +151,7 @@ export function NeutralNetwork() {
             </div>
           ))}
           {workspace && !workspace.audit.length && (
-            <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No audit rows for this org yet.</span></div>
+            <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No audit rows for this workspace yet.</span></div>
           )}
           {!workspace && (
             <div className="ohn-row"><span className="ohn-row-glyph">🧾</span><span className="ohn-row-main">Audit appears after a successful connection.</span></div>

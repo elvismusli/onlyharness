@@ -25,6 +25,7 @@ const apiRuntimeEnv = [
   "X402_FACILITATOR_API_KEY",
   "X402_MAX_TIMEOUT_SECONDS",
   "ORGS_ENABLED",
+  "WORKSPACES_ENABLED",
   "COMMUNITY_INVITE_SECRET",
   "HARNESS_WEBHOOK_TOKEN",
   "RESOURCE_ARCHIVE_DIR"
@@ -48,6 +49,7 @@ const exampleEnv = [
   "X402_FACILITATOR_API_KEY",
   "X402_MAX_TIMEOUT_SECONDS",
   "ORGS_ENABLED",
+  "WORKSPACES_ENABLED",
   "COMMUNITY_INVITE_SECRET",
   "GITEA_BASE_URL",
   "HARNESS_WEBHOOK_TOKEN",
@@ -70,6 +72,7 @@ check(compose.includes("HARNESS_CHECKOUT_BASE_URL: ${HARNESS_CHECKOUT_BASE_URL:-
 check(envExample.includes("X402_ENABLED=false"), "production.env.example must keep x402 off by default");
 check(envExample.includes("PAYMENTS_ENABLED=false"), "production.env.example must keep payments off by default");
 check(envExample.includes("ORGS_ENABLED=false"), "production.env.example must keep orgs off by default");
+check(envExample.includes("WORKSPACES_ENABLED=false"), "production.env.example must keep workspaces off by default");
 check(gitignore.split("\n").includes("infra/production.env"), "infra/production.env must stay gitignored");
 check(smokeCompose.includes('VITE_HARNESS_API_URL="${VITE_HARNESS_API_URL:-$BASE_URL/api}"'), "production compose smoke must build the web UI against the local smoke API");
 check(smokeCompose.includes('for seed_dir in directories resources'), "production compose smoke must hydrate both directory and resource seed data into the API volume");

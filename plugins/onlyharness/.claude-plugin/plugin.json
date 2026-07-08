@@ -1,6 +1,6 @@
 {
   "name": "onlyharness",
-  "description": "Suggest, pull, run, eval and publish reusable AI-agent harnesses from onlyharness.com.",
+  "description": "Find, inspect, install and publish reusable AI-agent resources and native harnesses from onlyharness.com.",
   "version": "1.0.2",
   "author": {
     "name": "OnlyHarness",

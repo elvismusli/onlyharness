@@ -20,6 +20,7 @@ npx onlyharness@latest suggest market research --apply --out suggested-deep-mark
 npx onlyharness@latest suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
+npx onlyharness@latest publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
 
 npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs resources search superpowers --json
@@ -40,6 +41,9 @@ node packages/harness-cli/dist/hh.mjs audit-setup --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness --json
 HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
 HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources search agent-tool --workspace acme --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources detail @acme/agent-tool --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
 ```
@@ -52,7 +56,8 @@ Use `hh suggest --apply --target claude-code|codex|cursor` when the user wants t
 `hh gate --receipt` writes a signed gate verdict that can be verified through `POST /receipts`; it must not include local paths or prompts.
 For `pricing.model=gate_escrow`, use the signed receipt with `POST /billing/escrow/receipt`; do not treat read-only `POST /receipts` as payment settlement.
 For paid harnesses, set `HH_TOKEN`; payment-required pulls exit 5 and include checkout/manual-entitlement next steps.
-For team setup bundles, org-private pulls, or org-private publishing, set `HH_ORG_TOKEN`; setup writes managed metadata and should be safe to retry.
+For team setup bundles, org-private pulls, or legacy org-private publishing, set `HH_ORG_TOKEN`; setup writes managed metadata and should be safe to retry.
+For private workspace resource catalogs, set `HH_WORKSPACE_TOKEN` (or legacy `HH_ORG_TOKEN` during migration). Use `hh publish-resource --workspace <slug>` for full packages with scripts/docs/commands; use `hh resources search --workspace <slug>` and `hh resources detail @slug/name` to inspect them.
 
 ## Publish
 
@@ -62,9 +67,10 @@ Publishing needs an OnlyHarness account token:
 export HH_TOKEN=<access-token>
 node packages/harness-cli/dist/hh.mjs publish workflow.md --name my-harness --json
 node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
 ```
 
-`hh publish workflow.md` creates a small markdown-derived scaffold. `hh publish <dir>` is the strict native verified path and requires eval/gate. `hh publish-resource <dir-or-git-url>` publishes a hosted mixed resource package for skills, plugins, workflows, MCP servers, command packs, scripts, docs and source bundles; it does not grant a Verified harness badge.
+`hh publish workflow.md` creates a small markdown-derived scaffold. It is not the full-package path. `hh publish <dir>` is the strict native verified path and requires eval/gate. `hh publish-resource <dir-or-git-url>` publishes a hosted mixed resource package for skills, plugins, workflows, MCP servers, command packs, scripts, docs and source bundles; it does not grant a Verified harness badge. Add `--workspace <slug>` to publish that full package into a private workspace catalog as `@slug/name`.
 
 ## Exit Codes
 

@@ -87,11 +87,12 @@ npx onlyharness@latest resources detail github:obra/superpowers --json
 npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json
+npx onlyharness@latest publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
 npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop --json
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-Resource catalog and `publish-resource` commands are available in published `onlyharness@0.2.3` and through MCP/HTTP.
+Resource catalog and `publish-resource` commands are available in published `onlyharness@0.2.4` and through MCP/HTTP.
 
 For local development, build the workspace bundle and run it directly:
 
@@ -109,6 +110,9 @@ node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my
 HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish git@github.com:acme/harnesses.git --path harnesses/my-harness --name my-harness --json
 HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
 HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources search agent-tool --workspace acme --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources detail @acme/agent-tool --json
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name my-private-harness
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
@@ -122,9 +126,11 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 - Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`. Org auth/bundles/audit read Supabase service-role tables first and keep `HARNESS_ORGS_PATH`/`HARNESS_ORG_AUDIT_PATH` as the local smoke fallback.
 - Team workspace UI/API: Network Neighborhood uses `GET /api/orgs/{slug}/workspace` with the same org token and returns org-private cards, sanitized audit rows, and a permission/risk summary.
+- Workspace resource catalogs: `GET /api/workspaces/{slug}/workspace`, `GET /api/workspaces/{slug}/resources`, `GET /api/workspaces/{slug}/resources/{id}`, `GET /api/workspaces/{slug}/resources/{id}/archive`, and `POST /api/workspaces/{slug}/imports/resource-package` are gated by `WORKSPACES_ENABLED=true` and `HH_WORKSPACE_TOKEN` with `HH_ORG_TOKEN` as a migration fallback.
 - Team git sync: `hh sync <git-url-or-local-path> --org acme` clones/scans markdown skills and runbooks, then imports them through the org publish endpoint. First version has no webhooks.
 - Maintainer publish: `hh publish <harness-dir>` requires local `.harnesshub/results.json`; `hh publish <git-url> --path <harness-dir>` clones to a temp dir, runs local eval/gate there, then publishes only if the server rechecks schema, security and gate successfully.
 - Resource package publish: `hh publish-resource <dir-or-git-url> --name <slug> --type <type>` packages safe bounded text files from skills, plugins, workflows, MCP servers, command packs, scripts, docs or source bundles into OnlyHarness archive storage and lists the result in `/api/resources`. It is not a Verified harness badge.
+- Workspace resource package publish: `hh publish-resource <dir-or-git-url> --workspace acme --name <slug> --type <type>` publishes the same full package into a private workspace catalog as `@acme/name`; it does not go through the markdown scaffold path and does not claim a Verified badge.
 - Org-private pulls use the same token path: `HH_ORG_TOKEN=<org-token> hh pull @acme/private-harness`.
 - Directory shelf entries are link-only discovery indexes under owner `directories`. They show `open <url>` in search results and `GET /api/repos/directories/{name}/archive` returns `409 DIRECTORY_LINK_ONLY` instead of runnable files.
 - Server-side remix is a local draft flow with a real fork graph row: `POST /api/repos/{owner}/{repo}/remixes` creates a free unverified `local/{name}` copy from archive files only and records the source -> fork edge. Paid, org/private, directory, link-only and unspecified-license sources fail closed; copied fallback recipes do not increment forks or store prompts/local paths.

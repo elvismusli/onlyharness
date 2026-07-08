@@ -71,6 +71,7 @@ for (const required of [
   "npx onlyharness@latest suggest market research --json",
   "npx onlyharness@latest resources search superpowers --json",
   "npx onlyharness@latest publish-resource ./agent-tool --name agent-tool --type command_pack --json",
+  "npx onlyharness@latest publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json",
   "node packages/harness-cli/dist/hh.mjs suggest market research --json",
   "hh suggest --apply",
   "--target claude-code|codex|cursor",
@@ -80,6 +81,7 @@ for (const required of [
   "resource_use_instructions",
   "publish_resource_package",
   "pricing.model=gate_escrow",
+  "HH_WORKSPACE_TOKEN",
   "HH_ORG_TOKEN",
   "Community stats, stars, forks, thread replies and Harness Heat are not safety guarantees"
 ]) {

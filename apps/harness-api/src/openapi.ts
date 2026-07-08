@@ -819,6 +819,162 @@ export const openapi = {
         }
       }
     },
+    "/workspaces/{slug}/workspace": {
+      get: {
+        summary: "Read a workspace catalog and audit summary",
+        description: "Requires WORKSPACES_ENABLED=true and a Bearer workspace token with workspace:read, read, setup or publish-compatible scope. Legacy org tokens are accepted as a compatibility bridge.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Workspace overview",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    workspace: { $ref: "#/components/schemas/Workspace" },
+                    resources: { type: "array", items: { $ref: "#/components/schemas/Resource" } },
+                    items: { type: "array", items: { $ref: "#/components/schemas/Resource" } },
+                    permissions: { $ref: "#/components/schemas/WorkspaceResourcePermissions" },
+                    audit: { type: "array", items: { $ref: "#/components/schemas/WorkspaceAuditEntry" } }
+                  },
+                  required: ["workspace", "resources", "items", "permissions", "audit"]
+                }
+              }
+            }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/resources": {
+      get: {
+        summary: "Search private workspace resources",
+        description: "Search a workspace catalog containing hosted resource packages and approved resources. Requires a workspace token; this endpoint does not read from the public catalog unless a resource has been explicitly added to the workspace.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          pathParam("slug"),
+          { name: "q", in: "query", schema: { type: "string" } },
+          { name: "type", in: "query", schema: { type: "string" } },
+          { name: "worksWith", in: "query", schema: { type: "string" } },
+          { name: "limit", in: "query", schema: { type: "integer" } }
+        ],
+        responses: {
+          "200": {
+            description: "Workspace resource search result",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ResourceSearchResult" } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/resources/{id}": {
+      get: {
+        summary: "Read workspace resource detail",
+        description: "Returns a workspace-private resource. The id may be the short resource name or the @workspace/name resource ref.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug"), pathParam("id")],
+        responses: {
+          "200": {
+            description: "Workspace resource",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Resource" } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{slug}/resources/{id}/archive": {
+      get: {
+        summary: "Download a workspace-hosted resource archive",
+        description: "Returns a tar.gz archive from workspace archive storage. Requires workspace archive/read scope and never falls back to upstream GitHub.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug"), pathParam("id")],
+        responses: {
+          "200": { description: "Gzip tar archive" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/workspaces/{slug}/imports/resource-package": {
+      post: {
+        summary: "Publish a hosted resource package into a workspace",
+        description: "Requires WORKSPACES_ENABLED=true and a workspace token with resource:publish or legacy publish scope. Packages bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into workspace archive storage. This does not grant a public Verified harness badge.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  title: { type: "string" },
+                  summary: { type: "string" },
+                  resourceType: { type: "string", enum: ["harness", "skill", "plugin", "workflow", "mcp_server", "service_endpoint", "agent_team", "subagent_pack", "command_pack", "config", "guide", "framework", "agent_runtime"] },
+                  sourceUrl: { type: "string" },
+                  worksWith: { type: "array", items: { type: "string" } },
+                  tags: { type: "array", items: { type: "string" } },
+                  files: {
+                    type: "array",
+                    maxItems: 120,
+                    items: {
+                      type: "object",
+                      properties: {
+                        path: { type: "string" },
+                        content: { type: "string" },
+                        truncated: { type: "boolean" }
+                      },
+                      required: ["path", "content"]
+                    }
+                  }
+                },
+                required: ["files"]
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Workspace-hosted agent resource package",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    resource: { $ref: "#/components/schemas/Resource" },
+                    archive: {
+                      type: "object",
+                      properties: {
+                        url: { type: "string" },
+                        fileName: { type: "string" }
+                      }
+                    },
+                    hosted: { type: "boolean" },
+                    verified: { type: "boolean", const: false },
+                    next: { type: "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/me/storefront": {
       get: {
         summary: "Return the authenticated user's creator storefront profile",
@@ -1239,6 +1395,50 @@ export const openapi = {
           ok: { type: "boolean" }
         },
         required: ["ok"]
+      },
+      Workspace: {
+        type: "object",
+        properties: {
+          slug: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string", enum: ["company", "community", "team", "course", "agency", "chat"] },
+          visibility: { type: "string", enum: ["private", "invite_only", "gated", "public", "unlisted"] },
+          plan: { type: "string", enum: ["free", "team", "enterprise"] },
+          description: { type: "string", nullable: true },
+          avatarUrl: { type: "string", nullable: true }
+        },
+        required: ["slug", "name", "type", "visibility", "plan"]
+      },
+      WorkspaceResourcePermissions: {
+        type: "object",
+        properties: {
+          totalResources: { type: "integer" },
+          hostedArchives: { type: "integer" },
+          unscanned: { type: "integer" },
+          riskTiers: {
+            type: "object",
+            properties: {
+              LOW: { type: "integer" },
+              MEDIUM: { type: "integer" },
+              HIGH: { type: "integer" },
+              CRITICAL: { type: "integer" },
+              UNKNOWN: { type: "integer" }
+            }
+          }
+        },
+        required: ["totalResources", "hostedArchives", "unscanned", "riskTiers"]
+      },
+      WorkspaceAuditEntry: {
+        type: "object",
+        properties: {
+          slug: { type: "string" },
+          action: { type: "string" },
+          token_name: { type: "string", nullable: true },
+          subject: { type: "string", nullable: true },
+          target: { type: "string", nullable: true },
+          at: { type: "string" }
+        },
+        required: ["slug", "action", "token_name", "subject", "target", "at"]
       },
       RegistryItem: {
         type: "object",

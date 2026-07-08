@@ -22,7 +22,7 @@ export type UseOrgWorkspaceResult = {
 };
 
 /**
- * Skin-agnostic organization / Network-Neighborhood logic extracted from the
+ * Skin-agnostic legacy organization / Network-Neighborhood logic extracted from the
  * Win98 `App()`.
  *
  * Owns the org connection form state (`networkOrg`, initialised from
@@ -33,7 +33,8 @@ export type UseOrgWorkspaceResult = {
  * merges the org-private items into the registry via injected `cacheItems`.
  * `orgHeadersForOwner` supplies the same org bearer header to the registry when
  * a request owner matches the connected org slug. Endpoints, status strings and
- * error handling are preserved exactly from the host component.
+ * error handling are preserved for compatibility. New resource-first workspace
+ * flows should use `useWorkspace`.
  */
 export function useOrgWorkspace(opts: UseOrgWorkspaceOptions): UseOrgWorkspaceResult {
   const { cacheItems } = opts;

@@ -68,6 +68,9 @@ node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my
 node packages/harness-cli/dist/hh.mjs setup @acme --json
 node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow --json
 node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources search agent-tool --workspace acme --json
+HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources detail @acme/agent-tool --json
 node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme --json
 node packages/harness-cli/dist/hh.mjs pin deep-market-researcher --json
@@ -107,6 +110,11 @@ Core endpoints:
 | GET | `/orgs/{slug}/workspace` | Network Neighborhood payload: org-private cards, sanitized audit rows, permission/risk summary |
 | POST | `/orgs/{slug}/imports/markdown-to-harness` | Publish org-private markdown harness; requires org token with publish scope |
 | POST | `/orgs/{slug}/imports/harness-dir` | Publish verified org-private harness directory after eval/gate; requires org token with publish scope |
+| GET | `/workspaces/{slug}/workspace` | Workspace catalog payload: private resources, sanitized audit rows, permission/risk summary; requires `WORKSPACES_ENABLED=true` and workspace token |
+| GET | `/workspaces/{slug}/resources` | Search private workspace resources; accepts legacy org token as compatibility fallback |
+| GET | `/workspaces/{slug}/resources/{id}` | Workspace resource detail; IDs can be short names or `@workspace/name` refs |
+| GET | `/workspaces/{slug}/resources/{id}/archive` | Download workspace-hosted resource package archives; no upstream redirect |
+| POST | `/workspaces/{slug}/imports/resource-package` | Publish a private hosted agent resource package into a workspace; requires `resource:publish` or legacy publish scope |
 | GET/PUT | `/me/storefront` | Authenticated creator storefront profile and referral code management |
 | GET | `/storefront/{handle}` | Public creator storefront with referral attribution code |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a small unverified scaffold; Bearer token required |
@@ -148,7 +156,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 - Public API payloads must not expose server filesystem paths. Registry/detail may include public forge, OnlyHarness GitHub mirror, or upstream URLs only; `/healthz` returns status only; detail `prReview.source=local-demo` is a generated preview, not an open forge PR.
 - Category benchmarks are local declared-score comparisons until Owner-authored suites add external measurements; never present `hh benchmark` as an independent LLM quality proof. Add suites under `benchmarks/`; smoke requires at least 3 YAML suites and runs all of them.
 - Team `hh setup @org`, `hh install @org/name`, `hh pull @org/name`, `hh publish --org`, and `hh sync <git-url> --org` use `HH_ORG_TOKEN`; org auth/bundles/audit read Supabase service-role tables first, fall back to local JSON for smoke, are feature-flagged by `ORGS_ENABLED`, and must not log raw tokens.
-- Network Neighborhood uses the same org token path through `/orgs/{slug}/workspace`; audit rows must stay sanitized and permission summaries reuse schema risk reports.
+- Network Neighborhood still supports the legacy org token path through `/orgs/{slug}/workspace`; new resource-first workspace catalog flows use `/workspaces/{slug}/...` with `HH_WORKSPACE_TOKEN`, falling back to `HH_ORG_TOKEN` during migration. Audit rows must stay sanitized and permission summaries reuse schema risk/resource reports.
 - `hh suggest`, `hh install`, `hh eval`, and `hh gate` may record `suggested`, `accepted`, `applied`, `install`, `eval`, or `gate` events; event payloads must stay owner/repo/version/target/client only, never local paths or prompts. `accepted` means the user chose `--apply`; `applied` is recorded only after local files are written.
 - `/entitlements/check` is read-only for bots: require a scoped org token, check the explicit `subject`, and never treat the org token itself as a buyer entitlement.
 - `/community/invite-code` must only mint codes for the authenticated buyer after a live entitlement check. `/community/verify-code` must HMAC/TTL-check the code, re-check entitlement live, and never trust a subject typed into Telegram chat.

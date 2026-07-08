@@ -546,7 +546,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.3");
+  .version("0.2.4");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -576,6 +576,8 @@ resourcesCommand.command("search")
   .argument("[query...]", "search terms", [])
   .option("--json", "print JSON", false)
   .option("--limit <n>", "max results", "10")
+  .option("--workspace <slug>", "search a private workspace catalog")
+  .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
   .option("--type <type>", "resource type filter")
   .option("--works-with <target>", "compatibility filter: claude-code|codex|cursor|mcp|cli|github")
   .option("--source <source>", "source platform filter")
@@ -591,7 +593,11 @@ resourcesCommand.command("search")
     if (options.worksWith) params.set("worksWith", options.worksWith);
     if (options.source) params.set("source", options.source);
     if (options.installability) params.set("installability", options.installability);
-    const data = await fetchJson(`${registryUrl}/resources?${params.toString()}`, { json: options.json }) as ResourceSearchPayload;
+    const workspace = options.workspace ? cleanSetupOrg(options.workspace) : undefined;
+    if (options.workspace && !workspace) fail("Invalid workspace slug.", EXIT.VALIDATION, "Use --workspace acme", options.json);
+    const token = workspace ? workspaceToken(options.workspaceToken) : undefined;
+    const url = workspace ? `${registryUrl}/workspaces/${workspace}/resources?${params.toString()}` : `${registryUrl}/resources?${params.toString()}`;
+    const data = await fetchJson(url, { json: options.json, init: workspaceAuthInit(token) }) as ResourceSearchPayload;
     const items = data.resources ?? data.items ?? [];
     if (options.json) return writeStdout({ resources: items, counts: data.counts });
     if (!items.length) return writeStdout("No resources found. Try another query or remove filters.\n");
@@ -601,9 +607,11 @@ resourcesCommand.command("search")
 resourcesCommand.command("detail")
   .description("show resource detail")
   .argument("<id>", "resource id, e.g. github:obra/superpowers")
+  .option("--workspace <slug>", "workspace slug when using a short resource id")
+  .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
   .option("--json", "print JSON", false)
   .action(async (id: string, options) => {
-    const resource = await fetchResourceDetail(id, options.json);
+    const resource = await fetchResourceDetail(id, options.json, options.workspace, options.workspaceToken);
     if (options.json) return writeStdout(resource);
     writeStdout(resourceDetailText(resource));
   });
@@ -611,9 +619,11 @@ resourcesCommand.command("detail")
 resourcesCommand.command("open")
   .description("open a resource URL")
   .argument("<id>", "resource id, e.g. github:obra/superpowers")
+  .option("--workspace <slug>", "workspace slug when using a short resource id")
+  .option("--workspace-token <token>", "workspace token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
   .option("--json", "print JSON", false)
   .action(async (id: string, options) => {
-    const resource = await fetchResourceDetail(id, options.json);
+    const resource = await fetchResourceDetail(id, options.json, options.workspace, options.workspaceToken);
     const url = preferredResourceUrl(resource);
     const opened = openUrl(url);
     if (options.json) return writeStdout({ id: resource.id, url, opened });
@@ -976,9 +986,14 @@ program.command("publish-resource")
   .option("--path <path>", "subdirectory inside a git repo or local directory")
   .option("--source-url <url>", "public upstream/source URL for attribution")
   .option("--token <token>", "access token (defaults to HH_TOKEN env)")
+  .option("--workspace <slug>", "publish into a private workspace catalog")
+  .option("--workspace-token <token>", "workspace publish token (defaults to HH_WORKSPACE_TOKEN/HH_ORG_TOKEN)")
   .option("--json", "print JSON", false)
   .action(async (sourceArg: string, options) => {
-    const token = options.token ?? process.env.HH_TOKEN;
+    const workspace = options.workspace ? cleanSetupOrg(options.workspace) : undefined;
+    if (options.workspace && !workspace) fail("Invalid workspace slug.", EXIT.VALIDATION, "Use --workspace acme", options.json);
+    const token = workspace ? workspaceToken(options.workspaceToken) : options.token ?? process.env.HH_TOKEN;
+    if (workspace && !token) fail("Workspace token required.", EXIT.AUTH, "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>.", options.json);
     const source = materializeResourcePackageSource(sourceArg, options.path, options.json);
     try {
       const files = collectResourcePackageFiles(source.path, options.json);
@@ -991,6 +1006,7 @@ program.command("publish-resource")
         summary: options.summary,
         resourceType: options.type,
         sourceUrl: options.sourceUrl ?? source.sourceUrl,
+        workspace,
         files,
         json: options.json
       });
@@ -1003,12 +1019,13 @@ program.command("publish-resource")
           archiveUrl: result.archive?.url,
           hosted: result.hosted === true,
           verified: result.verified === true,
+          workspace,
           source: source.cloned ? "git" : "local",
           next: result.next
         });
         return;
       }
-      writeStdout(`Published resource package ${result.resource?.title ?? options.title ?? name ?? path.basename(source.path)} — ${result.archive?.url ?? "archive unavailable"}\n`);
+      writeStdout(`Published resource package ${result.resource?.title ?? options.title ?? name ?? path.basename(source.path)}${workspace ? ` to @${workspace}` : ""} — ${result.archive?.url ?? "archive unavailable"}\n`);
       if (result.next) writeStdout(`${result.next}\n`);
     } finally {
       source.cleanup();
@@ -1516,10 +1533,42 @@ function preferredResourceUrl(resource: ResourceItem): string {
     ?? resource.canonicalUrl;
 }
 
-async function fetchResourceDetail(id: string, json = false): Promise<ResourceItem> {
-  const url = `${registryUrl}/resources/${encodeURIComponent(id)}`;
-  const response = await fetchRegistryResponse(url, json);
-  if (response.status === 404) fail(`Resource ${id} not found.`, EXIT.NOT_FOUND, `hh resources search ${id.replace(/^github:/, "").replace("/", " ")}`, json);
+function workspaceResourceRef(id: string, workspaceOverride: string | undefined, json: boolean): { workspace: string; name: string } | undefined {
+  const workspace = workspaceOverride ? cleanSetupOrg(workspaceOverride) : undefined;
+  if (workspaceOverride && !workspace) fail("Invalid workspace slug.", EXIT.VALIDATION, "Use --workspace acme", json);
+  if (workspace) return { workspace, name: cleanWorkspaceResourceName(id, json) };
+  const match = id.match(/^@([^/]+)\/(.+)$/);
+  if (!match) return undefined;
+  const parsedWorkspace = cleanSetupOrg(match[1] ?? "");
+  if (!parsedWorkspace) fail("Invalid workspace resource ref.", EXIT.VALIDATION, "Use @acme/resource-name", json);
+  return { workspace: parsedWorkspace, name: cleanWorkspaceResourceName(match[2] ?? "", json) };
+}
+
+function cleanWorkspaceResourceName(value: string, json: boolean): string {
+  const cleaned = value.replace(/^packages\//, "");
+  if (!/^[a-z0-9][a-z0-9._-]{1,100}$/.test(cleaned)) {
+    fail("Invalid workspace resource name.", EXIT.VALIDATION, "Use @acme/resource-name", json);
+  }
+  return cleaned;
+}
+
+function workspaceToken(tokenOverride?: string): string | undefined {
+  return tokenOverride ?? process.env.HH_WORKSPACE_TOKEN ?? process.env.HH_ORG_TOKEN;
+}
+
+function workspaceAuthInit(token?: string): RequestInit {
+  return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+}
+
+async function fetchResourceDetail(id: string, json = false, workspaceOverride?: string, tokenOverride?: string): Promise<ResourceItem> {
+  const ref = workspaceResourceRef(id, workspaceOverride, json);
+  const token = ref ? workspaceToken(tokenOverride) : undefined;
+  const url = ref
+    ? `${registryUrl}/workspaces/${ref.workspace}/resources/${encodeURIComponent(ref.name)}`
+    : `${registryUrl}/resources/${encodeURIComponent(id)}`;
+  const response = await fetchRegistryResponse(url, json, ref ? workspaceAuthInit(token) : undefined);
+  if (response.status === 404) fail(`Resource ${id} not found.`, EXIT.NOT_FOUND, ref ? `hh resources search --workspace ${ref.workspace} ${ref.name}` : `hh resources search ${id.replace(/^github:/, "").replace("/", " ")}`, json);
+  if (response.status === 401 || response.status === 403) fail(`Resource request failed (${response.status}).`, EXIT.AUTH, ref ? "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>." : undefined, json);
   if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.GENERAL, undefined, json);
   return readResponseJson(response, url, json) as Promise<ResourceItem>;
 }
@@ -1552,8 +1601,9 @@ function roundCompact(value: number): string {
   return value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, "");
 }
 
-async function fetchJson(url: string, options: { json?: boolean } = {}): Promise<unknown> {
-  const response = await fetchRegistryResponse(url, options.json);
+async function fetchJson(url: string, options: { json?: boolean; init?: RequestInit } = {}): Promise<unknown> {
+  const response = await fetchRegistryResponse(url, options.json, options.init);
+  if (response.status === 401 || response.status === 403) fail(`Registry request failed: ${url} -> ${response.status}`, EXIT.AUTH, "Check your token and workspace membership.", options.json);
   if (!response.ok) fail(`Registry request failed: ${url} -> ${response.status}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.GENERAL, undefined, options.json);
   return readResponseJson(response, url, options.json);
 }
@@ -2340,6 +2390,7 @@ async function publishHarnessDir(input: { org?: string; token?: string; name?: s
 
 async function publishResourcePackage(input: {
   token?: string;
+  workspace?: string;
   name?: string;
   title?: string;
   summary?: string;
@@ -2348,7 +2399,10 @@ async function publishResourcePackage(input: {
   files: PublishFilePayload[];
   json: boolean;
 }): Promise<ResourcePackageImportResult> {
-  const response = await fetchRegistryResponse(`${registryUrl}/imports/resource-package`, input.json, {
+  const publishUrl = input.workspace
+    ? `${registryUrl}/workspaces/${input.workspace}/imports/resource-package`
+    : `${registryUrl}/imports/resource-package`;
+  const response = await fetchRegistryResponse(publishUrl, input.json, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -2369,9 +2423,12 @@ async function publishResourcePackage(input: {
       fail(
         `Resource package publish failed (${response.status}): ${body.error ?? "authorization required"}`,
         EXIT.AUTH,
-        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.workspace ? "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
         input.json
       );
+    }
+    if (response.status === 404 && input.workspace) {
+      fail(`Resource package publish failed (404): ${body.error ?? "workspace publishing not found"}`, EXIT.NOT_FOUND, "Ask a workspace admin to enable workspace publishing.", input.json);
     }
     const detail = body.failures?.length ? `${body.error ?? "publish rejected"}: ${body.failures.join("; ")}` : body.error ?? JSON.stringify(body);
     fail(`Resource package publish failed (${response.status}): ${detail}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION, "Check file count, file sizes, secret files and --type.", input.json);

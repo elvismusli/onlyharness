@@ -280,6 +280,29 @@ export type OrgWorkspace = {
   audit: OrgAuditEntry[];
 };
 
+export type WorkspaceAuditEntry = OrgAuditEntry;
+
+export type WorkspaceCatalog = {
+  workspace: {
+    slug: string;
+    name: string;
+    type: "company" | "community" | "team" | "course" | "agency" | "chat";
+    visibility: "private" | "invite_only" | "gated" | "public" | "unlisted";
+    plan: "free" | "team" | "enterprise";
+    description?: string | null;
+    avatarUrl?: string | null;
+  };
+  resources: ResourceItem[];
+  items: ResourceItem[];
+  permissions: {
+    totalResources: number;
+    hostedArchives: number;
+    unscanned: number;
+    riskTiers: Record<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN", number>;
+  };
+  audit: WorkspaceAuditEntry[];
+};
+
 export const DETAIL_TABS = ["Overview", "Install", "Trust", "Try sample", "Thread", "Files", "Versions"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 

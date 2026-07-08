@@ -22,6 +22,7 @@ import { fetchCountersMap, HEAT_SIGNAL_THRESHOLD } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
 import * as resources from "./resources.js";
+import * as workspaces from "./workspaces.js";
 
 const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -30,6 +31,7 @@ const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey
 const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
 const orgsEnabled = process.env.ORGS_ENABLED === "true";
+const workspacesEnabled = process.env.WORKSPACES_ENABLED === "true";
 const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected-resource";
 
 type ImportRequest = {
@@ -69,6 +71,12 @@ type ImportOptions = {
   eventTarget?: string;
   stateType?: string;
   provenance?: unknown;
+};
+
+type ResourcePackageImportOptions = {
+  workspaceSlug?: string;
+  workspaceName?: string;
+  actorLabel?: string;
 };
 
 type CheckoutRequest = {
@@ -166,6 +174,13 @@ type OrgWorkspacePermissionsSummary = {
     userData: number;
   };
   riskMarkdown: string;
+};
+
+type WorkspaceResourcePermissionsSummary = {
+  totalResources: number;
+  hostedArchives: number;
+  unscanned: number;
+  riskTiers: Record<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN", number>;
 };
 
 type ThreadItem = {
@@ -267,6 +282,90 @@ app.get("/resources/:id/archive", async (request, reply) => {
     owner: resource.upstreamOwner,
     repo: resource.upstreamRepo ?? resource.title,
     target: "resource-archive",
+    client: "api"
+  });
+  return reply
+    .header("content-type", "application/gzip")
+    .header("content-disposition", `attachment; filename="${resources.resourceArchiveFileName(resource)}"`)
+    .send(createReadStream(archivePath));
+});
+
+app.get("/workspaces/:slug/workspace", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace layer is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["workspace:read"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "workspace" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const query = request.query as resources.ResourceQuery;
+  const resourceResult = workspaces.searchWorkspaceResources(auth.workspace.slug, { ...query, limit: query.limit ?? 50 });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "workspace_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "workspace", via: auth.via });
+  return {
+    workspace: publicWorkspace(auth.workspace),
+    resources: resourceResult.resources,
+    items: resourceResult.resources,
+    permissions: workspaceResourcePermissionsSummary(auth.workspace.slug, resourceResult.resources),
+    audit: await workspaces.readWorkspaceAudit(auth.workspace.slug, 80)
+  };
+});
+
+app.get("/workspaces/:slug/resources", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace resources are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["resource:read"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resources_search" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const result = workspaces.searchWorkspaceResources(auth.workspace.slug, request.query as resources.ResourceQuery);
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resources_search", tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resources", via: auth.via });
+  return result;
+});
+
+app.get("/workspaces/:slug/resources/:id", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace resources are not enabled" });
+  const { slug, id } = request.params as { slug: string; id: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["resource:read"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resource_detail" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const resource = workspaces.workspaceResourceDetail(auth.workspace.slug, id);
+  if (!resource) return reply.code(404).send({ error: "Workspace resource not found" });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_detail_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: resource.id, via: auth.via });
+  return resource;
+});
+
+app.get("/workspaces/:slug/resources/:id/archive", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace resources are not enabled" });
+  const { slug, id } = request.params as { slug: string; id: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["resource:archive"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resource_archive" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const resource = workspaces.workspaceResourceDetail(auth.workspace.slug, id);
+  if (!resource) return reply.code(404).send({ error: "Workspace resource not found" });
+  const archivePath = workspaces.workspaceResourceArchivePath(auth.workspace.slug, resource.id);
+  if (!archivePath) {
+    return reply.code(409).send({
+      error: "Workspace resource archive not hosted",
+      code: "RESOURCE_ARCHIVE_NOT_HOSTED",
+      id: resource.id,
+      next: "This workspace resource is listed in OnlyHarness, but its files are not hosted by OnlyHarness yet."
+    });
+  }
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_archive_read", tokenName: auth.tokenName, subject: eventSubject(undefined), target: resource.id, via: auth.via });
+  await recordEvent({
+    kind: "pull",
+    owner: resource.upstreamOwner,
+    repo: resource.upstreamRepo ?? resource.title,
+    target: "workspace-resource-archive",
     client: "api"
   });
   return reply
@@ -754,6 +853,28 @@ app.post("/orgs/:slug/imports/harness-dir", async (request, reply) => {
   }
   await appendOrgAudit({ slug: auth.org.slug, action: "verified_publish", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.item?.name });
   return result;
+});
+
+app.post("/workspaces/:slug/imports/resource-package", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace publishing is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const token = workspaceTokenFromRequest(request);
+  const auth = await workspaces.authorizeWorkspaceToken(slug, token, ["resource:publish"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resource_publish" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as ResourcePackageImportRequest : {};
+  const result = await importResourcePackage(body, { id: `workspace:${auth.workspace.slug}`, email: auth.workspace.name }, { workspaceSlug: auth.workspace.slug, workspaceName: auth.workspace.name, actorLabel: auth.tokenName });
+  if ("error" in result) {
+    const payload: { error: string; code?: string; failures?: string[] } = { error: result.error ?? "Workspace resource package import failed" };
+    if ("code" in result && result.code) payload.code = result.code;
+    if ("failures" in result && result.failures) payload.failures = result.failures;
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_publish_rejected", tokenName: auth.tokenName, subject: eventSubject(undefined), target: body.name, via: auth.via });
+    return reply.code(result.status ?? 500).send(payload);
+  }
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_package_publish", tokenName: auth.tokenName, subject: eventSubject(undefined), target: result.resource?.id, via: auth.via });
+  return reply.code(201).send(result);
 });
 
 app.get("/repos/:owner/:repo/thread", async (request, reply) => {
@@ -1731,7 +1852,7 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
   }
 }
 
-async function importResourcePackage(body: ResourcePackageImportRequest, user: AuthUser) {
+async function importResourcePackage(body: ResourcePackageImportRequest, user: AuthUser, options: ResourcePackageImportOptions = {}) {
   const files = Array.isArray(body.files) ? body.files : [];
   if (!files.length) return { status: 400, error: "files are required" };
   if (files.length > 120) return { status: 400, error: "too many files" };
@@ -1761,8 +1882,9 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
     const sourceUrl = cleanPublicUrl(body.sourceUrl);
     if (body.sourceUrl && !sourceUrl) return { status: 400, error: "sourceUrl must be a public http(s) URL without credentials" };
 
-    const id = `onlyharness:packages/${name}`;
-    const archiveRoot = resources.resourceArchiveRoot();
+    const workspaceSlug = options.workspaceSlug ? workspaces.cleanWorkspaceSlug(options.workspaceSlug) : undefined;
+    const id = workspaceSlug ? workspaces.workspaceResourceId(workspaceSlug, name) : `onlyharness:packages/${name}`;
+    const archiveRoot = workspaceSlug ? workspaces.workspaceResourceArchiveRoot(workspaceSlug) : resources.resourceArchiveRoot();
     const archivePath = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.tar.gz`);
     const archiveTemp = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.${Date.now()}.tmp`);
     const tar = spawnSync("tar", ["-czf", archiveTemp, "-C", temp, "."], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
@@ -1774,18 +1896,24 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
 
     const now = new Date().toISOString();
     const signals = { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 };
+    const canonicalUrl = workspaceSlug
+      ? `https://onlyharness.com/#/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}`
+      : `https://onlyharness.com/#/resources/${encodeURIComponent(id)}`;
+    const archiveUrl = workspaceSlug
+      ? `https://onlyharness.com/api/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}/archive`
+      : `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive`;
     const base: Omit<resources.Resource, "popularityScore" | "popularityBreakdown"> = {
       id,
-      identity: { scheme: "onlyharness", key: `packages/${name}` },
+      identity: { scheme: "onlyharness", key: workspaceSlug ? `workspaces/${workspaceSlug}/packages/${name}` : `packages/${name}` },
       title,
       summary,
       resourceType,
       sourcePlatform: "manual",
-      canonicalUrl: `https://onlyharness.com/#/resources/${encodeURIComponent(id)}`,
-      upstreamId: `packages/${name}`,
-      upstreamOwner: "onlyharness",
+      canonicalUrl,
+      upstreamId: workspaceSlug ? `@${workspaceSlug}/${name}` : `packages/${name}`,
+      upstreamOwner: workspaceSlug ? `@${workspaceSlug}` : "onlyharness",
       upstreamRepo: name,
-      creatorName: user.email ?? "OnlyHarness user",
+      creatorName: options.workspaceName ?? user.email ?? "OnlyHarness user",
       licenseStatus: "unknown",
       sourceCheckedAt: now,
       sourceCheckMethod: "manual_research",
@@ -1798,8 +1926,8 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
       onlyHarnessSignals: signals,
       trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
       actions: [
-        { id: "open_onlyharness", label: "Use in OnlyHarness", url: `https://onlyharness.com/#/resources/${encodeURIComponent(id)}` },
-        { id: "download_archive", label: "Download archive", url: `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive` },
+        { id: "open_onlyharness", label: "Use in OnlyHarness", url: canonicalUrl },
+        { id: "download_archive", label: "Download archive", url: archiveUrl },
         ...(sourceUrl ? [{ id: "open_upstream" as const, label: "Open source", url: sourceUrl }] : [])
       ],
       ...(sourceUrl ? {
@@ -1822,28 +1950,33 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
         riskPenalty: score.riskPenalty
       }
     };
-    resources.upsertImportedResource(resource);
-    await recordEvent({ kind: "applied", owner: "onlyharness", repo: name, subject: eventSubject(user.id), target: "resource_package", client: "api" });
+    if (workspaceSlug) workspaces.upsertWorkspaceResource(workspaceSlug, resource);
+    else resources.upsertImportedResource(resource);
+    await recordEvent({ kind: "applied", owner: workspaceSlug ? `@${workspaceSlug}` : "onlyharness", repo: name, subject: eventSubject(user.id), target: workspaceSlug ? "workspace_resource_package" : "resource_package", client: "api" });
     appendState({
-      type: "resource_package_import",
+      type: workspaceSlug ? "workspace_resource_package_import" : "resource_package_import",
       id,
       name,
       resourceType,
       archive: archivePath,
       files: safeFiles.length,
       userId: user.id,
+      workspace: workspaceSlug,
+      actor: options.actorLabel,
       sourceUrl,
       at: now
     });
     return {
       resource,
       archive: {
-        url: `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive`,
+        url: archiveUrl,
         fileName: resources.resourceArchiveFileName(resource)
       },
       hosted: true,
       verified: false,
-      next: "This is a hosted agent resource package, not a verified harness. Run eval/gate and publish a native verified package only when you need a Verified install badge."
+      next: workspaceSlug
+        ? "This is a workspace-hosted agent resource package, not a public Verified harness. Workspace members can pull it with a workspace token."
+        : "This is a hosted agent resource package, not a verified harness. Run eval/gate and publish a native verified package only when you need a Verified install badge."
     };
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -2042,6 +2175,35 @@ function gateFailures(basics: ReturnType<typeof registry.registryDetailBasics>) 
   return { score, cost, risk: basics.inspection.risk.score, failures };
 }
 
+function publicWorkspace(workspace: workspaces.WorkspaceRecord) {
+  return {
+    slug: workspace.slug,
+    name: workspace.name,
+    type: workspace.type,
+    visibility: workspace.visibility,
+    plan: workspace.plan,
+    description: workspace.description ?? null,
+    avatarUrl: workspace.avatar_url ?? null
+  };
+}
+
+function workspaceResourcePermissionsSummary(slug: string, rows: resources.Resource[]): WorkspaceResourcePermissionsSummary {
+  const summary: WorkspaceResourcePermissionsSummary = {
+    totalResources: rows.length,
+    hostedArchives: 0,
+    unscanned: 0,
+    riskTiers: { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0, UNKNOWN: 0 }
+  };
+  for (const resource of rows) {
+    if (workspaces.workspaceResourceArchivePath(slug, resource.id)) summary.hostedArchives += 1;
+    const scan = resource.trust?.securityScan ?? "not_scanned";
+    if (scan === "not_scanned") summary.unscanned += 1;
+    const tier = resource.trust?.riskTier && summary.riskTiers[resource.trust.riskTier] !== undefined ? resource.trust.riskTier : "UNKNOWN";
+    summary.riskTiers[tier] += 1;
+  }
+  return summary;
+}
+
 function orgWorkspacePermissionsSummary(items: registry.RegistryItem[]): OrgWorkspacePermissionsSummary {
   const summary: OrgWorkspacePermissionsSummary = {
     totalHarnesses: items.length,
@@ -2098,6 +2260,13 @@ function paymentSignatureFromRequest(request: FastifyRequest): string | undefine
 function orgTokenFromRequest(request: FastifyRequest): string | undefined {
   const authorization = headerValue(request.headers.authorization);
   return authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : headerValue(request.headers["x-harness-org-token"]);
+}
+
+function workspaceTokenFromRequest(request: FastifyRequest): string | undefined {
+  const authorization = headerValue(request.headers.authorization);
+  return authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : headerValue(request.headers["x-harness-workspace-token"]) ?? headerValue(request.headers["x-harness-org-token"]);
 }
 
 function orgTokenFromAuthorization(authorization: string | undefined): string | undefined {

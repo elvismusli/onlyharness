@@ -73,6 +73,12 @@ OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-a
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, bundle: { version, harnesses, configs } }. Use `HH_ORG_TOKEN=... hh setup @slug` instead of hand-writing files.
 - Org workspace: GET /orgs/{slug}/workspace
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, items, permissions, audit }. The audit rows are sanitized and permissions include riskMarkdown for the highest-risk org harness.
+- Workspace catalog: GET /workspaces/{slug}/workspace
+  Requires WORKSPACES_ENABLED=true and Authorization: Bearer {workspace token}. Response: { workspace, resources, items, permissions, audit }. Use `HH_WORKSPACE_TOKEN=... hh resources search --workspace slug` for private workspace resources. Legacy org tokens are accepted as a migration fallback.
+- Workspace resources: GET /workspaces/{slug}/resources, GET /workspaces/{slug}/resources/{id}, GET /workspaces/{slug}/resources/{id}/archive
+  Search, inspect, and download workspace-hosted resource packages. Resource refs are `@workspace/name`; archives are served from OnlyHarness workspace archive storage and never redirect to upstream GitHub.
+- Workspace resource package publish: POST /workspaces/{slug}/imports/resource-package
+  Requires WORKSPACES_ENABLED=true and a workspace token with publish scope. Use `HH_WORKSPACE_TOKEN=... hh publish-resource <dir-or-git-url> --workspace slug --name my-agent-tool --type command_pack`. This is the full-package path for private skills/plugins/workflows/MCP servers/commands/scripts/docs/source bundles; it is not the markdown scaffold path and does not grant a Verified harness badge.
 - Org publish: POST /orgs/{slug}/imports/markdown-to-harness
   Requires ORGS_ENABLED=true and an org token with publish scope. Use `HH_ORG_TOKEN=... hh publish workflow.md --org slug --name team-workflow`. The generated harness is `visibility: org` and archive/detail require an org token.
 - Org verified publish: POST /orgs/{slug}/imports/harness-dir
@@ -181,6 +187,9 @@ For local development from the repo:
 - hh setup @org             install a token-gated team bundle; uses HH_ORG_TOKEN and writes managed setup metadata
 - hh publish --org <slug>   publish markdown into an org-private namespace; uses HH_ORG_TOKEN
 - hh publish-resource <dir-or-git-url> --name <slug> --type <type>   publish a hosted resource package; accepts safe bounded text files under scripts, commands, tools, workflows, mcp, plugins, docs, src/lib and agent directories
+- hh publish-resource <dir-or-git-url> --workspace <slug> --name <slug> --type <type>   publish a private workspace-hosted resource package; uses HH_WORKSPACE_TOKEN, falling back to HH_ORG_TOKEN during migration
+- hh resources search <terms> --workspace <slug>   search private workspace resources; uses HH_WORKSPACE_TOKEN
+- hh resources detail @slug/name   inspect private workspace resource detail; uses HH_WORKSPACE_TOKEN
 - hh validate [dir]         schema and permission checks (--strict fails on warnings)
 - hh doctor --harness [dir] inspect registry connectivity and a local harness
 - hh pin [dir]              pin a pulled harness to its current registry version

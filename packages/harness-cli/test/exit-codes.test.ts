@@ -24,6 +24,8 @@ let sawOrgHarnessDirPublishToken = false;
 let sawOrgPullToken = false;
 let sawHarnessDirPublishToken = false;
 let sawResourcePackagePublishToken = false;
+let sawWorkspaceResourcePackagePublishToken = false;
+let sawWorkspaceResourcesToken = false;
 let sawClaudeInstallToken = false;
 let orgPublishedNames: string[] = [];
 let resourcePackagePublishPaths: string[] = [];
@@ -313,6 +315,80 @@ before(async () => {
           next: "not verified"
         }));
       });
+      return;
+    }
+
+    if (request.url === "/workspaces/acme/imports/resource-package" && request.method === "POST") {
+      if (request.headers.authorization !== "Bearer workspace-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid workspace token" }));
+        return;
+      }
+      sawWorkspaceResourcePackagePublishToken = true;
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { name?: string; title?: string; resourceType?: string; files?: Array<{ path?: string; content?: string; truncated?: boolean }> };
+        resourcePackagePublishPaths = (body.files ?? []).map((file) => file.path ?? "");
+        const name = body.name ?? "agent-tool";
+        response.statusCode = 201;
+        response.end(JSON.stringify({
+          resource: {
+            id: `@acme/${name}`,
+            title: body.title ?? titleizeTest(name),
+            upstreamRepo: name,
+            resourceType: body.resourceType ?? "command_pack"
+          },
+          archive: {
+            url: `https://onlyharness.com/api/workspaces/acme/resources/${name}/archive`,
+            fileName: `onlyharness-${name}.tar.gz`
+          },
+          hosted: true,
+          verified: false,
+          next: "workspace package"
+        }));
+      });
+      return;
+    }
+
+    if (request.url?.startsWith("/workspaces/acme/resources") && request.method === "GET") {
+      if (request.headers.authorization !== "Bearer workspace-token") {
+        response.statusCode = 403;
+        response.end(JSON.stringify({ error: "Invalid workspace token" }));
+        return;
+      }
+      sawWorkspaceResourcesToken = true;
+      const fixture = {
+        id: "@acme/agent-tool",
+        title: "Agent Tool",
+        summary: "Private workspace command pack.",
+        resourceType: "command_pack",
+        sourcePlatform: "manual",
+        canonicalUrl: "https://onlyharness.com/#/workspaces/acme/resources/agent-tool",
+        upstreamId: "@acme/agent-tool",
+        upstreamOwner: "@acme",
+        upstreamRepo: "agent-tool",
+        licenseStatus: "unknown",
+        sourceCheckedAt: "2026-07-08",
+        sourceCheckStatus: "active",
+        lastSeenAt: "2026-07-08",
+        installability: "importable",
+        tags: ["command_pack", "hosted"],
+        worksWith: ["cli", "codex"],
+        upstreamPopularity: { sourceLabel: "OnlyHarness hosted resource package" },
+        onlyHarnessSignals: { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 },
+        popularityScore: 0,
+        trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+        actions: [{ id: "download_archive", label: "Download archive", url: "https://onlyharness.com/api/workspaces/acme/resources/agent-tool/archive" }]
+      };
+      if (request.url.startsWith("/workspaces/acme/resources/agent-tool")) {
+        response.end(JSON.stringify(fixture));
+        return;
+      }
+      response.end(JSON.stringify({ resources: [fixture], items: [fixture], counts: { externalSeed: 0, internal: 1, total: 1 } }));
       return;
     }
 
@@ -1108,6 +1184,51 @@ test("publish-resource sends a hosted agent package with scripts and skips unsaf
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("publish-resource --workspace sends HH_WORKSPACE_TOKEN to workspace import endpoint", async () => {
+  sawWorkspaceResourcePackagePublishToken = false;
+  resourcePackagePublishPaths = [];
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-workspace-resource-package-"));
+  try {
+    await mkdir(path.join(root, "scripts"), { recursive: true });
+    await writeFile(path.join(root, "README.md"), "# Agent Tool\n\nReusable command pack for workspace agents.\n");
+    await writeFile(path.join(root, "scripts/run.sh"), "#!/usr/bin/env bash\necho workspace-agent-tool\n");
+
+    const result = await runCli(["publish-resource", root, "--name", "agent-tool", "--type", "command_pack", "--workspace", "acme", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(sawWorkspaceResourcePackagePublishToken, true);
+    assert.doesNotMatch(result.stdout, /workspace-token/);
+    assert.ok(resourcePackagePublishPaths.includes("README.md"));
+    assert.ok(resourcePackagePublishPaths.includes("scripts/run.sh"));
+    const body = JSON.parse(result.stdout) as { id?: string; workspace?: string; archiveUrl?: string; hosted?: boolean; verified?: boolean };
+    assert.equal(body.id, "@acme/agent-tool");
+    assert.equal(body.workspace, "acme");
+    assert.equal(body.hosted, true);
+    assert.equal(body.verified, false);
+    assert.match(body.archiveUrl ?? "", /\/workspaces\/acme\/resources\/agent-tool\/archive/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("resources search/detail support workspace catalogs with workspace token", async () => {
+  sawWorkspaceResourcesToken = false;
+
+  const search = await runCli(["resources", "search", "agent", "--workspace", "acme", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
+  assert.equal(search.status, 0, search.stderr);
+  assert.equal(sawWorkspaceResourcesToken, true);
+  const searchBody = JSON.parse(search.stdout) as { resources?: Array<{ id?: string }> };
+  assert.equal(searchBody.resources?.[0]?.id, "@acme/agent-tool");
+
+  sawWorkspaceResourcesToken = false;
+  const detail = await runCli(["resources", "detail", "@acme/agent-tool", "--json"], { HH_REGISTRY_URL: registryUrl, HH_WORKSPACE_TOKEN: "workspace-token" });
+  assert.equal(detail.status, 0, detail.stderr);
+  assert.equal(sawWorkspaceResourcesToken, true);
+  const detailBody = JSON.parse(detail.stdout) as { id?: string; upstreamOwner?: string };
+  assert.equal(detailBody.id, "@acme/agent-tool");
+  assert.equal(detailBody.upstreamOwner, "@acme");
 });
 
 test("sync imports local repo markdown candidates into an org namespace", async () => {
