@@ -58,10 +58,11 @@ team
 course
 agency
 chat
-personal
 ```
 
 Тип влияет на defaults, UX-copy и policy templates, но не меняет базовую архитектуру.
+
+`personal` intentionally stays out of v1. The app already has storefront/profile identity for individual creators, and local agent setups already live in the user's filesystem. A first-class personal workspace would duplicate those surfaces before there is proven demand.
 
 ### 3.2 Workspace visibility
 
@@ -75,7 +76,7 @@ unlisted
 
 - `private`: видят только members.
 - `invite_only`: join по invite link/code/email invite.
-- `gated`: join через entitlement, Telegram/Discord verification, email domain, paid subscription, external role.
+- `gated`: join через entitlement, Telegram/Discord verification, email domain, future paid subscription, external role.
 - `public`: страница видна всем, install может быть public или gated.
 - `unlisted`: страница доступна по ссылке, не в public discovery.
 
@@ -95,6 +96,24 @@ unlisted
 - hosted OnlyHarness resource package.
 
 `Harness` остается только одним resource type. Workspace UI и API не должны говорить так, будто все является harness.
+
+### 3.4 Personal workspace vs storefront
+
+Do not merge these concepts:
+
+- `storefront` is a public creator/business profile and distribution page.
+- `personal workspace` would be a private saved setup for one user.
+
+V1 decision: no hosted personal workspace. Keep personal setup local and use storefront for public creator identity. Revisit personal workspace only after company/community workspaces prove recurring usage.
+
+### 3.5 Collection namespaces
+
+`workspace_collections` are not the same as public marketplace collections.
+
+- Public collections: editorial/product bundles visible in public catalog.
+- Workspace collections: private or semi-private curation inside one workspace.
+
+User-facing copy should say `Workspace collection` or `Approved resources` inside workspace contexts. Public catalog can keep `Collections` only when it clearly means public marketplace bundles.
 
 ## 4. User stories
 
@@ -167,7 +186,7 @@ archived_at timestamptz null
 Constraints:
 
 - slug: lowercase, public-safe.
-- type enum: `company|community|team|course|agency|chat|personal`.
+- type enum: `company|community|team|course|agency|chat`.
 - visibility enum: `private|invite_only|gated|public|unlisted`.
 
 #### `workspace_members`
@@ -200,7 +219,7 @@ Roles:
 - `telegram`
 - `discord`
 - `entitlement`
-- `subscription`
+- `paid_entitlement`
 - `token_bootstrap`
 
 #### `workspace_invites`
@@ -430,7 +449,7 @@ Publish allowed if:
 - role is `owner|admin|publisher`, or
 - token has `resource:publish`.
 
-Community `moderator` can add public resources to collections, but cannot publish private packages unless explicitly granted.
+Community `moderator` can propose public resources and manage review queues, but cannot approve installable resources or publish private packages unless explicitly granted.
 
 ### 6.4 Manage access
 
@@ -438,7 +457,7 @@ Manage members/tokens/billing:
 
 - `owner`: all;
 - `admin`: members/resources/collections, no billing owner transfer by default;
-- `moderator`: community collections and review queue;
+- `moderator`: community proposals, non-installable curation and review queue;
 - `publisher`: publish/update resources;
 - `member`: install/use;
 - `viewer`: read only.
@@ -484,7 +503,7 @@ POST /workspaces/{slug}/imports/markdown-to-harness
 - no `.env`, keys, credentials, archives, binaries, generated dirs;
 - no Verified badge.
 
-### 7.3 Collections
+### 7.3 Workspace collections
 
 ```text
 GET    /workspaces/{slug}/collections
@@ -569,18 +588,35 @@ Search behavior:
 
 ### 8.4 Auth
 
-MVP:
+Phase 1-3 MVP:
 
 - support `HH_WORKSPACE_TOKEN`;
 - keep `HH_ORG_TOKEN` compatibility.
+- user membership works in web/API through the existing auth session;
+- CLI remains token-based unless `hh login` ships in the same sprint.
 
-Next:
+This is an intentional limitation, not an implied complete membership rollout. If the first workspace customers need CLI access by named users instead of shared tokens, `hh login` must move into Phase 1.
+
+Phase 1.5 / before broad beta:
 
 - `hh login`;
 - device flow or copy token from web;
 - user membership replaces shared human token use.
+- CLI writes a scoped local credential, never the raw browser session.
 
 ## 9. Web UX plan
+
+### 9.0 Frontend architecture integration
+
+The workspace UI must follow the current skin architecture:
+
+- state and API calls live in `apps/registry-web/src/core`, not in one skin;
+- `core/useOrgWorkspace` should become `core/useWorkspace` or a compatibility wrapper around it;
+- serious workspace surfaces should render through shared-neutral components, like checkout/review/network already do;
+- W98, Modern and Fans skins consume the same core state and neutral surface instead of duplicating logic;
+- skin-specific copy can frame the doorway, but auth/access/security/payments copy stays plain.
+
+Do not build a one-off workspace screen for only one skin.
 
 ### 9.1 Rename surface
 
@@ -604,33 +640,45 @@ Private and shared resource collections for teams, companies, communities, cours
 
 ### 9.2 Workspace switcher
 
-Visible in app shell:
+Workspace selection is a global control, so it must not fight the existing skin switcher.
 
-- Personal
+Required global-control plan:
+
+- skin switcher;
+- workspace selector;
+- login/profile state;
+- mobile-safe placement;
+- keyboard/focus behavior.
+
+Visible workspace selector states:
+
+- current personal/local profile state, not a hosted personal workspace
 - Company/community workspaces user belongs to
 - Join workspace
 - Create workspace
 
 The Win98/fun shell stays. The workspace settings and auth/payment/security copy stays plain.
 
+V1 can avoid a permanent global selector and put workspace switching inside the Workspaces window. Promote it to the shell only after layout and mobile checks pass across all skins.
+
 ### 9.3 Workspace home
 
 Tabs:
 
 ```text
-Catalog | Collections | Members | Access | Audit | Setup | Settings
+Catalog | Workspace collections | Members | Access | Audit | Setup | Settings
 ```
 
 For community/public workspaces:
 
 ```text
-Catalog | Collections | Join | Moderation | Setup
+Catalog | Workspace collections | Join | Moderation | Setup
 ```
 
 For viewer/member:
 
 ```text
-Catalog | Collections | Setup
+Catalog | Workspace collections | Setup
 ```
 
 ### 9.4 Resource card labels
@@ -720,14 +768,27 @@ Same model:
 
 If workspace is paid:
 
-- purchase/subscription creates entitlement;
+- purchase or future subscription creates entitlement;
 - join checks entitlement;
 - membership can expire if subscription expires;
 - archive access checks live membership/entitlement.
 
 No real payment side effects should be hidden inside read endpoints.
 
+Scope warning: recurring subscription lifecycle is not part of the current manual one-time checkout foundation. Paid workspace membership needs a separate billing track:
+
+- subscription provider model;
+- renewal/expiry webhooks;
+- grace period policy;
+- membership expiry job;
+- receipt/customer portal UX;
+- no hidden entitlement mutation in read paths.
+
+MVP community gates should start with invite/Telegram/Discord/manual entitlement. Subscription-gated workspaces ship only after subscription lifecycle is implemented and smoked end-to-end.
+
 ## 11. Migration from current org model
+
+This is mostly greenfield in production. Current prod has `ORGS_ENABLED=false`, so there is no large live org dataset to migrate. The risk is less data migration and more compatibility: existing CLI/docs/tests should not break while the product language moves from `org` to `workspace`.
 
 ### 11.1 Keep compatibility
 
@@ -800,7 +861,7 @@ Acceptance:
 
 ### Phase 1: Workspace schema and auth foundation
 
-Goal: user membership exists beside token access.
+Goal: user membership exists beside token access for web/API. CLI remains token-based until `hh login` is shipped.
 
 Tasks:
 
@@ -815,7 +876,7 @@ Tasks:
 
 Acceptance:
 
-- workspace can be loaded with user membership;
+- workspace can be loaded with user membership through web/API auth;
 - workspace can be loaded with token;
 - denied user gets explicit `403`;
 - audit stores no raw token.
@@ -861,9 +922,11 @@ npm test -w onlyharness
 npm run smoke
 ```
 
-### Phase 3: Collections and approved marketplace resources
+### Phase 3: Workspace collections and approved marketplace resources
 
 Goal: a workspace can curate public and private resources.
+
+Security decision: approval requires a current security/trust verdict. `warn` can become `approved_with_warning`; `fail` stays blocked for workspace setup/install. This keeps workspace approval aligned with the product trust model.
 
 Tasks:
 
@@ -872,6 +935,8 @@ Tasks:
 - add API for collection CRUD;
 - add “Add to workspace” action on public resource detail;
 - support approval states;
+- add `approved_with_warning` and `blocked_by_scan` states;
+- require scan/trust snapshot before `approved`;
 - show approved resources in workspace catalog;
 - preserve upstream attribution and OnlyHarness trust labels.
 
@@ -881,6 +946,8 @@ Acceptance:
 - member sees it as “Approved by Acme”;
 - public users do not see Acme approval unless workspace is public;
 - blocked items cannot be installed through workspace setup;
+- failed security scan cannot be approved for install;
+- warning scan can be approved only with warning label;
 - audit records add/approve/block.
 
 ### Phase 4: Web workspace UI
@@ -889,6 +956,9 @@ Goal: real workspace management for companies and communities.
 
 Tasks:
 
+- rename/extend `core/useOrgWorkspace` into `core/useWorkspace`;
+- render workspace management through a shared-neutral surface consumed by all skins;
+- verify W98, Modern and Fans entry points;
 - workspace switcher;
 - workspace home tabs;
 - members/invites UI;
@@ -945,15 +1015,16 @@ Tasks:
 - add Telegram gate flow;
 - add Discord gate flow;
 - support invite code join;
-- support entitlement/subscription join;
+- support one-time entitlement/manual entitlement join;
 - add bot-facing verification with workspace token scopes;
 - add membership expiry handling.
+- leave recurring subscription join for the separate billing lifecycle track from section 10.4.
 
 Acceptance:
 
 - Telegram member can join gated workspace;
 - non-member cannot access private install paths;
-- expired subscription removes archive access;
+- expired/revoked membership removes archive access;
 - bot verification is read-only except explicit membership grant endpoint.
 
 ### Phase 7: Production enablement
@@ -1017,6 +1088,22 @@ Non-negotiable:
 - generated setup files must not write outside target dir;
 - paid/gated membership checks stay read-only unless endpoint is explicitly a join/grant mutation.
 
+## 14.5 Scale and performance guardrails
+
+MVP can be simple, but it should not bake in unbounded scans.
+
+Required from first implementation:
+
+- paginate workspace audit and member lists;
+- paginate workspace resource search;
+- index `workspace_id`, `resource_id`, `collection_id`, `created_at`, `user_id`;
+- search should merge public + private + approved results with deterministic ordering;
+- setup bundle reads should be bounded and cacheable;
+- audit writes should be append-only and cheap;
+- collection item lookup should not require loading every public resource into memory.
+
+Smoke can use small fixtures, but API shape should already include `limit`/`cursor` where lists can grow.
+
 ## 15. Product copy rules
 
 Use precise labels:
@@ -1074,6 +1161,8 @@ Ask a workspace admin for an invite, or connect with a token that has resource:a
 ### Web tests
 
 - workspace switcher;
+- shared-neutral workspace surface renders in W98, Modern and Fans;
+- global controls do not overlap skin switcher/login/workspace selector;
 - connect token;
 - members table role gating;
 - add public resource to collection;
@@ -1095,6 +1184,20 @@ Add dedicated:
 ```bash
 npm run smoke:workspaces
 ```
+
+Add check wiring:
+
+```bash
+npm run check:workspaces
+```
+
+`check:workspaces` should verify:
+
+- org/workspace compatibility docs stay in sync;
+- workspace labels do not claim approval equals verification;
+- `hh --version`, server metadata and MCP metadata stay aligned;
+- workspace routes remain documented in OpenAPI and `/llms.txt`;
+- public copy does not imply private resources are publicly downloadable.
 
 ## 17. Rollout plan
 
@@ -1119,15 +1222,21 @@ npm run smoke:workspaces
 - workspace setup bundle sharing;
 - Discord/Telegram gates.
 
-## 18. Open decisions
+## 18. V1 decisions
 
-1. Should personal workspace exist as a first-class workspace or stay local-only?
-2. Should public community workspaces be indexed in global search?
-3. Should every workspace have a default `approved` collection?
-4. Should `moderator` be allowed to approve installable resources or only propose them?
-5. Should marketplace approval require security scan before `approved`, or allow `approved_with_warning`?
-6. Should workspace private resource packages support paid resale later, or only internal use?
-7. How much of members/invites should be available on Free vs Team plans?
+1. Personal workspace stays local-only at first. Do not create hosted personal workspace rows until there is demand beyond storefront/profile.
+2. Public community workspaces can appear in global search only when `visibility=public`, with a separate workspace/community facet and no implied OnlyHarness verification.
+3. Every workspace gets one default `approved` collection.
+4. `moderator` can propose and curate review queues. Approval for installable resources requires `owner`, `admin` or `publisher`.
+5. Marketplace approval requires a security/trust snapshot. `warn` can be `approved_with_warning`; `fail` is blocked for setup/install.
+6. Private workspace resource packages are internal-use only in v1. Paid resale is a separate creator/legal/billing track.
+7. Free plan can allow one small workspace and basic members. Invites, roles, audit retention, private packages and gates belong to Team/Community paid tiers unless intentionally comped for beta.
+
+Still open:
+
+- exact free member limit;
+- whether community moderators can approve non-installable guide-only resources;
+- exact subscription billing provider and lifecycle policy.
 
 ## 19. Recommended first sprint
 
@@ -1141,7 +1250,10 @@ Build the smallest honest version:
 6. Add `hh publish-resource --workspace`.
 7. Add workspace-private archive route.
 8. Add API/CLI tests for deny/allow.
-9. Keep web UI minimal: connect workspace, list resources, copy install commands.
+9. Rename/extend `core/useOrgWorkspace` to a workspace core hook.
+10. Keep web UI minimal and shared-neutral: connect workspace, list resources, copy install commands across all skins.
+11. Add `check:workspaces` and `smoke:workspaces`.
 
 Do not start with a big admin UI. The first value is private resource distribution plus approved collection semantics. Admin UX can follow once access rules are real.
 
+Do not block first sprint on full `hh login`; token-based CLI is acceptable for alpha if the plan labels it that way and web/API user membership is real.
