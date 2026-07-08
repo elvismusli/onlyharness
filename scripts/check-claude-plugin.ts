@@ -69,8 +69,7 @@ check(/\nname:\s*onlyharness\n/.test(skill), "OnlyHarness skill frontmatter must
 check(/description:\s*".*harness/i.test(skill), "OnlyHarness skill frontmatter must describe harness usage");
 for (const required of [
   "npx onlyharness@latest suggest market research --json",
-  "Resource catalog commands are in the local 0.2.1 CLI build and MCP/HTTP surface",
-  "node packages/harness-cli/dist/hh.mjs resources search superpowers --json",
+  "npx onlyharness@latest resources search superpowers --json",
   "node packages/harness-cli/dist/hh.mjs suggest market research --json",
   "hh suggest --apply",
   "--target claude-code|codex|cursor",

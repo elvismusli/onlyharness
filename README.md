@@ -82,12 +82,15 @@ The npm package is published:
 ```bash
 npx onlyharness@latest search market research
 npx onlyharness@latest suggest market research --json
+npx onlyharness@latest resources search superpowers --json
+npx onlyharness@latest resources detail github:obra/superpowers --json
+npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop --json
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-Resource catalog commands are in the local 0.2.1 build and MCP/HTTP surface; publish 0.2.1 to npm before documenting `npx onlyharness resources ...` as a clean-user path.
+Resource catalog commands are available in published `onlyharness@0.2.1` and through MCP/HTTP.
 
 For local development, build the workspace bundle and run it directly:
 

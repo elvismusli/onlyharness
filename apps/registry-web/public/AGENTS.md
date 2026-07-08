@@ -37,10 +37,13 @@ node packages/harness-cli/dist/hh.mjs doctor
 
 ## Agent Use
 
-Prefer the CLI for agent loops. The `onlyharness` npm package is published for native harness workflows; `npx onlyharness@latest` is the clean-user path for search/suggest/install/run/eval/gate. Mixed resource catalog commands are in the local 0.2.1 build and MCP/HTTP surface; until npm 0.2.1 is published, use `node packages/harness-cli/dist/hh.mjs resources ...` locally.
+Prefer the CLI for agent loops. The `onlyharness` npm package is published; `npx onlyharness@latest` is the clean-user path for search/suggest/install/run/eval/gate and mixed resource catalog commands.
 
 ```bash
 npx onlyharness@latest suggest market research --json
+npx onlyharness@latest resources search superpowers --json
+npx onlyharness@latest resources detail github:obra/superpowers --json
+npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json
 
 npm run build -w onlyharness

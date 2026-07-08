@@ -27,11 +27,11 @@ The npm package is published for clean-user installs:
 
 ```bash
 npx onlyharness@latest doctor
+npx onlyharness@latest resources search superpowers --json
 npm i -g onlyharness
 hh doctor
+hh resources detail github:obra/superpowers --json
 ```
-
-The mixed resource catalog commands are in the local 0.2.1 build and should be published before relying on `npx onlyharness resources ...` from a clean machine.
 
 ## Registry
 

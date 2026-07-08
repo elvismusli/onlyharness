@@ -1,7 +1,7 @@
 {
   "name": "onlyharness",
   "description": "Suggest, pull, run, eval and publish reusable AI-agent harnesses from onlyharness.com.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "OnlyHarness",
     "url": "https://onlyharness.com"

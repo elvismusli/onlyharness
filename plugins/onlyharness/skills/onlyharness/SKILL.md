@@ -9,10 +9,13 @@ OnlyHarness is a registry for reusable AI-agent harnesses: manifests, prompts, e
 
 ## Fast Path
 
-Use the CLI first for native harness workflows when shell access is available. The `onlyharness` npm package is published for search/suggest/install/run/eval/gate. Resource catalog commands are in the local 0.2.1 CLI build and MCP/HTTP surface; until npm 0.2.1 is published, use `search_resources`, `resource_detail`, `resource_use_instructions`, HTTP `/resources`, or the local `node packages/harness-cli/dist/hh.mjs resources ...` path for mixed resources. If shell access is not available, use the HTTP/MCP fallback below.
+Use the CLI first when shell access is available. The `onlyharness` npm package is published for search/suggest/install/run/eval/gate and mixed resource catalog commands. If shell access is not available, use the HTTP/MCP fallback below.
 
 ```bash
 npx onlyharness@latest suggest market research --json
+npx onlyharness@latest resources search superpowers --json
+npx onlyharness@latest resources detail github:obra/superpowers --json
+npx onlyharness@latest resources open github:obra/superpowers --json
 npx onlyharness@latest suggest market research --apply --out suggested-deep-market-researcher --json
 npx onlyharness@latest suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
 npx onlyharness@latest install harnesses/deep-market-researcher --target claude-code --json

@@ -7,8 +7,8 @@ OnlyHarness is usable end-to-end for the core free native harness path and the m
 - Web: pass. First screen communicates catalog/trust/install layer, not a GitHub redirect.
 - API: pass. Health, OpenAPI, registry/resources, hosted archives and not-hosted guards work on prod.
 - MCP: pass after fix. Prod JSON-RPC exposes harness and resource tools, and now reports version `0.2.1`.
-- CLI/npm: partial. Published npm `onlyharness@0.2.0` works for native harness workflows but does not include `hh resources`; local `0.2.1` has it. Publishing `0.2.1` is blocked by npm auth.
-- Claude plugin: pass with restart note. Local plugin validates, GitHub marketplace source was pushed, and installed `onlyharness@onlyharness` updated to `1.0.1`; Claude Code says restart is required to apply it.
+- CLI/npm: pass after npm publish. Published npm `onlyharness@0.2.1` works for native harness workflows and mixed `hh resources` commands.
+- Claude plugin: pass with restart note. Local plugin validates, GitHub marketplace source was pushed, and installed `onlyharness@onlyharness` was updated after plugin refresh; Claude Code says restart is required to apply it.
 - Paid/auth: anonymous guards pass; no QA credentials and no live paid harness fixture were available, so no real signup/payment mutation was performed.
 - Storage safety: pass. No local catalog archive download. Only two tiny sample archives were downloaded to `/tmp` and removed.
 
@@ -85,9 +85,9 @@ Pass.
 
 ### 4. Clean User CLI/NPM
 
-Partial.
+Pass after npm `0.2.1` publish.
 
-Clean npm install of `onlyharness@0.2.0` passed for native harness flows:
+Initial clean npm install of `onlyharness@0.2.0` passed for native harness flows:
 
 - `hh doctor`: pass.
 - `hh search market research`: pass.
@@ -96,14 +96,23 @@ Clean npm install of `onlyharness@0.2.0` passed for native harness flows:
 - `hh install harnesses/deep-market-researcher --target codex`: pass.
 - `hh install harnesses/deep-market-researcher --target claude-code`: pass in a fresh workdir.
 
+After `onlyharness@0.2.1` was published to npm, clean temp verification passed:
+
+- `npm view onlyharness version`: `0.2.1`.
+- `hh --version`: `0.2.1`.
+- `hh resources search superpowers --json`: pass, returned `github:obra/superpowers` with `Use in OnlyHarness`.
+- `hh resources detail github:obra/superpowers --json`: pass.
+- `hh resources open github:obra/superpowers --json`: pass, returned `https://onlyharness.com/#/resources/github%3Aobra%2Fsuperpowers`.
+- Temp npm footprint: `1.7M` in `/tmp/onlyharness-npm-021`, removed after verification.
+
 Found and fixed:
 
 - `hh install --target ...` could pull/write harness files before failing on an adapter collision. It now preflights adapter output collisions before archive pull/write, with a regression test.
 
-Blocked:
+Resolved:
 
-- `hh resources ...` does not exist in published npm `onlyharness@0.2.0`.
-- Local CLI `0.2.1` has `resources search/detail/open`, but `npm publish` is blocked by missing npm auth (`npm whoami` unauthorized locally and on server).
+- Initial blocker was stale npm `0.2.0` without `hh resources`.
+- Publishing `onlyharness@0.2.1` resolved the clean-user resource CLI path.
 
 ### 5. Plugin / Master Skill
 
@@ -115,8 +124,8 @@ Partial.
 - `claude plugin marketplace add elvismusli/onlyharness`: pass.
 - `claude plugin install onlyharness@onlyharness`: pass.
 - `claude plugin marketplace update onlyharness`: pass.
-- `claude plugin update onlyharness@onlyharness`: pass, updated `1.0.0 -> 1.0.1`; restart required to apply.
-- `claude plugin list`: pass, installed `onlyharness@onlyharness` version `1.0.1`.
+- `claude plugin update onlyharness@onlyharness`: pass; restart required to apply.
+- `claude plugin list`: pass after refresh.
 
 Found and fixed in source:
 
@@ -192,13 +201,12 @@ Prod after deploy:
 - Server metadata: `0.2.1`.
 - OpenAPI: `0.2.1`.
 - MCP initialize: `0.2.1`.
-- `/llms.txt` now states resource catalog commands are live through MCP/HTTP and local `0.2.1` until npm `0.2.1` is published.
+- `/llms.txt` now states resource catalog commands are live through npm, MCP and HTTP.
 
 ## Bugs / Risks
 
 ### P1
 
-- npm latest is stale for resource catalog commands. Published `onlyharness@0.2.0` lacks `hh resources`; local `0.2.1` works. Blocker is npm auth for publishing.
 - Other already installed Claude plugin copies can still show stale skill guidance until refreshed/reinstalled and Claude Code is restarted.
 
 ### P2
@@ -211,14 +219,14 @@ Prod after deploy:
 ## Fixed
 
 - Native harness MCP instructions now use the real published npm install path.
-- Docs/plugin copy now stop promising npm resource commands until `0.2.1` is published.
+- Docs/plugin copy now document npm `0.2.1` resource commands as the clean-user path.
 - Plugin skill now includes resource MCP tools and honest resource use paths.
 - CLI install/apply now preflights adapter collisions before writing harness files.
 - MCP/OpenAPI/server metadata are synced to `0.2.1`.
 - Smoke coverage added for MCP version.
+- npm `onlyharness@0.2.1` publish verified clean-user `hh resources` commands.
 
 ## Remaining Blockers
 
-- Publish `onlyharness@0.2.1` to npm once npm auth/2FA/token is available.
 - Refresh/reinstall other already installed Claude plugin copies after the GitHub source update; Claude Code restart is required to apply.
 - Add or expose a safe paid prod fixture if live paid `402` needs continuous public smoke coverage.
