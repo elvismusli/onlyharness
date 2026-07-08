@@ -98,7 +98,39 @@ mustInclude("supabase/migrations/20260708143000_workspace_collections.sql", [
 
 mustInclude("apps/registry-web/src/core/useWorkspace.ts", [
   "/workspaces/${encodeURIComponent(slug)}/workspace",
+  "/workspaces/${encodeURIComponent(slug)}/members",
+  "/workspaces/${encodeURIComponent(slug)}/invites",
+  "/workspaces/${encodeURIComponent(slug)}/join",
   "workspaceHeadersForOwner"
+]);
+
+mustInclude("apps/registry-web/src/core/store.tsx", [
+  "useWorkspace",
+  "workspace.workspaceHeadersForOwner(owner)"
+]);
+
+mustInclude("apps/registry-web/src/skins/shared/neutral/network.tsx", [
+  "h.workspaceCatalog",
+  "h.workspaceMembers",
+  "h.createWorkspaceInvite",
+  "h.joinWorkspace",
+  "resources detail"
+]);
+
+mustInclude("apps/registry-web/src/skins/win98/index.tsx", [
+  "NeutralNetwork",
+  "../shared/neutral/neutral.css"
+]);
+
+mustInclude("apps/registry-web/src/skins/modern/nav.tsx", [
+  "Workspaces",
+  "h.openNetwork",
+  "oh-nav-workspaces-compact"
+]);
+
+mustInclude("apps/registry-web/src/skins/fans/nav.tsx", [
+  "Workspaces",
+  "h.openNetwork"
 ]);
 
 console.log("workspace contract ok");

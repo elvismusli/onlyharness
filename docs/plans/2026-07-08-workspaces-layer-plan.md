@@ -1,13 +1,13 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, and workspace membership/invites shipped in `onlyharness@0.2.7`.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, and shared-neutral workspace UI wiring shipped in the web app.
 
 Current implementation status:
 
-- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources search --workspace`, `hh resources detail @workspace/name`, OpenAPI/check/smoke coverage;
+- shipped: universal public resource packages, workspace token API foundation, workspace member/invite API, workspace member authorization beside token auth, workspace-private resource package publish/search/detail/archive, workspace collections, default `approved` collection, approved public resource listings, `hh publish-resource --workspace`, `hh resources approve`, `hh resources search --workspace`, `hh resources detail @workspace/name`, shared-neutral resource-first workspace UI across W98/Modern/Fans, members/invites/join UI, OpenAPI/check/smoke coverage;
 - prod default: `WORKSPACES_ENABLED=false`, so prod fails closed until a seed workspace and membership policy are ready;
-- not done yet: shared-neutral workspace management UI wiring, setup bundles v2, community gates, subscription lifecycle.
+- not done yet: workspace collection admin UI, setup bundles v2, community gates, subscription lifecycle.
 
 Review corrections incorporated:
 
@@ -1292,15 +1292,15 @@ Already shipped in the first production slice:
 Remaining from the original first sprint:
 
 1. `/orgs/{slug}/workspace` alias to new `/workspaces/{slug}/workspace` semantics.
-2. Shared-neutral web surface wired through `core/useWorkspace` across W98, Modern and Fans.
-3. Minimal workspace UI: connect workspace, list resources, copy install commands.
-4. Admin UI for members/invites using the shipped API, without exposing raw stored invite material.
+2. Workspace collection admin UI for approval/add/remove flows.
+3. Setup bundle UI and install-one-command flow.
+4. Community join policies beyond raw invite codes.
 
 Recommended next production slice:
 
 1. Keep `HH_ORG_TOKEN` and `/orgs` compatibility.
-2. Wire `core/useWorkspace` into the shared-neutral workspace surface consumed by W98, Modern and Fans.
-3. Add minimal web UI for member list, invite creation, join flow, resource list, and install command copy.
+2. Add workspace collection admin UI for approving/removing public marketplace resources inside the workspace surface.
+3. Generalize setup bundles from orgs to workspaces and expose copy/install commands in the same shared-neutral surface.
 4. Keep CLI token-based unless `hh login` is pulled forward.
 5. Keep prod `WORKSPACES_ENABLED=false` until a seed workspace and membership policy are configured.
 

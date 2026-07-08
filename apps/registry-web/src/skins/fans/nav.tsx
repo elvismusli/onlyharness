@@ -3,8 +3,9 @@ import { useHarness } from "../../core/store";
 /**
  * Sticky top nav (64px, white, bottom hairline):
  * round brand-blue "O" mark + "OnlyHarness" wordmark (Harness in brand blue) ·
- * a flexible spacer · a bold "Log in" button → `openLogon`. The skin switcher is
- * now a single global floating control (SkinProvider), not part of this nav.
+ * a flexible spacer · a Workspaces entry → `openNetwork` · a bold "Log in"
+ * button → `openLogon`. The skin switcher is now a single global floating
+ * control (SkinProvider), not part of this nav.
  *
  * Everything is a pure consumer of `useHarness()`; the brand click scrolls the
  * landing back to the top (Explore is the base surface, so there's nothing to
@@ -33,6 +34,9 @@ export function FansNav() {
 
         <div className="fa-nav-spacer" />
 
+        <button type="button" className="fa-login" onClick={h.openNetwork}>
+          Workspaces
+        </button>
         <button type="button" className="fa-login" onClick={() => h.openLogon()}>
           Log in
         </button>

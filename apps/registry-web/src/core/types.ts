@@ -100,6 +100,16 @@ export type ResourceItem = {
     gateVerifiedAt?: string;
     riskTier?: string;
   };
+  workspaceApproval?: {
+    workspaceSlug: string;
+    workspaceName: string;
+    collectionSlug: string;
+    sourceResourceId: string;
+    approvalState: "approved" | "approved_with_warning" | "blocked_by_scan";
+    approvedBy?: string;
+    approvedAt: string;
+    note?: string;
+  };
   actions: Array<
     | { id: "open_onlyharness"; label: string; url: string }
     | { id: "open_mirror"; label: string; url: string }
@@ -281,6 +291,32 @@ export type OrgWorkspace = {
 };
 
 export type WorkspaceAuditEntry = OrgAuditEntry;
+
+export type WorkspaceMember = {
+  id?: string;
+  workspace_id?: string;
+  workspace_slug?: string;
+  user_id: string;
+  role: "owner" | "admin" | "moderator" | "publisher" | "member" | "viewer";
+  status: "invited" | "active" | "suspended" | "removed";
+  source: "direct" | "invite" | "email_domain" | "telegram" | "discord" | "entitlement" | "paid_entitlement" | "token_bootstrap";
+  joined_at: string;
+  removed_at?: string | null;
+};
+
+export type WorkspaceInvite = {
+  id?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
+  email?: string | null;
+  role: WorkspaceMember["role"];
+  maxUses?: number | null;
+  usesCount: number;
+  expiresAt?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  revokedAt?: string | null;
+};
 
 export type WorkspaceCatalog = {
   workspace: {

@@ -289,6 +289,24 @@
   color: #fff;
   font-weight: 500;
 }
+.skin-modern .oh-nav-workspaces-compact {
+  display: none;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--oh-border-elevated);
+  border-radius: var(--oh-r-control-lg);
+  background: var(--oh-elevated);
+  color: var(--oh-text);
+  cursor: pointer;
+  font-family: var(--oh-font-mono);
+  font-size: 16px;
+}
+.skin-modern .oh-nav-workspaces-compact:hover {
+  border-color: #3a3a42;
+  color: #fff;
+}
 .skin-modern .oh-nav-spacer {
   flex: 1;
 }
@@ -344,6 +362,10 @@
   }
   .skin-modern .oh-navtabs {
     display: none;
+  }
+  .skin-modern .oh-nav-workspaces-compact {
+    display: inline-flex;
+    flex: 0 0 auto;
   }
   .skin-modern .oh-search {
     width: 160px;

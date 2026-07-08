@@ -7,9 +7,11 @@ import type { DialogSpec, WinKind } from "../../core/types";
 import { AwardWindow, DesktopIcons, LogonDialog, Mascot, PaintWindow, StartMenu, Taskbar, type StartEntry, type TaskEntry } from "./desktop";
 import { DetailBody } from "./detail";
 import { ExploreWindow } from "./explore";
-import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, NetworkBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
+import { CheckoutBody, CliBody, InstallBody, LeaderboardBody, PublishBody, ReviewBody, ShareBody, StorefrontBody, StorefrontEditorBody } from "./windows";
+import { NeutralNetwork } from "../shared/neutral/network";
 import { Btn, Dialog, FloatWindow } from "./win98";
 import "./styles.css";
+import "../shared/neutral/neutral.css";
 
 const WIN_WIDTHS: Record<WinKind, number> = {
   harness: 960,
@@ -305,19 +307,7 @@ function App() {
           />
         );
       case "network":
-        return (
-          <NetworkBody
-            orgSlug={h.networkOrg}
-            setOrgSlug={h.setNetworkOrg}
-            orgToken={h.networkToken}
-            setOrgToken={h.setNetworkToken}
-            workspace={h.orgWorkspace}
-            status={h.networkStatus}
-            busy={h.networkBusy}
-            onLoad={h.loadOrgWorkspace}
-            onOpen={(entry) => h.openHarness(entry)}
-          />
-        );
+        return <NeutralNetwork />;
     }
   }
 

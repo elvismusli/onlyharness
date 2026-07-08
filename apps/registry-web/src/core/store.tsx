@@ -10,6 +10,7 @@ import { useSocial } from "./useSocial";
 import { usePublish } from "./usePublish";
 import { useStorefront } from "./useStorefront";
 import { useOrgWorkspace } from "./useOrgWorkspace";
+import { useWorkspace } from "./useWorkspace";
 import { useAppNav } from "./useAppNav";
 import {
   initialRefCode,
@@ -44,9 +45,10 @@ export type HarnessStoreProps = {
  * Compose every core hook + neutral chrome + the surface orchestration into one
  * value. Hook instantiation order and cross-wiring mirror the original Win98
  * `App()` exactly (see the inline notes): `useAuth`/`useClipboard` first,
- * `useSocial` before `useRegistry` via lazy `reg.*` wrappers, `useOrgWorkspace`
- * before `useRegistry` (which needs `org.orgHeadersForOwner`), then `usePublish`,
- * `useStorefront`, `useAppNav`. `flashMsg`/`showDialog`/`openHarness`/
+ * `useSocial` before `useRegistry` via lazy `reg.*` wrappers, `useWorkspace`
+ * and the legacy `useOrgWorkspace` before `useRegistry` (which needs their
+ * owner-scoped auth headers), then `usePublish`, `useStorefront`, `useAppNav`.
+ * `flashMsg`/`showDialog`/`openHarness`/
  * `openMyBriefcase` are function declarations so the lazy wrappers can reference
  * them before their definitions, identical to the host's hoisting today.
  */
@@ -79,17 +81,30 @@ function useHarnessStore() {
     onFlash: flashMsg
   });
 
-  /* organization workspace. Created before `reg` because `reg` needs
-     `org.orgHeadersForOwner`; the `cacheItems` wrapper only dereferences `reg`
-     inside `loadOrgWorkspace`'s fetch handler, well after both hooks mount — the
-     same lazy trick used for reg↔social above. */
+  /* resource-first workspace. Created before `reg` because `reg` needs
+     `workspace.workspaceHeadersForOwner` to load @workspace detail behind the
+     same auth path as `/workspaces/{slug}/...`. */
+  const workspace = useWorkspace({
+    accessToken: auth.accessToken,
+    requireUser: auth.requireUser,
+    onFlash: flashMsg
+  });
+
+  /* legacy organization workspace. Kept as a compatibility wrapper for /orgs
+     until those aliases retire; new shared UI uses `workspace` above. */
   const org = useOrgWorkspace({
     cacheItems: (items) => reg.cacheItems(items),
     onFlash: flashMsg
   });
 
   /* registry/resource data + discovery controls */
-  const reg = useRegistry({ starred: social.starred, orgHeadersForOwner: org.orgHeadersForOwner });
+  const reg = useRegistry({
+    starred: social.starred,
+    orgHeadersForOwner: (owner) => {
+      const workspaceHeaders = workspace.workspaceHeadersForOwner(owner);
+      return Object.keys(workspaceHeaders).length ? workspaceHeaders : org.orgHeadersForOwner(owner);
+    }
+  });
 
   /* publish/import flow */
   const publish = usePublish({
@@ -381,6 +396,7 @@ function useHarnessStore() {
     ...social,
     ...publish,
     ...storefront,
+    ...workspace,
     ...org,
     ...nav,
 

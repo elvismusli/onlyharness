@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { compatibilityTargetsFor, targetDetail, targetLabel, targetTone, topTargetLabels } from "../../core/compat";
 import { fmtContextCost, fmtK, heatPct, isoWeek } from "../../core/format";
-import type { CheckoutLinkState, CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, OrgWorkspace, RegistryItem, StorefrontPage, StorefrontProfile } from "../../core/types";
+import type { CheckoutLinkState, CheckoutSession, CompatibilityTarget, HarnessDetail, HarnessPricing, RegistryItem, StorefrontPage, StorefrontProfile } from "../../core/types";
 import { Btn, HeatMeter, InfoLine, TabStrip } from "./win98";
 
 /* ---------- New Resource Wizard (publish) ---------- */
@@ -441,119 +441,6 @@ export function StorefrontEditorBody({ loggedIn, profile, handle, setHandle, dis
           <div className="plate" style={{ fontSize: 11 }}>Email, auth identity and private harnesses stay out of the public storefront.</div>
         </aside>
       </div>
-    </div>
-  );
-}
-
-/* ---------- Network Neighborhood ---------- */
-
-const NETWORK_TABS = ["Catalog", "Audit", "Permissions"] as const;
-type NetworkTab = (typeof NETWORK_TABS)[number];
-
-export function NetworkBody({ orgSlug, setOrgSlug, orgToken, setOrgToken, workspace, status, busy, onLoad, onOpen }: {
-  orgSlug: string;
-  setOrgSlug: (value: string) => void;
-  orgToken: string;
-  setOrgToken: (value: string) => void;
-  workspace?: OrgWorkspace;
-  status: string;
-  busy: boolean;
-  onLoad: () => void;
-  onOpen: (item: RegistryItem) => void;
-}) {
-  const [tab, setTab] = useState<NetworkTab>("Catalog");
-  const riskClass = workspace?.permissions.maxRiskTier === "LOW" || workspace?.permissions.maxRiskTier === "NONE" ? "safe" : "warn";
-  return (
-    <div className="win-body">
-      <div className="detail-head">
-        <div className="owner-line">Network Neighborhood</div>
-        <h2>{workspace ? workspace.organization.name : "Workspace catalog"}</h2>
-        <div className="tagrow">
-          {workspace && <span className="tag98 safe">@{workspace.organization.slug}</span>}
-          {workspace && <span className="tag98">{workspace.organization.plan}</span>}
-          {workspace && <span className={`tag98 ${riskClass}`}>max risk {workspace.permissions.maxRiskTier}</span>}
-        </div>
-      </div>
-
-      <div className="trust-box" style={{ marginBottom: 8 }}>
-        <form className="network-connect" onSubmit={(event) => { event.preventDefault(); onLoad(); }}>
-          <div>
-            <label htmlFor="network-org">Workspace</label>
-            <div className="field98"><input id="network-org" value={orgSlug} onChange={(event) => setOrgSlug(event.target.value)} placeholder="acme" autoComplete="organization" /></div>
-          </div>
-          <div>
-            <label htmlFor="network-token">Workspace token</label>
-            <div className="field98"><input id="network-token" type="password" value={orgToken} onChange={(event) => setOrgToken(event.target.value)} placeholder="Bearer token" autoComplete="current-password" /></div>
-          </div>
-          <Btn strong type="submit" disabled={busy || !orgSlug.trim()}>{busy ? "⌛ Loading" : "🌐 Connect"}</Btn>
-        </form>
-        {status && <div style={{ marginTop: 6, fontSize: 12, fontWeight: "bold" }}>{status}</div>}
-      </div>
-
-      <TabStrip tabs={NETWORK_TABS} active={tab} onSelect={setTab} />
-
-      {tab === "Catalog" && (
-        <div className="file-list">
-          {(workspace?.items ?? []).map((item) => (
-            <button className="file-row as-button" key={`${item.owner}/${item.name}`} onClick={() => onOpen(item)}>
-              <span>🔒</span>
-              <span>
-                <b>{item.title}</b> · {item.summary}
-                <span className="tagrow" style={{ marginTop: 4 }}>
-                  <span className="tag98">{item.owner}/{item.name}</span>
-                  <span className={`tag98 ${item.riskTier === "LOW" ? "safe" : "warn"}`}>{item.riskTier} {item.riskScore}</span>
-                  <span className="tag98">ctx {fmtContextCost(item.contextCost)}</span>
-                  <span className="tag98 safe">private</span>
-                </span>
-              </span>
-            </button>
-          ))}
-          {workspace && !workspace.items.length && <div className="file-row"><span>□</span><span>No workspace-private resources indexed yet.</span></div>}
-          {!workspace && <div className="file-row"><span>🌐</span><span>Connect with a workspace token to load private resources.</span></div>}
-        </div>
-      )}
-
-      {tab === "Audit" && (
-        <div className="file-list">
-          {(workspace?.audit ?? []).map((row) => (
-            <div className="file-row" key={`${row.at}-${row.action}-${row.target ?? ""}`}>
-              <span>🧾</span>
-              <span>
-                <b>{row.action}</b> · {row.target ?? "no target"}
-                <span className="tagrow" style={{ marginTop: 4 }}>
-                  <span className="tag98">{row.token_name ?? "unknown token"}</span>
-                  <span className="tag98">{row.subject ?? "anonymous"}</span>
-                  <span className="tag98">{row.at ? new Date(row.at).toLocaleString() : "unknown time"}</span>
-                </span>
-              </span>
-            </div>
-          ))}
-          {workspace && !workspace.audit.length && <div className="file-row"><span>□</span><span>No audit rows for this workspace yet.</span></div>}
-          {!workspace && <div className="file-row"><span>🧾</span><span>Audit appears after a successful connection.</span></div>}
-        </div>
-      )}
-
-      {tab === "Permissions" && (
-        <div className="detail-grid">
-          <section>
-            <div className="trust-box">
-              <h4>Permission summary</h4>
-              <InfoLine label="Resources" value={String(workspace?.permissions.totalHarnesses ?? 0)} />
-              <InfoLine label="Risk tiers" value={workspace ? `LOW ${workspace.permissions.riskTiers.LOW} · MED ${workspace.permissions.riskTiers.MEDIUM} · HIGH ${workspace.permissions.riskTiers.HIGH} · CRIT ${workspace.permissions.riskTiers.CRITICAL}` : "not loaded"} />
-              <InfoLine label="External send" value={String(workspace?.permissions.permissionCounts.externalSend ?? 0)} />
-              <InfoLine label="Credentials" value={String(workspace?.permissions.permissionCounts.credentials ?? 0)} />
-              <InfoLine label="Money movement" value={String(workspace?.permissions.permissionCounts.moneyMovement ?? 0)} />
-              <InfoLine label="Shell/browser" value={`${workspace?.permissions.permissionCounts.shell ?? 0}/${workspace?.permissions.permissionCounts.browser ?? 0}`} />
-            </div>
-          </section>
-          <aside className="trust-panel">
-            <div className="trust-box">
-              <h4>Highest risk report</h4>
-              <pre className="pre98" style={{ maxHeight: 220 }}>{workspace?.permissions.riskMarkdown ?? "# Harness Risk\n\nNot loaded."}</pre>
-            </div>
-          </aside>
-        </div>
-      )}
     </div>
   );
 }

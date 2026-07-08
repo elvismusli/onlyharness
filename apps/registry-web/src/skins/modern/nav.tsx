@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { useHarness } from "../../core/store";
 import { Btn } from "./primitives";
 
-const NAV_TABS = ["Explore", "Collections", "Leaderboard", "Docs"] as const;
+const NAV_TABS = ["Explore", "Workspaces", "Leaderboard", "Docs"] as const;
 
 /**
  * Sticky top nav (60px, blurred, bottom hairline):
@@ -16,8 +16,8 @@ const NAV_TABS = ["Explore", "Collections", "Leaderboard", "Docs"] as const;
  * search field collapse away so brand + briefcase + Publish stay on one row with
  * no horizontal overflow (see tokens.css responsive block).
  *
- * Only Explore is wired for now (it's the active tab); the other tabs are inert
- * labels until later tasks. The `/` shortcut focuses the search input from
+ * Explore, Workspaces and Leaderboard are wired; Docs is an inert label until a
+ * later task. The `/` shortcut focuses the search input from
  * anywhere on the page (unless already typing in a field).
  */
 export function Nav() {
@@ -78,14 +78,32 @@ export function Nav() {
               >
                 {tab}
               </button>
+            ) : tab === "Workspaces" ? (
+              <button
+                key={tab}
+                type="button"
+                className="oh-navtab oh-navtab-btn"
+                onClick={h.openNetwork}
+              >
+                {tab}
+              </button>
             ) : (
-              /* Collections / Docs are inert labels until later tasks. */
+              /* Docs is an inert label until later tasks. */
               <span key={tab} className="oh-navtab">
                 {tab}
               </span>
             )
           )}
         </nav>
+        <button
+          type="button"
+          className="oh-nav-workspaces-compact"
+          onClick={h.openNetwork}
+          title="Workspaces"
+          aria-label="Workspaces"
+        >
+          ▦
+        </button>
 
         <div className="oh-nav-spacer" />
 
