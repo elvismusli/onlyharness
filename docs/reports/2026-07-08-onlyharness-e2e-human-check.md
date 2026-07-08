@@ -99,6 +99,7 @@ Initial clean npm install of `onlyharness@0.2.0` passed for native harness flows
 After `onlyharness@0.2.1` was published to npm, clean temp verification passed:
 
 - `npm view onlyharness version`: `0.2.1`.
+- `npm view onlyharness readme`: still shows the stale pre-publish resource-command warning because `0.2.1` was published before the docs copy update.
 - `hh --version`: `0.2.1`.
 - `hh resources search superpowers --json`: pass, returned `github:obra/superpowers` with `Use in OnlyHarness`.
 - `hh resources detail github:obra/superpowers --json`: pass.
@@ -208,6 +209,7 @@ Prod after deploy:
 ### P1
 
 - Other already installed Claude plugin copies can still show stale skill guidance until refreshed/reinstalled and Claude Code is restarted.
+- npmjs package page README for `onlyharness@0.2.1` is stale; the binary works, but fixing the npm page needs a future patch publish.
 
 ### P2
 
@@ -230,3 +232,4 @@ Prod after deploy:
 
 - Refresh/reinstall other already installed Claude plugin copies after the GitHub source update; Claude Code restart is required to apply.
 - Add or expose a safe paid prod fixture if live paid `402` needs continuous public smoke coverage.
+- Publish a future docs-only CLI patch if the npmjs package page README must match the now-fixed repo/web/plugin docs.
