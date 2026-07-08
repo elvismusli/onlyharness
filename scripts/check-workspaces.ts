@@ -20,6 +20,11 @@ mustInclude("apps/harness-api/src/server.ts", [
   "app.post(\"/workspaces/:slug/members\"",
   "app.delete(\"/workspaces/:slug/members/:userId\"",
   "app.post(\"/workspaces/:slug/invites\"",
+  "app.get(\"/workspaces/:slug/join-policies\"",
+  "app.put(\"/workspaces/:slug/join-policies\"",
+  "app.post(\"/workspaces/:slug/join-code\"",
+  "app.post(\"/workspaces/:slug/join-code/verify\"",
+  "app.post(\"/workspaces/:slug/join-grants\"",
   "app.post(\"/workspaces/:slug/join\"",
   "app.get(\"/workspaces/:slug/resources\"",
   "app.post(\"/workspaces/:slug/resources/approve\"",
@@ -43,6 +48,10 @@ mustInclude("apps/harness-api/src/workspaces.ts", [
   "listWorkspaceMembers",
   "createWorkspaceInvite",
   "joinWorkspaceWithInvite",
+  "listWorkspaceJoinPolicies",
+  "upsertWorkspaceJoinPolicies",
+  "grantWorkspaceJoinPolicy",
+  "workspace_join_policies",
   "legacy_org_token",
   "workspaceResourceId",
   "upsertWorkspaceResource",
@@ -62,6 +71,10 @@ mustInclude("apps/harness-api/src/openapi.ts", [
   "\"/workspaces/{slug}/members\"",
   "\"/workspaces/{slug}/members/{userId}\"",
   "\"/workspaces/{slug}/invites\"",
+  "\"/workspaces/{slug}/join-policies\"",
+  "\"/workspaces/{slug}/join-code\"",
+  "\"/workspaces/{slug}/join-code/verify\"",
+  "\"/workspaces/{slug}/join-grants\"",
   "\"/workspaces/{slug}/join\"",
   "\"/workspaces/{slug}/resources\"",
   "\"/workspaces/{slug}/resources/approve\"",
@@ -115,11 +128,21 @@ mustInclude("supabase/migrations/20260708183000_workspace_setup_bundles.sql", [
   "bundle jsonb not null"
 ]);
 
+mustInclude("supabase/migrations/20260708190000_workspace_join_policies.sql", [
+  "create table if not exists public.workspace_join_policies",
+  "gate:verify",
+  "gate:write",
+  "paid_subscription"
+]);
+
 mustInclude("apps/registry-web/src/core/useWorkspace.ts", [
   "/workspaces/${encodeURIComponent(slug)}/workspace",
   "/workspaces/${encodeURIComponent(slug)}/members",
   "/workspaces/${encodeURIComponent(slug)}/invites",
+  "/workspaces/${encodeURIComponent(slug)}/join-policies",
   "/workspaces/${encodeURIComponent(slug)}/join",
+  "/workspaces/${encodeURIComponent(slug)}/join-code",
+  "/workspaces/${encodeURIComponent(slug)}/join-grants",
   "approveWorkspaceResource",
   "removeWorkspaceCollectionItem",
   "workspaceHeadersForOwner"
@@ -135,6 +158,7 @@ mustInclude("apps/registry-web/src/skins/shared/neutral/network.tsx", [
   "h.workspaceMembers",
   "h.createWorkspaceInvite",
   "h.joinWorkspace",
+  "h.workspaceJoinPolicies",
   "Approvals",
   "Setup",
   "workspaceSetupCommand",

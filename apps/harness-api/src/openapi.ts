@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.9",
+    version: "0.2.10",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -836,10 +836,11 @@ export const openapi = {
                     workspace: { $ref: "#/components/schemas/Workspace" },
                     resources: { type: "array", items: { $ref: "#/components/schemas/Resource" } },
                     items: { type: "array", items: { $ref: "#/components/schemas/Resource" } },
+                    joinPolicies: { type: "array", items: { $ref: "#/components/schemas/WorkspaceJoinPolicy" } },
                     permissions: { $ref: "#/components/schemas/WorkspaceResourcePermissions" },
                     audit: { type: "array", items: { $ref: "#/components/schemas/WorkspaceAuditEntry" } }
                   },
-                  required: ["workspace", "resources", "items", "permissions", "audit"]
+                  required: ["workspace", "resources", "items", "joinPolicies", "permissions", "audit"]
                 }
               }
             }
@@ -976,15 +977,122 @@ export const openapi = {
         }
       }
     },
-    "/workspaces/{slug}/join": {
+    "/workspaces/{slug}/join-policies": {
+      get: {
+        summary: "List workspace join policies",
+        description: "Requires workspace read access. Returns invite, email-domain, Telegram, Discord, entitlement and disabled paid-subscription gate policy metadata. It never returns raw invite codes or secrets.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        responses: {
+          "200": {
+            description: "Workspace join policies",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, policies: { type: "array", items: { $ref: "#/components/schemas/WorkspaceJoinPolicy" } } }, required: ["workspace", "policies"] } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" }
+        }
+      },
+      put: {
+        summary: "Replace workspace join policies",
+        description: "Requires member/invite administration access. Active paid_subscription policies are rejected until subscription lifecycle is implemented and smoked end-to-end.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { policies: { type: "array", maxItems: 20, items: { $ref: "#/components/schemas/WorkspaceJoinPolicyInput" } } }, required: ["policies"] } } }
+        },
+        responses: {
+          "200": {
+            description: "Updated workspace join policies",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, policies: { type: "array", items: { $ref: "#/components/schemas/WorkspaceJoinPolicy" } } }, required: ["workspace", "policies"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/workspaces/{slug}/join-code": {
       post: {
-        summary: "Join a workspace with an invite code",
-        description: "Requires a signed-in user session. Validates the invite hash, expiry and use limit before writing membership.",
+        summary: "Mint a short-lived workspace gate code",
+        description: "Requires a signed-in user session. The code is for Telegram, Discord or entitlement gate verification and does not create membership by itself.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { source: { type: "string", enum: ["telegram", "discord", "entitlement"] }, policyId: { type: "string" }, ttl_seconds: { type: "integer" } }, required: ["source"] } } }
+        },
+        responses: {
+          "201": {
+            description: "Workspace join code",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, policy: { $ref: "#/components/schemas/WorkspaceJoinPolicy" }, code: { type: "string" }, source: { type: "string" }, subject_type: { type: "string" }, subject_id: { type: "string" }, expires_at: { type: "string", format: "date-time" }, next: { type: "string" } }, required: ["workspace", "policy", "code", "source", "subject_type", "subject_id", "expires_at", "next"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Workspace join secret is not configured" }
+        }
+      }
+    },
+    "/workspaces/{slug}/join-code/verify": {
+      post: {
+        summary: "Verify a workspace gate code without granting membership",
+        description: "Requires gate:verify, gate:write or member:write workspace token scope. Verification is read-only; external bots must call join-grants after their Telegram/Discord/entitlement check passes.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
           required: true,
           content: { "application/json": { schema: { type: "object", properties: { code: { type: "string" } }, required: ["code"] } } }
+        },
+        responses: {
+          "200": {
+            description: "Verified join code",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, policy: { $ref: "#/components/schemas/WorkspaceJoinPolicy" }, allowed: { type: "boolean" }, source: { type: "string" }, subject_type: { type: "string" }, subject_id: { type: "string" }, expires_at: { type: "string", format: "date-time" }, next: { type: "string" } }, required: ["workspace", "policy", "allowed", "source", "subject_type", "subject_id", "expires_at", "next"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "410": { description: "Join code expired" },
+          "503": { description: "Workspace join secret is not configured" }
+        }
+      }
+    },
+    "/workspaces/{slug}/join-grants": {
+      post: {
+        summary: "Grant workspace membership after an external gate check",
+        description: "Requires gate:write or member:write workspace token scope. This is the explicit mutation endpoint for Telegram, Discord and one-time entitlement/manual entitlement gates.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { code: { type: "string" }, source: { type: "string", enum: ["telegram", "discord", "entitlement"] }, externalSubject: { type: "string" } }, required: ["code"] } } }
+        },
+        responses: {
+          "201": {
+            description: "Granted workspace member",
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, policy: { $ref: "#/components/schemas/WorkspaceJoinPolicy" }, member: { $ref: "#/components/schemas/WorkspaceMember" }, next: { type: "string" } }, required: ["workspace", "member", "next"] } } }
+          },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "410": { description: "Join code expired" },
+          "503": { description: "Workspace join secret is not configured" }
+        }
+      }
+    },
+    "/workspaces/{slug}/join": {
+      post: {
+        summary: "Join a workspace with an invite code or email-domain policy",
+        description: "Requires a signed-in user session. With code, validates the invite hash, expiry and use limit before writing membership. Without code, checks an active email_domain policy against the signed-in user's email.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("slug")],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { code: { type: "string" } } } } }
         },
         responses: {
           "201": {
@@ -1710,6 +1818,10 @@ export const openapi = {
         description: "Resource not found",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
       },
+      Conflict: {
+        description: "The requested action conflicts with current product or resource state",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
       ServiceUnavailable: {
         description: "Dependent service unavailable",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
@@ -1799,6 +1911,37 @@ export const openapi = {
           revokedAt: { type: "string", nullable: true }
         },
         required: ["role", "usesCount", "createdAt"]
+      },
+      WorkspaceJoinPolicy: {
+        type: "object",
+        description: "Workspace join gate metadata. No raw invite code, bot secret, token or external credential is exposed.",
+        properties: {
+          id: { type: "string" },
+          workspaceId: { type: "string" },
+          workspaceSlug: { type: "string" },
+          kind: { type: "string", enum: ["invite", "email_domain", "telegram", "discord", "entitlement", "paid_subscription", "manual_approval"] },
+          status: { type: "string", enum: ["active", "disabled"] },
+          role: { type: "string", enum: ["member", "viewer"] },
+          title: { type: "string", nullable: true },
+          instructions: { type: "string", nullable: true },
+          config: { type: "object", additionalProperties: true },
+          createdAt: { type: "string" },
+          updatedAt: { type: "string" }
+        },
+        required: ["id", "kind", "status", "role", "config", "createdAt", "updatedAt"]
+      },
+      WorkspaceJoinPolicyInput: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          kind: { type: "string", enum: ["invite", "email_domain", "telegram", "discord", "entitlement", "paid_subscription", "manual_approval"] },
+          status: { type: "string", enum: ["active", "disabled"] },
+          role: { type: "string", enum: ["member", "viewer"] },
+          title: { type: "string" },
+          instructions: { type: "string" },
+          config: { type: "object", additionalProperties: true }
+        },
+        required: ["kind"]
       },
       WorkspaceCollection: {
         type: "object",

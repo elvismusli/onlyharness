@@ -360,6 +360,78 @@ export function NeutralNetwork() {
               <p className="ohn-note">Joining requires a signed-in user session. Workspace tokens are for automation and admin flows.</p>
             </section>
           </aside>
+
+          <div className="ohn-col">
+            <section className="ohn-box">
+              <h4 className="ohn-box-title">Join policies</h4>
+              <div className="ohn-rows">
+                {h.workspaceJoinPolicies.map((policy) => (
+                  <div className="ohn-row" key={policy.id}>
+                    <span className="ohn-row-glyph">◇</span>
+                    <span className="ohn-row-main">
+                      <span><b>{policy.title ?? policy.kind}</b></span>
+                      <span className="ohn-tagrow" style={{ marginTop: 0 }}>
+                        <span className={`ohn-tag${policy.status === "active" ? " safe" : ""}`}>{policy.status}</span>
+                        <span className="ohn-tag">{policy.kind}</span>
+                        <span className="ohn-tag">{policy.role}</span>
+                      </span>
+                    </span>
+                  </div>
+                ))}
+                {catalog && !h.workspaceJoinPolicies.length && (
+                  <div className="ohn-row"><span className="ohn-row-glyph">□</span><span className="ohn-row-main">No workspace join policies configured.</span></div>
+                )}
+                {!catalog && (
+                  <div className="ohn-row"><span className="ohn-row-glyph">◇</span><span className="ohn-row-main">Connect first to view join policies.</span></div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <aside className="ohn-aside">
+            <section className="ohn-box">
+              <h4 className="ohn-box-title">Gate code</h4>
+              <form
+                className="ohn-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void h.createWorkspaceJoinCode();
+                }}
+              >
+                <div className="ohn-field">
+                  <label className="ohn-label" htmlFor="ohn-gate-source">Gate</label>
+                  <select
+                    id="ohn-gate-source"
+                    className="ohn-input"
+                    value={h.workspaceGateSource}
+                    onChange={(event) => h.setWorkspaceGateSource(event.target.value as "telegram" | "discord" | "entitlement")}
+                  >
+                    <option value="telegram">telegram</option>
+                    <option value="discord">discord</option>
+                    <option value="entitlement">entitlement</option>
+                  </select>
+                </div>
+                <button type="submit" className="ohn-btn ohn-btn-secondary" disabled={h.workspaceBusy || !h.workspaceSlug.trim()}>
+                  Create gate code
+                </button>
+              </form>
+              {h.workspaceGateCode && (
+                <div className="ohn-term" style={{ marginTop: 10 }}>
+                  <div className="ohn-term-body">{h.workspaceGateCode}</div>
+                  <div className="ohn-term-foot">
+                    <button type="button" className="ohn-btn ohn-btn-mono" onClick={() => h.copyText(h.workspaceGateCode, "Gate code copied", "workspace-gate-code")}>
+                      Copy gate code
+                    </button>
+                    <button type="button" className="ohn-btn ohn-btn-mono" onClick={() => void h.grantWorkspaceJoinCode()} disabled={h.workspaceBusy}>
+                      Grant
+                    </button>
+                  </div>
+                </div>
+              )}
+              {h.workspaceGateStatus && <p className={`ohn-status${isErrorStatus(h.workspaceGateStatus) ? " is-error" : ""}`}>{h.workspaceGateStatus}</p>}
+              <p className="ohn-note">Verify is read-only. Grant creates membership after the outside gate passes.</p>
+            </section>
+          </aside>
         </div>
       )}
 

@@ -318,6 +318,20 @@ export type WorkspaceInvite = {
   revokedAt?: string | null;
 };
 
+export type WorkspaceJoinPolicy = {
+  id: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
+  kind: "invite" | "email_domain" | "telegram" | "discord" | "entitlement" | "paid_subscription" | "manual_approval";
+  status: "active" | "disabled";
+  role: "member" | "viewer";
+  title?: string | null;
+  instructions?: string | null;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type WorkspaceCollectionItem = {
   id: string;
   itemRef: string;
@@ -358,6 +372,7 @@ export type WorkspaceCatalog = {
   resources: ResourceItem[];
   items: ResourceItem[];
   collections: WorkspaceCollection[];
+  joinPolicies: WorkspaceJoinPolicy[];
   permissions: {
     totalResources: number;
     hostedArchives: number;

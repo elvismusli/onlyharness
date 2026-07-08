@@ -49,7 +49,7 @@ function createWorkspaceStore(target: string) {
           {
             name: "smoke",
             hash: `sha256:${createHash("sha256").update(token).digest("hex")}`,
-            scopes: ["workspace:read", "workspace:setup", "resource:read", "resource:publish", "resource:archive", "collection:write", "member:write", "invite:write"],
+            scopes: ["workspace:read", "workspace:setup", "resource:read", "resource:publish", "resource:archive", "collection:write", "member:write", "invite:write", "gate:verify", "gate:write"],
             expires_at: null
           }
         ]
@@ -81,6 +81,8 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     WORKSPACE_RESOURCES_PATH: path.join(tempRoot, "workspace-resources"),
     WORKSPACE_COLLECTIONS_PATH: path.join(tempRoot, "workspace-collections"),
     WORKSPACE_SETUP_BUNDLES_PATH: path.join(tempRoot, "workspace-setup-bundles"),
+    WORKSPACE_JOIN_POLICIES_PATH: path.join(tempRoot, "workspace-join-policies"),
+    WORKSPACE_JOIN_SECRET: "workspace-join-secret-for-smoke-only",
     WORKSPACE_RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "workspace-archives")
   }
 });
@@ -100,6 +102,10 @@ try {
     "/workspaces/{slug}/setup-bundle",
     "/workspaces/{slug}/members",
     "/workspaces/{slug}/invites",
+    "/workspaces/{slug}/join-policies",
+    "/workspaces/{slug}/join-code",
+    "/workspaces/{slug}/join-code/verify",
+    "/workspaces/{slug}/join-grants",
     "/workspaces/{slug}/join",
     "/workspaces/{slug}/resources",
     "/workspaces/{slug}/resources/approve",
@@ -311,14 +317,81 @@ try {
   });
   if (viewerArchive.status !== 403) throw new Error(`Viewer archive access should be 403, got ${viewerArchive.status}`);
 
+  const paidPolicyBlocked = await fetch(`${baseUrl}/workspaces/acme/join-policies`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ policies: [{ kind: "paid_subscription", status: "active", role: "member", title: "Paid members" }] })
+  });
+  if (paidPolicyBlocked.status !== 409) throw new Error(`Active subscription policy should fail closed, got ${paidPolicyBlocked.status}`);
+
+  const policyUpdate = await fetch(`${baseUrl}/workspaces/acme/join-policies`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      policies: [
+        { id: "invite", kind: "invite", status: "active", role: "member", title: "Invite code" },
+        { id: "telegram-main", kind: "telegram", status: "active", role: "member", title: "Telegram members", config: { provider: "telegram", chatId: "onlyharness-smoke" } },
+        { id: "paid-disabled", kind: "paid_subscription", status: "disabled", role: "member", title: "Paid members later" }
+      ]
+    })
+  }).then((response) => response.json()) as { policies?: Array<{ id?: string; kind?: string; status?: string; role?: string; config?: Record<string, unknown> }> };
+  if (!policyUpdate.policies?.some((policy) => policy.id === "telegram-main" && policy.kind === "telegram" && policy.status === "active" && policy.role === "member")) {
+    throw new Error(`Workspace join policy update failed: ${JSON.stringify(policyUpdate)}`);
+  }
+  if (JSON.stringify(policyUpdate).includes(token)) throw new Error("Workspace join policy update leaked raw token");
+
+  const listedPolicies = await fetch(`${baseUrl}/workspaces/acme/join-policies`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { policies?: Array<{ id?: string; kind?: string }> };
+  if (!listedPolicies.policies?.some((policy) => policy.id === "telegram-main" && policy.kind === "telegram")) {
+    throw new Error(`Workspace join policy list missing telegram policy: ${JSON.stringify(listedPolicies)}`);
+  }
+
+  const gateCode = await fetch(`${baseUrl}/workspaces/acme/join-code`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:telegram-user", "content-type": "application/json" },
+    body: JSON.stringify({ source: "telegram", policyId: "telegram-main", ttl_seconds: 600 })
+  }).then((response) => response.json()) as { code?: string; source?: string; subject_id?: string; policy?: { id?: string } };
+  if (!gateCode.code?.startsWith("ohwj_") || gateCode.source !== "telegram" || gateCode.subject_id !== "telegram-user" || gateCode.policy?.id !== "telegram-main") {
+    throw new Error(`Workspace join code returned wrong payload: ${JSON.stringify(gateCode)}`);
+  }
+
+  const gateVerify = await fetch(`${baseUrl}/workspaces/acme/join-code/verify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ code: gateCode.code })
+  }).then((response) => response.json()) as { allowed?: boolean; subject_id?: string; source?: string; policy?: { id?: string }; next?: string };
+  if (gateVerify.allowed !== true || gateVerify.subject_id !== "telegram-user" || gateVerify.source !== "telegram" || gateVerify.policy?.id !== "telegram-main" || !gateVerify.next?.includes("read-only")) {
+    throw new Error(`Workspace join code verify failed: ${JSON.stringify(gateVerify)}`);
+  }
+
+  const beforeGateGrantArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:telegram-user" }
+  });
+  if (beforeGateGrantArchive.status !== 403) throw new Error(`Gate verification must not grant archive access, got ${beforeGateGrantArchive.status}`);
+
+  const gateGrant = await fetch(`${baseUrl}/workspaces/acme/join-grants`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ code: gateCode.code, source: "telegram", externalSubject: "telegram:12345" })
+  }).then((response) => response.json()) as { member?: { user_id?: string; role?: string; source?: string }; policy?: { id?: string } };
+  if (gateGrant.member?.user_id !== "telegram-user" || gateGrant.member.role !== "member" || gateGrant.member.source !== "telegram" || gateGrant.policy?.id !== "telegram-main") {
+    throw new Error(`Workspace join grant failed: ${JSON.stringify(gateGrant)}`);
+  }
+
+  const afterGateGrantArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:telegram-user" }
+  });
+  if (!afterGateGrantArchive.ok) throw new Error(`Gate-granted member archive access failed: ${afterGateGrantArchive.status}`);
+
   const workspace = await fetch(`${baseUrl}/workspaces/acme/workspace`, {
     headers: { Authorization: `Bearer ${token}` }
-  }).then((response) => response.json()) as { resources?: Array<{ id?: string }>; collections?: Array<{ slug?: string }>; audit?: unknown[]; permissions?: { totalResources?: number; hostedArchives?: number } };
-  if (!workspace.resources?.some((item) => item.id === "@acme/agent-tool") || !workspace.resources?.some((item) => item.id === "@acme/deep-market-researcher") || !workspace.collections?.some((item) => item.slug === "approved") || workspace.permissions?.hostedArchives !== 1) {
+  }).then((response) => response.json()) as { resources?: Array<{ id?: string }>; collections?: Array<{ slug?: string }>; joinPolicies?: Array<{ id?: string; kind?: string }>; audit?: unknown[]; permissions?: { totalResources?: number; hostedArchives?: number } };
+  if (!workspace.resources?.some((item) => item.id === "@acme/agent-tool") || !workspace.resources?.some((item) => item.id === "@acme/deep-market-researcher") || !workspace.collections?.some((item) => item.slug === "approved") || !workspace.joinPolicies?.some((item) => item.id === "telegram-main" && item.kind === "telegram") || workspace.permissions?.hostedArchives !== 1) {
     throw new Error(`Workspace overview missing published resource: ${JSON.stringify(workspace)}`);
   }
   const auditJson = JSON.stringify(workspace.audit ?? []);
-  if (auditJson.includes(token) || auditJson.includes(invite.code ?? "")) throw new Error("Workspace audit leaked raw token or invite code");
+  if (auditJson.includes(token) || auditJson.includes(invite.code ?? "") || auditJson.includes(gateCode.code ?? "")) throw new Error("Workspace audit leaked raw token, invite code or gate code");
 
 } finally {
   api.kill();

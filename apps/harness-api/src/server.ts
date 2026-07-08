@@ -11,7 +11,7 @@ import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyRespons
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
-import { createCommunityInviteCode, verifyCommunityInviteCode } from "./community.js";
+import { createCommunityInviteCode, createWorkspaceJoinCode, verifyCommunityInviteCode, verifyWorkspaceJoinCode } from "./community.js";
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { classifyGitHubResource, GitHubImportError, type GitHubResourceImportRequest } from "./github-import.js";
@@ -108,6 +108,27 @@ type WorkspaceInviteRequest = {
 
 type WorkspaceJoinRequest = {
   code?: string;
+};
+
+type WorkspaceJoinPolicyRequest = {
+  policies?: unknown[];
+};
+
+type WorkspaceJoinCodeRequest = {
+  source?: string;
+  policyId?: string;
+  ttl_seconds?: number;
+  ttlSeconds?: number;
+};
+
+type WorkspaceJoinCodeVerifyRequest = {
+  code?: string;
+};
+
+type WorkspaceJoinGrantRequest = {
+  code?: string;
+  source?: string;
+  externalSubject?: string;
 };
 
 type WorkspaceSetupBundleRequest = {
@@ -336,12 +357,14 @@ app.get("/workspaces/:slug/workspace", async (request, reply) => {
   }
   const query = request.query as resources.ResourceQuery;
   const resourceResult = workspaces.searchWorkspaceResources(auth.workspace.slug, { ...query, limit: query.limit ?? 50 });
+  const joinPolicies = await workspaces.listWorkspaceJoinPolicies(auth.workspace.slug);
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "workspace_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: "workspace", via: auth.via });
   return {
     workspace: publicWorkspace(auth.workspace),
     resources: resourceResult.resources,
     items: resourceResult.resources,
     collections: workspaces.listWorkspaceCollections(auth.workspace.slug),
+    joinPolicies: joinPolicies.ok ? joinPolicies.policies.map(publicWorkspaceJoinPolicy) : [],
     permissions: workspaceResourcePermissionsSummary(auth.workspace.slug, resourceResult.resources),
     audit: await workspaces.readWorkspaceAudit(auth.workspace.slug, 80)
   };
@@ -442,13 +465,137 @@ app.post("/workspaces/:slug/invites", async (request, reply) => {
   return reply.code(201).send({ workspace: publicWorkspace(auth.workspace), invite: publicWorkspaceInvite(result.invite), code: result.code, next: "Show this invite code once. Only a hash is stored by OnlyHarness." });
 });
 
+app.get("/workspaces/:slug/join-policies", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace join policies are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["workspace:read"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "join_policies" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const result = await workspaces.listWorkspaceJoinPolicies(auth.workspace.slug);
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "join_policies_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: "join_policies", via: auth.via });
+  return { workspace: publicWorkspace(auth.workspace), policies: result.policies.map(publicWorkspaceJoinPolicy) };
+});
+
+app.put("/workspaces/:slug/join-policies", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace join policies are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["member:write", "invite:write"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "join_policies_update" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceJoinPolicyRequest : {};
+  const result = await workspaces.upsertWorkspaceJoinPolicies(auth.workspace.slug, { policies: body.policies });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "join_policies_updated", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: "join_policies", via: auth.via });
+  return { workspace: publicWorkspace(auth.workspace), policies: result.policies.map(publicWorkspaceJoinPolicy) };
+});
+
+app.post("/workspaces/:slug/join-code", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace join codes are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceJoinCodeRequest : {};
+  const source = workspaceJoinSource(body.source);
+  if (!source) return reply.code(400).send({ error: "source must be telegram, discord, or entitlement", code: "INVALID_JOIN_SOURCE" });
+  const policies = await workspaces.listWorkspaceJoinPolicies(slug);
+  if (!policies.ok) return reply.code(policies.status).send({ error: policies.error, code: policies.code });
+  const policy = policies.policies.find((row) => workspaceJoinPolicyMatchesSource(row, source) && (!body.policyId || row.id === body.policyId));
+  if (!policy) return reply.code(403).send({ error: "Workspace join policy does not allow this source", code: "JOIN_POLICY_DENIED" });
+  const secret = workspaceJoinSecret();
+  if (!secret) return reply.code(503).send({ error: "Workspace join codes are not configured" });
+  const code = createWorkspaceJoinCode({
+    workspace: policies.workspace.slug,
+    userId: user.id,
+    source,
+    policyId: policy.id,
+    ttlSeconds: typeof body.ttl_seconds === "number" ? body.ttl_seconds : typeof body.ttlSeconds === "number" ? body.ttlSeconds : undefined,
+    secret
+  });
+  if (!code.ok) return reply.code(400).send({ error: code.error });
+  await workspaces.appendWorkspaceAudit({ slug: policies.workspace.slug, action: "join_code_created", subject: eventSubject(user.id), target: policy.id, via: "workspace_member" });
+  return reply.code(201).send({
+    ok: true,
+    workspace: publicWorkspace(policies.workspace),
+    policy: publicWorkspaceJoinPolicy(policy),
+    code: code.code,
+    source,
+    subject_type: "user",
+    subject_id: user.id,
+    expires_at: new Date(code.payload.exp * 1000).toISOString(),
+    next: "Give this short-lived code to the workspace gate bot or moderator. Verification is read-only; membership requires an explicit grant."
+  });
+});
+
+app.post("/workspaces/:slug/join-code/verify", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace join code verification is not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["gate:verify"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "join_code_verify" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const verified = await verifyWorkspaceJoinCodeForWorkspace(slug, request.body);
+  if (!verified.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: verified.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "join_code", via: auth.via });
+    return reply.code(verified.status).send({ error: verified.error, code: verified.code });
+  }
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "join_code_verified", tokenName: auth.tokenName, subject: eventSubject(verified.subjectId), target: verified.policy.id, via: auth.via });
+  return {
+    ok: true,
+    workspace: publicWorkspace(auth.workspace),
+    policy: publicWorkspaceJoinPolicy(verified.policy),
+    allowed: true,
+    source: verified.source,
+    subject_type: "user",
+    subject_id: verified.subjectId,
+    expires_at: verified.expiresAt,
+    next: "Verification is read-only. Call /workspaces/{slug}/join-grants after the external membership check passes."
+  };
+});
+
+app.post("/workspaces/:slug/join-grants", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace join grants are not enabled" });
+  const { slug } = request.params as { slug: string };
+  const auth = await authorizeWorkspaceRequest(slug, request, ["gate:write"]);
+  if (!auth.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "join_grant" });
+    return reply.code(auth.status).send({ error: auth.error });
+  }
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceJoinGrantRequest : {};
+  const verified = await verifyWorkspaceJoinCodeForWorkspace(slug, body);
+  if (!verified.ok) {
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: verified.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "join_grant", via: auth.via });
+    return reply.code(verified.status).send({ error: verified.error, code: verified.code });
+  }
+  const requestedSource = workspaceJoinSource(body.source);
+  if (requestedSource && requestedSource !== verified.source) {
+    return reply.code(400).send({ error: "Join grant source does not match join code", code: "JOIN_SOURCE_MISMATCH" });
+  }
+  const result = await workspaces.grantWorkspaceJoinPolicy(auth.workspace.slug, { userId: verified.subjectId, source: verified.source, policyId: verified.policy.id });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "member_joined", tokenName: auth.tokenName, subject: eventSubject(verified.subjectId), target: result.member.user_id, via: auth.via });
+  return reply.code(201).send({
+    workspace: publicWorkspace(result.workspace),
+    policy: result.policy ? publicWorkspaceJoinPolicy(result.policy) : undefined,
+    member: result.member,
+    next: "Workspace membership is active. Private install paths still require this signed-in user or a workspace token."
+  });
+});
+
 app.post("/workspaces/:slug/join", async (request, reply) => {
   if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace join is not enabled" });
   const { slug } = request.params as { slug: string };
   const user = await requireUser(request, reply);
   if (!user) return;
   const body = request.body && typeof request.body === "object" ? request.body as WorkspaceJoinRequest : {};
-  const result = await workspaces.joinWorkspaceWithInvite(slug, { code: body.code, userId: user.id });
+  const result = body.code
+    ? await workspaces.joinWorkspaceWithInvite(slug, { code: body.code, userId: user.id })
+    : await workspaces.joinWorkspaceWithEmailDomain(slug, { userId: user.id, email: user.email });
   if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
   await workspaces.appendWorkspaceAudit({ slug: result.workspace.slug, action: "member_joined", subject: eventSubject(user.id), target: result.member.user_id, via: "workspace_member" });
   return reply.code(201).send({ workspace: publicWorkspace(result.workspace), member: result.member, next: "Workspace membership is active. Private install paths now require this signed-in user or a workspace token." });
@@ -1055,8 +1202,29 @@ app.post("/bounties/:id/accept", async (request, reply) => {
 });
 
 app.get("/orgs/:slug/bundle", async (request, reply) => {
-  if (!orgsEnabled) return reply.code(404).send({ error: "Org setup is not enabled" });
   const { slug } = request.params as { slug: string };
+  if (workspacesEnabled) {
+    const auth = await authorizeWorkspaceRequest(slug, request, ["workspace:setup"]);
+    if (!auth.ok) {
+      await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "legacy_org_bundle" });
+      return reply.code(auth.status).send({ error: auth.error });
+    }
+    const query = request.query as { target?: string };
+    const bundle = await workspaces.workspaceSetupBundle(auth.workspace, query.target);
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "setup_bundle_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: "legacy_org_bundle", via: auth.via });
+    await recordEvent({ kind: "install", owner: auth.workspace.slug, repo: "bundle", version: bundle.version, subject: workspaceAuthSubject(auth), target: "org_setup_workspace_alias", client: "api" });
+    return {
+      organization: {
+        slug: auth.workspace.slug,
+        name: auth.workspace.name,
+        plan: auth.workspace.plan
+      },
+      workspace: publicWorkspace(auth.workspace),
+      bundle
+    };
+  }
+
+  if (!orgsEnabled) return reply.code(404).send({ error: "Org setup is not enabled" });
   const token = orgTokenFromRequest(request);
   const result = await readOrgBundle(slug, token);
   if (!result.ok) {
@@ -1076,8 +1244,34 @@ app.get("/orgs/:slug/bundle", async (request, reply) => {
 });
 
 app.get("/orgs/:slug/workspace", async (request, reply) => {
-  if (!orgsEnabled) return reply.code(404).send({ error: "Org workspace is not enabled" });
   const { slug } = request.params as { slug: string };
+  if (workspacesEnabled) {
+    const auth = await authorizeWorkspaceRequest(slug, request, ["workspace:read"]);
+    if (!auth.ok) {
+      await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "legacy_org_workspace" });
+      return reply.code(auth.status).send({ error: auth.error });
+    }
+    const query = request.query as resources.ResourceQuery;
+    const resourceResult = workspaces.searchWorkspaceResources(auth.workspace.slug, { ...query, limit: query.limit ?? 50 });
+    const joinPolicies = await workspaces.listWorkspaceJoinPolicies(auth.workspace.slug);
+    await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "workspace_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: "legacy_org_workspace", via: auth.via });
+    return {
+      organization: {
+        slug: auth.workspace.slug,
+        name: auth.workspace.name,
+        plan: auth.workspace.plan
+      },
+      workspace: publicWorkspace(auth.workspace),
+      resources: resourceResult.resources,
+      items: resourceResult.resources,
+      collections: workspaces.listWorkspaceCollections(auth.workspace.slug),
+      joinPolicies: joinPolicies.ok ? joinPolicies.policies.map(publicWorkspaceJoinPolicy) : [],
+      permissions: workspaceResourcePermissionsSummary(auth.workspace.slug, resourceResult.resources),
+      audit: await workspaces.readWorkspaceAudit(auth.workspace.slug, 80)
+    };
+  }
+
+  if (!orgsEnabled) return reply.code(404).send({ error: "Org workspace is not enabled" });
   const token = orgTokenFromRequest(request);
   const auth = await authorizeOrgToken(slug, token, ["read", "setup", "publish"]);
   if (!auth.ok) {
@@ -1413,6 +1607,54 @@ function gateCommunityCodeVisibility(owner: string, manifest: HarnessManifest | 
 function communityInviteSecret(): string | undefined {
   const secret = process.env.COMMUNITY_INVITE_SECRET?.trim() || process.env.HARNESS_COMMUNITY_INVITE_SECRET?.trim();
   return secret && secret.length >= 24 ? secret : undefined;
+}
+
+function workspaceJoinSecret(): string | undefined {
+  const secret = process.env.WORKSPACE_JOIN_SECRET?.trim() || process.env.HARNESS_WORKSPACE_JOIN_SECRET?.trim() || communityInviteSecret();
+  return secret && secret.length >= 24 ? secret : undefined;
+}
+
+type WorkspaceJoinSource = "telegram" | "discord" | "entitlement";
+
+function workspaceJoinSource(value: unknown): WorkspaceJoinSource | undefined {
+  return value === "telegram" || value === "discord" || value === "entitlement" ? value : undefined;
+}
+
+function workspaceJoinPolicyMatchesSource(policy: workspaces.WorkspaceJoinPolicy, source: WorkspaceJoinSource): boolean {
+  if (policy.status !== "active") return false;
+  if (source === "telegram") return policy.kind === "telegram";
+  if (source === "discord") return policy.kind === "discord";
+  return policy.kind === "entitlement" || policy.kind === "manual_approval";
+}
+
+async function verifyWorkspaceJoinCodeForWorkspace(slugValue: string, bodyValue: unknown): Promise<
+  | { ok: true; subjectId: string; source: WorkspaceJoinSource; policy: workspaces.WorkspaceJoinPolicy; expiresAt: string }
+  | { ok: false; status: number; error: string; code: string; auditAction: string }
+> {
+  const slug = workspaces.cleanWorkspaceSlug(slugValue);
+  if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE", auditAction: "join_code_invalid_workspace" };
+  const body = bodyValue && typeof bodyValue === "object" ? bodyValue as WorkspaceJoinCodeVerifyRequest & WorkspaceJoinGrantRequest : {};
+  if (!body.code) return { ok: false, status: 400, error: "code is required", code: "JOIN_CODE_REQUIRED", auditAction: "join_code_missing" };
+  const secret = workspaceJoinSecret();
+  if (!secret) return { ok: false, status: 503, error: "Workspace join codes are not configured", code: "WORKSPACE_JOIN_SECRET_MISSING", auditAction: "join_code_secret_missing" };
+  const verified = verifyWorkspaceJoinCode({ code: body.code, secret });
+  if (!verified.ok) {
+    return { ok: false, status: verified.status, error: verified.error, code: verified.status === 410 ? "JOIN_CODE_EXPIRED" : "JOIN_CODE_DENIED", auditAction: verified.status === 410 ? "join_code_expired" : "join_code_denied" };
+  }
+  if (verified.payload.workspace !== slug) {
+    return { ok: false, status: 403, error: "Workspace join code does not belong to this workspace", code: "JOIN_CODE_WORKSPACE_MISMATCH", auditAction: "join_code_workspace_mismatch" };
+  }
+  const policies = await workspaces.listWorkspaceJoinPolicies(slug);
+  if (!policies.ok) return { ok: false, status: policies.status, error: policies.error, code: policies.code, auditAction: "join_code_workspace_unavailable" };
+  const policy = policies.policies.find((row) => row.id === verified.payload.policyId && workspaceJoinPolicyMatchesSource(row, verified.payload.source));
+  if (!policy) return { ok: false, status: 403, error: "Workspace join policy does not allow this source", code: "JOIN_POLICY_DENIED", auditAction: "join_policy_denied" };
+  return {
+    ok: true,
+    subjectId: verified.payload.subject.id,
+    source: verified.payload.source,
+    policy,
+    expiresAt: new Date(verified.payload.exp * 1000).toISOString()
+  };
 }
 
 function parseCsv(value: string | undefined): Set<string> {
@@ -2481,6 +2723,22 @@ function publicWorkspaceInvite(invite: workspaces.WorkspaceInvite) {
     createdBy: invite.created_by ?? null,
     createdAt: invite.created_at,
     revokedAt: invite.revoked_at ?? null
+  };
+}
+
+function publicWorkspaceJoinPolicy(policy: workspaces.WorkspaceJoinPolicy) {
+  return {
+    id: policy.id,
+    workspaceId: policy.workspace_id,
+    workspaceSlug: policy.workspace_slug,
+    kind: policy.kind,
+    status: policy.status,
+    role: policy.role,
+    title: policy.title ?? null,
+    instructions: policy.instructions ?? null,
+    config: policy.config,
+    createdAt: policy.created_at,
+    updatedAt: policy.updated_at
   };
 }
 

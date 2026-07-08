@@ -618,7 +618,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.9");
+  .version("0.2.10");
 program.enablePositionalOptions();
 
 program.command("search")

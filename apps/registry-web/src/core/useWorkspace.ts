@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { apiUrl } from "./constants";
-import type { WorkspaceCatalog, WorkspaceInvite, WorkspaceMember } from "./types";
+import type { WorkspaceCatalog, WorkspaceInvite, WorkspaceJoinPolicy, WorkspaceMember } from "./types";
 
 export type UseWorkspaceOptions = {
   accessToken?: string;
@@ -18,6 +18,7 @@ export type UseWorkspaceResult = {
   workspaceBusy: boolean;
   workspaceCatalog: WorkspaceCatalog | undefined;
   workspaceMembers: WorkspaceMember[];
+  workspaceJoinPolicies: WorkspaceJoinPolicy[];
   workspaceInviteRole: WorkspaceMember["role"];
   setWorkspaceInviteRole: (value: WorkspaceMember["role"]) => void;
   workspaceInviteMaxUses: string;
@@ -27,6 +28,11 @@ export type UseWorkspaceResult = {
   workspaceJoinCode: string;
   setWorkspaceJoinCode: (value: string) => void;
   workspaceJoinStatus: string;
+  workspaceGateSource: "telegram" | "discord" | "entitlement";
+  setWorkspaceGateSource: (value: "telegram" | "discord" | "entitlement") => void;
+  workspaceGateCode: string;
+  setWorkspaceGateCode: (value: string) => void;
+  workspaceGateStatus: string;
   workspaceCollectionSlug: string;
   setWorkspaceCollectionSlug: (value: string) => void;
   workspaceApprovalResourceId: string;
@@ -38,8 +44,11 @@ export type UseWorkspaceResult = {
   workspaceCollectionStatus: string;
   loadWorkspace: () => Promise<void>;
   loadWorkspaceMembers: () => Promise<void>;
+  loadWorkspaceJoinPolicies: () => Promise<void>;
   createWorkspaceInvite: () => Promise<void>;
   joinWorkspace: () => Promise<void>;
+  createWorkspaceJoinCode: () => Promise<void>;
+  grantWorkspaceJoinCode: () => Promise<void>;
   approveWorkspaceResource: () => Promise<void>;
   removeWorkspaceCollectionItem: (collectionSlug: string, itemId: string) => Promise<void>;
   workspaceHeadersForOwner: (owner: string) => Record<string, string>;
@@ -54,12 +63,16 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceCatalog, setWorkspaceCatalog] = useState<WorkspaceCatalog | undefined>();
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
+  const [workspaceJoinPolicies, setWorkspaceJoinPolicies] = useState<WorkspaceJoinPolicy[]>([]);
   const [workspaceInviteRole, setWorkspaceInviteRoleState] = useState<WorkspaceMember["role"]>("member");
   const [workspaceInviteMaxUses, setWorkspaceInviteMaxUses] = useState("1");
   const [workspaceInviteCode, setWorkspaceInviteCode] = useState("");
   const [workspaceInviteStatus, setWorkspaceInviteStatus] = useState("");
   const [workspaceJoinCode, setWorkspaceJoinCode] = useState("");
   const [workspaceJoinStatus, setWorkspaceJoinStatus] = useState("");
+  const [workspaceGateSource, setWorkspaceGateSourceState] = useState<"telegram" | "discord" | "entitlement">("telegram");
+  const [workspaceGateCode, setWorkspaceGateCode] = useState("");
+  const [workspaceGateStatus, setWorkspaceGateStatus] = useState("");
   const [workspaceCollectionSlug, setWorkspaceCollectionSlug] = useState("approved");
   const [workspaceApprovalResourceId, setWorkspaceApprovalResourceId] = useState("");
   const [workspaceApprovalName, setWorkspaceApprovalName] = useState("");
@@ -85,6 +98,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
       if (!response.ok) throw new Error(data.error ?? `Request failed (${response.status})`);
       const catalog = data as WorkspaceCatalog;
       setWorkspaceCatalog(catalog);
+      setWorkspaceJoinPolicies(catalog.joinPolicies ?? []);
       setWorkspaceSlug(catalog.workspace.slug);
       localStorage.setItem("hh:workspaceSlug", catalog.workspace.slug);
       await loadWorkspaceMembersFor(catalog.workspace.slug);
@@ -99,6 +113,10 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
 
   async function loadWorkspaceMembers() {
     await loadWorkspaceMembersFor(cleanSlug(workspaceSlug));
+  }
+
+  async function loadWorkspaceJoinPolicies() {
+    await loadWorkspaceJoinPoliciesFor(cleanSlug(workspaceSlug));
   }
 
   async function createWorkspaceInvite() {
@@ -153,6 +171,57 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
       await loadWorkspace();
     } catch (error) {
       setWorkspaceJoinStatus(error instanceof Error ? error.message : "Join failed");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function createWorkspaceJoinCode() {
+    const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
+    if (!slug) return;
+    if (!opts.accessToken && !opts.requireUser?.("Log on before creating a workspace gate code.")) return;
+    setWorkspaceBusy(true);
+    setWorkspaceGateStatus("");
+    setWorkspaceGateCode("");
+    try {
+      const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/join-code`, {
+        method: "POST",
+        headers: { ...sessionHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ source: workspaceGateSource })
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; code?: string; source?: string };
+      if (!response.ok) throw new Error(data.error ?? `Gate code failed (${response.status})`);
+      if (!data.code) throw new Error("Gate code response did not include a code.");
+      setWorkspaceGateCode(data.code);
+      setWorkspaceGateStatus(`Gate code created for ${data.source ?? workspaceGateSource}.`);
+      opts.onFlash?.("Workspace gate code created");
+    } catch (error) {
+      setWorkspaceGateStatus(error instanceof Error ? error.message : "Gate code failed");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function grantWorkspaceJoinCode() {
+    const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
+    const code = workspaceGateCode.trim();
+    if (!slug || !code) return setWorkspaceGateStatus("Workspace slug and gate code are required.");
+    if (!workspaceToken && !opts.accessToken && !opts.requireUser?.("Log on as a workspace admin or paste a gate token to grant membership.")) return;
+    setWorkspaceBusy(true);
+    setWorkspaceGateStatus("");
+    try {
+      const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/join-grants`, {
+        method: "POST",
+        headers: { ...authHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ code, source: workspaceGateSource })
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; member?: WorkspaceMember };
+      if (!response.ok) throw new Error(data.error ?? `Grant failed (${response.status})`);
+      setWorkspaceGateStatus(`Granted ${data.member?.source ?? workspaceGateSource} membership as ${data.member?.role ?? "member"}.`);
+      opts.onFlash?.("Workspace gate membership granted");
+      await loadWorkspaceMembersFor(slug);
+    } catch (error) {
+      setWorkspaceGateStatus(error instanceof Error ? error.message : "Grant failed");
     } finally {
       setWorkspaceBusy(false);
     }
@@ -228,8 +297,25 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     setWorkspaceMembers([]);
   }
 
+  async function loadWorkspaceJoinPoliciesFor(slug: string) {
+    if (!slug) return;
+    const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/join-policies`, {
+      headers: authHeaders()
+    });
+    const data = await response.json().catch(() => ({})) as { policies?: WorkspaceJoinPolicy[] };
+    if (response.ok) {
+      setWorkspaceJoinPolicies(data.policies ?? []);
+      return;
+    }
+    setWorkspaceJoinPolicies([]);
+  }
+
   function setWorkspaceInviteRole(value: WorkspaceMember["role"]) {
     setWorkspaceInviteRoleState(MEMBER_ROLES.includes(value) ? value : "member");
+  }
+
+  function setWorkspaceGateSource(value: "telegram" | "discord" | "entitlement") {
+    setWorkspaceGateSourceState(["telegram", "discord", "entitlement"].includes(value) ? value : "telegram");
   }
 
   function authHeaders(): Record<string, string> {
@@ -249,6 +335,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceBusy,
     workspaceCatalog,
     workspaceMembers,
+    workspaceJoinPolicies,
     workspaceInviteRole,
     setWorkspaceInviteRole,
     workspaceInviteMaxUses,
@@ -258,6 +345,11 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceJoinCode,
     setWorkspaceJoinCode,
     workspaceJoinStatus,
+    workspaceGateSource,
+    setWorkspaceGateSource,
+    workspaceGateCode,
+    setWorkspaceGateCode,
+    workspaceGateStatus,
     workspaceCollectionSlug,
     setWorkspaceCollectionSlug,
     workspaceApprovalResourceId,
@@ -269,8 +361,11 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceCollectionStatus,
     loadWorkspace,
     loadWorkspaceMembers,
+    loadWorkspaceJoinPolicies,
     createWorkspaceInvite,
     joinWorkspace,
+    createWorkspaceJoinCode,
+    grantWorkspaceJoinCode,
     approveWorkspaceResource,
     removeWorkspaceCollectionItem,
     workspaceHeadersForOwner
