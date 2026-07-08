@@ -8,7 +8,7 @@ OnlyHarness is usable end-to-end for the core free native harness path and the m
 - API: pass. Health, OpenAPI, registry/resources, hosted archives and not-hosted guards work on prod.
 - MCP: pass after fix. Prod JSON-RPC exposes harness and resource tools, and now reports version `0.2.1`.
 - CLI/npm: pass after npm publish. Published npm `onlyharness@0.2.1` works for native harness workflows and mixed `hh resources` commands.
-- Claude plugin: pass with restart note. Local plugin validates, GitHub marketplace source was pushed, and installed `onlyharness@onlyharness` was updated after plugin refresh; Claude Code says restart is required to apply it.
+- Claude plugin: pass with restart note. Local plugin validates, GitHub marketplace source was pushed, and installed `onlyharness@onlyharness` was updated to `1.0.2`; Claude Code says restart is required to apply it.
 - Paid/auth: anonymous guards pass; no QA credentials and no live paid harness fixture were available, so no real signup/payment mutation was performed.
 - Storage safety: pass. No local catalog archive download. Only two tiny sample archives were downloaded to `/tmp` and removed.
 
@@ -124,8 +124,8 @@ Partial.
 - `claude plugin marketplace add elvismusli/onlyharness`: pass.
 - `claude plugin install onlyharness@onlyharness`: pass.
 - `claude plugin marketplace update onlyharness`: pass.
-- `claude plugin update onlyharness@onlyharness`: pass; restart required to apply.
-- `claude plugin list`: pass after refresh.
+- `claude plugin update onlyharness@onlyharness`: pass, updated `1.0.1 -> 1.0.2`; restart required to apply.
+- `claude plugin list`: pass, installed `onlyharness@onlyharness` version `1.0.2`.
 
 Found and fixed in source:
 
