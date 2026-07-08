@@ -87,6 +87,14 @@
 
 /* Icon-only on narrow viewports so the pill stays compact and fully visible. */
 @media (max-width: 560px) {
+  .gss {
+    top: calc(84px + env(safe-area-inset-top, 0px));
+    right: 12px;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    flex-direction: column;
+  }
   .gss-label {
     /* visually hidden but kept for assistive tech */
     position: absolute;
