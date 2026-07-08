@@ -164,6 +164,7 @@ export function NeutralNetwork() {
                   <span className="ohn-tag safe">{member.role}</span>
                   <span className="ohn-tag">{member.status}</span>
                   <span className="ohn-tag">{member.source}</span>
+                  {member.expires_at && <span className="ohn-tag">expires {new Date(member.expires_at).toLocaleString()}</span>}
                   <span className="ohn-tag">{member.joined_at ? new Date(member.joined_at).toLocaleString() : "unknown time"}</span>
                 </span>
               </span>

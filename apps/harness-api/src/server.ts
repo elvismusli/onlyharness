@@ -97,6 +97,8 @@ type WorkspaceMemberRequest = {
   userId?: string;
   role?: string;
   source?: string;
+  expiresAt?: string | null;
+  expires_at?: string | null;
 };
 
 type WorkspaceInviteRequest = {

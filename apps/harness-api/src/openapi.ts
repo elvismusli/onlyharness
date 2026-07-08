@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.10",
+    version: "0.2.11",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -924,7 +924,7 @@ export const openapi = {
         parameters: [pathParam("slug")],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { type: "object", properties: { userId: { type: "string" }, role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] }, source: { type: "string" } }, required: ["userId"] } } }
+          content: { "application/json": { schema: { type: "object", properties: { userId: { type: "string" }, role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] }, source: { type: "string" }, expiresAt: { type: ["string", "null"], format: "date-time", description: "Optional membership expiry. When expired, member-session reads and private archive access fail closed." } }, required: ["userId"] } } }
         },
         responses: {
           "201": {
@@ -1890,6 +1890,7 @@ export const openapi = {
           status: { type: "string", enum: ["invited", "active", "suspended", "removed"] },
           source: { type: "string", enum: ["direct", "invite", "email_domain", "telegram", "discord", "entitlement", "paid_entitlement", "token_bootstrap"] },
           joined_at: { type: "string" },
+          expires_at: { type: "string", nullable: true },
           removed_at: { type: "string", nullable: true }
         },
         required: ["user_id", "role", "status", "source", "joined_at"]

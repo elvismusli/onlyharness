@@ -40,6 +40,7 @@ export type WorkspaceMember = {
   status: WorkspaceMemberStatus;
   source: WorkspaceMemberSource;
   joined_at: string;
+  expires_at?: string | null;
   removed_at?: string | null;
 };
 
@@ -206,6 +207,7 @@ type SupabaseMemberRow = {
   status?: string;
   source?: string;
   joined_at?: string;
+  expires_at?: string | null;
   removed_at?: string | null;
 };
 
@@ -327,6 +329,9 @@ export async function authorizeWorkspaceMember(slugValue: string | undefined, us
   if (!member || member.status !== "active" || member.removed_at) {
     return { ok: false, status: 403, error: "Workspace membership required", slug, auditAction: "workspace_member_denied" };
   }
+  if (workspaceMemberExpired(member)) {
+    return { ok: false, status: 403, error: "Workspace membership expired", slug, auditAction: "workspace_member_expired" };
+  }
   if (!requiredScopes.some((scope) => roleAllowsScope(member.role, scope))) {
     return { ok: false, status: 403, error: "Workspace role cannot perform this action", slug, auditAction: "workspace_role_denied" };
   }
@@ -343,7 +348,7 @@ export async function listWorkspaceMembers(slugValue: string | undefined): Promi
   return readLocalWorkspaceMembers(workspace.value);
 }
 
-export async function upsertWorkspaceMember(slugValue: string | undefined, input: { userId?: string; role?: string; source?: string }): Promise<WorkspaceMemberResult> {
+export async function upsertWorkspaceMember(slugValue: string | undefined, input: { userId?: string; role?: string; source?: string; expiresAt?: string | null; expires_at?: string | null }): Promise<WorkspaceMemberResult> {
   const slug = cleanWorkspaceSlug(slugValue);
   const userId = cleanUserId(input.userId);
   if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
@@ -352,6 +357,8 @@ export async function upsertWorkspaceMember(slugValue: string | undefined, input
   if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
   const role = normalizeWorkspaceRole(input.role);
   const source = normalizeMemberSource(input.source);
+  const expiresAt = normalizeMemberExpiresAt(input.expiresAt ?? input.expires_at);
+  if (!expiresAt.ok) return { ok: false, status: 400, error: "Invalid member expiry timestamp", code: "INVALID_MEMBER_EXPIRY" };
   const member: WorkspaceMember = {
     id: existingLocalMember(workspace.value, userId)?.id,
     workspace_id: workspace.value.id,
@@ -361,6 +368,7 @@ export async function upsertWorkspaceMember(slugValue: string | undefined, input
     status: "active",
     source,
     joined_at: new Date().toISOString(),
+    expires_at: expiresAt.value,
     removed_at: null
   };
   const remote = workspace.value.id ? await upsertSupabaseWorkspaceMember(workspace.value, member) : undefined;
@@ -839,7 +847,7 @@ async function readSupabaseWorkspaceBySlug(slug: string, withTokens: boolean): P
 async function readWorkspaceMember(workspace: WorkspaceRecord, userId: string): Promise<WorkspaceMember | undefined> {
   if (workspace.id) {
     const rows = await supabaseRows<SupabaseMemberRow>("workspace_members", {
-      select: "id,workspace_id,user_id,role,status,source,joined_at,removed_at",
+      select: "id,workspace_id,user_id,role,status,source,joined_at,expires_at,removed_at",
       workspace_id: `eq.${workspace.id}`,
       user_id: `eq.${userId}`,
       limit: "1"
@@ -851,13 +859,13 @@ async function readWorkspaceMember(workspace: WorkspaceRecord, userId: string): 
 
 async function readSupabaseWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[] | undefined> {
   const rows = await supabaseRows<SupabaseMemberRow>("workspace_members", {
-    select: "id,workspace_id,user_id,role,status,source,joined_at,removed_at",
+    select: "id,workspace_id,user_id,role,status,source,joined_at,expires_at,removed_at",
     workspace_id: `eq.${workspaceId}`,
     removed_at: "is.null",
     order: "joined_at.desc",
     limit: "200"
   });
-  return rows?.flatMap((row) => normalizeSupabaseMember(row));
+  return rows?.flatMap((row) => normalizeSupabaseMember(row)).filter(workspaceMemberActive);
 }
 
 async function upsertSupabaseWorkspaceMember(workspace: WorkspaceRecord, member: WorkspaceMember): Promise<WorkspaceMember | undefined> {
@@ -872,6 +880,7 @@ async function upsertSupabaseWorkspaceMember(workspace: WorkspaceRecord, member:
       status: member.status,
       source: member.source,
       joined_at: member.joined_at,
+      expires_at: member.expires_at ?? null,
       removed_at: member.removed_at ?? null
     })
   });
@@ -1091,7 +1100,7 @@ function writeWorkspaceStore(store: WorkspaceStore) {
 
 function readLocalWorkspaceMembers(workspace: WorkspaceRecord): WorkspaceMember[] {
   return (readWorkspaceStore().members ?? [])
-    .filter((member) => memberBelongsToWorkspace(member, workspace) && member.removed_at === null)
+    .filter((member) => memberBelongsToWorkspace(member, workspace) && workspaceMemberActive(member))
     .sort((a, b) => Date.parse(b.joined_at) - Date.parse(a.joined_at));
 }
 
@@ -1463,6 +1472,7 @@ function normalizeSupabaseMember(row: SupabaseMemberRow | undefined, workspaceSl
     status: normalizeMemberStatus(row.status),
     source: normalizeMemberSource(row.source),
     joined_at: typeof row.joined_at === "string" ? row.joined_at : new Date().toISOString(),
+    expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
     removed_at: typeof row.removed_at === "string" ? row.removed_at : null
   }];
 }
@@ -1479,6 +1489,7 @@ function normalizeLocalMember(row: WorkspaceMember | undefined): WorkspaceMember
     status: normalizeMemberStatus(row.status),
     source: normalizeMemberSource(row.source),
     joined_at: typeof row.joined_at === "string" ? row.joined_at : new Date().toISOString(),
+    expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
     removed_at: typeof row.removed_at === "string" ? row.removed_at : null
   }];
 }
@@ -1826,6 +1837,24 @@ function expiresAtFromSeconds(value: unknown): string | null {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 60 * 60 * 24 * 365) return null;
   return new Date(Date.now() + Math.floor(seconds) * 1000).toISOString();
+}
+
+function normalizeMemberExpiresAt(value: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (value === null || value === undefined || value === "") return { ok: true, value: null };
+  if (typeof value !== "string") return { ok: false };
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return { ok: false };
+  return { ok: true, value: new Date(ms).toISOString() };
+}
+
+function workspaceMemberActive(member: WorkspaceMember): boolean {
+  return member.status === "active" && !member.removed_at && !workspaceMemberExpired(member);
+}
+
+function workspaceMemberExpired(member: WorkspaceMember): boolean {
+  if (!member.expires_at) return false;
+  const ms = Date.parse(member.expires_at);
+  return !Number.isFinite(ms) || ms <= Date.now();
 }
 
 function cleanInviteCodeHash(code: string | undefined): string | undefined {

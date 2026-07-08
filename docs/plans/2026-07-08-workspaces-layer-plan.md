@@ -1,7 +1,7 @@
 # OnlyHarness Workspaces Layer Plan
 
 Дата: 2026-07-08  
-Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`, workspace setup bundles implemented for `onlyharness@0.2.9`, and community join policies/gate codes implemented for `onlyharness@0.2.10`.
+Статус: detailed implementation plan after E2E review, resource-first pivot, first workspace production slice shipped in npm `onlyharness@0.2.4`, workspace collections/approval shipped in npm `onlyharness@0.2.5`, approval security hardening shipped/deployed in `onlyharness@0.2.6`, workspace membership/invites shipped in `onlyharness@0.2.7`, shared-neutral workspace UI wiring shipped in the web app, workspace approval add/remove admin flow implemented for `onlyharness@0.2.8`, workspace setup bundles implemented for `onlyharness@0.2.9`, community join policies/gate codes implemented for `onlyharness@0.2.10`, and membership expiry handling implemented for `onlyharness@0.2.11`.
 
 Current implementation status:
 
@@ -1298,6 +1298,7 @@ Already shipped in the first production slice:
 18. Shared-neutral workspace approval UI and `hh resources unapprove` removal flow.
 19. Workspace setup bundle API `GET/PUT /workspaces/{slug}/setup-bundle`, shared-neutral Setup tab, and `hh workspace setup`.
 20. Community join policy API `GET/PUT /workspaces/{slug}/join-policies`, short-lived `ohwj_` gate codes, read-only `/join-code/verify`, explicit `/join-grants`, shared-neutral gate UI, and org workspace/setup aliasing to workspace semantics.
+21. Workspace membership expiry handling: `POST /workspaces/{slug}/members` accepts `expiresAt`, active member lists hide expired rows, and member-session reads/private archive paths fail closed for expired or removed members.
 
 Remaining from the original first sprint:
 

@@ -301,6 +301,7 @@ export type WorkspaceMember = {
   status: "invited" | "active" | "suspended" | "removed";
   source: "direct" | "invite" | "email_domain" | "telegram" | "discord" | "entitlement" | "paid_entitlement" | "token_bootstrap";
   joined_at: string;
+  expires_at?: string | null;
   removed_at?: string | null;
 };
 

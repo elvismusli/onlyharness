@@ -144,6 +144,32 @@ try {
     throw new Error(`Workspace member list missing joined member: ${JSON.stringify(members)}`);
   }
 
+  const invalidExpiry = await fetch(`${baseUrl}/workspaces/acme/members`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ userId: "bad-expiry", role: "member", source: "paid_entitlement", expiresAt: "not-a-date" })
+  });
+  if (invalidExpiry.status !== 400) throw new Error(`Invalid member expiry should be 400, got ${invalidExpiry.status}`);
+
+  const expiredMember = await fetch(`${baseUrl}/workspaces/acme/members`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ userId: "expired-member", role: "member", source: "paid_entitlement", expiresAt: "2000-01-01T00:00:00.000Z" })
+  }).then((response) => response.json()) as { member?: { user_id?: string; expires_at?: string | null } };
+  if (expiredMember.member?.user_id !== "expired-member" || !expiredMember.member.expires_at?.startsWith("2000-01-01T00:00:00")) {
+    throw new Error(`Expired member payload wrong: ${JSON.stringify(expiredMember)}`);
+  }
+  const expiredWorkspaceRead = await fetch(`${baseUrl}/workspaces/acme/workspace`, {
+    headers: { Authorization: "Bearer local:expired-member" }
+  });
+  if (expiredWorkspaceRead.status !== 403) throw new Error(`Expired member workspace read should be 403, got ${expiredWorkspaceRead.status}`);
+  const membersAfterExpiry = await fetch(`${baseUrl}/workspaces/acme/members`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { members?: Array<{ user_id?: string }> };
+  if (membersAfterExpiry.members?.some((member) => member.user_id === "expired-member")) {
+    throw new Error(`Expired member should be hidden from active member list: ${JSON.stringify(membersAfterExpiry)}`);
+  }
+
   const packageDir = path.join(tempRoot, "agent-tool");
   mkdirSync(path.join(packageDir, "scripts"), { recursive: true });
   writeFileSync(path.join(packageDir, "README.md"), "# Agent Tool\n\nPrivate workspace command pack.\n");
@@ -221,6 +247,23 @@ try {
     headers: { Authorization: "Bearer local:member-1" }
   });
   if (!memberArchive.ok) throw new Error(`Workspace member archive download failed: ${memberArchive.status}`);
+
+  const expiredArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:expired-member" }
+  });
+  if (expiredArchive.status !== 403) throw new Error(`Expired member archive access should be 403, got ${expiredArchive.status}`);
+
+  const memberRemove = await fetch(`${baseUrl}/workspaces/acme/members/member-1`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` }
+  }).then((response) => response.json()) as { member?: { user_id?: string; status?: string; removed_at?: string | null } };
+  if (memberRemove.member?.user_id !== "member-1" || memberRemove.member.status !== "removed" || !memberRemove.member.removed_at) {
+    throw new Error(`Workspace member remove returned wrong payload: ${JSON.stringify(memberRemove)}`);
+  }
+  const removedMemberArchive = await fetch(`${baseUrl}/workspaces/acme/resources/agent-tool/archive`, {
+    headers: { Authorization: "Bearer local:member-1" }
+  });
+  if (removedMemberArchive.status !== 403) throw new Error(`Removed member archive access should be 403, got ${removedMemberArchive.status}`);
 
   const approvedArchive = await fetch(`${baseUrl}/workspaces/acme/resources/deep-market-researcher/archive`, {
     headers: { Authorization: `Bearer ${token}` }

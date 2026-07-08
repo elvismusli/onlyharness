@@ -45,6 +45,7 @@ mustInclude("apps/harness-api/src/server.ts", [
 mustInclude("apps/harness-api/src/workspaces.ts", [
   "authorizeWorkspaceToken",
   "authorizeWorkspaceMember",
+  "workspaceMemberExpired",
   "listWorkspaceMembers",
   "createWorkspaceInvite",
   "joinWorkspaceWithInvite",
@@ -69,6 +70,7 @@ mustInclude("apps/harness-api/src/openapi.ts", [
   "\"/workspaces/{slug}/workspace\"",
   "\"/workspaces/{slug}/setup-bundle\"",
   "\"/workspaces/{slug}/members\"",
+  "expiresAt",
   "\"/workspaces/{slug}/members/{userId}\"",
   "\"/workspaces/{slug}/invites\"",
   "\"/workspaces/{slug}/join-policies\"",
@@ -102,6 +104,7 @@ mustInclude("packages/harness-cli/src/index.ts", [
 mustInclude("supabase/migrations/20260708120000_workspaces_layer.sql", [
   "create table if not exists public.workspaces",
   "create table if not exists public.workspace_members",
+  "expires_at timestamptz",
   "create table if not exists public.workspace_invites",
   "create table if not exists public.workspace_tokens",
   "create table if not exists public.workspace_audit",
