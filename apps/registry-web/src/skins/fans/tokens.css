@@ -429,6 +429,11 @@
 .skin-fans .fa-input::placeholder {
   color: var(--fa-faint);
 }
+.skin-fans .fa-signed-in {
+  background: var(--fa-wash);
+  color: var(--fa-muted);
+  overflow-wrap: anywhere;
+}
 .skin-fans .fa-signup .fa-btn {
   width: 100%;
   padding: 15px;

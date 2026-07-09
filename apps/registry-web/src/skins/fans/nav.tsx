@@ -13,6 +13,7 @@ import { useHarness } from "../../core/store";
  */
 export function FansNav() {
   const h = useHarness();
+  const signedInLabel = h.myHandle ? `@${h.myHandle}` : h.user?.email?.split("@")[0] ?? "Profile";
 
   return (
     <header className="fa-nav">
@@ -37,8 +38,13 @@ export function FansNav() {
         <button type="button" className="fa-login" onClick={h.openNetwork}>
           Workspaces
         </button>
-        <button type="button" className="fa-login" onClick={() => h.openLogon()}>
-          Log in
+        <button
+          type="button"
+          className="fa-login"
+          onClick={h.user ? h.openMyBriefcase : () => h.openLogon()}
+          title={h.user ? "Open profile" : "Log in"}
+        >
+          {h.user ? signedInLabel : "Log in"}
         </button>
       </div>
     </header>

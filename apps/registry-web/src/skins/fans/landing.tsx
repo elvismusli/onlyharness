@@ -147,6 +147,7 @@ function CreatorCollage() {
 function SignUpCard() {
   const h = useHarness();
   const [email, setEmail] = useState("");
+  const signedInAs = h.myHandle ? `@${h.myHandle}` : h.user?.email ?? "";
 
   /* The real account flow (name + password + confirmation) lives in the shared
      logon modal, so the landing's sign-up card is a marketing entry point into
@@ -158,6 +159,38 @@ function SignUpCard() {
       ? `Create your account for ${email.trim()} to start supporting harnesses.`
       : "Create your account to start supporting harnesses.";
     h.openLogon(note);
+  }
+
+  if (h.user) {
+    return (
+      <div className="fa-signup">
+        <div className="fa-signup-primary">
+          <div className="fa-input fa-signed-in" aria-label="Signed in account">
+            Signed in as {signedInAs}
+          </div>
+          <Btn variant="primary" onClick={h.openMyBriefcase}>
+            Open profile
+          </Btn>
+        </div>
+
+        <div className="fa-or">
+          <span aria-hidden />
+          OR
+          <span aria-hidden />
+        </div>
+
+        <div className="fa-oauth">
+          <Btn variant="outline" onClick={h.openNetwork}>
+            Workspaces
+          </Btn>
+          <Btn variant="cli" onClick={h.openCli}>
+            &gt;_ Continue with CLI
+          </Btn>
+        </div>
+
+        <p className="fa-fine">Your session is shared across every OnlyHarness skin.</p>
+      </div>
+    );
   }
 
   return (
