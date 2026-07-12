@@ -1,0 +1,35 @@
+{
+  "runner": "harnesshub-local-eval",
+  "status": "passed",
+  "verified": true,
+  "verification_status": "declared_case_scores",
+  "evidenceLevel": "author_declared",
+  "managedEligible": false,
+  "evidenceNotice": "Author-declared fixture scores are regression examples, not independent verification.",
+  "score": 0.88,
+  "cost_usd": 0.09,
+  "duration_ms": 300,
+  "cases": [
+    {
+      "id": "case-1",
+      "title": "maps competitor set with caveats",
+      "score": 0.88,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-2",
+      "title": "separates source-backed facts from assumptions",
+      "score": 0.9,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-3",
+      "title": "flags contradiction before final memo",
+      "score": 0.86,
+      "passed": true,
+      "verification_status": "declared_score"
+    }
+  ]
+}

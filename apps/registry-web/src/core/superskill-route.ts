@@ -1,0 +1,69 @@
+import { useEffect, useState } from "react";
+
+const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+export type SuperSkillRoute =
+  | { name: "landing" }
+  | { name: "capability"; capabilityId: string }
+  | { name: "install"; capabilityId: string }
+  | { name: "category"; job: string }
+  | { name: "not-found" };
+
+export function parseSuperSkillRoute(hash: string): SuperSkillRoute {
+  const raw = hash.replace(/^#/, "").split("?")[0].replace(/\/+$/, "") || "/";
+  if (raw === "/" || raw === "/superskill") return { name: "landing" };
+  const parts = raw.split("/").filter(Boolean).map(decodeSegment);
+  if (parts.some((part) => part === null) || parts[0] !== "superskill") return { name: "not-found" };
+  if (parts.length === 3 && parts[1] === "c" && validSlug(parts[2])) return { name: "capability", capabilityId: parts[2]! };
+  if (parts.length === 4 && parts[1] === "c" && validSlug(parts[2]) && parts[3] === "install") return { name: "install", capabilityId: parts[2]! };
+  if (parts.length === 3 && parts[1] === "tasks" && validSlug(parts[2])) return { name: "category", job: parts[2]! };
+  return { name: "not-found" };
+}
+
+export function buildSuperSkillRoute(route: Exclude<SuperSkillRoute, { name: "not-found" }>): string {
+  switch (route.name) {
+    case "landing":
+      return "#/superskill";
+    case "capability":
+      return `#/superskill/c/${assertSlug(route.capabilityId)}`;
+    case "install":
+      return `#/superskill/c/${assertSlug(route.capabilityId)}/install`;
+    case "category":
+      return `#/superskill/tasks/${assertSlug(route.job)}`;
+  }
+}
+
+export function navigateSuperSkill(route: Exclude<SuperSkillRoute, { name: "not-found" }>) {
+  window.location.hash = buildSuperSkillRoute(route).slice(1);
+}
+
+export function useSuperSkillRoute(): SuperSkillRoute {
+  const [route, setRoute] = useState(() => parseSuperSkillRoute(window.location.hash));
+  useEffect(() => {
+    const update = () => setRoute(parseSuperSkillRoute(window.location.hash));
+    window.addEventListener("hashchange", update);
+    window.addEventListener("popstate", update);
+    return () => {
+      window.removeEventListener("hashchange", update);
+      window.removeEventListener("popstate", update);
+    };
+  }, []);
+  return route;
+}
+
+function decodeSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+function validSlug(value: string | null | undefined): value is string {
+  return typeof value === "string" && SLUG.test(value);
+}
+
+function assertSlug(value: string): string {
+  if (!validSlug(value)) throw new Error(`Invalid SuperSkill route slug: ${value}`);
+  return value;
+}

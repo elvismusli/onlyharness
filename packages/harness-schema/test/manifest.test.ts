@@ -8,19 +8,37 @@ import { harnessManifestSchema, parseManifestText } from "../src/index.ts";
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
 
-test("seed harness v0.1 manifests stay valid under the v0.2 schema", () => {
+test("all 12 managed seed candidates are honest instruction-only v0.2 manifests", () => {
   const seedRoot = path.join(repoRoot, "seed-harnesses");
   const manifests = readdirSync(seedRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(seedRoot, entry.name, "harness.yaml"))
     .sort();
 
-  assert.ok(manifests.length >= 8, "expected at least 8 seed harness fixtures");
+  assert.equal(manifests.length, 12, "expected the complete Stage A seed set");
   for (const manifestPath of manifests) {
     const manifest = parseManifestText(readFileSync(manifestPath, "utf8"));
-    assert.equal(manifest.schemaVersion, "harness.v0.1", manifestPath);
+    assert.equal(manifest.schemaVersion, "harness.v0.2", manifestPath);
+    assert.equal(manifest.version, "0.2.0", manifestPath);
     assert.equal(manifest.visibility, "public", manifestPath);
     assert.equal(manifest.pricing.model, "free", manifestPath);
+    assert.equal(manifest.runtime.primary, "none", manifestPath);
+    assert.equal(manifest.entrypoint, undefined, manifestPath);
+    assert.deepEqual(manifest.secrets.required, [], manifestPath);
+    assert.equal(manifest.source.upstream_license, "MIT", manifestPath);
+    assert.match(manifest.source.upstream_url ?? "", /^https:\/\/github\.com\/elvismusli\/onlyharness\//, manifestPath);
+
+    const resultPath = path.join(path.dirname(manifestPath), ".harnesshub/results.json");
+    const result = JSON.parse(readFileSync(resultPath, "utf8")) as {
+      verified?: boolean;
+      verification_status?: string;
+      evidenceLevel?: string;
+      managedEligible?: boolean;
+    };
+    assert.equal(result.verified, true, `${resultPath}: legacy verified byte remains additive-compatible`);
+    assert.equal(result.verification_status, "declared_case_scores", resultPath);
+    assert.equal(result.evidenceLevel, "author_declared", resultPath);
+    assert.equal(result.managedEligible, false, resultPath);
   }
 });
 

@@ -1,10 +1,17 @@
-schemaVersion: harness.v0.1
+schemaVersion: harness.v0.2
 name: security-permission-auditor
 title: Security Permission Auditor
 summary: Reviews agent manifests, tool access and permission changes for
   least-privilege violations before install or publish.
-version: 0.1.0
+version: 0.2.0
 license: MIT
+source:
+  upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/security-permission-auditor
+  upstream_license: MIT
+  attribution: OnlyHarness first-party instruction harness
+  authors:
+    - OnlyHarness
+  vendor_policy: original
 maintainers:
   - name: Harness.Hub Local
 tags:
@@ -12,12 +19,8 @@ tags:
   - permissions
   - review
 runtime:
-  primary: openai-agents-sdk
-  adapters:
-    - langgraph
-entrypoint:
-  command: npm run harness:run
-  cwd: .
+  primary: none
+  adapters: []
 inputs:
   - id: request
     type: markdown
@@ -63,7 +66,7 @@ permissions:
   filesystem: readonly
   shell: false
   browser: false
-  credentials: runtime_injected
+  credentials: "false"
   external_send: false
   money_movement: false
   user_data: false
@@ -71,8 +74,7 @@ permissions:
     - external_send
     - money_movement
 secrets:
-  required:
-    - OPENAI_API_KEY
+  required: []
   optional: []
 evals:
   promptfoo_config: evals/promptfooconfig.yaml

@@ -1,0 +1,35 @@
+{
+  "runner": "harnesshub-local-eval",
+  "status": "passed",
+  "verified": true,
+  "verification_status": "declared_case_scores",
+  "evidenceLevel": "author_declared",
+  "managedEligible": false,
+  "evidenceNotice": "Author-declared fixture scores are regression examples, not independent verification.",
+  "score": 0.887,
+  "cost_usd": 0.09,
+  "duration_ms": 300,
+  "cases": [
+    {
+      "id": "case-1",
+      "title": "does not summarize instead of critique",
+      "score": 0.91,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-2",
+      "title": "names missing evidence",
+      "score": 0.86,
+      "passed": true,
+      "verification_status": "declared_score"
+    },
+    {
+      "id": "case-3",
+      "title": "returns one recommended MVP path",
+      "score": 0.89,
+      "passed": true,
+      "verification_status": "declared_score"
+    }
+  ]
+}

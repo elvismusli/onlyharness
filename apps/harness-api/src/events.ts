@@ -2,7 +2,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { workspaceRoot } from "./registry.js";
 
-export const EVENT_KINDS = ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "accepted", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] as const;
+export const MANAGED_EVENT_KINDS = ["recommended", "recommendation_accepted", "activation_started", "activation_ready", "activation_loaded", "activation_invoked", "outcome_reported", "activation_pinned", "activation_removed", "activation_failed"] as const;
+export const EVENT_KINDS = ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "accepted", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded", ...MANAGED_EVENT_KINDS] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export type EventInput = {
@@ -13,6 +14,13 @@ export type EventInput = {
   subject?: string | null;
   target?: string | null;
   client?: string | null;
+  eventId?: string | null;
+  recommendationId?: string | null;
+  activationId?: string | null;
+  mode?: string | null;
+  evidence?: string | null;
+  outcome?: string | null;
+  reasonCode?: string | null;
 };
 
 export type EventRecord = {
@@ -25,13 +33,23 @@ export type EventRecord = {
   client: string | null;
 };
 
+export type ManagedEventRecord = EventRecord & {
+  eventId: string;
+  recommendationId: string | null;
+  activationId: string | null;
+  mode: "temporary" | "pinned" | null;
+  evidence: "agent_reported" | "user_confirmed" | "unknown" | null;
+  outcome: "success" | "failed" | "unknown" | null;
+  reasonCode: string | null;
+};
+
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const localEventsPath = path.resolve(process.env.HARNESS_EVENTS_PATH ?? path.join(workspaceRoot, "data/events.jsonl"));
 
-export function sanitizeEvent(input: EventInput): EventRecord | undefined {
+export function sanitizeEvent(input: EventInput): EventRecord | ManagedEventRecord | undefined {
   if (!isEventKind(input.kind)) return undefined;
-  return {
+  const base: EventRecord = {
     kind: input.kind,
     owner: cleanSlug(input.owner),
     repo: cleanSlug(input.repo),
@@ -39,6 +57,35 @@ export function sanitizeEvent(input: EventInput): EventRecord | undefined {
     subject: cleanSubject(input.subject) ?? "anonymous",
     target: cleanTarget(input.target),
     client: cleanClient(input.client)
+  };
+  if (!isManagedEventKind(input.kind)) return base;
+  const eventId = cleanManagedId(input.eventId, "evt");
+  const client = input.client === "hh" || input.client === "superskill-claude" || input.client === "superskill-codex" ? input.client : undefined;
+  if (!eventId || !client) return undefined;
+  const mode = input.mode === "temporary" || input.mode === "pinned" ? input.mode : null;
+  const evidence = input.evidence === "agent_reported" || input.evidence === "user_confirmed" || input.evidence === "unknown" ? input.evidence : null;
+  const outcome = input.outcome === "success" || input.outcome === "failed" || input.outcome === "unknown" ? input.outcome : null;
+  const recommendationId = cleanManagedId(input.recommendationId, "rec");
+  const activationId = cleanManagedId(input.activationId, "act");
+  const reasonCode = cleanReasonCode(input.reasonCode);
+  if (
+    (isProvided(input.mode) && !mode)
+    || (isProvided(input.evidence) && !evidence)
+    || (isProvided(input.outcome) && !outcome)
+    || (isProvided(input.recommendationId) && !recommendationId)
+    || (isProvided(input.activationId) && !activationId)
+    || (isProvided(input.reasonCode) && !reasonCode)
+  ) return undefined;
+  return {
+    ...base,
+    client,
+    eventId,
+    recommendationId,
+    activationId,
+    mode,
+    evidence,
+    outcome,
+    reasonCode
   };
 }
 
@@ -69,6 +116,37 @@ export async function recordEvent(input: EventInput | EventRecord): Promise<bool
   return true;
 }
 
+export async function recordManagedEvent(input: EventInput, options: { localPath?: string; telemetryEnabled?: boolean } = {}): Promise<{ recorded: boolean; duplicate: boolean }> {
+  const event = sanitizeEvent(input);
+  if (!event || !("eventId" in event)) return { recorded: false, duplicate: false };
+  if (options.telemetryEnabled === false || process.env.SUPERSKILL_TELEMETRY_ENABLED === "false") return { recorded: false, duplicate: false };
+  if (supabaseUrl && supabaseRestKey && !options.localPath) {
+    try {
+      const response = await fetch(`${supabaseUrl}/rest/v1/events?on_conflict=event_id`, {
+        method: "POST",
+        headers: {
+          apikey: supabaseRestKey,
+          authorization: `Bearer ${supabaseRestKey}`,
+          "content-type": "application/json",
+          prefer: "resolution=ignore-duplicates,return=representation"
+        },
+        body: JSON.stringify(managedDatabaseRow(event))
+      });
+      if (response.ok) {
+        const rows = await response.json().catch(() => []) as unknown[];
+        return { recorded: rows.length > 0, duplicate: rows.length === 0 };
+      }
+    } catch {
+      // Fall through to the idempotent local store.
+    }
+  }
+  const target = path.resolve(options.localPath ?? localEventsPath);
+  if (localEventExists(target, event.eventId)) return { recorded: false, duplicate: true };
+  mkdirSync(path.dirname(target), { recursive: true });
+  appendFileSync(target, `${JSON.stringify({ ...event, at: new Date().toISOString() })}\n`);
+  return { recorded: true, duplicate: false };
+}
+
 export async function fetchLastVerificationAt(owner: string, repo: string): Promise<string | undefined> {
   const remote = await fetchSupabaseLastVerificationAt(owner, repo);
   if (remote) return remote;
@@ -77,6 +155,10 @@ export async function fetchLastVerificationAt(owner: string, repo: string): Prom
 
 function isEventKind(value: string): value is EventKind {
   return (EVENT_KINDS as readonly string[]).includes(value);
+}
+
+function isManagedEventKind(value: string): value is (typeof MANAGED_EVENT_KINDS)[number] {
+  return (MANAGED_EVENT_KINDS as readonly string[]).includes(value);
 }
 
 function cleanSlug(value: string | null | undefined): string | null {
@@ -104,12 +186,58 @@ function cleanClient(value: string | null | undefined): string | null {
   return /^[a-z0-9][a-z0-9._-]{1,60}$/.test(value) ? value : null;
 }
 
+function cleanManagedId(value: string | null | undefined, prefix: "evt" | "rec" | "act"): string | null {
+  if (!value) return null;
+  return new RegExp(`^${prefix}_[A-Za-z0-9_-]{6,80}$`).test(value) ? value : null;
+}
+
+function cleanReasonCode(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return /^[A-Z0-9_]{2,80}$/.test(value) ? value : null;
+}
+
+function isProvided(value: string | null | undefined): value is string {
+  return value !== undefined && value !== null;
+}
+
 function isEventRecord(input: EventInput | EventRecord): input is EventRecord {
   return isEventKind(input.kind)
     && ("owner" in input)
     && ("repo" in input)
     && ("version" in input)
     && typeof input.subject === "string";
+}
+
+function localEventExists(file: string, eventId: string): boolean {
+  if (!existsSync(file)) return false;
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      if ((JSON.parse(line) as { eventId?: string; event_id?: string }).eventId === eventId || (JSON.parse(line) as { event_id?: string }).event_id === eventId) return true;
+    } catch {
+      // Corrupt lines do not erase later valid append-only rows.
+    }
+  }
+  return false;
+}
+
+function managedDatabaseRow(event: ManagedEventRecord) {
+  return {
+    kind: event.kind,
+    owner: event.owner,
+    repo: event.repo,
+    version: event.version,
+    subject: event.subject,
+    target: event.target,
+    client: event.client,
+    event_id: event.eventId,
+    recommendation_id: event.recommendationId,
+    activation_id: event.activationId,
+    mode: event.mode,
+    evidence: event.evidence,
+    outcome: event.outcome,
+    reason_code: event.reasonCode
+  };
 }
 
 async function fetchSupabaseLastVerificationAt(owner: string, repo: string): Promise<string | undefined> {

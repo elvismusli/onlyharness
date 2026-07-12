@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "superskill.runtime.v1",
+  "cliPackage": "onlyharness",
+  "cliVersion": "0.2.13",
+  "activationContractVersion": "superskill.activation.v1"
+}

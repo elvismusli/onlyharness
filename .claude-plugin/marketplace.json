@@ -11,6 +11,11 @@
       "name": "onlyharness",
       "source": "./plugins/onlyharness",
       "description": "Find, pull, run, eval and publish AI-agent harnesses from onlyharness.com"
+    },
+    {
+      "name": "superskill",
+      "source": "./plugins/superskill",
+      "description": "Find and temporarily activate an exact reviewed capability with explicit consent"
     }
   ]
 }

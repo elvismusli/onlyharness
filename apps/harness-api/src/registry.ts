@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { inspectHarness, validateHarnessDir, type HarnessManifest, type SecurityReport as ManifestSecurityReport } from "@harnesshub/schema";
+import { canonicalArtifactDigest } from "@harnesshub/capability-schema/node";
 import { scanHarnessDir, type SecurityReport as StaticSecurityReport } from "./security-scan.js";
 import { socialFromCounters, type Counters } from "./social.js";
 
@@ -25,6 +26,9 @@ export type ArchiveSnapshot = {
   version: string;
   createdAt: string;
   files: ArchiveFile[];
+  artifactDigest?: string;
+  totalFileCount?: number;
+  archiveTruncated?: boolean;
 };
 
 export type ArchiveVersion = {
@@ -288,14 +292,21 @@ export function orgImportRoot(slug: string): string {
   return path.join(orgRoot, slug);
 }
 
-export function buildArchive(root: string): { files: ArchiveFile[] } {
-  const files = listHarnessFiles(root).map((file) => {
+export function buildArchive(root: string): { files: ArchiveFile[]; totalFileCount: number; archiveTruncated: boolean; artifactDigest?: string } {
+  const allFiles = listAllHarnessFiles(root);
+  const files = allFiles.slice(0, 80).map((file) => {
     const full = path.join(root, file);
     const size = statSafe(full) ? statSync(full).size : 0;
     if (size > MAX_ARCHIVE_FILE_BYTES) return { path: file, truncated: true, content: "" };
     return { path: file, truncated: false, content: readMaybe(full) };
   });
-  return { files };
+  const archiveTruncated = allFiles.length !== files.length || files.some((file) => file.truncated);
+  return {
+    files,
+    totalFileCount: allFiles.length,
+    archiveTruncated,
+    ...(!archiveTruncated ? { artifactDigest: canonicalArtifactDigest({ files, totalFileCount: allFiles.length, archiveTruncated }) } : {})
+  };
 }
 
 export function assertArchiveSnapshotWritable(owner: string, repo: string, root: string, version?: string): ArchiveSnapshot {
@@ -308,11 +319,22 @@ export function assertArchiveSnapshotWritable(owner: string, repo: string, root:
   return existing ?? candidate;
 }
 
-export function buildArchiveForVersion(owner: string, repo: string, root: string, version?: string): { files: ArchiveFile[]; version: string; snapshot: boolean } | undefined {
+export function buildArchiveForVersion(owner: string, repo: string, root: string, version?: string): { files: ArchiveFile[]; version: string; snapshot: boolean; artifactDigest?: string; totalFileCount: number; archiveTruncated: boolean } | undefined {
   const currentVersion = registryDetailBasics(root).inspection.manifest?.version ?? "0.0.0";
   if (!version) return { ...buildArchive(root), version: currentVersion, snapshot: false };
   const snapshot = readArchiveSnapshot(owner, repo, version);
-  if (snapshot) return { files: snapshot.files, version: snapshot.version, snapshot: true };
+  if (snapshot) {
+    const totalFileCount = snapshot.totalFileCount ?? snapshot.files.length;
+    const archiveTruncated = snapshot.archiveTruncated ?? (snapshot.files.some((file) => file.truncated) || totalFileCount !== snapshot.files.length);
+    return {
+      files: snapshot.files,
+      version: snapshot.version,
+      snapshot: true,
+      totalFileCount,
+      archiveTruncated,
+      ...(!archiveTruncated ? { artifactDigest: snapshot.artifactDigest ?? canonicalArtifactDigest({ files: snapshot.files, totalFileCount, archiveTruncated }) } : {})
+    };
+  }
   if (version === currentVersion) return { ...buildArchive(root), version: currentVersion, snapshot: false };
   return undefined;
 }
@@ -426,9 +448,17 @@ export function estimateContextCost(root: string): ContextCost {
 }
 
 export function listHarnessFiles(root: string) {
+  return listAllHarnessFiles(root).slice(0, 80);
+}
+
+export function countHarnessFiles(root: string): number {
+  return listAllHarnessFiles(root).length;
+}
+
+function listAllHarnessFiles(root: string): string[] {
   const files: string[] = [];
   collectFiles(root, root, files);
-  return files.slice(0, 80);
+  return files;
 }
 
 function contextFiles(root: string): string[] {
@@ -525,12 +555,16 @@ function archiveSnapshotPath(owner: string, repo: string, version: string): stri
 function archiveSnapshotCandidate(owner: string, repo: string, root: string, version?: string): ArchiveSnapshot | undefined {
   const resolvedVersion = version ?? registryDetailBasics(root).inspection.manifest?.version;
   if (!resolvedVersion || !safeSnapshotSegment(owner) || !safeSnapshotSegment(repo) || !safeSnapshotSegment(resolvedVersion)) return undefined;
+  const archive = buildArchive(root);
   return {
     owner,
     repo,
     version: resolvedVersion,
     createdAt: new Date().toISOString(),
-    files: buildArchive(root).files
+    files: archive.files,
+    totalFileCount: archive.totalFileCount,
+    archiveTruncated: archive.archiveTruncated,
+    ...(archive.artifactDigest ? { artifactDigest: archive.artifactDigest } : {})
   };
 }
 

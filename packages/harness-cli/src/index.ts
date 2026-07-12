@@ -16,6 +16,9 @@ import {
   validateHarnessDir
 } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
+import { registerActivationCommands } from "./commands/activation.js";
+import { registerRecommendCommand } from "./commands/recommend.js";
+import { scanInventory as scanManagedInventory } from "./lib/client-adapters.js";
 
 type OutputFormat = "json" | "markdown" | "text";
 
@@ -618,7 +621,7 @@ const program = new Command();
 program
   .name("hh")
   .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.12");
+  .version("0.2.13");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -799,7 +802,7 @@ resourcesCommand.command("convert")
   });
 
 program.command("suggest")
-  .description("select a trusted harness for a task and optionally install it")
+  .description("legacy catalog suggestion: select a harness and optionally install it")
   .argument("<query...>", "task or job, e.g. market research")
   .option("--json", "print JSON", false)
   .option("--limit <n>", "candidate count", "5")
@@ -1286,20 +1289,26 @@ program.command("doctor")
   });
 
 program.command("audit-setup")
-  .description("audit local Claude skills for context cost, stale triggers and overlapping descriptions")
+  .description("audit local skills for context cost, conflicts and legacy adapter paths")
   .option("--home-dir <dir>", "home directory to scan (default: current OS home)")
   .option("--project-dir <dir>", "project directory to scan (default: current working directory)")
+  .option("--target <target>", "optional managed inventory target: claude-code|codex")
   .option("--stale-days <n>", "mark skills stale after this many days", "90")
   .option("--json", "print JSON", false)
   .option("--out <path>", "write report to a file")
   .action((options) => {
+    if (options.target && options.target !== "claude-code" && options.target !== "codex") {
+      fail("Unsupported audit target.", EXIT.VALIDATION, "Use --target claude-code or --target codex.", options.json);
+    }
     const staleDays = Math.max(1, Number(options.staleDays) || 90);
     const audit = auditClaudeSetup({
       homeDir: path.resolve(options.homeDir ?? os.homedir()),
       projectDir: path.resolve(options.projectDir ?? process.cwd()),
       staleDays
     });
-    const output = options.json ? `${JSON.stringify(audit, null, 2)}\n` : setupAuditText(audit);
+    const managedInventory = options.target ? scanManagedInventory(options.target, path.resolve(options.projectDir ?? process.cwd())) : undefined;
+    const payload = managedInventory ? { ...audit, managedTarget: options.target, managedInventory } : audit;
+    const output = options.json ? `${JSON.stringify(payload, null, 2)}\n` : `${setupAuditText(audit)}${managedInventory ? `\nManaged ${options.target}: ${managedInventory.managedSkills} managed, ${managedInventory.unmanagedSkills} unmanaged, ${managedInventory.conflicts} conflicts.${managedInventory.legacyCodexHarnesses.length ? `\nLegacy .codex/harnesses (unmanaged; pin fresh into .agents/skills): ${managedInventory.legacyCodexHarnesses.join(", ")}\n` : "\n"}` : ""}`;
     if (options.out) {
       writeOutput(output, options.out);
       writeStdout(options.json ? { out: path.resolve(options.out), summary: audit.summary } : `Wrote ${path.resolve(options.out)}\n`);
@@ -1636,6 +1645,9 @@ program.command("pack")
     }
     writeStdout(options.json ? { out, files: "tar.gz" } : `Packed ${out}\n`);
   });
+
+registerRecommendCommand(program, () => registryUrl);
+registerActivationCommands(program, () => registryUrl);
 
 program.parseAsync(process.argv).catch((error) => {
   console.error(error instanceof Error ? error.message : error);
@@ -4096,7 +4108,7 @@ function defaultAdapterOut(target: AdaptTarget, manifest: HarnessManifest): stri
 
 function defaultAdapterOutForName(target: AdaptTarget, name: string): string {
   if (target === "claude-code") return path.join(".claude", "skills", name);
-  if (target === "codex") return path.join(".codex", "harnesses", name);
+  if (target === "codex") return path.join(".agents", "skills", name);
   return path.join(".cursor", "rules");
 }
 
@@ -4108,7 +4120,7 @@ function adapterContent(target: AdaptTarget, manifest: HarnessManifest, root: st
 
 function adapterFileForName(target: AdaptTarget, out: string, name: string): string {
   if (target === "claude-code") return path.join(out, "SKILL.md");
-  if (target === "codex") return path.join(out, "AGENTS.md");
+  if (target === "codex") return path.join(out, "SKILL.md");
   return path.join(out, `${name}.mdc`);
 }
 
@@ -4141,9 +4153,14 @@ function claudeSkillAdapter(manifest: HarnessManifest, root: string): string {
 
 function codexAdapter(manifest: HarnessManifest, root: string): string {
   return [
+    "---",
+    `name: ${manifest.name}`,
+    `description: "Use this local OnlyHarness harness for ${escapeFrontmatter(manifest.summary)}"`,
+    "---",
+    "",
     `# ${manifest.title}`,
     "",
-    "This directory is a local OnlyHarness adapter for Codex.",
+    "This directory is a local OnlyHarness skill adapter for Codex. New Codex adapters belong under `.agents/skills`; legacy `.codex/harnesses` adapters are unmanaged and are not migrated automatically.",
     "",
     `Harness root: \`${displayPath(root)}\``,
     `Summary: ${manifest.summary}`,

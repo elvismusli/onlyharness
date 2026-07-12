@@ -863,9 +863,9 @@ test("install pulls a harness, writes adapter files, and records a privacy-safe 
     assert.equal(body.target, "codex");
     assert.equal(body.adapter?.target, "codex");
     assert.equal(body.adapter?.out, adapterOut);
-    assert.ok(body.adapter?.files?.includes(path.join(adapterOut, "AGENTS.md")));
+    assert.ok(body.adapter?.files?.includes(path.join(adapterOut, "SKILL.md")));
     assert.ok(body.next?.some((step) => step.includes("hh gate")));
-    assert.match(await readFile(path.join(adapterOut, "AGENTS.md"), "utf8"), /Deep Market Researcher/);
+    assert.match(await readFile(path.join(adapterOut, "SKILL.md"), "utf8"), /Deep Market Researcher/);
     assert.match(await readFile(path.join(out, ".harnesshub/source.json"), "utf8"), /deep-market-researcher/);
     assert.deepEqual(verificationEvents, [{
       kind: "install",
@@ -886,7 +886,7 @@ test("install preflights adapter collisions before writing harness files", async
   const adapterOut = path.join(parent, "codex-adapter");
   try {
     await mkdir(adapterOut, { recursive: true });
-    await writeFile(path.join(adapterOut, "AGENTS.md"), "existing adapter");
+    await writeFile(path.join(adapterOut, "SKILL.md"), "existing adapter");
 
     const result = await runCli([
       "install",
@@ -902,7 +902,7 @@ test("install preflights adapter collisions before writing harness files", async
 
     assert.equal(result.status, 3);
     const body = JSON.parse(result.stderr) as { error?: string; next?: string };
-    assert.match(body.error ?? "", /AGENTS\.md already exists/);
+    assert.match(body.error ?? "", /SKILL\.md already exists/);
     assert.equal(existsSync(out), false);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -1057,8 +1057,8 @@ test("suggest --apply --target installs adapter files before recording applied",
     assert.equal(body.applied?.out, out);
     assert.equal(body.applied?.adapter?.target, "codex");
     assert.equal(body.applied?.adapter?.out, adapterOut);
-    assert.ok(body.applied?.adapter?.files?.includes(path.join(adapterOut, "AGENTS.md")));
-    assert.match(await readFile(path.join(adapterOut, "AGENTS.md"), "utf8"), /Deep Market Researcher/);
+    assert.ok(body.applied?.adapter?.files?.includes(path.join(adapterOut, "SKILL.md")));
+    assert.match(await readFile(path.join(adapterOut, "SKILL.md"), "utf8"), /Deep Market Researcher/);
     assert.deepEqual(verificationEvents.map((event) => event.kind), ["suggested", "accepted", "install", "applied"]);
     assert.equal(verificationEvents[2].target, "codex");
     assert.equal(verificationEvents[3].target, "codex");
@@ -1461,7 +1461,7 @@ test("doctor --harness reports local harness validity", async () => {
   const body = JSON.parse(result.stdout) as { harness?: { valid?: boolean; name?: string; version?: string; contextCost?: { approxTokens?: number; files?: number; status?: string } } };
   assert.equal(body.harness?.valid, true);
   assert.equal(body.harness?.name, "deep-market-researcher");
-  assert.equal(body.harness?.version, "0.1.0");
+  assert.equal(body.harness?.version, "0.2.0");
   assert.equal(body.harness?.contextCost?.status, "estimated");
   assert.equal(typeof body.harness?.contextCost?.approxTokens, "number");
   assert.equal(typeof body.harness?.contextCost?.files, "number");

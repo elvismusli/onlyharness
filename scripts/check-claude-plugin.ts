@@ -46,8 +46,8 @@ const publicAgents = readFileSync(publicAgentsPath, "utf8");
 check(marketplace.name === "onlyharness", "Marketplace name must be onlyharness");
 check(marketplace.owner?.name === "OnlyHarness", "Marketplace owner must be OnlyHarness");
 check(Boolean(marketplace.metadata?.description?.includes("OnlyHarness")), "Marketplace description must name OnlyHarness");
-check(Array.isArray(marketplace.plugins) && marketplace.plugins.length === 1, "Marketplace must expose exactly one plugin");
-const pluginEntry = marketplace.plugins?.[0];
+check(Array.isArray(marketplace.plugins) && marketplace.plugins.length === 2, "Marketplace must expose onlyharness and superskill plugins");
+const pluginEntry = marketplace.plugins?.find((entry) => entry.name === "onlyharness");
 check(pluginEntry?.name === "onlyharness", "Marketplace plugin entry must be onlyharness");
 check(pluginEntry.source === "./plugins/onlyharness", "Marketplace plugin source must point at ./plugins/onlyharness");
 check(Boolean(pluginEntry.description?.includes("onlyharness.com")), "Marketplace plugin description must mention onlyharness.com");
@@ -88,6 +88,37 @@ for (const required of [
   check(skill.includes(required), `OnlyHarness skill must include guidance: ${required}`);
 }
 check(!skill.includes("not published yet"), "OnlyHarness skill must not claim the npm package is unpublished");
+
+const superskillRoot = path.join(root, "plugins/superskill");
+const superskillManifest = readJson<PluginManifest>(path.join(superskillRoot, ".claude-plugin/plugin.json"));
+const superskillMcp = readJson<McpConfig>(path.join(superskillRoot, ".mcp.json"));
+const superskillRuntime = readJson<{ schemaVersion?: string; cliPackage?: string; cliVersion?: string; activationContractVersion?: string }>(path.join(superskillRoot, "runtime.json"));
+const superskillSkill = readFileSync(path.join(superskillRoot, "skills/superskill/SKILL.md"), "utf8");
+const superskillEntry = marketplace.plugins?.find((entry) => entry.name === "superskill");
+check(superskillEntry?.source === "./plugins/superskill", "SuperSkill marketplace source must point at ./plugins/superskill");
+check(superskillManifest.name === "superskill", "SuperSkill Claude manifest name must be superskill");
+check(superskillManifest.version === "0.1.0", "SuperSkill Claude manifest version must be 0.1.0");
+check(superskillMcp.mcpServers?.onlyharness?.url === "https://onlyharness.com/mcp", "SuperSkill must reuse the public browse-only MCP endpoint");
+check(!superskillMcp.mcpServers?.onlyharness?.headers, "SuperSkill MCP must not embed the internal token");
+check(superskillRuntime.schemaVersion === "superskill.runtime.v1", "SuperSkill runtime schema must be v1");
+check(superskillRuntime.cliPackage === "onlyharness" && /^\d+\.\d+\.\d+$/.test(superskillRuntime.cliVersion ?? ""), "SuperSkill runtime must pin an exact onlyharness version");
+check(superskillRuntime.activationContractVersion === "superskill.activation.v1", "SuperSkill activation contract must be v1");
+for (const required of [
+  `onlyharness@${superskillRuntime.cliVersion}`,
+  "--target claude-code",
+  "--target codex",
+  "HH_SUPERSKILL_TOKEN",
+  "LOCAL_CLI_UNAVAILABLE",
+  "no_safe_match",
+  "activation mark",
+  "activation finish",
+  "--confirm-keep",
+  "--confirm-remove",
+  "agent_reported",
+  ".agents/skills",
+  ".codex/harnesses"
+]) check(superskillSkill.includes(required), `SuperSkill shared skill must include ${required}`);
+check(!superskillSkill.includes("onlyharness@latest"), "SuperSkill managed commands must never use latest");
 
 for (const docs of [
   { name: "README.md", text: readme },

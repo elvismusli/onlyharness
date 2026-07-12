@@ -1,0 +1,257 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  curatedCatalogSchema,
+  managedCapabilityHistorySchema,
+  managedCapabilityIndexSchema,
+  reviewAttestationSchema,
+  type CuratedResource,
+  type ManagedCapability,
+  type ManagedCapabilityIndex,
+  type ManagedCapabilityHistory,
+  type ManagedPermissions,
+  type ReviewAttestation,
+  type TrustCheck
+} from "@harnesshub/capability-schema/browser";
+import { parseManifestText, type HarnessManifest } from "@harnesshub/schema";
+import { canonicalArtifactDigest, readArtifactFilesFromRoot } from "@harnesshub/capability-schema/node";
+import * as registry from "../apps/harness-api/src/registry.js";
+import { evaluateManagedEligibility } from "../apps/harness-api/src/trust-policy.js";
+import { recomputeCapabilityDiff, scanHarnessFiles } from "../apps/harness-api/src/security-scan.js";
+
+const root = path.resolve(import.meta.dirname, "..");
+const curatedPath = path.join(root, "data/superskill/curated.json");
+const indexPath = path.join(root, "data/superskill/index.json");
+const historyPath = path.join(root, "data/superskill/history.json");
+
+export function buildSuperskillIndex(now = new Date()): ManagedCapabilityIndex {
+  const curated = curatedCatalogSchema.parse(JSON.parse(readFileSync(curatedPath, "utf8")));
+  assertUnique(curated.resources);
+  const capabilities = curated.resources.map((resource) => buildCapability(resource, now));
+  const generatedAt = capabilities.reduce((latest, item) => latest > item.release.publishedAt ? latest : item.release.publishedAt, "1970-01-01T00:00:00.000Z");
+  return managedCapabilityIndexSchema.parse({ schemaVersion: "superskill.index.v1", generatedAt, capabilities });
+}
+
+export function mergeSuperskillHistory(current: ManagedCapabilityIndex, previous?: ManagedCapabilityHistory): ManagedCapabilityHistory {
+  const releases = new Map<string, ManagedCapability>();
+  for (const capability of previous?.capabilities ?? []) releases.set(historyKey(capability), capability);
+  for (const capability of current.capabilities) releases.set(historyKey(capability), capability);
+  const capabilities = [...releases.values()].sort((left, right) => left.id.localeCompare(right.id)
+    || left.release.version.localeCompare(right.release.version)
+    || left.release.artifactDigest.localeCompare(right.release.artifactDigest));
+  const generatedAt = previous?.generatedAt && previous.generatedAt > current.generatedAt ? previous.generatedAt : current.generatedAt;
+  return managedCapabilityHistorySchema.parse({ schemaVersion: "superskill.history.v1", generatedAt, capabilities });
+}
+
+function buildCapability(resource: CuratedResource, now: Date): ManagedCapability {
+  const [owner, repo] = resource.ref.split("/");
+  const sourceRoot = owner && repo ? registry.resolveHarnessPath(owner, repo) : undefined;
+  if (!sourceRoot) throw new Error(`Managed source is missing: ${resource.ref}`);
+  const snapshot = registry.readArchiveSnapshot(owner, repo, resource.version);
+  if (!snapshot || snapshot.archiveTruncated || snapshot.totalFileCount !== snapshot.files.length || !snapshot.artifactDigest) {
+    throw new Error(`Managed source has no complete immutable snapshot: ${resource.ref}@${resource.version}`);
+  }
+  if (snapshot.artifactDigest !== resource.expectedDigest) throw new Error(`Managed source digest mismatch: ${resource.ref}@${resource.version}`);
+  const manifestFile = snapshot.files.find((file) => file.path === "harness.yaml" && !file.truncated);
+  if (!manifestFile) throw new Error(`Managed snapshot has no harness.yaml: ${resource.ref}@${resource.version}`);
+  const manifest = parseManifestText(manifestFile.content);
+  if (manifest.name !== repo || manifest.version !== resource.version) throw new Error(`Managed manifest tuple mismatch: ${resource.ref}@${resource.version}`);
+  if (manifest.pricing.model !== "free") throw new Error(`Managed source must use free pricing: ${resource.ref}@${resource.version}`);
+  if (manifest.content.type !== "harness") throw new Error(`Managed source must be an instruction harness: ${resource.ref}@${resource.version}`);
+  if (!manifest.source.upstream_url || !manifest.source.upstream_license || manifest.source.upstream_license.toUpperCase() === "UNSPECIFIED") {
+    throw new Error(`Managed source/license is unknown: ${resource.ref}@${resource.version}`);
+  }
+
+  const review = resource.reviewFile ? loadReview(resource) : undefined;
+  const permissions = mapPermissions(manifest);
+  const snapshotFiles = snapshot.files.map((file) => ({ path: file.path, content: file.content }));
+  const snapshotScan = scanHarnessFiles(snapshotFiles, { networkAllowlist: permissions.networkAllowlist, scannedAt: snapshot.createdAt });
+  const snapshotDiff = recomputeCapabilityDiff(snapshotFiles, permissions);
+  validateApprovalEvidence(resource, review, now);
+  if (review) verifyAttestationAgainstSnapshot(resource, review, snapshotScan, snapshotDiff, {
+    url: manifest.source.upstream_url,
+    license: manifest.source.upstream_license
+  });
+  if (resource.status === "approved") {
+    assertInstructionOnly(snapshot.files.map((file) => file.path), resource);
+    const currentPaths = registry.listHarnessFiles(sourceRoot);
+    if (registry.countHarnessFiles(sourceRoot) !== currentPaths.length) throw new Error(`Approved managed source exceeds the complete file limit: ${resource.id}`);
+    const currentDigest = canonicalArtifactDigest(readArtifactFilesFromRoot(sourceRoot, currentPaths));
+    if (currentDigest !== resource.expectedDigest) throw new Error(`Approved managed source contains unsafe files or differs from its exact snapshot: ${resource.id}`);
+  }
+  const detail = registry.registryDetailBasics(sourceRoot);
+  const checks = buildChecks(resource, snapshot.createdAt, review);
+  const compatibility = (["claude-code", "codex"] as const).map((client) => {
+    const row = review?.compatibility.find((item) => item.client === client && item.verdict === "pass");
+    return row
+      ? { client, status: "verified" as const, verifiedAt: row.checkedAt, notes: "Exact release activation smoke completed" }
+      : { client, status: "available" as const, notes: "Managed activation smoke has not been completed" };
+  });
+  const contextCost = snapshotContextCost(snapshot.files);
+  const capability = managedCapabilityIndexSchema.shape.capabilities.element.parse({
+    id: resource.id,
+    type: "instruction_harness",
+    title: manifest.title,
+    summary: manifest.summary,
+    jobs: resource.jobs,
+    release: {
+      ref: resource.ref,
+      version: resource.version,
+      artifactDigest: resource.expectedDigest,
+      immutable: true,
+      publishedAt: snapshot.createdAt,
+      delivery: "free_archive"
+    },
+    source: {
+      owner: manifest.source.authors[0] ?? "OnlyHarness",
+      url: manifest.source.upstream_url,
+      license: manifest.source.upstream_license
+    },
+    compatibility,
+    permissions,
+    contextCost,
+    trust: {
+      status: resource.status,
+      riskScore: detail.inspection.risk.score,
+      riskTier: detail.inspection.risk.tier,
+      checks,
+      limitations: review?.limitations ?? ["Candidate has not completed exact-release managed review"],
+      reviewedAt: review?.reviewedAt ?? snapshot.createdAt
+    }
+  });
+  if (resource.status === "approved") {
+    for (const client of ["claude-code", "codex"] as const) {
+      const eligibility = evaluateManagedEligibility(capability, client, now);
+      if (!eligibility.eligible) throw new Error(`Approved capability is not eligible for ${client}: ${resource.id} (${eligibility.blocks.join(", ")})`);
+    }
+  }
+  return capability;
+}
+
+export function verifyAttestationAgainstSnapshot(
+  resource: CuratedResource,
+  review: ReviewAttestation,
+  scan: ReturnType<typeof scanHarnessFiles>,
+  capabilityDiff: ReturnType<typeof recomputeCapabilityDiff>,
+  expectedSource: ReviewAttestation["source"]
+): void {
+  if (JSON.stringify(review.source) !== JSON.stringify(expectedSource)) throw new Error(`Review source provenance drift: ${resource.id}`);
+  if (review.scanner.rulesetVersion !== scan.scanner) throw new Error(`Review scanner ruleset drift: ${resource.id}`);
+  if (review.scanner.status !== scan.verdict) throw new Error(`Review scanner verdict drift: ${resource.id}`);
+  const attestedFindings = review.scanner.findings.map((item) => `${item.ruleId}:${item.severity}`).sort();
+  const actualFindings = scan.findings.map((item) => `${item.rule}:${item.severity}`).sort();
+  if (JSON.stringify(attestedFindings) !== JSON.stringify(actualFindings)) throw new Error(`Review scanner findings drift: ${resource.id}`);
+  if (JSON.stringify(normalizeCapabilityDiff(review.capabilityDiff)) !== JSON.stringify(normalizeCapabilityDiff(capabilityDiff))) {
+    throw new Error(`Review capability diff drift: ${resource.id}`);
+  }
+}
+
+function normalizeCapabilityDiff(value: ReviewAttestation["capabilityDiff"] | ReturnType<typeof recomputeCapabilityDiff>) {
+  return {
+    status: value.status,
+    declared: value.declared,
+    inferred: [...value.inferred]
+      .map((item) => ({ ...item, evidence: [...item.evidence].sort((left, right) => left.file.localeCompare(right.file) || left.rule.localeCompare(right.rule)) }))
+      .sort((left, right) => left.capability.localeCompare(right.capability)),
+    differences: [...value.differences].sort((left, right) => left.field.localeCompare(right.field) || left.declared.localeCompare(right.declared) || left.inferred.localeCompare(right.inferred))
+  };
+}
+
+function loadReview(resource: CuratedResource): ReviewAttestation {
+  const reviewPath = path.resolve(path.join(root, "data/superskill", resource.reviewFile!));
+  const reviewsRoot = path.resolve(path.join(root, "data/superskill/reviews"));
+  if (!reviewPath.startsWith(`${reviewsRoot}${path.sep}`)) throw new Error(`Review path escapes reviews root: ${resource.reviewFile}`);
+  const review = reviewAttestationSchema.parse(JSON.parse(readFileSync(reviewPath, "utf8")));
+  if (review.capability.id !== resource.id || review.capability.ref !== resource.ref || review.capability.version !== resource.version || review.capability.artifactDigest !== resource.expectedDigest) {
+    throw new Error(`Review exact release tuple mismatch: ${resource.id}`);
+  }
+  return review;
+}
+
+function validateApprovalEvidence(resource: CuratedResource, review: ReviewAttestation | undefined, now: Date): void {
+  if (resource.status !== "approved") return;
+  if (!review) throw new Error(`Approved capability requires a review: ${resource.id}`);
+  if (review.scanner.status === "fail" || review.capabilityDiff.status === "fail") throw new Error(`Approved capability has failing review evidence: ${resource.id}`);
+  if (Date.parse(review.expiresAt) <= now.getTime()) throw new Error(`Approved capability review expired: ${resource.id}`);
+  if (review.humanCases.length < 3 || review.humanCases.some((item) => item.verdict === "fail")) throw new Error(`Approved capability requires three non-failing human cases: ${resource.id}`);
+  for (const client of ["claude-code", "codex"] as const) {
+    const compatible = review.compatibility.some((item) => item.client === client && item.verdict === "pass" && now.getTime() - Date.parse(item.checkedAt) <= 90 * 86_400_000);
+    if (!compatible) throw new Error(`Approved capability requires fresh ${client} compatibility evidence: ${resource.id}`);
+  }
+}
+
+function buildChecks(resource: CuratedResource, checkedAt: string, review?: ReviewAttestation): TrustCheck[] {
+  const expiresAt = review?.expiresAt;
+  return [
+    check("schema", "pass", "static_checked", checkedAt, "Native manifest schema validated"),
+    check("artifact_digest", "pass", "static_checked", checkedAt, "Immutable artifact digest matches curated release"),
+    check("source_license", "pass", "static_checked", checkedAt, "Source and license are declared"),
+    check("static_security", review ? review.scanner.status : "not_run", "static_checked", review?.scanner.checkedAt ?? checkedAt, review ? "Static security ruleset completed" : "Static managed review not run", expiresAt),
+    check("capability_diff", review ? review.capabilityDiff.status : "not_run", "static_checked", review?.reviewedAt ?? checkedAt, review ? "Declared and inferred capabilities compared" : "Capability diff not run", expiresAt),
+    check("claude_code_activation", review?.compatibility.some((item) => item.client === "claude-code" && item.verdict === "pass") ? "pass" : "not_run", "compatibility_smoked", review?.compatibility.find((item) => item.client === "claude-code")?.checkedAt ?? checkedAt, "Claude Code exact-release activation smoke", expiresAt),
+    check("codex_activation", review?.compatibility.some((item) => item.client === "codex" && item.verdict === "pass") ? "pass" : "not_run", "compatibility_smoked", review?.compatibility.find((item) => item.client === "codex")?.checkedAt ?? checkedAt, "Codex exact-release activation smoke", expiresAt),
+    check("human_review", review && review.humanCases.length >= 3 && !review.humanCases.some((item) => item.verdict === "fail") ? (review.humanCases.some((item) => item.verdict === "partial") ? "warn" : "pass") : "not_run", "human_reviewed", review?.reviewedAt ?? checkedAt, review ? `${review.humanCases.length} reviewed task cases` : "Human task review not run", expiresAt),
+    check("independent_eval", "not_run", "independently_evaluated", review?.reviewedAt ?? checkedAt, "Independent outcome evaluation not run")
+  ];
+}
+
+function check(id: TrustCheck["id"], status: TrustCheck["status"] | "warn", evidenceLevel: TrustCheck["evidenceLevel"], checkedAt: string, summary: string, expiresAt?: string): TrustCheck {
+  const normalizedStatus = status === "fail" ? "fail" : status === "warn" ? "warn" : status;
+  return { id, status: normalizedStatus, evidenceLevel, checkedAt, summary, ...(expiresAt ? { expiresAt } : {}) };
+}
+
+function mapPermissions(manifest: HarnessManifest): ManagedPermissions {
+  return {
+    network: manifest.permissions.network,
+    networkAllowlist: manifest.permissions.network_allowlist,
+    filesystem: manifest.permissions.filesystem,
+    shell: manifest.permissions.shell,
+    browser: manifest.permissions.browser,
+    credentials: manifest.permissions.credentials,
+    externalSend: manifest.permissions.external_send,
+    moneyMovement: manifest.permissions.money_movement,
+    userData: manifest.permissions.user_data,
+    humanApprovalRequired: manifest.permissions.human_approval_required
+  };
+}
+
+function snapshotContextCost(files: Array<{ path: string; content: string }>) {
+  const context = files.filter((file) => file.path === "README.md" || /^(agents|prompts|runbooks)\/.+\.md$/i.test(file.path));
+  const bytes = context.reduce((sum, file) => sum + Buffer.byteLength(file.content, "utf8"), 0);
+  return { approxTokens: Math.round(bytes / 4), files: context.length, bytes, status: "estimated" as const };
+}
+
+function assertUnique(resources: CuratedResource[]): void {
+  const ids = new Set<string>();
+  const refs = new Set<string>();
+  for (const resource of resources) {
+    if (ids.has(resource.id)) throw new Error(`Duplicate curated capability id: ${resource.id}`);
+    const exact = `${resource.ref}@${resource.version}`;
+    if (refs.has(exact)) throw new Error(`Duplicate curated release: ${exact}`);
+    ids.add(resource.id);
+    refs.add(exact);
+  }
+}
+
+function assertInstructionOnly(files: string[], resource: CuratedResource): void {
+  const allowed = /^(?:harness\.yaml|README\.md|(?:agents|prompts|runbooks)\/.+\.md|examples\/.+\.md|evals\/cases\/.+\.(?:yaml|yml|json|md))$/i;
+  const forbidden = files.filter((file) => !allowed.test(file));
+  if (forbidden.length) throw new Error(`Approved capability is not instruction-only: ${resource.id} (${forbidden.join(", ")})`);
+}
+
+function historyKey(capability: ManagedCapability): string {
+  return `${capability.id}\0${capability.release.version}`;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const index = buildSuperskillIndex();
+  const previous = (() => {
+    try { return managedCapabilityHistorySchema.parse(JSON.parse(readFileSync(historyPath, "utf8"))); }
+    catch { return undefined; }
+  })();
+  const history = mergeSuperskillHistory(index, previous);
+  writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+  writeFileSync(historyPath, `${JSON.stringify(history, null, 2)}\n`);
+  console.log(`wrote ${index.capabilities.length} current and ${history.capabilities.length} historical managed releases`);
+}

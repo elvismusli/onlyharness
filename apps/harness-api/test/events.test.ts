@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeEvent } from "../src/events.ts";
+import { mkdtempSync, readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { recordManagedEvent, sanitizeEvent } from "../src/events.ts";
 
 test("sanitizeEvent accepts eval and gate verification events without arbitrary metadata", () => {
   const event = sanitizeEvent({
@@ -108,4 +111,73 @@ test("sanitizeEvent accepts escrow transition events without receipt bodies", ()
 
 test("sanitizeEvent rejects unknown verification event kinds", () => {
   assert.equal(sanitizeEvent({ kind: "verify", owner: "harnesses", repo: "demo" }), undefined);
+});
+
+test("sanitizeEvent accepts only strict content-free managed lifecycle fields", () => {
+  const event = sanitizeEvent({
+    kind: "outcome_reported",
+    eventId: "evt_abcdef12",
+    recommendationId: "rec_abcdef12",
+    activationId: "act_abcdef12",
+    owner: "harnesses",
+    repo: "deep-market-researcher",
+    version: "0.2.0",
+    subject: "pilot:abcdef12",
+    target: "codex",
+    client: "superskill-codex",
+    mode: "temporary",
+    evidence: "agent_reported",
+    outcome: "success",
+    reasonCode: "COMPLETED",
+    task: "must-not-store",
+    path: "/must-not-store",
+    token: "must-not-store"
+  } as Parameters<typeof sanitizeEvent>[0] & { task: string; path: string; token: string });
+  assert.deepEqual(event, {
+    kind: "outcome_reported",
+    owner: "harnesses",
+    repo: "deep-market-researcher",
+    version: "0.2.0",
+    subject: "pilot:abcdef12",
+    target: "codex",
+    client: "superskill-codex",
+    eventId: "evt_abcdef12",
+    recommendationId: "rec_abcdef12",
+    activationId: "act_abcdef12",
+    mode: "temporary",
+    evidence: "agent_reported",
+    outcome: "success",
+    reasonCode: "COMPLETED"
+  });
+  assert.equal(sanitizeEvent({ kind: "activation_ready", eventId: "bad", client: "superskill-codex" }), undefined);
+  assert.equal(sanitizeEvent({ kind: "activation_ready", eventId: "evt_abcdef12", client: "browser" }), undefined);
+});
+
+test("managed event sanitizer rejects malformed optional correlation fields", () => {
+  const base = { kind: "activation_ready", eventId: "evt_abcdef12", client: "superskill-codex" };
+  assert.equal(sanitizeEvent({ ...base, recommendationId: "wrong_abcdef12" }), undefined);
+  assert.equal(sanitizeEvent({ ...base, activationId: "act bad" }), undefined);
+  assert.equal(sanitizeEvent({ ...base, reasonCode: "lowercase" }), undefined);
+  assert.equal(sanitizeEvent({ ...base, recommendationId: "" }), undefined);
+  assert.equal(sanitizeEvent({ ...base, mode: "" }), undefined);
+});
+
+test("managed local event writer is idempotent by event id", async () => {
+  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "superskill-events-")), "events.jsonl");
+  const input = {
+    kind: "activation_ready",
+    eventId: "evt_abcdef12",
+    activationId: "act_abcdef12",
+    subject: "pilot:abcdef12",
+    client: "superskill-codex"
+  };
+  assert.deepEqual(await recordManagedEvent(input, { localPath: file }), { recorded: true, duplicate: false });
+  assert.deepEqual(await recordManagedEvent(input, { localPath: file }), { recorded: false, duplicate: true });
+  assert.equal(readFileSync(file, "utf8").trim().split("\n").length, 1);
+});
+
+test("managed telemetry off writes nothing", async () => {
+  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "superskill-events-off-")), "events.jsonl");
+  const result = await recordManagedEvent({ kind: "recommended", eventId: "evt_abcdef12", subject: "pilot:abcdef12", client: "hh" }, { localPath: file, telemetryEnabled: false });
+  assert.deepEqual(result, { recorded: false, duplicate: false });
 });

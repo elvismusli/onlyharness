@@ -7,7 +7,7 @@ npm run build -w onlyharness
 node packages/harness-cli/dist/hh.mjs search market research
 node packages/harness-cli/dist/hh.mjs suggest market research --json
 node packages/harness-cli/dist/hh.mjs suggest market research --apply --out suggested-deep-market-researcher --json
-node packages/harness-cli/dist/hh.mjs suggest market research --apply --target codex --out suggested-deep-market-researcher --adapter-out .codex/harnesses/deep-market-researcher --json
+node packages/harness-cli/dist/hh.mjs suggest market research --apply --target codex --out suggested-deep-market-researcher --adapter-out .agents/skills/deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher --target claude-code --json
 node packages/harness-cli/dist/hh.mjs pull harnesses/deep-market-researcher --version 0.1.0 --out deep-market-researcher-0.1.0 --json
 node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --json
@@ -27,6 +27,34 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs setup @acme
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs publish workflow.md --org acme --name team-workflow
 HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.com:acme/skills.git --org acme
 ```
+
+## SuperSkill internal alpha
+
+Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor require a tester-specific `HH_SUPERSKILL_TOKEN`; the CLI sends it only in the Authorization header and never writes it to project state or telemetry.
+
+```bash
+export HH_SUPERSKILL_TOKEN=<tester-specific-opaque-token>
+hh recommend "market research" --target codex --json
+hh activation start market-research --version 0.2.0 --digest sha256:<64-hex> --recommendation rec_<id> --decision-digest sha256:<64-hex> --recommendation-expires-at <rfc3339> --activation-request req_<random-id> --target codex --mode temporary --consent explicit --json
+hh activation mark act_<id> --state loaded --json
+hh activation mark act_<id> --state invoked --json
+hh activation finish act_<id> --outcome success --evidence agent_reported --json
+hh activation keep act_<id> --confirm-keep --json
+hh activation remove --marker .agents/skills/superskill-market-research/.superskill-managed.json --confirm-remove --json
+```
+
+Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex pins under `.agents/skills`. Temporary activation writes only project-local `.onlyharness`. Copy/detection/pin never implies loaded or invoked. Pinned reuse always rechecks the exact remote release and revocation state; offline reuse is blocked. Remove is marker/digest-owned and works offline.
+
+Internal plugin install commands (after the prepared CLI version is published and verified):
+
+```bash
+claude plugin marketplace add elvismusli/onlyharness
+claude plugin install superskill@onlyharness
+codex plugin marketplace add elvismusli/onlyharness --ref main
+codex plugin add superskill@onlyharness
+```
+
+Plugin install/refresh may require a new task or session. It does not prove a copied command, temporary capability, or pinned skill is loaded.
 
 The npm package is published for clean-user installs:
 
@@ -88,7 +116,7 @@ Verified harness badge.
 - `hh pull owner/name --version <semver>` and `hh install owner/name --version <semver>` request that registry version and write the resolved version to `.harnesshub/source.json`; require `snapshot:true` in the archive response when immutability matters.
 - `hh install owner/name --pay` and `hh pull owner/name --pay` use `HH_WALLET_KEY` or `EVM_PRIVATE_KEY` for x402-enabled 402 responses and refuse to sign above `HH_MAX_PAY_USD`.
 - `hh install @org/name` and `hh pull @org/name` send `HH_ORG_TOKEN` when set.
-- `hh adapt [dir] --target claude-code|codex|cursor` writes local adapter instruction files and refuses to overwrite without `--force`.
+- `hh adapt [dir] --target claude-code|codex|cursor` writes local adapter instruction files and refuses to overwrite without `--force`; new Codex adapters use `.agents/skills/<name>/SKILL.md`, while legacy `.codex/harnesses` remains unmanaged and is never auto-deleted.
 - `hh mcp-config [dir] --target claude-desktop|claude-code|cursor` generates package-backed MCP client JSON from `tools.mcp_servers`.
 - `hh run` is sample mode only: no LLM calls, no credentials, and no verified gate claim.
 - `hh eval` writes `.harnesshub/results.json`.

@@ -45,7 +45,7 @@ docker compose \
   -f "$ROOT/infra/production-smoke.override.yml" \
   up -d --build
 
-for seed_dir in directories resources; do
+for seed_dir in directories resources harness-versions superskill; do
   if [ -d "$ROOT/data/$seed_dir" ]; then
     docker compose \
       --project-name "$PROJECT_NAME" \

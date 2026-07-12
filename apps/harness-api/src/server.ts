@@ -13,7 +13,7 @@ import { buildMcpServer, type PublishMarkdownHandler, type PublishResourcePackag
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, createWorkspaceJoinCode, verifyCommunityInviteCode, verifyWorkspaceJoinCode } from "./community.js";
 import { openapi } from "./openapi.js";
-import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
+import { fetchLastVerificationAt, MANAGED_EVENT_KINDS, recordEvent, recordManagedEvent, sanitizeEvent } from "./events.js";
 import { classifyGitHubResource, GitHubImportError, type GitHubResourceImportRequest } from "./github-import.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, hostedExecutionUnavailableBody, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
@@ -24,6 +24,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import * as workspaceSubscriptions from "./workspace-subscriptions.js";
 import * as workspaces from "./workspaces.js";
+import { registerSuperskillRoutes, superskillAuthFromHeader } from "./routes/superskill.js";
 
 const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -313,6 +314,7 @@ await app.register(cors, {
     return callback(null, false);
   }
 });
+await registerSuperskillRoutes(app);
 
 app.get("/healthz", async () => ({ ok: true }));
 
@@ -1574,10 +1576,34 @@ app.post("/imports/github-resource", async (request, reply) => {
 
 app.post("/events", async (request, reply) => {
   const authorization = headerValue(request.headers.authorization);
-  const auth = authorization ? await userFromAuthorization(authorization) : {};
   const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
+  const kind = String(body.kind ?? "");
+  if ((MANAGED_EVENT_KINDS as readonly string[]).includes(kind)) {
+    if (process.env.SUPERSKILL_ENABLED !== "true") return reply.code(503).send({ error: "SuperSkill managed routes are disabled", code: "SUPERSKILL_DISABLED" });
+    const managedAuth = superskillAuthFromHeader(authorization);
+    if (!managedAuth.ok) return reply.code(managedAuth.status).send({ error: managedAuth.status === 401 ? "SuperSkill Bearer token is required" : "Internal alpha access denied", code: managedAuth.reasonCode });
+    const result = await recordManagedEvent({
+      kind,
+      eventId: typeof body.eventId === "string" ? body.eventId : undefined,
+      owner: typeof body.owner === "string" ? body.owner : undefined,
+      repo: typeof body.repo === "string" ? body.repo : undefined,
+      version: typeof body.version === "string" ? body.version : undefined,
+      target: typeof body.target === "string" ? body.target : undefined,
+      client: typeof body.client === "string" ? body.client : undefined,
+      recommendationId: typeof body.recommendationId === "string" ? body.recommendationId : undefined,
+      activationId: typeof body.activationId === "string" ? body.activationId : undefined,
+      mode: typeof body.mode === "string" ? body.mode : undefined,
+      evidence: typeof body.evidence === "string" ? body.evidence : undefined,
+      outcome: typeof body.outcome === "string" ? body.outcome : undefined,
+      reasonCode: typeof body.reasonCode === "string" ? body.reasonCode : undefined,
+      subject: managedAuth.subject
+    });
+    if (!result.recorded && !result.duplicate && process.env.SUPERSKILL_TELEMETRY_ENABLED !== "false") return reply.code(400).send({ error: "Invalid managed event" });
+    return reply.code(200).send(result);
+  }
+  const auth = authorization ? await userFromAuthorization(authorization) : {};
   const event = sanitizeEvent({
-    kind: String(body.kind ?? ""),
+    kind,
     owner: typeof body.owner === "string" ? body.owner : undefined,
     repo: typeof body.repo === "string" ? body.repo : undefined,
     version: typeof body.version === "string" ? body.version : undefined,
@@ -1990,7 +2016,7 @@ async function archiveForClient(owner: string, repo: string, version: string | u
     if (x402?.ok) {
       await recordPaymentTransitionEvent(x402.status, owner, repo, archive.version, `wallet:${x402.payer}`, "x402", client);
       await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: `wallet:${x402.payer}`, target: "archive", client });
-      return { status: 200, headers: x402.headers, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
+      return { status: 200, headers: x402.headers, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, artifactDigest: archive.artifactDigest, totalFileCount: archive.totalFileCount, archiveTruncated: archive.archiveTruncated, files: archive.files } };
     }
     await recordEvent({
       kind: payment.status === 402 ? "checkout" : "view",
@@ -2004,7 +2030,7 @@ async function archiveForClient(owner: string, repo: string, version: string | u
     return { status: payment.status, body: payment.body };
   }
   await recordEvent({ kind: "pull", owner, repo, version: archive.version, subject: eventSubject(auth.user?.id), target: "archive", client });
-  return { status: 200, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, files: archive.files } };
+  return { status: 200, body: { owner, repo, version: archive.version, snapshot: archive.snapshot, artifactDigest: archive.artifactDigest, totalFileCount: archive.totalFileCount, archiveTruncated: archive.archiveTruncated, files: archive.files } };
 }
 
 function directoryLinkOnlyBody(owner: string, repo: string, manifest: HarnessManifest): DirectoryLinkOnlyBody {

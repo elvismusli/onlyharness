@@ -1,0 +1,285 @@
+{
+  "schemaVersion": "superskill.curated.v1",
+  "generatedFor": "internal-alpha",
+  "resources": [
+    {
+      "id": "agent-harness-refactorer",
+      "ref": "harnesses/agent-harness-refactorer",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:a3e129962c1acb631c2d795d0c2c31275ce74a47d4ec181e88e4f3cf14243d38",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "harness-refactor",
+          "intents": [
+            "refactor agent harness",
+            "improve agent workflow"
+          ],
+          "outcomes": [
+            "safer maintainable harness"
+          ],
+          "exclusions": [
+            "deploy changes",
+            "publish package"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "data-quality-sentinel",
+      "ref": "harnesses/data-quality-sentinel",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:9f6e4f590cb1e195686597b4d468e87a7971a391301c13556a1fe0f3ccb4ac2e",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "data-quality",
+          "intents": [
+            "audit data quality",
+            "find dataset anomalies"
+          ],
+          "outcomes": [
+            "source-backed data quality report"
+          ],
+          "exclusions": [
+            "delete records",
+            "rewrite production data"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deep-market-researcher",
+      "ref": "harnesses/deep-market-researcher",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:97fc086edf062acb20bacc036da5b39dd7970c19e661cae1e87dd36b11147ff2",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "market-research",
+          "intents": [
+            "competitor research",
+            "market map",
+            "deep market research"
+          ],
+          "outcomes": [
+            "source-backed comparison",
+            "market evidence map"
+          ],
+          "exclusions": [
+            "send outreach",
+            "buy data"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "finance-payment-safety-reviewer",
+      "ref": "harnesses/finance-payment-safety-reviewer",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:0a1a2944c88e30159ea5d52c6375000f3ab76545dfe926574992dbc76d46130f",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "payment-safety",
+          "intents": [
+            "review payment safety",
+            "audit money flow"
+          ],
+          "outcomes": [
+            "payment invariant risk report"
+          ],
+          "exclusions": [
+            "send payment",
+            "issue refund",
+            "move money"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "founder-decision-memo",
+      "ref": "harnesses/founder-decision-memo",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:c8dad8b0ce500a3a8a537bf11d68d3a8e2bbba5c0b3191299b356cf7d662a49f",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "founder-decision",
+          "intents": [
+            "write founder decision memo",
+            "compare strategic options"
+          ],
+          "outcomes": [
+            "decision-ready recommendation"
+          ],
+          "exclusions": [
+            "announce decision",
+            "send memo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gtm-research-sprint",
+      "ref": "harnesses/gtm-research-sprint",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:0f5485a6cd9dd7259524c4905d2cbf83f36d4adf0f6252b4dc4f9dd9f16eeb3d",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "gtm-research",
+          "intents": [
+            "gtm research sprint",
+            "research target segment"
+          ],
+          "outcomes": [
+            "source-backed go to market plan"
+          ],
+          "exclusions": [
+            "send outreach",
+            "contact accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "incident-rca-commander",
+      "ref": "harnesses/incident-rca-commander",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:ecf2355e726b9a36561931af8f58c48adda5abb0317dbd5f5fb149bc9d82165f",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "incident-rca",
+          "intents": [
+            "investigate incident root cause",
+            "write incident rca"
+          ],
+          "outcomes": [
+            "evidence-backed root cause analysis"
+          ],
+          "exclusions": [
+            "restart production",
+            "deploy fix"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "launch-readiness-reviewer",
+      "ref": "harnesses/launch-readiness-reviewer",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:8f83294f64498493efbb7fadf3b93a96a38983389e783b6922df193a5de85939",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "launch-readiness",
+          "intents": [
+            "review launch readiness",
+            "audit release plan"
+          ],
+          "outcomes": [
+            "go no-go readiness report"
+          ],
+          "exclusions": [
+            "deploy release",
+            "announce launch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-strategy-critic",
+      "ref": "harnesses/product-strategy-critic",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:c59dfbde60a86307c4f73f6eca0cd842db36d74eb1f17a7a645a15dd4f329aeb",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "product-strategy",
+          "intents": [
+            "critique product strategy",
+            "review mvp plan"
+          ],
+          "outcomes": [
+            "concrete product recommendation"
+          ],
+          "exclusions": [
+            "build product",
+            "publish roadmap"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "repo-truth-auditor",
+      "ref": "harnesses/repo-truth-auditor",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:a094a162e992da8223f3faec2c591c2d47ab5bc67d595011ea0214835137ae49",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "repo-audit",
+          "intents": [
+            "audit repository truth",
+            "compare docs and runtime"
+          ],
+          "outcomes": [
+            "evidence-backed repository audit"
+          ],
+          "exclusions": [
+            "modify code",
+            "deploy repository"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "security-permission-auditor",
+      "ref": "harnesses/security-permission-auditor",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:58e4889577f7dd8d1156989f95b2b863b8ab4f092d4874b5b726b46a7c878c11",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "permission-audit",
+          "intents": [
+            "audit security permissions",
+            "review agent permissions"
+          ],
+          "outcomes": [
+            "permission risk report"
+          ],
+          "exclusions": [
+            "rotate credentials",
+            "change permissions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "support-triage-agent",
+      "ref": "harnesses/support-triage-agent",
+      "version": "0.2.0",
+      "expectedDigest": "sha256:0944704dd0e80921d43b32d68048470b099b348024830919e632582e7a31565b",
+      "status": "candidate",
+      "jobs": [
+        {
+          "id": "support-triage",
+          "intents": [
+            "triage support tickets",
+            "draft support reply"
+          ],
+          "outcomes": [
+            "prioritized support response draft"
+          ],
+          "exclusions": [
+            "send reply",
+            "issue refund"
+          ]
+        }
+      ]
+    }
+  ]
+}

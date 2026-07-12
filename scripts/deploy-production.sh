@@ -116,7 +116,7 @@ ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/producti
 
 # The api data volume shadows the image's /app/data: seed committed catalog
 # data into the volume so directory/resource shelves survive on prod.
-for seed_dir in directories resources; do
+for seed_dir in directories resources harness-versions superskill; do
   ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
 done
 

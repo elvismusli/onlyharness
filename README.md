@@ -121,6 +121,25 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.c
 TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<channel-id> npm run telegram:gate-bot
 ```
 
+## SuperSkill internal alpha
+
+SuperSkill is the task-first managed capability layer built on OnlyHarness. The checked-in catalog currently contains 12 exact immutable **candidates** and intentionally exposes zero approved showroom items until real Claude Code, Codex, and human review attestations exist.
+
+- Public, read-only: `GET /api/showroom/capabilities` and `GET /api/showroom/capabilities/{id}`. These routes never recommend, download, or activate files.
+- Internal Bearer only: `/api/recommendations`, `/api/capabilities/{id}`, exact release/archive routes, and managed lifecycle events. `HH_SUPERSKILL_TOKEN` belongs only in the CLI process environment.
+- Local managed CLI release: `onlyharness@0.2.13` is prepared and tested from a package tarball but is not published yet. Do not point a clean plugin install at published `0.2.12`; it has no managed commands.
+- Web: the isolated Daylight skin is available with `VITE_DEFAULT_SKIN=superskill`; legacy skins remain query-selectable. Production stays on the safe configured default until approved showroom data and live smoke exist.
+
+```bash
+npm run build:superskill-catalog
+npm run check:superskill-catalog
+npm run check:superskill-router
+npm run smoke:superskill
+npm run superskill:pilot-report
+```
+
+Plugin sources live under `plugins/superskill` with one shared skill for Claude Code and Codex. Publishing npm or either marketplace is a separate rollout action.
+
 ## For agents
 
 - Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json), OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://onlyharness.com/.well-known/oauth-protected-resource), and authorization-server metadata at [`/.well-known/oauth-authorization-server`](https://onlyharness.com/.well-known/oauth-authorization-server).

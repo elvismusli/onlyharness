@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -15,8 +15,11 @@ const publicCopyFiles = [
   "apps/registry-web/src/skins/win98/windows.tsx"
 ] as const;
 
+const superskillCopyFiles = collectSourceFiles("apps/registry-web/src/skins/superskill");
+const allCopyFiles = [...publicCopyFiles, ...superskillCopyFiles];
+
 const docs = Object.fromEntries(
-  publicCopyFiles.map((file) => [file, readFileSync(path.join(root, file), "utf8")])
+  allCopyFiles.map((file) => [file, readFileSync(path.join(root, file), "utf8")])
 );
 
 for (const [file, text] of Object.entries(docs)) {
@@ -44,8 +47,32 @@ check(docs["apps/registry-web/src/core/store.tsx"].includes("parseCheckoutLocati
 check(docs["apps/registry-web/src/skins/win98/windows.tsx"].includes("Manual checkout pending"), "Checkout UI must show manual pending state");
 check(docs["apps/registry-web/src/skins/win98/windows.tsx"].includes("This page does not unlock files"), "Checkout UI must not imply entitlement was granted");
 
+const superskillCopy = superskillCopyFiles.map((file) => docs[file]).join("\n");
+const superskillTextCopy = superskillCopyFiles.filter((file) => /\.tsx?$/.test(file)).map((file) => docs[file]).join("\n");
+for (const forbidden of ["2,140", "12.8k", "240 verified", "0 unchecked", "Outcome verified", "superskill.sh/get", "38s", "9/9", "100%", "guaranteed"]) {
+  check(!superskillTextCopy.includes(forbidden), `SuperSkill UI must not contain unsupported claim: ${forbidden}`);
+}
+check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser source must not reference the internal CLI token");
+check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("localStorage"), "Task prompt must not persist task text");
+check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("fetch("), "Task prompt must hand off locally instead of calling recommendation transport");
+check(docs["apps/registry-web/src/skins/superskill/pages/InstallHandoff.tsx"].includes("Copying a command only copies text"), "Install handoff must not turn copy into lifecycle state");
+check(docs["README.md"].includes("12 exact immutable **candidates**") && docs["README.md"].includes("not published yet"), "README must keep current SuperSkill supply and release blockers honest");
+
 console.log("Public copy check passed: remix/fork language stays honest");
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function collectSourceFiles(relativeRoot: string): string[] {
+  const result: string[] = [];
+  const visit = (relativeDir: string) => {
+    for (const entry of readdirSync(path.join(root, relativeDir), { withFileTypes: true })) {
+      const relative = path.posix.join(relativeDir, entry.name);
+      if (entry.isDirectory()) visit(relative);
+      else if (/\.(?:ts|tsx|css)$/.test(entry.name)) result.push(relative);
+    }
+  };
+  visit(relativeRoot);
+  return result.sort();
 }

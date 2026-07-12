@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
+    "@harnesshub/capability-schema": "0.1.0",
     "@harnesshub/schema": "0.1.0",
     "@harnesshub/semantic-diff": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "OnlyHarness API",
-    version: "0.2.12",
+    version: "0.2.13",
     description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
   },
   servers: [
@@ -1830,10 +1830,59 @@ export const openapi = {
         }
       }
     },
+    "/showroom/capabilities": {
+      get: {
+        summary: "List approved SuperSkill showroom capabilities",
+        description: "Public cached read-only projection. Does not accept task context and exposes no archive or activation controls.",
+        parameters: [queryParam("limit", "Maximum 12 approved exact releases"), queryParam("job", "Optional curated job id")],
+        responses: { "200": { description: "Approved public-safe capabilities" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Managed catalog is not ready" } }
+      }
+    },
+    "/showroom/capabilities/{id}": {
+      get: {
+        summary: "Read a SuperSkill showroom capability",
+        description: "Public cached read-only exact-release trust projection. Approved, quarantined and revoked shared links remain honest.",
+        parameters: [pathParam("id")],
+        responses: { "200": { description: "Public-safe capability detail" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Managed catalog is not ready" } }
+      }
+    },
+    "/recommendations": {
+      post: {
+        summary: "Recommend an approved managed capability",
+        description: "Internal-alpha deterministic task router. Requires a per-tester SuperSkill Bearer token; task text is not persisted.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Recommendation, clarification or no-safe-match decision" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "503": { description: "SuperSkill disabled or catalog unavailable" } }
+      }
+    },
+    "/capabilities/{id}": {
+      get: {
+        summary: "Read current managed capability detail",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("id")],
+        responses: { "200": { description: "Public-safe managed capability DTO" }, "404": { $ref: "#/components/responses/NotFound" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } }
+      }
+    },
+    "/capabilities/{id}/releases/{version}": {
+      get: {
+        summary: "Recheck an exact managed release",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("id"), pathParam("version")],
+        responses: { "200": { description: "Exact release with activationAllowed and optional block code" }, "404": { $ref: "#/components/responses/NotFound" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } }
+      }
+    },
+    "/capabilities/{id}/releases/{version}/archive": {
+      get: {
+        summary: "Download an exact free managed archive",
+        description: "Internal-alpha immutable snapshot route. Never invokes checkout, entitlement or x402 helpers.",
+        security: [{ bearerAuth: [] }],
+        parameters: [pathParam("id"), pathParam("version")],
+        responses: { "200": { description: "Complete text-only archive with canonical digest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Revoked, quarantined, paid, mutable or digest-mismatched release" } }
+      }
+    },
     "/events": {
       post: {
         summary: "Record a privacy-safe registry event",
-        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials and arbitrary metadata. Authenticated install events from client=claude-code count toward the works-in-Claude-Code confirms badge; passed gate events count toward registry runs and verification.lastVerifiedAt; suggested/accepted/applied events power the CLI autopilot funnel.",
+        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials, body subject and arbitrary metadata. Managed lifecycle kinds require a per-tester SuperSkill Bearer token, derive subject server-side and deduplicate by eventId.",
         requestBody: {
           required: true,
           content: {
@@ -1841,7 +1890,14 @@ export const openapi = {
               schema: {
                 type: "object",
                 properties: {
-                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "accepted", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded"] },
+                  kind: { type: "string", enum: ["view", "copy", "install", "pull", "checkout", "purchase", "suggested", "accepted", "applied", "eval", "gate", "escrow_reserved", "escrow_captured", "escrow_refunded", "recommended", "recommendation_accepted", "activation_started", "activation_ready", "activation_loaded", "activation_invoked", "outcome_reported", "activation_pinned", "activation_removed", "activation_failed"] },
+                  eventId: { type: "string" },
+                  recommendationId: { type: "string" },
+                  activationId: { type: "string" },
+                  mode: { type: "string", enum: ["temporary", "pinned"] },
+                  evidence: { type: "string", enum: ["agent_reported", "user_confirmed", "unknown"] },
+                  outcome: { type: "string", enum: ["success", "failed", "unknown"] },
+                  reasonCode: { type: "string" },
                   owner: { type: "string" },
                   repo: { type: "string" },
                   version: { type: "string" },

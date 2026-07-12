@@ -12,6 +12,7 @@ ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/registry-web ./apps/registry-web
+COPY packages/capability-schema ./packages/capability-schema
 
 RUN npm ci
 RUN npm run build -w @harnesshub/registry-web

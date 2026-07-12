@@ -80,6 +80,15 @@ node packages/harness-cli/dist/hh.mjs outdated deep-market-researcher --json
 node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --json
 ```
 
+### SuperSkill local/internal-alpha contract
+
+- Source of truth: `docs/plans/2026-07-12-superskill-mvp-developer-handoff-daylight.md` and `docs/plans/superskill-mvp/`.
+- `data/superskill/curated.json` contains exact reviewed supply; candidate status is not approval. Current local Stage A data remains 12 candidates / 0 approved until real attestations exist.
+- Public showroom routes are read-only projections. Protected recommendation, exact release/archive, and managed event routes require a tester-specific `HH_SUPERSKILL_TOKEN`; never put it in browser state, URL, storage, logs, or docs examples.
+- Managed activation is explicit-consent only. Claude pins to `.claude/skills`; Codex pins to `.agents/skills`; `.codex/harnesses` is legacy detection only.
+- Runtime source of truth is `plugins/superskill/runtime.json`. `onlyharness@0.2.13` is locally prepared but not published, so clean npm/plugin distribution is still a rollout blocker.
+- Required local gates: `npm run check:superskill-catalog`, `npm run check:superskill-router`, `npm run check:superskill-runtime`, `npm run smoke:superskill`.
+
 HTTP API base: `https://onlyharness.com/api`
 
 Core endpoints:

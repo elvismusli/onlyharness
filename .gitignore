@@ -3,11 +3,16 @@ dist
 .DS_Store
 .playwright-cli
 .harnesshub
+!seed-harnesses/*/.harnesshub/
+!seed-harnesses/*/.harnesshub/results.json
 .env
 .env.local
 data/harness-state.json
 data/events.jsonl
 data/harness-versions/*
+!data/harness-versions/harnesses/
+!data/harness-versions/harnesses/*/
+!data/harness-versions/harnesses/*/0.2.0.json
 data/.review-variant
 data/*.source.md
 data/gitea-proof-source-test

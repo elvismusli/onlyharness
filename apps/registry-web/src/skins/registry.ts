@@ -1,8 +1,8 @@
 import { lazy } from "react";
 import type { ComponentType, LazyExoticComponent } from "react";
 
-/** The set of skins the app knows about. Only `win98` ships today. */
-export type SkinId = "win98" | "modern" | "fans";
+/** The set of registered product shells. Legacy skins stay available by query. */
+export type SkinId = "win98" | "modern" | "fans" | "superskill";
 
 /** One registered skin: its id, a short switcher label + icon, and its lazy mount. */
 export type SkinEntry = {
@@ -35,5 +35,11 @@ export const SKINS: SkinEntry[] = [
     label: "Fans",
     icon: "💙",
     mount: lazy(() => import("./fans").then((m) => ({ default: m.FansSkin })))
+  },
+  {
+    id: "superskill",
+    label: "SuperSkill",
+    icon: "S",
+    mount: lazy(() => import("./superskill").then((m) => ({ default: m.SuperskillSkin })))
   }
 ];

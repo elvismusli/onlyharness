@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "onlyharness": {
+      "type": "http",
+      "url": "https://onlyharness.com/mcp"
+    }
+  }
+}

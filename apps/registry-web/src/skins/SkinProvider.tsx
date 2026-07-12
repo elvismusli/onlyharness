@@ -4,7 +4,7 @@ import { SKINS, type SkinId } from "./registry";
 import { GlobalSkinSwitcher } from "./SkinSwitcher";
 import "./skin-switcher.css";
 
-const DEFAULT_SKIN: SkinId = "win98";
+const SAFE_DEFAULT_SKIN: SkinId = "win98";
 const STORAGE_KEY = "oh:skin";
 const QUERY_KEY = "skin";
 
@@ -20,6 +20,14 @@ const SkinContext = createContext<SkinContextValue | null>(null);
 /** Narrow an arbitrary string to a known `SkinId`, or `null` if unregistered. */
 function asSkinId(value: string | null | undefined): SkinId | null {
   return value && SKINS.some((entry) => entry.id === value) ? (value as SkinId) : null;
+}
+
+export function resolveConfiguredDefaultSkin(value: string | null | undefined): SkinId {
+  return asSkinId(value) ?? SAFE_DEFAULT_SKIN;
+}
+
+export function isSkinSwitcherEnabled(value: string | null | undefined): boolean {
+  return value === "true";
 }
 
 /**
@@ -39,7 +47,7 @@ function resolveInitialSkin(): SkinId {
   }
   const fromStorage = asSkinId(stored);
   if (fromStorage) return fromStorage;
-  return DEFAULT_SKIN;
+  return resolveConfiguredDefaultSkin(import.meta.env.VITE_DEFAULT_SKIN);
 }
 
 /**
@@ -78,7 +86,7 @@ export function SkinProvider() {
       </Suspense>
       {/* One global switcher for every skin: fixed position, same viewport spot
           on all skins, styled outside any `.skin-*` scope (skin-switcher.css). */}
-      <GlobalSkinSwitcher />
+      {isSkinSwitcherEnabled(import.meta.env.VITE_ENABLE_SKIN_SWITCHER) ? <GlobalSkinSwitcher /> : null}
     </SkinContext.Provider>
   );
 }

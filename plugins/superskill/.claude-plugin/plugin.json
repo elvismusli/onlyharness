@@ -1,0 +1,9 @@
+{
+  "name": "superskill",
+  "description": "Find and temporarily activate a reviewed AI capability for the current task.",
+  "version": "0.1.0",
+  "author": {
+    "name": "OnlyHarness",
+    "url": "https://onlyharness.com"
+  }
+}

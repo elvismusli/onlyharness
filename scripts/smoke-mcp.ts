@@ -44,7 +44,7 @@ try {
     capabilities: {},
     clientInfo: { name: "onlyharness-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "onlyharness" || initialize.result?.serverInfo?.version !== "0.2.12") {
+  if (initialize.result?.serverInfo?.name !== "onlyharness" || initialize.result?.serverInfo?.version !== "0.2.13") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 

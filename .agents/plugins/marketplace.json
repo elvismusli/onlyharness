@@ -1,0 +1,16 @@
+{
+  "name": "onlyharness",
+  "interface": { "displayName": "OnlyHarness internal" },
+  "plugins": [
+    {
+      "name": "superskill",
+      "source": { "source": "local", "path": "./plugins/superskill" },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": ["CODEX"]
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -1,11 +1,14 @@
 {
   "runner": "harnesshub-local-eval",
   "status": "passed",
-  "score": 0.887,
   "verified": true,
   "verification_status": "declared_case_scores",
+  "evidenceLevel": "author_declared",
+  "managedEligible": false,
+  "evidenceNotice": "Author-declared fixture scores are regression examples, not independent verification.",
+  "score": 0.887,
   "cost_usd": 0.09,
-  "duration_ms": 295,
+  "duration_ms": 300,
   "cases": [
     {
       "id": "case-1",

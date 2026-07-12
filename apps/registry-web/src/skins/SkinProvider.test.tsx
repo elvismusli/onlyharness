@@ -30,7 +30,7 @@ vi.mock("./registry", () => {
   };
 });
 
-import { SkinProvider, useSkin } from "./SkinProvider";
+import { isSkinSwitcherEnabled, resolveConfiguredDefaultSkin, SkinProvider, useSkin } from "./SkinProvider";
 
 holder.useSkin = useSkin;
 
@@ -79,6 +79,22 @@ test("unknown stored skin id falls back to win98", () => {
 test("defaults to win98 with no param and no stored value", () => {
   render(<SkinProvider />);
   expect(screen.getByTestId("active").textContent).toBe("win98");
+});
+
+test("configured default accepts a registered skin and fails safely for unknown values", () => {
+  expect(resolveConfiguredDefaultSkin("modern")).toBe("modern");
+  expect(resolveConfiguredDefaultSkin("unknown")).toBe("win98");
+});
+
+test("global skin switcher is hidden unless explicitly enabled", () => {
+  render(<SkinProvider />);
+  expect(screen.queryByRole("group", { name: "Choose skin" })).toBeNull();
+});
+
+test("skin switcher flag is strict and production-safe", () => {
+  expect(isSkinSwitcherEnabled("true")).toBe(true);
+  expect(isSkinSwitcherEnabled("TRUE")).toBe(false);
+  expect(isSkinSwitcherEnabled(undefined)).toBe(false);
 });
 
 test("setSkin persists to localStorage and updates ?skin= while preserving the hash", () => {

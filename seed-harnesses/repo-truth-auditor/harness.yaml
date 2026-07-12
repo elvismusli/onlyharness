@@ -1,10 +1,17 @@
-schemaVersion: harness.v0.1
+schemaVersion: harness.v0.2
 name: repo-truth-auditor
 title: Repo Truth Auditor
 summary: Checks claims against code, commands, tests and runtime evidence before
   giving a grounded verdict.
-version: 0.1.0
+version: 0.2.0
 license: MIT
+source:
+  upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/repo-truth-auditor
+  upstream_license: MIT
+  attribution: OnlyHarness first-party instruction harness
+  authors:
+    - OnlyHarness
+  vendor_policy: original
 maintainers:
   - name: Harness.Hub Local
 tags:
@@ -12,12 +19,8 @@ tags:
   - audit
   - runtime
 runtime:
-  primary: openai-agents-sdk
-  adapters:
-    - langgraph
-entrypoint:
-  command: npm run harness:run
-  cwd: .
+  primary: none
+  adapters: []
 inputs:
   - id: request
     type: markdown
@@ -79,8 +82,7 @@ permissions:
     - external_send
     - money_movement
 secrets:
-  required:
-    - OPENAI_API_KEY
+  required: []
   optional: []
 evals:
   promptfoo_config: evals/promptfooconfig.yaml

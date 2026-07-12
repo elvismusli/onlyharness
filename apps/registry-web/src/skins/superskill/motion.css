@@ -1,0 +1,14 @@
+@keyframes ssSpin { to { transform: rotate(360deg); } }
+@keyframes ssScan { 0% { transform: translateY(-130%); } 100% { transform: translateY(360%); } }
+@keyframes ssMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes ssFloat { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(50px, 26px) scale(1.12); } }
+@keyframes ssBlink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+
+.skin-superskill .ss-aurora { animation: ssFloat 15s ease-in-out infinite; }
+.skin-superskill .ss-state--loading .ss-state-glyph { animation: ssSpin 7s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skin-superskill *,
+  .skin-superskill *::before,
+  .skin-superskill *::after { animation: none !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
+}
