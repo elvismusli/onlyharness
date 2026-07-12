@@ -1,11 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { showroomFixture } from "../../../test/superskill-fixtures";
+import { selectedShowroomFixture, showroomFixture } from "../../../test/superskill-fixtures";
 import { ConsentPanel } from "./ConsentPanel";
 import { CopyField } from "./CopyField";
 import { LifecycleChain } from "./LifecycleChain";
 import { PermissionDelta } from "./PermissionDelta";
+import { SelectedSkillCard } from "./SelectedSkillCard";
 import { SkillCard } from "./SkillCard";
 import { TaskPrompt } from "./TaskPrompt";
 
@@ -28,6 +29,16 @@ test.each(["quarantined", "revoked"] as const)("%s resource disables client hand
   render(<SkillCard item={showroomFixture({ trust: { ...showroomFixture().capability.trust, status } })} />);
   expect(screen.getByText("Install blocked")).toBeTruthy();
   expect(screen.queryByText("Client handoff")).toBeNull();
+});
+
+test("selected card is visibly pending and offers no managed trust or activation action", () => {
+  render(<SelectedSkillCard item={selectedShowroomFixture()} />);
+  expect(screen.getByText("Selected · review pending")).toBeTruthy();
+  expect(screen.getByText(/not an approval, trust badge, or managed activation claim/i)).toBeTruthy();
+  expect(screen.getByText("Managed install pending review")).toHaveAttribute("aria-disabled", "true");
+  expect(screen.queryByText("Client handoff")).toBeNull();
+  expect(screen.queryByText("Trust report")).toBeNull();
+  expect(screen.getByRole("link", { name: "Open classic listing" })).toHaveAttribute("href", "/?skin=win98#/h/harnesses/deep-market-researcher");
 });
 
 test("copy reports only Copied and never a lifecycle success", async () => {

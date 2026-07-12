@@ -126,6 +126,7 @@ TELEGRAM_BOT_TOKEN=<bot-token> HH_ORG_TOKEN=<org-token> TELEGRAM_CHANNEL_ID=<cha
 SuperSkill is the task-first managed capability layer built on OnlyHarness. The checked-in catalog currently contains 12 exact immutable **candidates** and intentionally exposes zero approved showroom items until real Claude Code, Codex, and human review attestations exist.
 
 - Public, read-only: `GET /api/showroom/capabilities` and `GET /api/showroom/capabilities/{id}`. These routes never recommend, download, or activate files.
+- Selected shelf: `GET /api/showroom/selected` exposes the current reviewed-intake candidates as `selected_unreviewed` cards. They can fill the Daylight catalog, but cannot be recommended or activated until exact-release approval evidence exists.
 - Internal Bearer only: `/api/recommendations`, `/api/capabilities/{id}`, exact release/archive routes, and managed lifecycle events. `HH_SUPERSKILL_TOKEN` belongs only in the CLI process environment.
 - Managed CLI release: `onlyharness@0.2.13` is published and verified through a clean `npx` install. Use that exact version for the SuperSkill activation contract.
 - Web: the isolated Daylight skin is available with `VITE_DEFAULT_SKIN=superskill`; legacy skins remain query-selectable. Production stays on the safe configured default until approved showroom data and live smoke exist.

@@ -20,8 +20,9 @@ OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-a
 ## SuperSkill internal alpha
 
 - Public showroom: GET /showroom/capabilities and GET /showroom/capabilities/{id}. These are cached public-safe projections only; they never accept task text or return archive/activation controls.
+- Public selected shelf: GET /showroom/selected returns current intake candidates labelled `selected_unreviewed`. These cards fill discovery only and cannot be used as approval, recommendation or managed activation evidence.
 - Managed recommendation, exact release/archive, and managed event routes require a tester-specific Bearer token used by the local CLI. Never put `HH_SUPERSKILL_TOKEN` in a browser, URL, cookie, log, analytics event, or localStorage.
-- The checked-in managed catalog currently has 12 exact candidates and zero approved releases. Empty/no-match is intentional until real Claude Code, Codex, and human review evidence exists.
+- The checked-in managed catalog currently has 12 exact candidates and zero approved releases. The approved lane and managed recommendation remain empty/no-match until real Claude Code, Codex, and human review evidence exists; the selected shelf is discovery-only.
 - `onlyharness@0.2.13` is the published managed CLI contract and has been verified through a clean `npx` install. Marketplace publication and clean new-session plugin proof remain rollout gates.
 - Daylight is available as the isolated `superskill` skin, while the production default remains gated by live showroom acceptance.
 

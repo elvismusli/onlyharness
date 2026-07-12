@@ -85,6 +85,7 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --jso
 - Source of truth: `docs/plans/2026-07-12-superskill-mvp-developer-handoff-daylight.md` and `docs/plans/superskill-mvp/`.
 - `data/superskill/curated.json` contains exact reviewed supply; candidate status is not approval. Current local Stage A data remains 12 candidates / 0 approved until real attestations exist.
 - Public showroom routes are read-only projections. Protected recommendation, exact release/archive, and managed event routes require a tester-specific `HH_SUPERSKILL_TOKEN`; never put it in browser state, URL, storage, logs, or docs examples.
+- `GET /showroom/selected` is a separate public-safe intake shelf for current candidates. Its cards must say `selected_unreviewed`, keep managed handoff blocked, and never imply approval.
 - Managed activation is explicit-consent only. Claude pins to `.claude/skills`; Codex pins to `.agents/skills`; `.codex/harnesses` is legacy detection only.
 - Runtime source of truth is `plugins/superskill/runtime.json`. `onlyharness@0.2.13` is published and clean-`npx` verified; marketplace publication and clean new-session plugin proof remain rollout gates.
 - Required local gates: `npm run check:superskill-catalog`, `npm run check:superskill-router`, `npm run check:superskill-runtime`, `npm run smoke:superskill`.

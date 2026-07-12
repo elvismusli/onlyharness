@@ -1,4 +1,6 @@
-import type { ManagedCapability, ShowroomCapability } from "../core/superskill-types";
+import { selectedShowroomCapabilitySchema } from "@harnesshub/capability-schema/browser";
+
+import type { ManagedCapability, SelectedShowroomCapability, ShowroomCapability } from "../core/superskill-types";
 
 export function capabilityFixture(overrides: Partial<ManagedCapability> = {}): ManagedCapability {
   return {
@@ -43,6 +45,25 @@ export function capabilityFixture(overrides: Partial<ManagedCapability> = {}): M
     },
     ...overrides
   };
+}
+
+export function selectedShowroomFixture(overrides: Partial<ManagedCapability> = {}): SelectedShowroomCapability {
+  const capability = capabilityFixture({
+    trust: {
+      status: "candidate",
+      riskScore: 0,
+      riskTier: "MEDIUM",
+      checks: [],
+      limitations: ["Exact review is pending."],
+      reviewedAt: "2026-07-10T00:00:00.000Z"
+    },
+    ...overrides
+  });
+  return selectedShowroomCapabilitySchema.parse({
+    capability,
+    status: "selected_unreviewed",
+    managedHandoff: { status: "blocked", reason: "review_required" }
+  });
 }
 
 export function showroomFixture(overrides: Partial<ManagedCapability> = {}): ShowroomCapability {

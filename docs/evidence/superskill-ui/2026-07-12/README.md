@@ -21,6 +21,9 @@ Executed through the bundled Playwright CLI wrapper against `127.0.0.1:5177` and
 local API at `127.0.0.1:8787`.
 
 - Landing, trust shared links and install handoff rendered from the public showroom DTO.
+- The real local candidate catalog rendered all 12 selected skills from
+  `/showroom/selected` on desktop and 390x844 mobile. Every card said review pending,
+  exposed no managed trust/activation action, and its classic-listing link resolved.
 - Viewports 1440x900, 1024x768, 768x1024, 390x844 and 360x800 all reported
   `scrollWidth === clientWidth`.
 - A unique task marker remained only in current React tab state and the copy field; it was
@@ -34,5 +37,5 @@ local API at `127.0.0.1:8787`.
 - Claude Code and Codex pages contained their exact marketplace/plugin commands and
   `npx --yes onlyharness@0.2.13 doctor --json`.
 
-The production default was intentionally not switched: the handoff requires live approved
-showroom data and live public smoke first.
+The production default was intentionally not switched: the selected shelf is discovery-only,
+and the handoff still requires live approved showroom data and live public smoke first.

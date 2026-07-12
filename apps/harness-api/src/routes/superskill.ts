@@ -37,6 +37,19 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
   const archiveBuilder = options.archiveBuilder ?? buildManagedArchive;
   const cacheControl = "public, max-age=60, stale-while-revalidate=300";
 
+  app.get("/showroom/selected", async (request, reply) => {
+    const query = request.query as { limit?: string | number; job?: string };
+    const parsedLimit = Number(query.limit ?? 12);
+    const limit = Number.isInteger(parsedLimit) && parsedLimit >= 1 && parsedLimit <= 12 ? parsedLimit : 12;
+    if (query.job && !capabilityIdSchema.safeParse(query.job).success) return publicNotFound(reply);
+    try {
+      reply.header("Cache-Control", cacheControl);
+      return catalog.selectedShowroomList(limit, query.job);
+    } catch (error) {
+      return catalogFailure(reply, error);
+    }
+  });
+
   app.get("/showroom/capabilities", async (request, reply) => {
     const query = request.query as { limit?: string | number; job?: string };
     const parsedLimit = Number(query.limit ?? 12);

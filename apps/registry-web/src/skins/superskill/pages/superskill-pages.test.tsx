@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { superskillRuntime } from "../../../generated/superskill-runtime";
-import { showroomFixture } from "../../../test/superskill-fixtures";
+import { selectedShowroomFixture, showroomFixture } from "../../../test/superskill-fixtures";
+import { CategoryPage } from "./CategoryPage";
 import { InstallHandoff } from "./InstallHandoff";
 import { Landing } from "./Landing";
 import { TrustPage } from "./TrustPage";
@@ -10,16 +11,21 @@ import { TrustPage } from "./TrustPage";
 afterEach(() => vi.unstubAllGlobals());
 
 test("landing renders a real public DTO and does not send task content", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [showroomFixture()], total: 1, generatedAt: "2026-07-12T00:00:00Z" }), { status: 200 }));
+  const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify({
+    items: url.includes("/showroom/selected") ? [selectedShowroomFixture()] : [showroomFixture()],
+    total: 1,
+    generatedAt: "2026-07-12T00:00:00Z"
+  }), { status: 200 })));
   vi.stubGlobal("fetch", fetchMock);
   render(<Landing />);
   expect(screen.getByText("Loading approved releases")).toBeTruthy();
-  expect(await screen.findByText("Market research")).toBeTruthy();
+  expect(await screen.findAllByText("Market research")).toHaveLength(2);
+  expect(await screen.findByText("Selected · review pending")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Task"), { target: { value: "prepare a market map" } });
   fireEvent.click(screen.getByRole("button", { name: "Continue in client" }));
   expect(await screen.findAllByDisplayValue("prepare a market map")).toHaveLength(2);
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("body");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock.mock.calls.every((call) => !("body" in call[1]))).toBe(true);
 });
 
 test("landing preserves an actionable API unavailable state", async () => {
@@ -27,6 +33,21 @@ test("landing preserves an actionable API unavailable state", async () => {
   render(<Landing />);
   expect(await screen.findByText("Showroom API unavailable")).toBeTruthy();
   expect(screen.getByText(/continue with the client setup below/i)).toBeTruthy();
+});
+
+test("empty approved category falls back to matching selected skills without managed install", async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify({
+    items: url.includes("/showroom/selected") ? [selectedShowroomFixture()] : [],
+    total: url.includes("/showroom/selected") ? 1 : 0,
+    generatedAt: "2026-07-12T00:00:00Z"
+  }), { status: 200 })));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<CategoryPage job="market-research" />);
+  expect(await screen.findByText("No approved releases in this category")).toBeTruthy();
+  expect(await screen.findAllByText("Selected · review pending")).toHaveLength(2);
+  expect(screen.getByText("Managed install pending review")).toBeTruthy();
+  expect(screen.queryByText("Client handoff")).toBeNull();
+  expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/showroom/selected?limit=12&job=market-research"), expect.anything());
 });
 
 test("revoked trust page stays visible and blocks handoff", async () => {

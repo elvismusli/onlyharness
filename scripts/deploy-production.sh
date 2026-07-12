@@ -163,7 +163,8 @@ REMOTE_HEALTH
 
 if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
-  curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node -e 'let body = ""; process.stdin.on("data", (chunk) => body += chunk).on("end", () => { const value = JSON.parse(body); if (!Array.isArray(value.items)) process.exit(1); });'
+  curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node scripts/check-superskill-showroom-response.mjs approved
+  curl -fsS "$PUBLIC_BASE_URL/api/showroom/selected?limit=12" | node scripts/check-superskill-showroom-response.mjs selected
   curl -fsS "$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
   curl -fsS "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive" -o /dev/null
   curl -fsS "$PUBLIC_BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'

@@ -61,6 +61,33 @@ test("public showroom is cached and has no activation controls", async () => {
   await app.close();
 });
 
+test("public selected shelf exposes candidates as unreviewed and blocked", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "superskill-selected-routes-"));
+  const candidate = approvedCapability({ trust: { status: "candidate" } });
+  const indexPath = path.join(root, "index.json");
+  writeFileSync(indexPath, JSON.stringify(managedIndex([candidate])));
+  const app = Fastify({ logger: false });
+  await registerSuperskillRoutes(app, { catalog: new ManagedCatalog({ indexPath }), enabled: false });
+
+  const response = await app.inject({ method: "GET", url: "/showroom/selected?limit=12&job=market-research" });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["cache-control"], "public, max-age=60, stale-while-revalidate=300");
+  assert.equal(response.json().total, 1);
+  assert.equal(response.json().items[0].status, "selected_unreviewed");
+  assert.deepEqual(response.json().items[0].managedHandoff, { status: "blocked", reason: "review_required" });
+  assert.equal(response.json().items[0].capability.trust.status, "candidate");
+  assert.equal("archive" in response.json().items[0], false);
+  assert.equal("preview" in response.json().items[0], false);
+  assert.equal("activationAllowed" in response.json().items[0], false);
+
+  const approvedOnly = await app.inject({ method: "GET", url: "/showroom/capabilities?limit=12" });
+  assert.equal(approvedOnly.statusCode, 200);
+  assert.equal(approvedOnly.json().items.length, 0);
+  const invalidJob = await app.inject({ method: "GET", url: "/showroom/selected?job=../secret" });
+  assert.equal(invalidJob.statusCode, 404);
+  await app.close();
+});
+
 test("protected recommendation auth matrix is 401, 403, 200", async () => {
   const { app } = await fixtureServer();
   const body = { task: "competitor research source-backed comparison", context: { client: "codex", os: "darwin", arch: "arm64", installedManagedRefs: [] } };

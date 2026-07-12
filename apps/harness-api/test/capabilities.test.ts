@@ -45,6 +45,32 @@ test("catalog loads approved list and exact digest-bound preview", () => {
   });
 });
 
+test("selected shelf returns only current candidate releases with blocked managed handoff", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "superskill-selected-"));
+  const approved = approvedCapability();
+  const candidate = approvedCapability({
+    id: "selected-writer",
+    release: {
+      ref: "harnesses/selected-writer",
+      artifactDigest: `sha256:${"d".repeat(64)}`
+    },
+    jobs: [{ id: "writing", intents: ["write"], outcomes: ["draft"], exclusions: ["publish"] }],
+    trust: { status: "candidate" }
+  });
+  const indexPath = path.join(root, "index.json");
+  writeFileSync(indexPath, JSON.stringify(managedIndex([approved, candidate])));
+  const catalog = new ManagedCatalog({ indexPath });
+
+  const selected = catalog.selectedShowroomList(12);
+  assert.equal(selected.total, 1);
+  assert.equal(selected.items[0]?.capability.id, candidate.id);
+  assert.equal(selected.items[0]?.status, "selected_unreviewed");
+  assert.deepEqual(selected.items[0]?.managedHandoff, { status: "blocked", reason: "review_required" });
+  assert.equal(catalog.selectedShowroomList(12, "market-research").items.length, 0);
+  assert.equal(catalog.selectedShowroomList(12, "writing").items.length, 1);
+  assert.equal(catalog.showroomList(12).items.some((item) => item.capability.id === candidate.id), false);
+});
+
 test("revocation overlay blocks approved list and survives index status", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "superskill-revoke-"));
   const capability = approvedCapability();

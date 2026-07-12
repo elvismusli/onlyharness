@@ -65,6 +65,7 @@ The independent reviewer found and the implementation fixed:
 - Pilot report is 0/20 distinct testers and 0/100 attempts.
 - Production Daylight default remains off until live approved showroom smoke succeeds.
 
-The dark deployment is live at `onlyharness.com`: health and the empty public showroom
-pass, while managed routes remain disabled. No tester token was issued and no candidate
-was promoted without real attestations.
+The dark deployment is live at `onlyharness.com`: health and the empty approved showroom
+pass, while managed routes remain disabled. The separate selected shelf may expose all 12
+candidates as review-pending discovery; no tester token was issued and no candidate was
+promoted without real attestations.

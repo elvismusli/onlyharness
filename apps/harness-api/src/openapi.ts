@@ -1838,6 +1838,54 @@ export const openapi = {
         responses: { "200": { description: "Approved public-safe capabilities" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Managed catalog is not ready" } }
       }
     },
+    "/showroom/selected": {
+      get: {
+        summary: "List selected unreviewed SuperSkill candidates",
+        description: "Public cached read-only shelf of current exact releases selected for review. Every item is explicitly unreviewed and blocked from managed handoff; this route does not approve, recommend, activate or expose archives.",
+        parameters: [queryParam("limit", "Maximum 12 selected exact releases"), queryParam("job", "Optional curated job id")],
+        responses: {
+          "200": {
+            description: "Public-safe selected candidate shelf",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    items: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          capability: { type: "object", description: "Current exact candidate capability DTO" },
+                          status: { type: "string", enum: ["selected_unreviewed"] },
+                          managedHandoff: {
+                            type: "object",
+                            properties: {
+                              status: { type: "string", enum: ["blocked"] },
+                              reason: { type: "string", enum: ["review_required"] }
+                            },
+                            required: ["status", "reason"],
+                            additionalProperties: false
+                          }
+                        },
+                        required: ["capability", "status", "managedHandoff"],
+                        additionalProperties: false
+                      }
+                    },
+                    total: { type: "integer", minimum: 0 },
+                    generatedAt: { type: "string", format: "date-time" }
+                  },
+                  required: ["items", "total", "generatedAt"],
+                  additionalProperties: false
+                }
+              }
+            }
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Managed catalog is not ready" }
+        }
+      }
+    },
     "/showroom/capabilities/{id}": {
       get: {
         summary: "Read a SuperSkill showroom capability",

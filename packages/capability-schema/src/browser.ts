@@ -227,6 +227,39 @@ export const showroomListResponseSchema = z.object({
   generatedAt: rfc3339Schema
 }).strict();
 
+const selectedShowroomCandidateSchema = managedCapabilitySchema.pick({
+  id: true,
+  type: true,
+  title: true,
+  summary: true,
+  jobs: true,
+  release: true,
+  source: true,
+  compatibility: true,
+  permissions: true,
+  contextCost: true,
+  trust: true
+}).extend({
+  trust: managedCapabilitySchema.shape.trust.extend({
+    status: z.literal("candidate")
+  }).strict()
+}).strict();
+
+export const selectedShowroomCapabilitySchema = z.object({
+  capability: selectedShowroomCandidateSchema,
+  status: z.literal("selected_unreviewed"),
+  managedHandoff: z.object({
+    status: z.literal("blocked"),
+    reason: z.literal("review_required")
+  }).strict()
+}).strict();
+
+export const selectedShowroomListResponseSchema = z.object({
+  items: z.array(selectedShowroomCapabilitySchema),
+  total: z.number().int().nonnegative(),
+  generatedAt: rfc3339Schema
+}).strict();
+
 const installedManagedRefSchema = z.object({
   ref: z.string().min(3),
   version: z.string().min(1),
@@ -336,6 +369,8 @@ export type RevocationTombstone = z.infer<typeof revocationTombstoneSchema>;
 export type ShowroomPreview = z.infer<typeof showroomPreviewSchema>;
 export type ShowroomCapability = z.infer<typeof showroomCapabilitySchema>;
 export type ShowroomListResponse = z.infer<typeof showroomListResponseSchema>;
+export type SelectedShowroomCapability = z.infer<typeof selectedShowroomCapabilitySchema>;
+export type SelectedShowroomListResponse = z.infer<typeof selectedShowroomListResponseSchema>;
 export type RecommendationRequest = z.infer<typeof recommendationRequestSchema>;
 export type RecommendationCandidate = z.infer<typeof recommendationCandidateSchema>;
 export type RecommendationResponse = z.infer<typeof recommendationResponseSchema>;

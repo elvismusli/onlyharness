@@ -12,6 +12,7 @@ const publicCopyFiles = [
   "apps/registry-web/src/skins/win98/detail.tsx",
   "apps/registry-web/src/core/useSocial.ts",
   "apps/registry-web/src/core/store.tsx",
+  "apps/registry-web/src/core/useSelectedShowroomCapabilities.ts",
   "apps/registry-web/src/skins/win98/windows.tsx"
 ] as const;
 
@@ -56,6 +57,10 @@ check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser sourc
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("localStorage"), "Task prompt must not persist task text");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("fetch("), "Task prompt must hand off locally instead of calling recommendation transport");
 check(docs["apps/registry-web/src/skins/superskill/pages/InstallHandoff.tsx"].includes("Copying a command only copies text"), "Install handoff must not turn copy into lifecycle state");
+check(docs["apps/registry-web/src/core/useSelectedShowroomCapabilities.ts"].includes("/showroom/selected"), "Selected skill shelf must use its separate public-safe endpoint");
+check(docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("not an approval, trust badge, or managed activation claim"), "Selected skill cards must keep review-pending status explicit");
+check(!docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("Client handoff"), "Selected skill cards must not expose managed client handoff");
+check(docs["README.md"].includes("selected_unreviewed") && docs["README.md"].includes("cannot be recommended or activated"), "README must separate selected discovery from approved managed use");
 check(docs["README.md"].includes("12 exact immutable **candidates**") && docs["README.md"].includes("published and verified through a clean `npx` install"), "README must keep current SuperSkill supply and published CLI state honest");
 
 console.log("Public copy check passed: remix/fork language stays honest");

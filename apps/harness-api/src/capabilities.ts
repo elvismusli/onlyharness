@@ -4,11 +4,13 @@ import {
   managedCapabilityIndexSchema,
   managedCapabilityHistorySchema,
   revocationTombstoneSchema,
+  selectedShowroomListResponseSchema,
   showroomPreviewSchema,
   type ManagedCapability,
   type ManagedCapabilityIndex,
   type ManagedCapabilityHistory,
   type RevocationTombstone,
+  type SelectedShowroomListResponse,
   type ShowroomCapability,
   type ShowroomListResponse
 } from "@harnesshub/capability-schema/browser";
@@ -101,6 +103,12 @@ export class ManagedCatalog {
     return this.index().capabilities.map((item) => this.withRevocationOverlay(item));
   }
 
+  listSelected(job?: string): ManagedCapability[] {
+    return this.index().capabilities
+      .map((item) => this.withRevocationOverlay(item))
+      .filter((item) => item.trust.status === "candidate" && (!job || item.jobs.some((candidate) => candidate.id === job)));
+  }
+
   detail(id: string): ManagedCapability | undefined {
     const capability = this.index().capabilities.find((item) => item.id === id);
     return capability ? this.withRevocationOverlay(capability) : undefined;
@@ -123,6 +131,19 @@ export class ManagedCatalog {
       total: capabilities.length,
       generatedAt: this.generatedAt()
     };
+  }
+
+  selectedShowroomList(limit: number, job?: string): SelectedShowroomListResponse {
+    const capabilities = this.listSelected(job);
+    return selectedShowroomListResponseSchema.parse({
+      items: capabilities.slice(0, limit).map((capability) => ({
+        capability,
+        status: "selected_unreviewed",
+        managedHandoff: { status: "blocked", reason: "review_required" }
+      })),
+      total: capabilities.length,
+      generatedAt: this.generatedAt()
+    });
   }
 
   showroomDetail(id: string, now = new Date()): ShowroomCapability | undefined {
