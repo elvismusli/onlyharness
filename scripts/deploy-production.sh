@@ -119,6 +119,7 @@ ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/producti
 for seed_dir in directories resources harness-versions superskill; do
   ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
 done
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES restart api"
 
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
@@ -147,10 +148,22 @@ REMOTE_CADDY
 fi
 
 ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES ps"
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch(\"http://127.0.0.1:8787/healthz\").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })'"
+ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' COMPOSE_FILES='$COMPOSE_FILES' bash -s" <<'REMOTE_HEALTH'
+set -euo pipefail
+cd "$SERVER_PATH"
+for _ in $(seq 1 45); do
+  if docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch("http://127.0.0.1:8787/healthz").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' 2>/dev/null; then
+    exit 0
+  fi
+  sleep 1
+done
+echo "Timed out waiting for production API health" >&2
+exit 1
+REMOTE_HEALTH
 
 if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
+  curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node -e 'let body = ""; process.stdin.on("data", (chunk) => body += chunk).on("end", () => { const value = JSON.parse(body); if (!Array.isArray(value.items)) process.exit(1); });'
   curl -fsS "$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
   curl -fsS "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive" -o /dev/null
   curl -fsS "$PUBLIC_BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
