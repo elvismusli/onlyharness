@@ -56,7 +56,7 @@ check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser sourc
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("localStorage"), "Task prompt must not persist task text");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("fetch("), "Task prompt must hand off locally instead of calling recommendation transport");
 check(docs["apps/registry-web/src/skins/superskill/pages/InstallHandoff.tsx"].includes("Copying a command only copies text"), "Install handoff must not turn copy into lifecycle state");
-check(docs["README.md"].includes("12 exact immutable **candidates**") && docs["README.md"].includes("not published yet"), "README must keep current SuperSkill supply and release blockers honest");
+check(docs["README.md"].includes("12 exact immutable **candidates**") && docs["README.md"].includes("published and verified through a clean `npx` install"), "README must keep current SuperSkill supply and published CLI state honest");
 
 console.log("Public copy check passed: remix/fork language stays honest");
 

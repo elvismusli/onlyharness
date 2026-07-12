@@ -93,7 +93,7 @@ npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-Resource catalog, `publish-resource`, workspace approval, workspace setup, workspace gate APIs, membership expiry handling, and the manual/provider-agnostic workspace subscription lifecycle are available in published `onlyharness@0.2.12` and through MCP/HTTP.
+Resource catalog, `publish-resource`, workspace approval, workspace setup, workspace gate APIs, membership expiry handling, the manual/provider-agnostic workspace subscription lifecycle, and SuperSkill managed commands are available in published `onlyharness@0.2.13`; server catalog flows are also available through MCP/HTTP.
 
 For local development, build the workspace bundle and run it directly:
 
@@ -127,7 +127,7 @@ SuperSkill is the task-first managed capability layer built on OnlyHarness. The 
 
 - Public, read-only: `GET /api/showroom/capabilities` and `GET /api/showroom/capabilities/{id}`. These routes never recommend, download, or activate files.
 - Internal Bearer only: `/api/recommendations`, `/api/capabilities/{id}`, exact release/archive routes, and managed lifecycle events. `HH_SUPERSKILL_TOKEN` belongs only in the CLI process environment.
-- Local managed CLI release: `onlyharness@0.2.13` is prepared and tested from a package tarball but is not published yet. Do not point a clean plugin install at published `0.2.12`; it has no managed commands.
+- Managed CLI release: `onlyharness@0.2.13` is published and verified through a clean `npx` install. Use that exact version for the SuperSkill activation contract.
 - Web: the isolated Daylight skin is available with `VITE_DEFAULT_SKIN=superskill`; legacy skins remain query-selectable. Production stays on the safe configured default until approved showroom data and live smoke exist.
 
 ```bash
@@ -138,7 +138,7 @@ npm run smoke:superskill
 npm run superskill:pilot-report
 ```
 
-Plugin sources live under `plugins/superskill` with one shared skill for Claude Code and Codex. Publishing npm or either marketplace is a separate rollout action.
+Plugin sources live under `plugins/superskill` with one shared skill for Claude Code and Codex. Marketplace publication and clean new-session plugin proof remain separate rollout actions.
 
 ## For agents
 

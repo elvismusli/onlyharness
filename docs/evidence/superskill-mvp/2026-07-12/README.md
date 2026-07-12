@@ -58,11 +58,13 @@ The independent reviewer found and the implementation fixed:
 
 ## Honest rollout blockers
 
-- npm currently publishes `onlyharness@0.2.12`; local managed runtime `0.2.13` must be
-  published and verified from a clean home before clean distribution is proven.
+- npm publishes `onlyharness@0.2.13`; version and doctor passed from a clean temporary
+  home. Marketplace publication and clean new-session plugin proof remain.
 - The generated managed catalog intentionally has 12 candidates and 0 approved releases
   until real scanner/diff, human-case and dual-client attestations are produced.
 - Pilot report is 0/20 distinct testers and 0/100 attempts.
 - Production Daylight default remains off until live approved showroom smoke succeeds.
 
-No commit, push, deployment, token issuance or production mutation was performed.
+The dark deployment is live at `onlyharness.com`: health and the empty public showroom
+pass, while managed routes remain disabled. No tester token was issued and no candidate
+was promoted without real attestations.
