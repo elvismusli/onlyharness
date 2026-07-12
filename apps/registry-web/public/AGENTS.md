@@ -88,7 +88,7 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --jso
 - Protected managed routes use a tester-specific `HH_SUPERSKILL_TOKEN` in the CLI Authorization header only. The browser must never receive or store this token or send the task to analytics, URLs, logs, or localStorage.
 - The current checked-in supply is 12 candidates and zero approved items. The approved lane stays empty until dual-client compatibility and human review attestations exist; the separate selected shelf may show those candidates only as review-pending discovery.
 - The shared SuperSkill plugin is bound to published CLI `onlyharness@0.2.13`, verified through a clean `npx` install. Marketplace publication and clean new-session plugin proof remain rollout gates.
-- Daylight is isolated as `skin=superskill`; production default remains configuration-gated until live showroom smoke.
+- Daylight is selected automatically on `superskill.sh` and `www.superskill.sh`; `onlyharness.com` keeps its configuration-gated safe default. An explicit `skin=` query still wins for testing.
 
 HTTP API base: `https://onlyharness.com/api`
 

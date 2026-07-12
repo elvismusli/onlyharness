@@ -1,4 +1,4 @@
-import { createContext, Suspense, useContext, useMemo, useState } from "react";
+import { createContext, Suspense, useContext, useEffect, useMemo, useState } from "react";
 
 import { SKINS, type SkinId } from "./registry";
 import { GlobalSkinSwitcher } from "./SkinSwitcher";
@@ -30,15 +30,21 @@ export function isSkinSwitcherEnabled(value: string | null | undefined): boolean
   return value === "true";
 }
 
+export function resolveHostnameDefaultSkin(hostname: string | null | undefined): SkinId | null {
+  const normalized = hostname?.trim().toLowerCase();
+  return normalized === "superskill.sh" || normalized === "www.superskill.sh" ? "superskill" : null;
+}
+
 /**
- * Resolve the initial skin by precedence: `?skin=` URL param, then
- * `localStorage["oh:skin"]`, then the default. Unknown ids at any level are
- * ignored so a stale/garbage value falls through to the default rather than
- * rendering nothing.
+ * Resolve the initial skin by precedence: `?skin=` URL param, a product-specific
+ * hostname, `localStorage["oh:skin"]`, then the configured default. Unknown ids
+ * are ignored so stale values fall through rather than rendering nothing.
  */
 function resolveInitialSkin(): SkinId {
   const fromQuery = asSkinId(new URLSearchParams(window.location.search).get(QUERY_KEY));
   if (fromQuery) return fromQuery;
+  const fromHostname = resolveHostnameDefaultSkin(window.location.hostname);
+  if (fromHostname) return fromHostname;
   let stored: string | null = null;
   try {
     stored = window.localStorage.getItem(STORAGE_KEY);
@@ -57,6 +63,10 @@ function resolveInitialSkin(): SkinId {
  */
 export function SkinProvider() {
   const [skin, setSkinState] = useState<SkinId>(resolveInitialSkin);
+
+  useEffect(() => {
+    document.title = skin === "superskill" ? "SuperSkill — exact skills for agent tasks" : "OnlyHarness 98";
+  }, [skin]);
 
   const value = useMemo<SkinContextValue>(
     () => ({

@@ -86,6 +86,7 @@ check(compose.includes("X402_ENABLED: ${X402_ENABLED:-false}"), "X402_ENABLED mu
 check(compose.includes("SUPERSKILL_ENABLED: ${SUPERSKILL_ENABLED:-false}"), "SUPERSKILL_ENABLED must default off");
 check(compose.includes("VITE_DEFAULT_SKIN: ${VITE_DEFAULT_SKIN:-win98}"), "production web must default to the win98 skin until rollout gates pass");
 check(compose.includes("VITE_ENABLE_SKIN_SWITCHER: ${VITE_ENABLE_SKIN_SWITCHER:-false}"), "production skin switcher must default off");
+check(compose.includes("https://superskill.sh,https://www.superskill.sh"), "production API CORS must allow both SuperSkill hostnames");
 check(compose.includes("HARNESS_PUBLIC_API_URL: ${HARNESS_PUBLIC_API_URL:-https://onlyharness.com/api}"), "HARNESS_PUBLIC_API_URL must default to the public API");
 check(compose.includes("HARNESS_CHECKOUT_BASE_URL: ${HARNESS_CHECKOUT_BASE_URL:-https://onlyharness.com/checkout}"), "HARNESS_CHECKOUT_BASE_URL must default to the public checkout route");
 check(envExample.includes("X402_ENABLED=false"), "production.env.example must keep x402 off by default");
@@ -107,6 +108,7 @@ check(deployProduction.includes('for seed_dir in directories resources'), "deplo
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1'), "deploy-production.sh must smoke seeded resources after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/showroom/selected?limit=12'), "deploy-production.sh must smoke selected SuperSkill intake cards after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/mcp'), "deploy-production.sh must smoke the public MCP endpoint");
+check(deployProduction.includes("superskill.sh, www.superskill.sh"), "deploy-production.sh must provision both SuperSkill hostnames in system Caddy");
 check(deployProduction.includes('"name":"search_resources"'), "deploy-production.sh must smoke the MCP resource search tool");
 check(deployProduction.includes('$PUBLIC_BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "deploy-production.sh must smoke checkout deep links after deploy");
 

@@ -25,18 +25,26 @@ vi.mock("./registry", () => {
   return {
     SKINS: [
       { id: "win98", label: "W98", icon: "🪟", mount: makeProbe("win98") },
-      { id: "modern", label: "Modern", icon: "✨", mount: makeProbe("modern") }
+      { id: "modern", label: "Modern", icon: "✨", mount: makeProbe("modern") },
+      { id: "superskill", label: "SuperSkill", icon: "S", mount: makeProbe("superskill") }
     ]
   };
 });
 
-import { isSkinSwitcherEnabled, resolveConfiguredDefaultSkin, SkinProvider, useSkin } from "./SkinProvider";
+import {
+  isSkinSwitcherEnabled,
+  resolveConfiguredDefaultSkin,
+  resolveHostnameDefaultSkin,
+  SkinProvider,
+  useSkin
+} from "./SkinProvider";
 
 holder.useSkin = useSkin;
 
 beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
+  document.title = "OnlyHarness 98";
 });
 
 afterEach(() => {
@@ -84,6 +92,20 @@ test("defaults to win98 with no param and no stored value", () => {
 test("configured default accepts a registered skin and fails safely for unknown values", () => {
   expect(resolveConfiguredDefaultSkin("modern")).toBe("modern");
   expect(resolveConfiguredDefaultSkin("unknown")).toBe("win98");
+});
+
+test("SuperSkill hostnames resolve to the Daylight skin without changing the OnlyHarness default", () => {
+  expect(resolveHostnameDefaultSkin("superskill.sh")).toBe("superskill");
+  expect(resolveHostnameDefaultSkin("WWW.SUPERSKILL.SH")).toBe("superskill");
+  expect(resolveHostnameDefaultSkin("onlyharness.com")).toBeNull();
+  expect(resolveHostnameDefaultSkin("localhost")).toBeNull();
+});
+
+test("uses the SuperSkill product title when the Daylight skin is active", () => {
+  window.history.replaceState(null, "", "/?skin=superskill");
+  render(<SkinProvider />);
+  expect(screen.getByTestId("active").textContent).toBe("superskill");
+  expect(document.title).toBe("SuperSkill — exact skills for agent tasks");
 });
 
 test("global skin switcher is hidden unless explicitly enabled", () => {

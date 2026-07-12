@@ -2,7 +2,7 @@
 	email admin@onlyharness.com
 }
 
-onlyharness.com, www.onlyharness.com {
+onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {
 	encode zstd gzip
 
 	handle /api/* {

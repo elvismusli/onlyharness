@@ -16,6 +16,7 @@ A native harness package is the strict, verified package format inside the broad
 ## Live MVP
 
 - App: [https://onlyharness.com](https://onlyharness.com)
+- SuperSkill Daylight: [https://superskill.sh](https://superskill.sh) (host-selected Daylight skin; the canonical API remains OnlyHarness)
 - API health: [https://onlyharness.com/api/healthz](https://onlyharness.com/api/healthz)
 - Registry API: [https://onlyharness.com/api/registry](https://onlyharness.com/api/registry)
 

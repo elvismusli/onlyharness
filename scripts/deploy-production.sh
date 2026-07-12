@@ -125,7 +125,7 @@ if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
 set -euo pipefail
 cat > /etc/caddy/sites/onlyharness.caddy <<CADDY
-onlyharness.com, www.onlyharness.com {
+onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {
 	encode zstd gzip
 
 	reverse_proxy 127.0.0.1:${ONLYHARNESS_WEB_PORT} {
