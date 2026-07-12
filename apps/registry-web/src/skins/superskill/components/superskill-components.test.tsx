@@ -38,7 +38,7 @@ test("selected card is visibly pending and offers no managed trust or activation
   expect(screen.getByText("Managed install pending review")).toHaveAttribute("aria-disabled", "true");
   expect(screen.queryByText("Client handoff")).toBeNull();
   expect(screen.queryByText("Trust report")).toBeNull();
-  expect(screen.getByRole("link", { name: "Open classic listing" })).toHaveAttribute("href", "/?skin=win98#/h/harnesses/deep-market-researcher");
+  expect(screen.getByRole("link", { name: "View selected skill" })).toHaveAttribute("href", "#/superskill/selected/harnesses/deep-market-researcher");
 });
 
 test("copy reports only Copied and never a lifecycle success", async () => {

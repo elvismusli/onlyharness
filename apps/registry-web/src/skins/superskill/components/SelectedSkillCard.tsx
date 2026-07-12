@@ -1,9 +1,10 @@
+import { buildSuperSkillRoute } from "../../../core/superskill-route";
 import type { SelectedShowroomCapability } from "../../../core/superskill-types";
 import { ShellLink } from "../primitives";
 
 export function SelectedSkillCard({ item }: { item: SelectedShowroomCapability }) {
   const { capability } = item;
-  const classicHref = classicHarnessHref(capability.release.ref);
+  const detailHref = selectedSkillHref(capability.release.ref);
 
   return (
     <article className="ss-skill-card ss-selected-card">
@@ -22,16 +23,16 @@ export function SelectedSkillCard({ item }: { item: SelectedShowroomCapability }
       </div>
       <div className="ss-pending-copy">Selected for exact review. This is not an approval, trust badge, or managed activation claim.</div>
       <div className="ss-card-actions">
-        <ShellLink href={classicHref}>Open classic listing</ShellLink>
+        <ShellLink href={detailHref}>View selected skill</ShellLink>
         <span className="ss-disabled-action" aria-disabled="true">Managed install pending review</span>
       </div>
     </article>
   );
 }
 
-function classicHarnessHref(ref: string): string {
+function selectedSkillHref(ref: string): string {
   const separator = ref.indexOf("/");
   const owner = separator > 0 ? ref.slice(0, separator) : "harnesses";
   const name = separator > 0 ? ref.slice(separator + 1) : ref;
-  return `/?skin=win98#/h/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  return buildSuperSkillRoute({ name: "selected", owner, skill: name });
 }

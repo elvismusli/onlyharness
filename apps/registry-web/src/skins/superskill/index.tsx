@@ -6,6 +6,7 @@ import { ShellLink } from "./primitives";
 import { CategoryPage } from "./pages/CategoryPage";
 import { InstallHandoff } from "./pages/InstallHandoff";
 import { Landing } from "./pages/Landing";
+import { SelectedSkillPage } from "./pages/SelectedSkillPage";
 import { TrustPage } from "./pages/TrustPage";
 import "./tokens.css";
 import "./motion.css";
@@ -16,6 +17,9 @@ const FONTS_HREF =
 export function SuperskillSkin() {
   const route = useSuperSkillRoute();
   useSuperskillEnvironment();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [route]);
   return (
     <div className="skin-superskill" data-skin="superskill">
       <header className="ss-nav"><div className="ss-nav-inner"><ShellLink className="ss-brand" href="#/superskill"><span aria-hidden>S</span><strong>SuperSkill</strong></ShellLink><nav aria-label="SuperSkill"><a href="#/superskill">Showroom</a><a href="/llms.txt">Docs</a><a href="/AGENTS.md">Agent guide</a></nav><ShellLink className="ss-link--primary" href="#/superskill">Get SuperSkill</ShellLink></div></header>
@@ -29,6 +33,7 @@ function renderRoute(route: ReturnType<typeof useSuperSkillRoute>) {
   switch (route.name) {
     case "landing": return <Landing />;
     case "capability": return <TrustPage capabilityId={route.capabilityId} />;
+    case "selected": return <SelectedSkillPage owner={route.owner} skill={route.skill} />;
     case "install": return <main className="ss-content ss-page"><InstallHandoff capabilityId={route.capabilityId} /></main>;
     case "category": return <CategoryPage job={route.job} />;
     case "not-found": return <main className="ss-content ss-page"><StatePanel kind="not-found" title="Page not found" reason="This SuperSkill hash route is not recognized." next="Return to the showroom." ><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;

@@ -6,6 +6,7 @@ describe("SuperSkill hash routes", () => {
   const routes: Array<Exclude<SuperSkillRoute, { name: "not-found" }>> = [
     { name: "landing" },
     { name: "capability", capabilityId: "market-research" },
+    { name: "selected", owner: "harnesses", skill: "deep-market-researcher" },
     { name: "install", capabilityId: "market-research" },
     { name: "category", job: "market-research" }
   ];
@@ -14,8 +15,17 @@ describe("SuperSkill hash routes", () => {
     expect(parseSuperSkillRoute(buildSuperSkillRoute(route))).toEqual(route);
   });
 
+  test("selected skill detail stays inside the SuperSkill route namespace", () => {
+    expect(parseSuperSkillRoute("#/superskill/selected/harnesses/deep-market-researcher")).toEqual({
+      name: "selected",
+      owner: "harnesses",
+      skill: "deep-market-researcher"
+    });
+  });
+
   test("fails closed for malformed and unknown routes", () => {
     expect(parseSuperSkillRoute("#/superskill/c/../install")).toEqual({ name: "not-found" });
     expect(parseSuperSkillRoute("#/superskill/c/%E0%A4%A")).toEqual({ name: "not-found" });
+    expect(parseSuperSkillRoute("#/superskill/selected/harnesses/../deep-market-researcher")).toEqual({ name: "not-found" });
   });
 });

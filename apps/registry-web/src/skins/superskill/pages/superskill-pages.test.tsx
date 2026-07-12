@@ -6,6 +6,7 @@ import { selectedShowroomFixture, showroomFixture } from "../../../test/superski
 import { CategoryPage } from "./CategoryPage";
 import { InstallHandoff } from "./InstallHandoff";
 import { Landing } from "./Landing";
+import { SelectedSkillPage } from "./SelectedSkillPage";
 import { TrustPage } from "./TrustPage";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -48,6 +49,30 @@ test("empty approved category falls back to matching selected skills without man
   expect(screen.getByText("Managed install pending review")).toBeTruthy();
   expect(screen.queryByText("Client handoff")).toBeNull();
   expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/showroom/selected?limit=12&job=market-research"), expect.anything());
+});
+
+test("selected skill detail stays in Daylight and keeps managed install blocked", async () => {
+  const item = selectedShowroomFixture();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    items: [item],
+    total: 1,
+    generatedAt: "2026-07-12T00:00:00Z"
+  }), { status: 200 })));
+  render(<SelectedSkillPage owner="harnesses" skill="deep-market-researcher" />);
+  expect(await screen.findByRole("heading", { name: "Market research" })).toBeTruthy();
+  expect(screen.getByText("Exact review is still required")).toBeTruthy();
+  expect(screen.getByText("Managed install pending review")).toHaveAttribute("aria-disabled", "true");
+  expect(screen.queryByText("Open classic listing")).toBeNull();
+});
+
+test("unknown selected skill fails closed inside Daylight", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    items: [selectedShowroomFixture()],
+    total: 1,
+    generatedAt: "2026-07-12T00:00:00Z"
+  }), { status: 200 })));
+  render(<SelectedSkillPage owner="harnesses" skill="missing-skill" />);
+  expect(await screen.findByText("Selected skill not found")).toBeTruthy();
 });
 
 test("revoked trust page stays visible and blocks handoff", async () => {
