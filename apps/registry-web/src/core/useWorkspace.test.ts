@@ -66,6 +66,35 @@ test("loadWorkspace reads the resource-first workspace catalog and members", asy
   expect(localStorage.getItem("hh:workspaceSlug")).toBe("acme");
 });
 
+test("createWorkspace creates once, then loads the owner catalog with the signed-in session", async () => {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/workspaces")) {
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toEqual({ Authorization: "Bearer member-jwt", "content-type": "application/json" });
+      expect(JSON.parse(String(init?.body))).toEqual({ slug: "tomorrow-team", name: "Tomorrow Team", type: "team", visibility: "invite_only" });
+      return responseJson({ workspace: { slug: "tomorrow-team" }, replay: false }, 201);
+    }
+    if (url.endsWith("/workspace")) return responseJson({
+      workspace: { slug: "tomorrow-team", name: "Tomorrow Team", type: "team", visibility: "invite_only", plan: "free" },
+      resources: [], items: [], collections: [], joinPolicies: [],
+      permissions: { totalResources: 0, hostedArchives: 0, unscanned: 0, riskTiers: {} }, audit: []
+    });
+    if (url.endsWith("/members")) return responseJson({ members: [{ user_id: "user-1", role: "owner", status: "active", source: "direct" }] });
+    if (url.endsWith("/subscriptions/me")) return responseJson({ subscriptions: [] });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", principalKey: "user-1" }));
+  act(() => {
+    result.current.setWorkspaceSlug("tomorrow-team");
+    result.current.setWorkspaceCreateName("Tomorrow Team");
+  });
+  await act(async () => { await result.current.createWorkspace(); });
+  expect(result.current.workspaceCatalog?.workspace.slug).toBe("tomorrow-team");
+  expect(result.current.workspaceMembers[0]?.role).toBe("owner");
+  expect(result.current.workspaceCreateStatus).toBe("Workspace @tomorrow-team created.");
+});
+
 test("private workspace state is bound to one principal and clears on deny or slug change", async () => {
   let denied = false;
   const fetchMock = vi.fn(async (url: string) => {
@@ -271,6 +300,8 @@ test("approveWorkspaceResource adds a public resource to a workspace approval li
       expect(init?.headers).toEqual({ Authorization: "Bearer workspace-token", "content-type": "application/json" });
       expect(JSON.parse(String(init?.body))).toEqual({
         resourceId: "onlyharness:harnesses/deep-market-researcher",
+        resourceVersion: "1.2.3",
+        artifactDigest: "a".repeat(64),
         name: "researcher",
         note: "approved for team"
       });
@@ -300,6 +331,8 @@ test("approveWorkspaceResource adds a public resource to a workspace approval li
     result.current.setWorkspaceToken("workspace-token");
     result.current.setWorkspaceCollectionSlug("sandbox");
     result.current.setWorkspaceApprovalResourceId("onlyharness:harnesses/deep-market-researcher");
+    result.current.setWorkspaceApprovalVersion("1.2.3");
+    result.current.setWorkspaceApprovalArtifactDigest("a".repeat(64));
     result.current.setWorkspaceApprovalName("researcher");
     result.current.setWorkspaceApprovalNote("approved for team");
   });
@@ -309,11 +342,47 @@ test("approveWorkspaceResource adds a public resource to a workspace approval li
   });
 
   expect(result.current.workspaceApprovalResourceId).toBe("");
+  expect(result.current.workspaceApprovalVersion).toBe("");
+  expect(result.current.workspaceApprovalArtifactDigest).toBe("");
   expect(result.current.workspaceApprovalName).toBe("");
   expect(result.current.workspaceApprovalNote).toBe("");
   expect(result.current.workspaceCollectionStatus).toContain("Approved @acme/researcher");
   expect(result.current.workspaceCatalog?.resources[0]?.id).toBe("@acme/researcher");
   expect(onFlash).toHaveBeenCalledWith("Workspace resource approved");
+});
+
+test("exact approval continuation stays prefilled while the target workspace loads", async () => {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith("/workspace")) return responseJson({
+      workspace: { slug: "acme", name: "Acme Agents", type: "company", visibility: "private", plan: "team" },
+      resources: [],
+      items: [],
+      collections: [{ slug: "approved", title: "Approved", visibility: "workspace", createdAt: "2026-07-08T00:00:00.000Z", updatedAt: "2026-07-08T00:00:00.000Z", items: [] }],
+      joinPolicies: [],
+      permissions: { totalResources: 0, hostedArchives: 0, unscanned: 0, riskTiers: { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0, UNKNOWN: 0 } },
+      audit: []
+    });
+    if (url.endsWith("/members")) return responseJson({ members: [] });
+    if (url.endsWith("/subscriptions")) return responseJson({ subscriptions: [] });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", principalKey: "user-1" }));
+  const digest = "b".repeat(64);
+  act(() => {
+    result.current.setWorkspaceApprovalResourceId("onlyharness:packages/research");
+    result.current.setWorkspaceApprovalVersion("2.0.0");
+    result.current.setWorkspaceApprovalArtifactDigest(digest);
+  });
+
+  await act(async () => {
+    await result.current.loadWorkspace();
+  });
+
+  expect(result.current.workspaceApprovalResourceId).toBe("onlyharness:packages/research");
+  expect(result.current.workspaceApprovalVersion).toBe("2.0.0");
+  expect(result.current.workspaceApprovalArtifactDigest).toBe(digest);
+  expect(result.current.workspaceCatalog?.workspace.slug).toBe("acme");
 });
 
 test("removeWorkspaceCollectionItem deletes an approval item and reloads the workspace", async () => {

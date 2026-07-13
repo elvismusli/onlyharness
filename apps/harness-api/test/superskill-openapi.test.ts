@@ -40,5 +40,23 @@ test("OpenAPI keeps public package publishing self-service but unreviewed", () =
   assert.match(operation.description, /confirmed signed-in user/);
   assert.match(operation.description, /does not require a managed recommendation grant/);
   assert.match(operation.description, /unreviewed metadata/);
+  assert.match(operation.description, /8 MiB/);
+  assert.ok("413" in operation.responses);
   assert.doesNotMatch(operation.description, /active superskill:managed access grant is required/);
+});
+
+test("OpenAPI exposes immutable release metadata on current and exact resource detail", () => {
+  const current = openapi.paths["/resources/{id}"].get.responses["200"].content["application/json"].schema;
+  const exact = openapi.paths["/resources/{id}/releases/{version}"].get.responses["200"].content["application/json"].schema;
+  assert.equal(current.$ref, "#/components/schemas/Resource");
+  assert.equal(exact.$ref, "#/components/schemas/ResourceExactRelease");
+  assert.equal(openapi.components.schemas.Resource.properties.release.$ref, "#/components/schemas/ResourceRelease");
+  assert.deepEqual(openapi.components.schemas.ResourceRelease.required, ["version", "artifactDigest", "archiveSize", "trust"]);
+  assert.deepEqual(openapi.components.schemas.ResourceExactRelease.allOf[1].required, ["release"]);
+  const exactArchive = openapi.paths["/resources/{id}/releases/{version}/archive"].get.responses;
+  assert.ok("ETag" in exactArchive["200"].headers);
+  assert.ok("X-OnlyHarness-Resource-Version" in exactArchive["200"].headers);
+  assert.ok("X-SuperSkill-Artifact-SHA256" in exactArchive["200"].headers);
+  assert.ok("409" in exactArchive);
+  assert.ok("503" in exactArchive);
 });

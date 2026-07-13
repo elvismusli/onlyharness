@@ -6,7 +6,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
-export const MCP_SERVER_VERSION = "0.2.17";
+export const MCP_SERVER_VERSION = "0.2.18";
 export const MCP_TOOL_NAMES = [
   "search_harnesses",
   "harness_detail",
@@ -72,7 +72,8 @@ const searchResourcesInputSchema = z.object({
   limit: z.number().int().min(1).max(20).default(10)
 });
 const resourceIdInputSchema = z.object({
-  id: z.string().describe("Exact mixed resource identifier.")
+  id: z.string().describe("Exact mixed resource identifier."),
+  version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/).optional().describe("Optional immutable hosted release version. When supplied, latest is never used.")
 });
 const pullInstructionsInputSchema = z.object({
   owner: z.string().default("harnesses"),
@@ -149,6 +150,12 @@ export type PublishResourcePackageHandler = (input: PublishResourcePackageInput,
 export type PullHarnessHandler = (input: { owner: string; name: string; version?: string }, authorization?: string) => Promise<unknown>;
 export type HarnessDetailHandler = (input: { owner: string; name: string }, authorization?: string) => Promise<unknown>;
 export type PullInstructionsHandler = (input: { owner: string; name: string }, authorization?: string) => Promise<unknown>;
+export type ResourceReleaseMetadata = {
+  version: string;
+  artifactDigest: string;
+  archiveSize: number;
+  trust: "unreviewed";
+};
 
 type BuildMcpServerOptions = {
   publishMarkdown: PublishMarkdownHandler;
@@ -156,6 +163,8 @@ type BuildMcpServerOptions = {
   pullHarness: PullHarnessHandler;
   harnessDetail: HarnessDetailHandler;
   pullInstructions: PullInstructionsHandler;
+  resourceRelease: (resourceId: string, version?: string) => { resource: resources.Resource; release: ResourceReleaseMetadata } | undefined;
+  resourceReleaseMetadata: (resourceId: string, version?: string) => ResourceReleaseMetadata | undefined;
 };
 
 let docsCache: { source: string; text: string; loadedAt: number } | undefined;
@@ -211,14 +220,20 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "resource_detail",
     {
       title: "Resource detail",
-      description: "Return provenance, trust, popularity and actions for one mixed resource.",
+      description: "Return provenance, trust, popularity and actions for one mixed resource. Pass version to bind a hosted immutable release; latest is never substituted for an explicit version.",
       annotations: readOnlyToolAnnotations,
       inputSchema: resourceIdInputSchema.shape
     },
-    async ({ id }) => mcpCall(async () => {
+    async ({ id, version }) => mcpCall(async () => {
       const counters = await fetchCountersMap();
-      const resource = resources.resourceDetail(id, registry.scanRegistry(counters));
-      return resource ?? { error: "Resource not found", status: 404, code: "RESOURCE_NOT_FOUND", id };
+      const catalogResource = resources.resourceDetail(id, registry.scanRegistry(counters));
+      if (!catalogResource) return { error: "Resource not found", status: 404, code: "RESOURCE_NOT_FOUND", id };
+      const metadata = options.resourceReleaseMetadata(catalogResource.id, version);
+      if (version && !metadata) return { error: "Resource release not found", status: 404, code: "RESOURCE_NOT_FOUND", id, version };
+      if (!metadata) return catalogResource;
+      const exact = options.resourceRelease(catalogResource.id, metadata.version);
+      if (!exact) return { error: "Hosted resource archive storage unavailable", status: 503, code: "ARCHIVE_STORAGE_UNAVAILABLE", id, version: metadata.version };
+      return { ...exact.resource, release: exact.release };
     })
   );
 
@@ -226,14 +241,20 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "resource_use_instructions",
     {
       title: "Resource use instructions",
-      description: "Return the best safe next action for a mixed resource. Hosted skills expose explicit-consent native client install commands; upstream-only resources stay open-only.",
+      description: "Return the best safe next action for a mixed resource. Pass version to bind an immutable hosted release. Hosted skills expose explicit-consent exact native client install commands; upstream-only resources stay open-only.",
       annotations: readOnlyToolAnnotations,
       inputSchema: resourceIdInputSchema.shape
     },
-    async ({ id }) => mcpCall(async () => {
+    async ({ id, version }) => mcpCall(async () => {
       const counters = await fetchCountersMap();
-      const resource = resources.resourceDetail(id, registry.scanRegistry(counters));
-      if (!resource) return { error: "Resource not found", status: 404, code: "RESOURCE_NOT_FOUND", id };
+      const catalogResource = resources.resourceDetail(id, registry.scanRegistry(counters));
+      if (!catalogResource) return { error: "Resource not found", status: 404, code: "RESOURCE_NOT_FOUND", id };
+      const metadata = options.resourceReleaseMetadata(catalogResource.id, version);
+      if (version && !metadata) return { error: "Resource release not found", status: 404, code: "RESOURCE_NOT_FOUND", id, version };
+      const exact = metadata ? options.resourceRelease(catalogResource.id, metadata.version) : undefined;
+      if (metadata && !exact) return { error: "Hosted resource archive storage unavailable", status: 503, code: "ARCHIVE_STORAGE_UNAVAILABLE", id, version: metadata.version };
+      const resource = exact?.resource ?? catalogResource;
+      const release = exact?.release;
       return {
         id: resource.id,
         title: resource.title,
@@ -242,7 +263,8 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         licenseStatus: resource.licenseStatus,
         sourceCheckedAt: resource.sourceCheckedAt,
         verifiedInstall: resource.trust.installVerifiedAt ?? null,
-        instructions: resourceInstructions(resource)
+        release: release ?? null,
+        instructions: resourceInstructions(resource, release)
       };
     })
   );
@@ -345,7 +367,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
   return server;
 }
 
-export function resourceInstructions(resource: resources.Resource): string[] {
+export function resourceInstructions(resource: resources.Resource, release?: ResourceReleaseMetadata): string[] {
   const lines: string[] = [];
   const install = resource.actions.find((action) => action.id === "install");
   const onlyHarness = resource.actions.find((action) => action.id === "open_onlyharness");
@@ -367,15 +389,23 @@ export function resourceInstructions(resource: resources.Resource): string[] {
   if (resource.installability === "open_only") {
     lines.push("This is an upstream resource listing in SuperSkill. Use the SuperSkill resource page first; upstream author/source remains authoritative.");
   }
-  if (archive && "url" in archive) {
+  if (archive && resource.trust.securityScan === "fail") {
+    lines.push("Download and installation are blocked because this exact release failed the static security scan.");
+  } else if (archive && "url" in archive) {
     lines.push(`Download hosted resource archive from SuperSkill: ${archive.url}`);
-  }
-  if (archive && resource.resourceType === "skill" && /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(resource.id)) {
-    const consentFlag = resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed";
-    lines.push("This hosted skill is a browse-catalog install, not a managed approval or activation.");
-    if (resource.trust.securityScan !== "pass") lines.push("Show the unreviewed/not-scanned trust state and ask explicit install consent before using --allow-unreviewed.");
-    lines.push(`Install for Codex after consent: npx --yes onlyharness@0.2.17 resources install ${resource.id} --target codex${consentFlag} --json`);
-    lines.push(`Install for Claude Code after consent: npx --yes onlyharness@0.2.17 resources install ${resource.id} --target claude-code${consentFlag} --json`);
+    if (resource.resourceType === "skill" && /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(resource.id)) {
+      const actionVersion = hostedResourceArchiveVersion(resource.id, archive.url);
+      const exactVersion = release?.version ?? actionVersion;
+      if (!exactVersion || (release && actionVersion !== release.version)) {
+      lines.push("Installation is blocked because the hosted archive action is not bound to an exact semantic version.");
+      } else {
+        const consentFlag = resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed";
+        lines.push("This hosted skill is a browse-catalog install, not a managed approval or activation.");
+        if (resource.trust.securityScan !== "pass") lines.push("Show the unreviewed/not-scanned trust state and ask explicit install consent before using --allow-unreviewed.");
+        lines.push(`Install for Codex after consent: npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resource.id} --version ${exactVersion} --target codex${consentFlag} --json`);
+        lines.push(`Install for Claude Code after consent: npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resource.id} --version ${exactVersion} --target claude-code${consentFlag} --json`);
+      }
+    }
   }
   if (open && "url" in open) {
     lines.push(`Upstream source: ${open.url}`);
@@ -384,6 +414,20 @@ export function resourceInstructions(resource: resources.Resource): string[] {
     lines.push("License is unknown; keep upstream attribution visible and do not sell, claim ownership, or present this as Verified install evidence.");
   }
   return lines;
+}
+
+function hostedResourceArchiveVersion(resourceId: string, value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.origin !== "https://superskill.sh" || url.search || url.hash) return undefined;
+    const prefix = `/api/resources/${encodeURIComponent(resourceId)}/releases/`;
+    if (!url.pathname.startsWith(prefix) || !url.pathname.endsWith("/archive")) return undefined;
+    const encoded = url.pathname.slice(prefix.length, -"/archive".length);
+    const version = decodeURIComponent(encoded);
+    return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version) && encodeURIComponent(version) === encoded ? version : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function mcpOk(value: unknown, status = 200) {

@@ -1292,6 +1292,9 @@ test("publish-resource sends a hosted agent package with scripts and skips unsaf
     await writeFile(path.join(root, "scripts/run.sh"), "#!/usr/bin/env bash\necho agent-tool\n");
     await writeFile(path.join(root, "commands/research.md"), "# Research Command\n\nRun the research command.\n");
     await writeFile(path.join(root, ".env"), "TOKEN=secret\n");
+    await mkdir(path.join(root, "docs"), { recursive: true });
+    await writeFile(path.join(root, "docs/secrets.md"), "# Innocent-looking but sensitive filename\n");
+    await writeFile(path.join(root, "scripts/private.json"), "{}\n");
     await writeFile(path.join(root, "dist/generated.js"), "console.log('skip');\n");
 
     const result = await runCli(["publish-resource", root, "--name", "agent-tool", "--type", "command_pack", "--token", "publish-token", "--json"], { HH_REGISTRY_URL: registryUrl });
@@ -1303,6 +1306,8 @@ test("publish-resource sends a hosted agent package with scripts and skips unsaf
     assert.ok(resourcePackagePublishPaths.includes("scripts/run.sh"));
     assert.ok(resourcePackagePublishPaths.includes("commands/research.md"));
     assert.ok(!resourcePackagePublishPaths.includes(".env"));
+    assert.ok(!resourcePackagePublishPaths.includes("docs/secrets.md"));
+    assert.ok(!resourcePackagePublishPaths.includes("scripts/private.json"));
     assert.ok(!resourcePackagePublishPaths.includes("dist/generated.js"));
     const body = JSON.parse(result.stdout) as { id?: string; resourceType?: string; archiveUrl?: string; hosted?: boolean; verified?: boolean };
     assert.equal(body.id, "onlyharness:packages/agent-tool");

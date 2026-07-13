@@ -485,6 +485,16 @@ export function activeReleaseMetadata(resourceId: string, version?: string): Pic
   };
 }
 
+export function activeReleaseDetail(resourceId: string, version?: string): { resource: Resource; release: Pick<ResourceRelease, "version" | "artifactDigest" | "archiveSize" | "trust"> } | undefined {
+  const row = activeRelease(resourceId, version);
+  if (!row || row.status !== "active") return undefined;
+  if (!resourceArchivePathForRead(row.resourceId, row.version)) return undefined;
+  return {
+    resource: row.resource,
+    release: { version: row.version, artifactDigest: row.artifactDigest, archiveSize: row.archiveSize, trust: row.trust }
+  };
+}
+
 export function resourceArchivePathForRead(resourceId: string, version?: string): string | undefined {
   const release = activeRelease(resourceId, version);
   // Legacy mirrors are never proof that SuperSkill hosts an upstream resource.
@@ -1069,10 +1079,18 @@ function sameRelease(release: ResourceRelease, input: CommitResourceReleaseInput
 function safeResourcePayload(resource: Resource): boolean {
   const parsed = parseRuntimeResource(resource);
   if (!parsed) return false;
+  // A static signature scan does not infer declared permissions or runtime
+  // capability risk. Only a failing scan establishes a critical block; clean
+  // or warning-only packages remain UNKNOWN until a separate capability review.
+  const scanRisk = { not_scanned: "UNKNOWN", pass: "UNKNOWN", warn: "UNKNOWN", fail: "CRITICAL" } as const;
+  const scan = parsed.trust.securityScan;
   return /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(parsed.id)
     && parsed.identity.scheme === "onlyharness"
     && parsed.identity.key === parsed.id.slice("onlyharness:".length)
-    && parsed.trust.securityScan === "not_scanned"
+    && parsed.trust.sourceChecked === true
+    && Boolean(scan ? scanRisk[scan] === parsed.trust.riskTier : false)
+    && parsed.trust.installVerifiedAt === undefined
+    && parsed.trust.gateVerifiedAt === undefined
     && parsed.workspaceApproval === undefined
     && !parsed.creatorName?.includes("@");
 }

@@ -10,6 +10,7 @@ describe("SuperSkill hash routes", () => {
     { name: "account" },
     { name: "publish" },
     { name: "workspaces" },
+    { name: "search" },
     { name: "resource", resourceId: "onlyharness:packages/my-skill" },
     { name: "capability", capabilityId: "market-research" },
     { name: "selected", owner: "harnesses", skill: "deep-market-researcher" },
@@ -38,6 +39,8 @@ describe("SuperSkill hash routes", () => {
     expect(buildSuperSkillRoute({ name: "publish" })).toBe("#/superskill/publish");
     expect(parseSuperSkillRoute("#/superskill/workspaces")).toEqual({ name: "workspaces" });
     expect(buildSuperSkillRoute({ name: "workspaces" })).toBe("#/superskill/workspaces");
+    expect(parseSuperSkillRoute("#/superskill/search?q=market+research&type=workflow")).toEqual({ name: "search", query: "market research", resourceType: "workflow" });
+    expect(buildSuperSkillRoute({ name: "search", query: "market research", resourceType: "workflow" })).toBe("#/superskill/search?q=market+research&type=workflow");
     expect(parseSuperSkillRoute("#/superskill/resources/onlyharness%3Apackages%2Fmy-skill")).toEqual({ name: "resource", resourceId: "onlyharness:packages/my-skill" });
   });
 
@@ -54,5 +57,7 @@ describe("SuperSkill hash routes", () => {
     expect(parseSuperSkillRoute("#/superskill/c/%E0%A4%A")).toEqual({ name: "not-found" });
     expect(parseSuperSkillRoute("#/superskill/selected/harnesses/../deep-market-researcher")).toEqual({ name: "not-found" });
     expect(parseSuperSkillRoute("#/superskill/resources/..%2Fsecret")).toEqual({ name: "not-found" });
+    expect(parseSuperSkillRoute("#/superskill/search?type=executable")).toEqual({ name: "not-found" });
+    expect(parseSuperSkillRoute(`#/superskill/search?q=${"a".repeat(201)}`)).toEqual({ name: "not-found" });
   });
 });

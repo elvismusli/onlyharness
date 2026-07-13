@@ -11,6 +11,9 @@ export type UseWorkspaceOptions = {
 };
 
 export type UseWorkspaceResult = {
+  workspaceCreateName: string;
+  setWorkspaceCreateName: (value: string) => void;
+  workspaceCreateStatus: string;
   workspaceSlug: string;
   setWorkspaceSlug: (value: string) => void;
   workspaceToken: string;
@@ -42,6 +45,10 @@ export type UseWorkspaceResult = {
   setWorkspaceCollectionSlug: (value: string) => void;
   workspaceApprovalResourceId: string;
   setWorkspaceApprovalResourceId: (value: string) => void;
+  workspaceApprovalVersion: string;
+  setWorkspaceApprovalVersion: (value: string) => void;
+  workspaceApprovalArtifactDigest: string;
+  setWorkspaceApprovalArtifactDigest: (value: string) => void;
   workspaceApprovalName: string;
   setWorkspaceApprovalName: (value: string) => void;
   workspaceApprovalNote: string;
@@ -49,6 +56,7 @@ export type UseWorkspaceResult = {
   workspaceCollectionStatus: string;
   workspaceSetupBundle: WorkspaceSetupBundle | undefined;
   workspaceSetupStatus: string;
+  createWorkspace: () => Promise<void>;
   loadWorkspace: () => Promise<void>;
   loadWorkspaceMembers: () => Promise<void>;
   loadWorkspaceJoinPolicies: () => Promise<void>;
@@ -64,10 +72,12 @@ export type UseWorkspaceResult = {
   workspaceHeadersForOwner: (owner: string) => Record<string, string>;
 };
 
-const MEMBER_ROLES: WorkspaceMember["role"][] = ["owner", "admin", "moderator", "publisher", "member", "viewer"];
+const INVITE_ROLES: WorkspaceMember["role"][] = ["member", "viewer"];
 type WorkspaceRequestGuard = { epoch: number; principal: string };
 
 export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult {
+  const [workspaceCreateName, setWorkspaceCreateName] = useState("");
+  const [workspaceCreateStatus, setWorkspaceCreateStatus] = useState("");
   const [workspaceSlug, setWorkspaceSlugState] = useState(() => localStorage.getItem("hh:workspaceSlug") ?? "acme");
   const [workspaceToken, setWorkspaceTokenState] = useState("");
   const [workspaceStatus, setWorkspaceStatus] = useState("");
@@ -90,6 +100,8 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
   const [workspaceSubscriptionStatus, setWorkspaceSubscriptionStatus] = useState("");
   const [workspaceCollectionSlug, setWorkspaceCollectionSlug] = useState("approved");
   const [workspaceApprovalResourceId, setWorkspaceApprovalResourceId] = useState("");
+  const [workspaceApprovalVersion, setWorkspaceApprovalVersion] = useState("");
+  const [workspaceApprovalArtifactDigest, setWorkspaceApprovalArtifactDigest] = useState("");
   const [workspaceApprovalName, setWorkspaceApprovalName] = useState("");
   const [workspaceApprovalNote, setWorkspaceApprovalNote] = useState("");
   const [workspaceCollectionStatus, setWorkspaceCollectionStatus] = useState("");
@@ -113,7 +125,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     clearPrivateWorkspaceState(true);
   }, [opts.principalKey, Boolean(opts.accessToken)]);
 
-  function clearPrivateWorkspaceState(clearToken: boolean) {
+  function clearPrivateWorkspaceState(clearToken: boolean, preserveApproval = false) {
     setWorkspaceBusy(false);
     setWorkspaceCatalog(undefined);
     setWorkspacePrincipal("");
@@ -124,9 +136,13 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     setWorkspaceGateCode("");
     setWorkspaceSubscriptions([]);
     setWorkspaceSubscriptionPolicyId("");
-    setWorkspaceApprovalResourceId("");
-    setWorkspaceApprovalName("");
-    setWorkspaceApprovalNote("");
+    if (!preserveApproval) {
+      setWorkspaceApprovalResourceId("");
+      setWorkspaceApprovalVersion("");
+      setWorkspaceApprovalArtifactDigest("");
+      setWorkspaceApprovalName("");
+      setWorkspaceApprovalNote("");
+    }
     setWorkspaceSetupBundle(undefined);
     setWorkspaceSetupStatus("");
     if (clearToken) setWorkspaceTokenState("");
@@ -152,14 +168,50 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     return authHeaders();
   }
 
+  async function createWorkspace() {
+    const slug = cleanSlug(workspaceSlug);
+    const name = workspaceCreateName.trim();
+    if (!slug || !name) return setWorkspaceCreateStatus("Workspace name and slug are required.");
+    if (!opts.accessToken && !opts.requireUser?.("Log on with a confirmed account before creating a workspace.")) return;
+    const epoch = ++requestEpoch.current;
+    const principal = principalRef.current;
+    clearPrivateWorkspaceState(false, true);
+    setWorkspaceBusy(true);
+    setWorkspaceCreateStatus("Creating workspace…");
+    try {
+      const response = await fetch(`${apiUrl}/workspaces`, {
+        method: "POST",
+        headers: { ...sessionHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ slug, name, type: "team", visibility: "invite_only" })
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; code?: string; workspace?: { slug?: string }; replay?: boolean };
+      if (requestEpoch.current !== epoch || principalRef.current !== principal || !principal) return;
+      if (!response.ok || !data.workspace?.slug) throw new Error([data.error ?? `Workspace create failed (${response.status})`, data.code].filter(Boolean).join(" · "));
+      setWorkspaceSlugState(data.workspace.slug);
+      localStorage.setItem("hh:workspaceSlug", data.workspace.slug);
+      setWorkspaceCreateStatus(data.replay ? `Workspace @${data.workspace.slug} already exists and is owned by this account.` : `Workspace @${data.workspace.slug} created.`);
+      opts.onFlash?.(data.replay ? `Loaded @${data.workspace.slug}` : `Created @${data.workspace.slug}`);
+      await loadWorkspaceFor(data.workspace.slug, { epoch, principal });
+    } catch (error) {
+      if (requestEpoch.current === epoch && principalRef.current === principal) setWorkspaceCreateStatus(error instanceof Error ? error.message : "Workspace create failed");
+    } finally {
+      if (requestEpoch.current === epoch && principalRef.current === principal) setWorkspaceBusy(false);
+    }
+  }
+
   async function loadWorkspace() {
     const slug = cleanSlug(workspaceSlug);
     if (!slug) return;
     const epoch = ++requestEpoch.current;
     const principal = principalRef.current;
-    clearPrivateWorkspaceState(false);
+    clearPrivateWorkspaceState(false, true);
     setWorkspaceBusy(true);
     setWorkspaceStatus("");
+    await loadWorkspaceFor(slug, { epoch, principal });
+  }
+
+  async function loadWorkspaceFor(slug: string, guard: WorkspaceRequestGuard) {
+    const { epoch, principal } = guard;
     try {
       const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/workspace`, {
         headers: authHeaders()
@@ -173,15 +225,15 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
       setWorkspaceJoinPolicies(catalog.joinPolicies ?? []);
       setWorkspaceSlugState(catalog.workspace.slug);
       localStorage.setItem("hh:workspaceSlug", catalog.workspace.slug);
-      const guard = { epoch, principal };
-      await loadWorkspaceMembersFor(catalog.workspace.slug, guard);
-      if (opts.accessToken) await loadWorkspaceSubscriptionsFor(catalog.workspace.slug, guard).catch(() => []);
-      if (!isCurrentGuard(guard)) return;
+      const loadGuard = { epoch, principal };
+      await loadWorkspaceMembersFor(catalog.workspace.slug, loadGuard);
+      if (opts.accessToken) await loadWorkspaceSubscriptionsFor(catalog.workspace.slug, loadGuard).catch(() => []);
+      if (!isCurrentGuard(loadGuard)) return;
       setWorkspaceStatus(`Loaded ${catalog.resources.length} workspace resources · ${catalog.audit.length} audit rows`);
       opts.onFlash?.(`Loaded @${catalog.workspace.slug}`);
     } catch (error) {
       if (requestEpoch.current === epoch && principalRef.current === principal) {
-        clearPrivateWorkspaceState(false);
+        clearPrivateWorkspaceState(false, true);
         setWorkspaceStatus(error instanceof Error ? error.message : "Workspace failed");
       }
     } finally {
@@ -219,18 +271,22 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
     if (!slug) return;
     if (!workspaceToken && !opts.accessToken && !opts.requireUser?.("Log on as a workspace admin or paste a workspace token to create an invite.")) return;
+    const maxUses = Number(workspaceInviteMaxUses);
+    if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 10_000) {
+      setWorkspaceInviteStatus("Maximum uses must be a whole number from 1 to 10000.");
+      return;
+    }
     const guard = currentGuard();
     setWorkspaceBusy(true);
     setWorkspaceInviteCode("");
     setWorkspaceInviteStatus("");
     try {
-      const maxUses = Number(workspaceInviteMaxUses);
       const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/invites`, {
         method: "POST",
         headers: { ...authHeaders(), "content-type": "application/json" },
         body: JSON.stringify({
           role: workspaceInviteRole,
-          maxUses: Number.isInteger(maxUses) && maxUses > 0 ? maxUses : null,
+          maxUses,
           expiresInSeconds: 60 * 60 * 24 * 7
         })
       });
@@ -374,7 +430,12 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     const slug = cleanSlug(workspaceCatalog?.workspace.slug ?? workspaceSlug);
     const collection = cleanCollectionSlug(workspaceCollectionSlug);
     const resourceId = workspaceApprovalResourceId.trim();
+    const resourceVersion = workspaceApprovalVersion.trim();
+    const artifactDigest = workspaceApprovalArtifactDigest.trim().toLowerCase();
     if (!slug || !collection || !resourceId) return setWorkspaceCollectionStatus("Workspace, collection and public resource ID are required.");
+    if ((resourceVersion || artifactDigest) && (!isReleaseVersion(resourceVersion) || !/^[a-f0-9]{64}$/.test(artifactDigest))) {
+      return setWorkspaceCollectionStatus("Exact approval requires a valid release version and SHA-256 digest.");
+    }
     if (!workspaceToken && !opts.accessToken && !opts.requireUser?.("Log on as a workspace admin or paste a workspace token to approve resources.")) return;
     const guard = currentGuard();
     setWorkspaceBusy(true);
@@ -385,6 +446,8 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
         headers: { ...authHeaders(), "content-type": "application/json" },
         body: JSON.stringify({
           resourceId,
+          resourceVersion: resourceVersion || undefined,
+          artifactDigest: artifactDigest || undefined,
           name: workspaceApprovalName.trim() || undefined,
           note: workspaceApprovalNote.trim() || undefined
         })
@@ -393,6 +456,8 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
       if (!isCurrentGuard(guard)) return;
       if (!response.ok) throw new Error(data.error ?? `Approval failed (${response.status})`);
       setWorkspaceApprovalResourceId("");
+      setWorkspaceApprovalVersion("");
+      setWorkspaceApprovalArtifactDigest("");
       setWorkspaceApprovalName("");
       setWorkspaceApprovalNote("");
       setWorkspaceCollectionStatus(`Approved ${data.resource?.id ?? resourceId} as ${data.approvalState ?? "workspace curation"}.`);
@@ -520,7 +585,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
   }
 
   function setWorkspaceInviteRole(value: WorkspaceMember["role"]) {
-    setWorkspaceInviteRoleState(MEMBER_ROLES.includes(value) ? value : "member");
+    setWorkspaceInviteRoleState(INVITE_ROLES.includes(value) ? value : "member");
   }
 
   function setWorkspaceGateSource(value: "telegram" | "discord" | "entitlement") {
@@ -537,6 +602,9 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
 
   return {
     workspaceSlug,
+    workspaceCreateName,
+    setWorkspaceCreateName,
+    workspaceCreateStatus,
     setWorkspaceSlug,
     workspaceToken,
     setWorkspaceToken,
@@ -567,6 +635,10 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     setWorkspaceCollectionSlug,
     workspaceApprovalResourceId,
     setWorkspaceApprovalResourceId,
+    workspaceApprovalVersion,
+    setWorkspaceApprovalVersion,
+    workspaceApprovalArtifactDigest,
+    setWorkspaceApprovalArtifactDigest,
     workspaceApprovalName,
     setWorkspaceApprovalName,
     workspaceApprovalNote,
@@ -574,6 +646,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceCollectionStatus,
     workspaceSetupBundle: privateStateVisible ? workspaceSetupBundle : undefined,
     workspaceSetupStatus,
+    createWorkspace,
     loadWorkspace,
     loadWorkspaceMembers,
     loadWorkspaceJoinPolicies,
@@ -597,6 +670,10 @@ function upsertSubscription(current: WorkspaceSubscription[], next: WorkspaceSub
 
 function cleanSlug(value: string): string {
   return value.replace(/^@/, "").trim().toLowerCase();
+}
+
+function isReleaseVersion(value: string): boolean {
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(value);
 }
 
 function cleanCollectionSlug(value: string): string {

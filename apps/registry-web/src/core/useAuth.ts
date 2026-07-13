@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 
-import { supabase } from "./supabase";
+import { supabase, supabaseAnonKey, supabaseUrl } from "./supabase";
 
 type AuthAction = "sign-in" | "sign-up" | "resend";
+export type SuperskillOAuthProvider = "google" | "github";
 
+export type SuperskillOAuthProviders = Record<SuperskillOAuthProvider, boolean>;
+
+const NO_OAUTH_PROVIDERS: SuperskillOAuthProviders = { google: false, github: false };
 export const RESEND_CONFIRMATION_REQUESTED_MESSAGE = "Confirmation email requested. For privacy, this does not prove that an account exists or that delivery succeeded. If nothing arrives, create the account again or try later.";
 
 export function authFailureMessage(error: unknown, action: AuthAction): string {
@@ -26,7 +30,10 @@ export type UseAuthResult = {
   closeLogon: () => void;
   authStatus: string;
   authBusy: boolean;
+  oauthProviders: SuperskillOAuthProviders;
+  oauthProvidersReady: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithOAuth: (provider: SuperskillOAuthProvider) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   resendConfirmation: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -52,12 +59,36 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
   const [logon, setLogon] = useState<{ open: boolean; note: string }>({ open: false, note: "" });
   const [authStatus, setAuthStatus] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [oauthProviders, setOauthProviders] = useState<SuperskillOAuthProviders>(NO_OAUTH_PROVIDERS);
+  const [oauthProvidersReady, setOauthProvidersReady] = useState(!supabaseUrl || !supabaseAnonKey);
 
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
     return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseUrl || !supabaseAnonKey) return;
+    const controller = new AbortController();
+    setOauthProvidersReady(false);
+    fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/settings`, {
+      headers: { apikey: supabaseAnonKey },
+      cache: "no-store",
+      credentials: "omit",
+      signal: controller.signal
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Auth provider discovery failed");
+      setOauthProviders(oauthProvidersFromSettings(await response.json()));
+    }).catch((error: unknown) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setOauthProviders(NO_OAUTH_PROVIDERS);
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setOauthProvidersReady(true);
+    });
+    return () => controller.abort();
   }, []);
 
   function openLogon(note = "") {
@@ -93,6 +124,29 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
     }
   }
 
+  async function signInWithOAuth(provider: SuperskillOAuthProvider) {
+    if (!supabase) return setAuthStatus("Auth backend is not configured.");
+    if (workspaceInviteFromContinuation(window.location.hash)) {
+      return setAuthStatus("For invite privacy, social sign-in is disabled on this link. Use email in this original tab, then return here after confirmation.");
+    }
+    if (!oauthProvidersReady || !oauthProviders[provider]) {
+      return setAuthStatus(`${provider === "google" ? "Google" : "GitHub"} sign-in is not enabled.`);
+    }
+    setAuthBusy(true);
+    setAuthStatus(`Opening ${provider === "google" ? "Google" : "GitHub"} sign-in…`);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: oauthRedirectUrl(window.location) }
+      });
+      if (error) setAuthStatus(authFailureMessage(error, "sign-in"));
+    } catch (error) {
+      setAuthStatus(authFailureMessage(error, "sign-in"));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   async function resendConfirmation(email: string) {
     if (!supabase) return setAuthStatus("Auth backend is not configured.");
     if (!email) return setAuthStatus("Email is required.");
@@ -102,7 +156,7 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
       const { error } = await supabase.auth.resend({
         type: "signup",
         email,
-        options: { emailRedirectTo: window.location.origin }
+        options: { emailRedirectTo: oauthRedirectUrl(window.location) }
       });
       if (error) return setAuthStatus(authFailureMessage(error, "resend"));
       setAuthStatus(RESEND_CONFIRMATION_REQUESTED_MESSAGE);
@@ -124,7 +178,7 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
         password,
         options: {
           data: { display_name: name || email.split("@")[0] },
-          emailRedirectTo: window.location.origin
+          emailRedirectTo: oauthRedirectUrl(window.location)
         }
       });
       if (error) return setAuthStatus(authFailureMessage(error, "sign-up"));
@@ -157,10 +211,94 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
     closeLogon,
     authStatus,
     authBusy,
+    oauthProviders,
+    oauthProvidersReady,
     signIn,
+    signInWithOAuth,
     signUp,
     resendConfirmation,
     signOut,
     requireUser
+  };
+}
+
+/** Keep OAuth returns on the SuperSkill surface and reject unrelated hashes. */
+export function safeSuperskillAuthContinuation(hash: string): string {
+  const match = hash.match(/^#\/superskill\/(account|workspaces)(?:\?([^#]*))?$/);
+  if (!match) return "#/superskill/account";
+  const route = match[1];
+  const input = new URLSearchParams(match[2] ?? "");
+  const output = new URLSearchParams();
+  const workspace = input.get("workspace")?.trim();
+  const invite = input.get("invite")?.trim();
+  const resource = input.get("resource")?.trim();
+  const approve = input.get("approve") === "1";
+  const resourceVersion = input.get("version")?.trim();
+  const artifactDigest = input.get("digest")?.trim().toLowerCase();
+  const exactApproval = Boolean(
+    approve
+    && resource
+    && validWorkspaceResourceRef(resource)
+    && resourceVersion
+    && isReleaseVersion(resourceVersion)
+    && artifactDigest
+    && /^[a-f0-9]{64}$/.test(artifactDigest)
+  );
+  if (workspace && /^[a-z][a-z0-9_-]{1,48}$/.test(workspace)) output.set("workspace", workspace);
+  if (invite && invite.length <= 256 && !/[\u0000-\u001f\u007f]/.test(invite)) output.set("invite", invite);
+  if (resource && validWorkspaceResourceRef(resource)) output.set("resource", resource);
+  if (exactApproval) {
+    output.set("approve", "1");
+    output.set("version", resourceVersion!);
+    output.set("digest", artifactDigest!);
+  }
+  const query = output.toString();
+  return `#/superskill/${route}${query ? `?${query}` : ""}`;
+}
+
+export function oauthRedirectUrl(
+  location: Pick<Location, "origin" | "hash">
+): string {
+  return `${location.origin}/${safeSuperskillExternalAuthContinuation(location.hash)}`;
+}
+
+/** External auth systems may receive redirectTo in requests and logs, so raw invite codes are stripped. */
+export function safeSuperskillExternalAuthContinuation(hash: string): string {
+  const continuation = safeSuperskillAuthContinuation(hash);
+  const queryStart = continuation.indexOf("?");
+  if (queryStart === -1) return continuation;
+  const params = new URLSearchParams(continuation.slice(queryStart + 1));
+  params.delete("invite");
+  const query = params.toString();
+  return `${continuation.slice(0, queryStart)}${query ? `?${query}` : ""}`;
+}
+
+function validWorkspaceResourceRef(value: string): boolean {
+  return value.length >= 2
+    && value.length <= 180
+    && /^[A-Za-z0-9@._:+/-]+$/.test(value)
+    && !value.includes("..")
+    && !value.startsWith("/")
+    && !value.endsWith("/");
+}
+
+function isReleaseVersion(value: string): boolean {
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(value);
+}
+
+export function workspaceInviteFromContinuation(hash: string): string | undefined {
+  const continuation = safeSuperskillAuthContinuation(hash);
+  const invite = new URLSearchParams(continuation.split("?", 2)[1] ?? "").get("invite")?.trim();
+  return invite && /^ohwi_[A-Za-z0-9_-]{20,80}$/.test(invite) ? invite : undefined;
+}
+
+export function oauthProvidersFromSettings(value: unknown): SuperskillOAuthProviders {
+  const body = value && typeof value === "object" ? value as { external?: unknown } : undefined;
+  const external = body?.external && typeof body.external === "object"
+    ? body.external as Record<string, unknown>
+    : undefined;
+  return {
+    google: external?.google === true,
+    github: external?.github === true
   };
 }

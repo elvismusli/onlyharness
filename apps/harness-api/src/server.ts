@@ -23,6 +23,7 @@ import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution,
 import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import * as resourceReleases from "./resource-releases.js";
+import { scanHarnessFiles } from "./security-scan.js";
 import * as workspaceSubscriptions from "./workspace-subscriptions.js";
 import * as workspaces from "./workspaces.js";
 import { registerSuperskillRoutes, resolveManagedAccess } from "./routes/superskill.js";
@@ -42,6 +43,8 @@ const orgsEnabled = process.env.ORGS_ENABLED === "true";
 const workspacesEnabled = process.env.WORKSPACES_ENABLED === "true";
 const hostedResourcePublishEnabled = process.env.HOSTED_RESOURCE_PUBLISH_ENABLED === "true";
 const resourceMetadataUrl = "https://superskill.sh/.well-known/oauth-protected-resource";
+const resourcePackageRouteBodyLimit = 12 * 1024 * 1024;
+const resourcePackageTotalFileBytes = 8 * 1024 * 1024;
 
 type ImportRequest = {
   name?: string;
@@ -97,11 +100,21 @@ type WorkspaceCollectionRequest = {
   visibility?: string;
 };
 
+type WorkspaceCreateRequest = {
+  slug?: string;
+  name?: string;
+  type?: string;
+  visibility?: string;
+  description?: string | null;
+};
+
 type WorkspaceResourceApproveRequest = {
   resourceId?: string;
   collection?: string;
   name?: string;
   note?: string;
+  resourceVersion?: string;
+  artifactDigest?: string;
 };
 
 type WorkspaceMemberRequest = {
@@ -351,7 +364,27 @@ app.get("/resources/:id", async (request, reply) => {
   const registryItems = registry.scanRegistry(counters);
   const resource = resources.resourceDetail(id, registryItems);
   if (!resource) return reply.code(404).send({ error: "Resource not found" });
-  return resource;
+  const release = resourceReleases.activeReleaseMetadata(resource.id);
+  if (!release) return resource;
+  const detail = resourceReleases.activeReleaseDetail(resource.id, release.version);
+  if (!detail) return reply.code(503).send({
+    error: "Hosted resource archive storage unavailable",
+    code: "ARCHIVE_STORAGE_UNAVAILABLE",
+    id: resource.id,
+    version: release.version,
+    next: "Retry later; no download action is returned without verified archive bytes."
+  });
+  return { ...detail.resource, release: detail.release };
+});
+
+app.get("/resources/:id/releases/:version", async (request, reply) => {
+  const { id, version } = request.params as { id: string; version: string };
+  if (!resourceReleases.isReleaseSemver(version)) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND" });
+  const release = resourceReleases.activeReleaseMetadata(id, version);
+  if (!release) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND" });
+  const detail = resourceReleases.activeReleaseDetail(id, version);
+  if (!detail) return reply.code(503).send({ error: "Hosted resource archive storage unavailable", code: "ARCHIVE_STORAGE_UNAVAILABLE", id, version, next: "Retry later; no download action is returned without verified archive bytes." });
+  return { ...detail.resource, release: detail.release };
 });
 
 app.get("/resources/:id/archive", async (request, reply) => {
@@ -366,16 +399,34 @@ app.get("/resources/:id/archive", async (request, reply) => {
 app.get("/resources/:id/releases/:version/archive", async (request, reply) => {
   const { id, version } = request.params as { id: string; version: string };
   if (!resourceReleases.isReleaseSemver(version)) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND" });
-  const counters = await fetchCountersMap();
-  const registryItems = registry.scanRegistry(counters);
-  const resource = resources.resourceDetail(id, registryItems);
-  if (!resource) return reply.code(404).send({ error: "Resource not found" });
-  return sendPublicResourceArchive(resource, version, reply);
+  const release = resourceReleases.activeReleaseMetadata(id, version);
+  if (!release) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND" });
+  const exact = resourceReleases.activeReleaseDetail(id, version);
+  if (!exact) return reply.code(503).send({ error: "Hosted resource archive storage unavailable", code: "ARCHIVE_STORAGE_UNAVAILABLE", id, version, next: "Retry later; the archive will not be served without verified bytes." });
+  return sendPublicResourceArchive(exact.resource, version, reply);
 });
 
 async function sendPublicResourceArchive(resource: resources.Resource, version: string | undefined, reply: FastifyReply) {
-  const archivePath = resources.resourceArchivePath(resource.id, version);
+  if (resource.trust.securityScan === "fail") {
+    return reply.code(409).send({
+      error: "Resource release failed the static security scan",
+      code: "RESOURCE_SCAN_FAILED",
+      id: resource.id,
+      next: "Do not download this release. Publish a corrected new version."
+    });
+  }
+  const release = resourceReleases.activeReleaseMetadata(resource.id, version);
+  const archivePath = release
+    ? resourceReleases.resourceArchivePathForRead(resource.id, release.version)
+    : resources.resourceArchivePath(resource.id, version);
   if (!archivePath) {
+    if (release) return reply.code(503).send({
+      error: "Hosted resource archive storage unavailable",
+      code: "ARCHIVE_STORAGE_UNAVAILABLE",
+      id: resource.id,
+      version: release.version,
+      next: "Retry later; the archive will not be served without verified bytes."
+    });
     if (version) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND", id: resource.id, version });
     return reply.code(409).send({
       error: "Resource archive not hosted",
@@ -384,7 +435,6 @@ async function sendPublicResourceArchive(resource: resources.Resource, version: 
       next: "This resource is listed in SuperSkill, but its files are not hosted by SuperSkill yet."
     });
   }
-  const release = resourceReleases.activeReleaseMetadata(resource.id, version);
   if (!release) return reply.code(503).send({
     error: "Hosted resource release metadata unavailable",
     code: "ARCHIVE_STORAGE_UNAVAILABLE",
@@ -408,6 +458,29 @@ async function sendPublicResourceArchive(resource: resources.Resource, version: 
     .header("x-superskill-artifact-sha256", release.artifactDigest)
     .send(createReadStream(archivePath));
 }
+
+app.post("/workspaces", async (request, reply) => {
+  if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace layer is not enabled" });
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  if (!user.confirmed) return reply.code(403).send({ error: "Confirmed account required", code: "EMAIL_CONFIRMATION_REQUIRED" });
+  const body = request.body && typeof request.body === "object" ? request.body as WorkspaceCreateRequest : {};
+  const result = await workspaces.createWorkspaceForUser({ ...body, userId: user.id });
+  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  await workspaces.appendWorkspaceAudit({
+    slug: result.workspace.slug,
+    action: result.replay ? "workspace_create_replayed" : "workspace_create_confirmed",
+    subject: eventSubject(user.id),
+    target: result.workspace.slug,
+    via: "workspace_member"
+  });
+  return reply.code(result.replay ? 200 : 201).send({
+    workspace: publicWorkspace(result.workspace),
+    member: result.member,
+    replay: result.replay,
+    next: `Create a bounded invite or publish a private resource under @${result.workspace.slug}.`
+  });
+});
 
 app.get("/workspaces/:slug/workspace", async (request, reply) => {
   if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace layer is not enabled" });
@@ -443,7 +516,6 @@ app.get("/workspaces/:slug/setup-bundle", async (request, reply) => {
   const query = request.query as { target?: string };
   const bundle = await workspaces.workspaceSetupBundle(auth.workspace, query.target);
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "setup_bundle_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: bundle.target, via: auth.via });
-  await recordEvent({ kind: "install", owner: auth.workspace.slug, repo: "setup-bundle", version: bundle.version, subject: workspaceAuthSubject(auth), target: `workspace_setup:${bundle.target}`, client: "api" });
   return {
     workspace: publicWorkspace(auth.workspace),
     bundle,
@@ -701,9 +773,10 @@ app.post("/workspaces/:slug/join", async (request, reply) => {
   const { slug } = request.params as { slug: string };
   const user = await requireUser(request, reply);
   if (!user) return;
+  if (!user.confirmed) return reply.code(403).send({ error: "Confirmed account required", code: "EMAIL_CONFIRMATION_REQUIRED" });
   const body = request.body && typeof request.body === "object" ? request.body as WorkspaceJoinRequest : {};
   const result = body.code
-    ? await workspaces.joinWorkspaceWithInvite(slug, { code: body.code, userId: user.id })
+    ? await workspaces.joinWorkspaceWithInvite(slug, { code: body.code, userId: user.id, email: user.email })
     : await workspaces.joinWorkspaceWithEmailDomain(slug, { userId: user.id, email: user.email });
   if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
   await workspaces.appendWorkspaceAudit({ slug: result.workspace.slug, action: "member_joined", subject: eventSubject(user.id), target: result.member.user_id, via: "workspace_member" });
@@ -735,16 +808,19 @@ app.post("/workspaces/:slug/resources/approve", async (request, reply) => {
   if (!body.resourceId) return reply.code(400).send({ error: "resourceId is required" });
   const counters = await fetchCountersMap();
   const registryItems = registry.scanRegistry(counters);
-  const publicResource = resources.resourceDetail(body.resourceId, registryItems);
-  if (!publicResource) {
+  const resolved = resolveWorkspaceApprovalResource(body, registryItems);
+  if (!resolved.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_approval_missing", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: body.resourceId, via: auth.via });
-    return reply.code(404).send({ error: "Public resource not found" });
+    return reply.code(resolved.status).send({ error: resolved.error, code: resolved.code });
   }
+  const publicResource = resolved.resource;
   const result = workspaces.approveWorkspacePublicResource(auth.workspace.slug, auth.workspace.name, publicResource, {
     collectionSlug: body.collection,
     name: body.name,
     note: body.note,
-    actor: auth.tokenName ?? auth.userId
+    actor: auth.tokenName ?? auth.userId,
+    pinnedVersion: resolved.pinnedVersion,
+    pinnedArchiveHash: resolved.pinnedArchiveHash
   });
   if (!result.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_approval_rejected", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: publicResource.id, via: auth.via });
@@ -862,16 +938,19 @@ app.post("/workspaces/:slug/collections/:collection/items", async (request, repl
   if (!body.resourceId) return reply.code(400).send({ error: "resourceId is required" });
   const counters = await fetchCountersMap();
   const registryItems = registry.scanRegistry(counters);
-  const publicResource = resources.resourceDetail(body.resourceId, registryItems);
-  if (!publicResource) {
+  const resolved = resolveWorkspaceApprovalResource(body, registryItems);
+  if (!resolved.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_missing", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: body.resourceId, via: auth.via });
-    return reply.code(404).send({ error: "Public resource not found" });
+    return reply.code(resolved.status).send({ error: resolved.error, code: resolved.code });
   }
+  const publicResource = resolved.resource;
   const result = workspaces.approveWorkspacePublicResource(auth.workspace.slug, auth.workspace.name, publicResource, {
     collectionSlug: collection,
     name: body.name,
     note: body.note,
-    actor: auth.tokenName ?? auth.userId
+    actor: auth.tokenName ?? auth.userId,
+    pinnedVersion: resolved.pinnedVersion,
+    pinnedArchiveHash: resolved.pinnedArchiveHash
   });
   if (!result.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "collection_item_rejected", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: publicResource.id, via: auth.via });
@@ -1440,7 +1519,7 @@ app.post("/orgs/:slug/imports/harness-dir", async (request, reply) => {
   return result;
 });
 
-app.post("/workspaces/:slug/imports/resource-package", async (request, reply) => {
+app.post("/workspaces/:slug/imports/resource-package", { bodyLimit: resourcePackageRouteBodyLimit }, async (request, reply) => {
   if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace publishing is not enabled" });
   const { slug } = request.params as { slug: string };
   const auth = await authorizeWorkspaceRequest(slug, request, ["resource:publish"]);
@@ -1530,7 +1609,7 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
   });
 });
 
-app.post("/mcp", async (request, reply) => {
+app.post("/mcp", { bodyLimit: resourcePackageRouteBodyLimit }, async (request, reply) => {
   const mcpBody = normalizeMcpToolCallBody(request.body);
   const preflight = await preflightMcpToolCall(mcpBody, headerValue(request.headers.authorization));
   if (preflight) {
@@ -1545,7 +1624,9 @@ app.post("/mcp", async (request, reply) => {
     publishResourcePackage: publishResourcePackageFromMcp,
     pullHarness: pullHarnessFromMcp,
     harnessDetail: harnessDetailFromMcp,
-    pullInstructions: pullInstructionsFromMcp
+    pullInstructions: pullInstructionsFromMcp,
+    resourceRelease: resourceReleases.activeReleaseDetail,
+    resourceReleaseMetadata: resourceReleases.activeReleaseMetadata
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
@@ -1643,7 +1724,7 @@ app.post("/imports/harness-dir", async (request, reply) => {
   return result;
 });
 
-app.post("/imports/resource-package", async (request, reply) => {
+app.post("/imports/resource-package", { bodyLimit: resourcePackageRouteBodyLimit }, async (request, reply) => {
   const auth = await authenticatePublicResourcePublish(headerValue(request.headers.authorization));
   if (!auth.user) return sendPublicResourcePublishAuthFailure(reply, auth);
   if (!hostedResourcePublishEnabled) return reply.code(503).send(publicResourcePublishDisabled());
@@ -2638,20 +2719,33 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
 }
 
 async function importResourcePackage(body: ResourcePackageImportRequest, user: AuthUser, options: ResourcePackageImportOptions = {}) {
+  if ([body.name, body.title, body.summary, body.resourceType, body.sourceUrl, body.version, body.idempotencyKey]
+    .some((value) => value !== undefined && typeof value !== "string")
+    || (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some((value) => typeof value !== "string")))
+    || (body.worksWith !== undefined && (!Array.isArray(body.worksWith) || body.worksWith.some((value) => typeof value !== "string")))) {
+    return { status: 400, error: "Package metadata has invalid field types", code: "VALIDATION_FAILED" };
+  }
   const files = Array.isArray(body.files) ? body.files : [];
   if (!files.length) return { status: 400, error: "files are required", code: "VALIDATION_FAILED" };
   if (files.length > 120) return { status: 400, error: "too many files", code: "VALIDATION_FAILED" };
 
   const temp = path.join(registry.workspaceRoot, "data", `.resource-package-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const safeFiles: Array<{ path: string; content: string }> = [];
+  let totalFileBytes = 0;
   try {
     for (const file of files) {
       const safe = safeResourcePackageFile(file);
       if (!safe.ok) return { status: safe.status, error: safe.error, code: "VALIDATION_FAILED" };
+      totalFileBytes += Buffer.byteLength(safe.content, "utf8");
+      if (totalFileBytes > resourcePackageTotalFileBytes) {
+        return { status: 413, error: "Package text files exceed the 8 MiB total limit", code: "VALIDATION_FAILED" };
+      }
       safeFiles.push({ path: safe.path, content: safe.content });
     }
     const canonicalValidation = resourceReleases.validateCanonicalResourceFiles(safeFiles);
     if (!canonicalValidation.ok) return { status: 400, error: canonicalValidation.error, code: "VALIDATION_FAILED" };
+    const securityScan = scanHarnessFiles(safeFiles, { includeCapabilitySignals: false });
+    if (securityScan.verdict === "fail") return securityScanFailure(securityScan);
     for (const file of safeFiles) {
       const target = path.join(temp, file.path);
       mkdirSync(path.dirname(target), { recursive: true });
@@ -2660,7 +2754,12 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
 
     const readme = safeFiles.find((file) => /(^|\/)readme\.md$/i.test(file.path));
     const requested = body.name ?? body.title ?? (readme ? firstHeading(readme.content) : undefined);
-    if (!requested) return { status: 400, error: "name or title is required", code: "VALIDATION_FAILED" };
+    if (typeof requested !== "string" || !requested) return { status: 400, error: "name or title is required", code: "VALIDATION_FAILED" };
+    const metadataScan = scanHarnessFiles([{
+      path: "package-metadata.json",
+      content: JSON.stringify({ name: body.name, title: body.title, summary: body.summary, sourceUrl: body.sourceUrl, tags: body.tags })
+    }], { includeCapabilitySignals: false });
+    if (metadataScan.verdict === "fail") return securityScanFailure(metadataScan);
     const name = slugify(requested);
     if (!safePublicHarnessName(name)) return { status: 400, error: "name is not publishable", code: "VALIDATION_FAILED" };
 
@@ -2669,7 +2768,7 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
     const summary = cleanSummary(body.summary) ?? `Hosted ${resourceType.replace(/_/g, " ")} package published to SuperSkill.`;
     const worksWith = normalizeWorksWith(body.worksWith, resourceType);
     const sourceUrl = cleanPublicUrl(body.sourceUrl);
-    if (body.sourceUrl && !sourceUrl) return { status: 400, error: "sourceUrl must be a public http(s) URL without credentials", code: "VALIDATION_FAILED" };
+    if (body.sourceUrl && !sourceUrl) return { status: 400, error: "sourceUrl must be a public http(s) URL without credentials, query or fragment", code: "VALIDATION_FAILED" };
 
     const workspaceSlug = options.workspaceSlug ? workspaces.cleanWorkspaceSlug(options.workspaceSlug) : undefined;
     const id = workspaceSlug ? workspaces.workspaceResourceId(workspaceSlug, name) : `onlyharness:packages/${name}`;
@@ -2713,7 +2812,7 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
     const now = new Date().toISOString();
     const signals = { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 };
     const canonicalUrl = workspaceSlug
-      ? `https://superskill.sh/#/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}`
+      ? `https://superskill.sh/#/superskill/workspaces?workspace=${encodeURIComponent(workspaceSlug)}&resource=${encodeURIComponent(name)}`
       : `https://superskill.sh/#/superskill/resources/${encodeURIComponent(id)}`;
     const archiveUrl = workspaceSlug
       ? `https://superskill.sh/api/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}/archive`
@@ -2741,7 +2840,7 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
       worksWith,
       upstreamPopularity: { sourceLabel: "SuperSkill hosted resource package" },
       onlyHarnessSignals: signals,
-      trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+      trust: { sourceChecked: true, securityScan: securityScan.verdict, riskTier: resourceRiskTier(securityScan.verdict) },
       actions: [
         { id: "open_onlyharness", label: "Use in SuperSkill", url: canonicalUrl },
         { id: "download_archive", label: "Download archive", url: archiveUrl },
@@ -2844,6 +2943,90 @@ function archiveStorageUnavailable() {
   } as const;
 }
 
+function resolveWorkspaceApprovalResource(
+  body: WorkspaceResourceApproveRequest,
+  registryItems: ReturnType<typeof registry.scanRegistry>
+):
+  | { ok: true; resource: resources.Resource; pinnedVersion?: string; pinnedArchiveHash?: string }
+  | { ok: false; status: number; error: string; code: string } {
+  const publicResource = body.resourceId ? resources.resourceDetail(body.resourceId, registryItems) : undefined;
+  if (!publicResource) return { ok: false, status: 404, error: "Public resource not found", code: "RESOURCE_NOT_FOUND" };
+
+  const hasVersion = body.resourceVersion !== undefined;
+  const hasDigest = body.artifactDigest !== undefined;
+  if (!hasVersion && !hasDigest) return { ok: true, resource: publicResource };
+  if (!hasVersion || !hasDigest) {
+    return {
+      ok: false,
+      status: 400,
+      error: "resourceVersion and artifactDigest must be provided together",
+      code: "RESOURCE_RELEASE_PIN_INCOMPLETE"
+    };
+  }
+
+  const version = typeof body.resourceVersion === "string" ? body.resourceVersion.trim() : "";
+  const artifactDigest = typeof body.artifactDigest === "string" ? body.artifactDigest.trim() : "";
+  if (!resourceReleases.isReleaseSemver(version) || !/^[a-f0-9]{64}$/.test(artifactDigest)) {
+    return {
+      ok: false,
+      status: 400,
+      error: "resourceVersion must be semantic version and artifactDigest must be a lowercase SHA-256 hex digest",
+      code: "INVALID_RESOURCE_RELEASE_PIN"
+    };
+  }
+
+  const metadata = resourceReleases.activeReleaseMetadata(publicResource.id, version);
+  if (!metadata) {
+    return {
+      ok: false,
+      status: 404,
+      error: "Exact public resource release not found",
+      code: "RESOURCE_RELEASE_NOT_FOUND"
+    };
+  }
+  const exact = resourceReleases.activeReleaseDetail(publicResource.id, version);
+  if (!exact) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Exact public resource archive storage unavailable",
+      code: "ARCHIVE_STORAGE_UNAVAILABLE"
+    };
+  }
+  if (exact.release.artifactDigest !== artifactDigest) {
+    return {
+      ok: false,
+      status: 409,
+      error: "artifactDigest does not match the exact public resource release",
+      code: "RESOURCE_RELEASE_DIGEST_MISMATCH"
+    };
+  }
+  return {
+    ok: true,
+    resource: exact.resource,
+    pinnedVersion: exact.release.version,
+    pinnedArchiveHash: exact.release.artifactDigest
+  };
+}
+
+function resourceRiskTier(verdict: "pass" | "warn" | "fail"): "UNKNOWN" | "CRITICAL" {
+  // static-v2 detects dangerous signatures; it does not infer complete
+  // permissions or runtime capability risk for an arbitrary uploaded package.
+  if (verdict !== "fail") return "UNKNOWN";
+  return "CRITICAL";
+}
+
+function securityScanFailure(scan: ReturnType<typeof scanHarnessFiles>) {
+  return {
+    status: 422,
+    error: "Package failed the static security scan and was not published",
+    code: "SECURITY_SCAN_FAILED",
+    failures: [...new Set(scan.findings
+      .filter((finding) => finding.severity === "fail")
+      .map((finding) => `${finding.rule}:${finding.file}`))]
+  } as const;
+}
+
 function filesystemErrorCode(error: unknown): string {
   if (!error || typeof error !== "object" || !("code" in error)) return "UNKNOWN";
   const code = String((error as { code?: unknown }).code ?? "UNKNOWN");
@@ -2909,6 +3092,7 @@ function safePublicHarnessName(name: string): boolean {
 }
 
 function safeAgentResourceRootFile(file: string): boolean {
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(?:md|mdx|txt|ya?ml)$/i.test(file) && !/^(?:secrets?|private|credentials?)(?:\.|$)/i.test(file)) return true;
   return [
     "harness.yaml",
     "harness.yml",
@@ -2936,7 +3120,8 @@ function deniedAgentResourcePath(file: string): boolean {
   const lower = file.toLowerCase();
   const segments = lower.split("/");
   if (segments.some((segment) => segment === ".env" || segment.startsWith(".env.") || segment === ".npmrc" || segment === ".pypirc" || segment === ".netrc")) return true;
-  if (segments.some((segment) => /^(id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts|secrets?|private|credentials?)$/.test(segment))) return true;
+  if (segments.some((segment) => /^(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts)(?:\.|$)/.test(segment)
+    || /^(?:secrets?|private|credentials?)(?:[._-]|$)/.test(segment))) return true;
   return /\.(pem|key|p12|pfx|crt|cer|sqlite|sqlite3|db|zip|tar|tgz|gz|png|jpe?g|gif|webp|pdf|mp4|mov|avi|dmg|pkg)$/i.test(file);
 }
 
@@ -2997,21 +3182,23 @@ function dedupeStrings(values: string[]): string[] {
 }
 
 function cleanTitle(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
   const clean = value?.trim().replace(/\s+/g, " ");
   return clean && clean.length <= 120 ? clean : undefined;
 }
 
 function cleanSummary(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
   const clean = value?.trim().replace(/\s+/g, " ");
   return clean && clean.length <= 500 ? clean : undefined;
 }
 
 function cleanPublicUrl(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+  if (typeof value !== "string" || !value) return undefined;
   try {
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol)) return undefined;
-    if (url.username || url.password) return undefined;
+    if (url.username || url.password || url.search || url.hash) return undefined;
     return url.toString();
   } catch {
     return undefined;

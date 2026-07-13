@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import { authFailureMessage, RESEND_CONFIRMATION_REQUESTED_MESSAGE, useAuth } from "./useAuth";
+import { authFailureMessage, oauthProvidersFromSettings, oauthRedirectUrl, RESEND_CONFIRMATION_REQUESTED_MESSAGE, safeSuperskillAuthContinuation, safeSuperskillExternalAuthContinuation, useAuth, workspaceInviteFromContinuation } from "./useAuth";
 
 // These assert pure hook state transitions that hold regardless of whether
 // Supabase is configured: `session` is null on the first synchronous render
@@ -47,4 +47,66 @@ test("opaque Supabase mailer failures become actionable instead of rendering an 
 test("resend success copy never claims account existence or delivery", () => {
   expect(RESEND_CONFIRMATION_REQUESTED_MESSAGE).toContain("does not prove that an account exists or that delivery succeeded");
   expect(RESEND_CONFIRMATION_REQUESTED_MESSAGE).not.toContain("email sent");
+});
+
+test("OAuth continuation is limited to safe SuperSkill account and workspace hashes", () => {
+  expect(safeSuperskillAuthContinuation("#/superskill/account?workspace=acme&invite=once%20only"))
+    .toBe("#/superskill/account?workspace=acme&invite=once+only");
+  expect(safeSuperskillAuthContinuation("#/superskill/workspaces?workspace=acme"))
+    .toBe("#/superskill/workspaces?workspace=acme");
+  expect(safeSuperskillAuthContinuation("#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch&approve=1"))
+    .toBe("#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch");
+  expect(safeSuperskillAuthContinuation(`#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch&version=1.2.3&digest=${"a".repeat(64)}&approve=1`))
+    .toBe(`#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch&approve=1&version=1.2.3&digest=${"a".repeat(64)}`);
+  expect(safeSuperskillAuthContinuation("#/superskill/account?workspace=../admin&invite=secret"))
+    .toBe("#/superskill/account?invite=secret");
+  expect(safeSuperskillAuthContinuation("#/legacy/account?invite=secret"))
+    .toBe("#/superskill/account");
+});
+
+test("approval continuation fails closed when its exact release tuple is missing or invalid", () => {
+  const resource = "onlyharness%3Apackages%2Fresearch";
+  expect(safeSuperskillAuthContinuation(`#/superskill/account?workspace=acme&resource=${resource}&approve=1`))
+    .toBe("#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch");
+  expect(safeSuperskillAuthContinuation(`#/superskill/account?workspace=acme&resource=${resource}&version=1.2.3&digest=bad&approve=1`))
+    .toBe("#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch");
+  expect(safeSuperskillAuthContinuation(`#/superskill/account?workspace=acme&resource=${resource}&version=latest&digest=${"a".repeat(64)}&approve=1`))
+    .toBe("#/superskill/account?workspace=acme&resource=onlyharness%3Apackages%2Fresearch");
+});
+
+test("external auth redirect strips the raw invite", () => {
+  expect(oauthRedirectUrl({
+    origin: "https://superskill.sh",
+    pathname: "/",
+    hash: "#/superskill/account?workspace=acme&invite=invite-once"
+  } as Location)).toBe("https://superskill.sh/#/superskill/account?workspace=acme");
+  expect(safeSuperskillExternalAuthContinuation("#/superskill/account?workspace=acme&invite=invite-once"))
+    .toBe("#/superskill/account?workspace=acme");
+});
+
+test("external auth never persists or transmits a raw invite", () => {
+  const invite = `ohwi_${"A".repeat(24)}`;
+  sessionStorage.clear();
+  const redirect = oauthRedirectUrl({
+    origin: "https://superskill.sh",
+    hash: `#/superskill/account?workspace=acme&invite=${invite}`
+  });
+
+  expect(redirect).toBe("https://superskill.sh/#/superskill/account?workspace=acme");
+  expect(redirect).not.toContain(invite);
+  expect(sessionStorage.length).toBe(0);
+  expect(workspaceInviteFromContinuation(`#/superskill/account?workspace=acme&invite=${invite}`)).toBe(invite);
+});
+
+test("invalid invite shapes never activate the private invite guard", () => {
+  expect(workspaceInviteFromContinuation("#/superskill/account?workspace=acme&invite=invite-once")).toBeUndefined();
+  expect(workspaceInviteFromContinuation("#/superskill/account?workspace=acme&invite=ohwi_short")).toBeUndefined();
+});
+
+test("OAuth provider discovery fails closed and enables only explicit live booleans", () => {
+  expect(oauthProvidersFromSettings({ external: { google: true, github: false } }))
+    .toEqual({ google: true, github: false });
+  expect(oauthProvidersFromSettings({ external: { google: "true", github: 1 } }))
+    .toEqual({ google: false, github: false });
+  expect(oauthProvidersFromSettings(null)).toEqual({ google: false, github: false });
 });

@@ -152,7 +152,7 @@ export function registerSuperSkillMcpCommand(program: Command, registry: Registr
 export async function runSuperSkillMcpServer(registry: string): Promise<void> {
   const resources = new Map<string, ResourceEntry>();
   const server = new Server(
-    { name: "superskill-local", version: "0.2.17" },
+    { name: "superskill-local", version: "0.2.18" },
     {
       capabilities: { tools: {}, resources: {} },
       instructions: "Use explicit routing, activation, keep and remove consent. Read only returned superskill:// activation resources."

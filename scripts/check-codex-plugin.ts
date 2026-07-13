@@ -44,7 +44,8 @@ for (const required of [
   "activation_mark_invoked",
   "activation_finish",
   "activation_keep",
-  "activation_remove"
+  "activation_remove",
+  "never downgrade an exact link to an id-only/latest call"
 ]) check(skill.includes(required), `Shared skill must use local MCP contract: ${required}`);
 check(!/npx[^\n]*(?:recommend|activation (?:start|mark|finish|keep|remove))/.test(skill), "Shared skill must not fall back to shell for managed lifecycle");
 check(!skill.includes("@latest"), "Shared skill must not use latest");

@@ -33,6 +33,7 @@ type HostedSkillResource = {
   upstreamRepo?: string;
   trust?: { securityScan?: "pass" | "warn" | "fail" | "not_scanned"; riskTier?: string };
   actions?: Array<{ id?: string; url?: string }>;
+  release?: { version?: string; artifactDigest?: string; archiveSize?: number; trust?: string };
 };
 
 type ArchiveFile = { path: string; content: Buffer };
@@ -52,6 +53,7 @@ export type HostedSkillInstallResult = {
 export async function installHostedCatalogSkill(input: {
   registryUrl: string;
   resourceId: string;
+  version?: string;
   client: SuperSkillClient;
   projectDir?: string;
   allowUnreviewed?: boolean;
@@ -62,7 +64,9 @@ export async function installHostedCatalogSkill(input: {
   const packageMatch = input.resourceId.match(PACKAGE_ID);
   if (!packageMatch) throw installError("Only SuperSkill-hosted public skill package IDs can be installed by this command.", "RESOURCE_NOT_INSTALLABLE", "Use the exact onlyharness:packages/<name> ID from resource_detail.");
   const name = packageMatch[1]!;
-  const detailUrl = new URL(`${registry.pathname.replace(/\/$/, "")}/resources/${encodeURIComponent(input.resourceId)}`, registry.origin);
+  if (input.version && !SEMVER.test(input.version)) throw installError("Catalog skill version is invalid.", "RESOURCE_NOT_INSTALLABLE", "Use the exact semantic version from the shared release page.");
+  const versionPath = input.version ? `/releases/${encodeURIComponent(input.version)}` : "";
+  const detailUrl = new URL(`${registry.pathname.replace(/\/$/, "")}/resources/${encodeURIComponent(input.resourceId)}${versionPath}`, registry.origin);
   const detailResponse = await safeFetch(input.fetchImpl ?? fetch, detailUrl);
   if (detailResponse.status === 404) throw new SuperSkillCliError("Catalog skill was not found.", 4, "RESOURCE_NOT_FOUND", "Run resources search again and use its exact resource ID.");
   if (!detailResponse.ok) throw installError(`Catalog detail returned HTTP ${detailResponse.status}.`, "RESOURCE_FETCH_FAILED", "Retry after SuperSkill is healthy.", 1);
@@ -72,6 +76,14 @@ export async function installHostedCatalogSkill(input: {
   if (resource.id !== input.resourceId || resource.resourceType !== "skill" || resource.upstreamRepo !== name || resource.installability === "open_only") {
     throw installError("Catalog resource is not a hosted installable skill.", "RESOURCE_NOT_INSTALLABLE", "Open the resource page and follow its upstream-only guidance instead.");
   }
+  const release = resource.release;
+  if (!release || typeof release.version !== "string" || !SEMVER.test(release.version)
+    || typeof release.artifactDigest !== "string" || !/^[a-f0-9]{64}$/.test(release.artifactDigest)
+    || !Number.isSafeInteger(release.archiveSize) || (release.archiveSize ?? 0) < 1 || (release.archiveSize ?? 0) > MAX_ARCHIVE_BYTES
+    || release.trust !== "unreviewed") {
+    throw installError("Catalog detail has no valid immutable release tuple.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  }
+  if (input.version && release.version !== input.version) throw installError("Catalog detail release does not match the requested version.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   const scan = resource.trust?.securityScan ?? "not_scanned";
   if (scan === "fail") throw installError("Catalog skill has a failing security scan.", "RESOURCE_BLOCKED", "Do not install this release.");
   if (scan !== "pass" && !input.allowUnreviewed) {
@@ -83,6 +95,7 @@ export async function installHostedCatalogSkill(input: {
   }
   const archiveAction = resource.actions?.find((action) => action.id === "download_archive" && typeof action.url === "string");
   const archive = exactArchiveUrl(registry, input.resourceId, archiveAction?.url);
+  if (archive.version !== release.version) throw installError("Catalog archive action does not match the immutable detail release.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   const archiveResponse = await safeFetch(input.fetchImpl ?? fetch, archive.url);
   if (!archiveResponse.ok) throw installError(`Catalog archive returned HTTP ${archiveResponse.status}.`, "RESOURCE_ARCHIVE_FAILED", "Retry the same exact release after SuperSkill is healthy.", archiveResponse.status === 404 ? 4 : 1);
   assertResponseUrl(archiveResponse, archive.url);
@@ -90,8 +103,10 @@ export async function installHostedCatalogSkill(input: {
   if (reportedVersion !== archive.version) throw installError("Catalog archive version header does not match its exact URL.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   const expectedDigest = archiveResponse.headers.get("x-superskill-artifact-sha256");
   if (!expectedDigest || !/^[a-f0-9]{64}$/.test(expectedDigest)) throw installError("Catalog archive has no valid immutable digest header.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  if (expectedDigest !== release.artifactDigest) throw installError("Catalog archive digest header does not match the immutable detail release.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   const bytes = Buffer.from(await archiveResponse.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_ARCHIVE_BYTES) throw installError("Catalog archive size is invalid.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  if (bytes.length !== release.archiveSize) throw installError("Catalog archive size does not match the immutable detail release.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   const files = readCanonicalTarGz(bytes);
   const skill = files.find((file) => file.path === "SKILL.md");
   if (!skill || !validUtf8(skill.content) || skillName(skill.content.toString("utf8")) !== name) {

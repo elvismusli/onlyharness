@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "SuperSkill API",
-    version: "0.2.17",
+    version: "0.2.18",
     description: "Find, verify and install reviewed AI-agent capabilities while preserving accounts, workspaces and exact release evidence."
   },
   servers: [
@@ -86,13 +86,34 @@ export const openapi = {
         responses: {
           "200": {
             description: "Resource archive tarball",
+            headers: {
+              ETag: { schema: { type: "string" }, description: "Quoted sha256:<artifactDigest> validator." },
+              "X-OnlyHarness-Resource-Version": { schema: { type: "string" }, description: "Exact immutable semantic version served." },
+              "X-SuperSkill-Artifact-SHA256": { schema: { type: "string", pattern: "^[a-f0-9]{64}$" }, description: "SHA-256 of the response archive bytes." }
+            },
             content: { "application/gzip": { schema: { type: "string", format: "binary" } } }
           },
           "404": { $ref: "#/components/responses/NotFound" },
           "409": {
-            description: "Resource is listed but archive is not hosted yet",
+            description: "Resource is listed but archive is not hosted, or the release failed its static security scan",
             content: { "application/json": { schema: { type: "object" } } }
-          }
+          },
+          "503": { description: "Active release metadata exists but verified archive storage is unavailable" }
+        }
+      }
+    },
+    "/resources/{id}/releases/{version}": {
+      get: {
+        summary: "Read an exact immutable hosted resource release",
+        description: "Returns the release-bound resource snapshot plus semantic version, artifact SHA-256, archive size and unreviewed trust state. This is the canonical share/install detail for a published version.",
+        parameters: [pathParam("id"), pathParam("version")],
+        responses: {
+          "200": {
+            description: "Exact resource release detail",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ResourceExactRelease" } } }
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Active release metadata exists but verified archive storage is unavailable; no download action is returned" }
         }
       }
     },
@@ -104,9 +125,16 @@ export const openapi = {
         responses: {
           "200": {
             description: "Exact resource release archive tarball",
+            headers: {
+              ETag: { schema: { type: "string" }, description: "Quoted sha256:<artifactDigest> validator." },
+              "X-OnlyHarness-Resource-Version": { schema: { type: "string" }, description: "Exact immutable semantic version served." },
+              "X-SuperSkill-Artifact-SHA256": { schema: { type: "string", pattern: "^[a-f0-9]{64}$" }, description: "SHA-256 of the response archive bytes." }
+            },
             content: { "application/gzip": { schema: { type: "string", format: "binary" } } }
           },
-          "404": { $ref: "#/components/responses/NotFound" }
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "Exact release failed its static security scan" },
+          "503": { description: "Active release metadata exists but verified archive storage is unavailable" }
         }
       }
     },
@@ -768,7 +796,7 @@ export const openapi = {
     "/imports/resource-package": {
       post: {
         summary: "Publish a hosted agent resource package",
-        description: "A confirmed signed-in user is required; a short-lived SuperSkill device bearer is also accepted for the CLI. Publishing is self-service and does not require a managed recommendation grant. Temporarily fails closed with 503 PUBLISH_DISABLED while HOSTED_RESOURCE_PUBLISH_ENABLED=false. When enabled after the durable archive migration, requires immutable semantic version and a 16-200 character idempotencyKey, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
+        description: "A confirmed signed-in user is required; a short-lived SuperSkill device bearer is also accepted for the CLI. Publishing is self-service and does not require a managed recommendation grant. Production enables the durable archive path; deployments still fail closed with 503 PUBLISH_DISABLED when HOSTED_RESOURCE_PUBLISH_ENABLED=false. Every publish requires an immutable semantic version and a 16-200 character idempotencyKey, accepts at most 8 MiB of bounded text file content, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -844,6 +872,22 @@ export const openapi = {
           "403": { $ref: "#/components/responses/Forbidden" },
           "409": { $ref: "#/components/responses/Conflict" },
           "413": { $ref: "#/components/responses/ValidationFailed" },
+          "422": {
+            description: "Static security scan failed before any durable mutation",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string" },
+                    code: { type: "string", const: "SECURITY_SCAN_FAILED" },
+                    failures: { type: "array", items: { type: "string", description: "Sanitized rule:file identifier without matched content" } }
+                  },
+                  required: ["error", "code", "failures"]
+                }
+              }
+            }
+          },
           "503": {
             description: "Hosted resource publishing is disabled or archive storage is unavailable. No package was published.",
             content: {
@@ -861,6 +905,40 @@ export const openapi = {
               }
             }
           }
+        }
+      }
+    },
+    "/workspaces": {
+      post: {
+        summary: "Create or replay a personal workspace bootstrap",
+        description: "Requires a confirmed signed-in account. Atomically creates an invite-only/private workspace, owner membership, invite policy and default approved collection. Repeating the same owner and slug is idempotent.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  slug: { type: "string", pattern: "^[a-z][a-z0-9_-]{1,48}$" },
+                  name: { type: "string", minLength: 1, maxLength: 120 },
+                  type: { type: "string", enum: ["company", "community", "team", "course", "agency", "chat"], default: "team" },
+                  visibility: { type: "string", enum: ["private", "invite_only"], default: "invite_only" },
+                  description: { type: ["string", "null"], maxLength: 500 }
+                },
+                required: ["slug", "name"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Idempotent replay of the caller's existing workspace" },
+          "201": { description: "Workspace created" },
+          "400": { $ref: "#/components/responses/ValidationFailed" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": { $ref: "#/components/responses/Conflict" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
         }
       }
     },
@@ -964,12 +1042,12 @@ export const openapi = {
       },
       post: {
         summary: "Add or update a workspace member",
-        description: "Requires member:write token scope or owner/admin member role. This is the direct admin path; invite join is separate.",
+        description: "Requires member:write token scope or owner/admin member role. This is the direct admin path; invite join is separate. Workspace ownership cannot be assigned or transferred through this endpoint, and the existing owner cannot be changed.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { type: "object", properties: { userId: { type: "string" }, role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] }, source: { type: "string" }, expiresAt: { type: ["string", "null"], format: "date-time", description: "Optional membership expiry. When expired, member-session reads and private archive access fail closed." } }, required: ["userId"] } } }
+          content: { "application/json": { schema: { type: "object", properties: { userId: { type: "string" }, role: { type: "string", enum: ["admin", "moderator", "publisher", "member", "viewer"] }, source: { type: "string" }, expiresAt: { type: ["string", "null"], format: "date-time", description: "Optional membership expiry. When expired, member-session reads and private archive access fail closed." } }, required: ["userId"] } } }
         },
         responses: {
           "201": {
@@ -979,14 +1057,15 @@ export const openapi = {
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
-          "404": { $ref: "#/components/responses/NotFound" }
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "Workspace owner assignment or mutation is forbidden through this endpoint" }
         }
       }
     },
     "/workspaces/{slug}/members/{userId}": {
       delete: {
         summary: "Remove a workspace member",
-        description: "Marks a member removed. Requires member:write token scope or owner/admin member role.",
+        description: "Marks a member removed. Requires member:write token scope or owner/admin member role. The workspace owner cannot be removed through this endpoint.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug"), pathParam("userId")],
         responses: {
@@ -996,7 +1075,8 @@ export const openapi = {
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
-          "404": { $ref: "#/components/responses/NotFound" }
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "Workspace owner removal is forbidden through this endpoint" }
         }
       }
     },
@@ -1008,7 +1088,7 @@ export const openapi = {
         parameters: [pathParam("slug")],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { type: "object", properties: { role: { type: "string", enum: ["owner", "admin", "moderator", "publisher", "member", "viewer"] }, maxUses: { type: "integer" }, expiresInSeconds: { type: "integer" }, email: { type: "string" } } } } }
+          content: { "application/json": { schema: { type: "object", properties: { role: { type: "string", enum: ["member", "viewer"] }, maxUses: { type: "integer", minimum: 1, maximum: 10000 }, expiresInSeconds: { type: "integer", minimum: 1, maximum: 31536000 }, email: { type: "string", format: "email" } } } } }
         },
         responses: {
           "201": {
@@ -1232,7 +1312,7 @@ export const openapi = {
     "/workspaces/{slug}/resources/approve": {
       post: {
         summary: "Approve a public marketplace resource into a workspace",
-        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is workspace-local curation and never a SuperSkill reviewed badge. Failed or missing security scans are blocked; warnings become approved_with_warning.",
+        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is workspace-local curation and never a SuperSkill reviewed badge. Failed or missing security scans are blocked; warnings become approved_with_warning. Pass resourceVersion and artifactDigest together to approve one immutable hosted public release; a missing release or digest mismatch fails closed.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -1245,7 +1325,9 @@ export const openapi = {
                   resourceId: { type: "string", description: "Scanned public resource id, for example onlyharness:harnesses/deep-market-researcher" },
                   collection: { type: "string", description: "Workspace collection slug; defaults to approved" },
                   name: { type: "string", description: "Optional workspace-local resource name" },
-                  note: { type: "string" }
+                  note: { type: "string" },
+                  resourceVersion: { type: "string", description: "Optional exact semantic version; requires artifactDigest" },
+                  artifactDigest: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Optional exact archive SHA-256; requires resourceVersion" }
                 },
                 required: ["resourceId"]
               }
@@ -1276,7 +1358,7 @@ export const openapi = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
-          "409": { $ref: "#/components/responses/BadRequest" }
+          "409": { $ref: "#/components/responses/Conflict" }
         }
       }
     },
@@ -1389,12 +1471,12 @@ export const openapi = {
     "/workspaces/{slug}/collections/{collection}/items": {
       post: {
         summary: "Approve a public resource into a workspace collection",
-        description: "Shortcut for adding a public marketplace resource to a named workspace collection. Uses the same trust snapshot and failed/missing-scan blocking rules as /workspaces/{slug}/resources/approve.",
+        description: "Shortcut for adding a public marketplace resource to a named workspace collection. Uses the same trust snapshot, exact-release pinning, and failed/missing-scan blocking rules as /workspaces/{slug}/resources/approve.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug"), pathParam("collection")],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { type: "object", properties: { resourceId: { type: "string" }, name: { type: "string" }, note: { type: "string" } }, required: ["resourceId"] } } }
+          content: { "application/json": { schema: { type: "object", properties: { resourceId: { type: "string" }, name: { type: "string" }, note: { type: "string" }, resourceVersion: { type: "string", description: "Optional exact semantic version; requires artifactDigest" }, artifactDigest: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Optional exact archive SHA-256; requires resourceVersion" } }, required: ["resourceId"] } } }
         },
         responses: {
           "201": {
@@ -1405,7 +1487,7 @@ export const openapi = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
-          "409": { $ref: "#/components/responses/BadRequest" }
+          "409": { $ref: "#/components/responses/Conflict" }
         }
       }
     },
@@ -1443,7 +1525,7 @@ export const openapi = {
     "/workspaces/{slug}/imports/resource-package": {
       post: {
         summary: "Publish a hosted resource package into a workspace",
-        description: "Requires WORKSPACES_ENABLED=true and a workspace token with resource:publish or legacy publish scope. Packages bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into workspace archive storage. This does not grant a public Verified harness badge.",
+        description: "Requires WORKSPACES_ENABLED=true and a workspace token with resource:publish or legacy publish scope. Packages at most 8 MiB of bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into workspace archive storage. This does not grant a public Verified harness badge.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -1506,7 +1588,8 @@ export const openapi = {
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
-          "404": { $ref: "#/components/responses/NotFound" }
+          "404": { $ref: "#/components/responses/NotFound" },
+          "413": { $ref: "#/components/responses/ValidationFailed" }
         }
       }
     },
@@ -1869,8 +1952,8 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "SuperSkill MCP server v0.2.17. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
-        "x-mcp-server-version": "0.2.17",
+        description: "SuperSkill MCP server v0.2.18. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
+        "x-mcp-server-version": "0.2.18",
         "x-mcp-tools": ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"],
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream. Tool-level failures remain protocol-successful JSON-RPC responses but carry result.isError=true and a stable result.structuredContent.code." }
@@ -2651,6 +2734,7 @@ export const openapi = {
               riskTier: { type: "string" }
             }
           },
+          release: { $ref: "#/components/schemas/ResourceRelease" },
           workspaceApproval: {
             type: "object",
             properties: {
@@ -2669,6 +2753,22 @@ export const openapi = {
           source: { type: "object" }
         },
         required: ["id", "identity", "title", "summary", "resourceType", "sourcePlatform", "canonicalUrl", "licenseStatus", "sourceCheckedAt", "sourceCheckStatus", "lastSeenAt", "installability", "tags", "worksWith", "popularityScore", "trust", "actions"]
+      },
+      ResourceRelease: {
+        type: "object",
+        properties: {
+          version: { type: "string" },
+          artifactDigest: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          archiveSize: { type: "integer", minimum: 1 },
+          trust: { type: "string", enum: ["unreviewed"] }
+        },
+        required: ["version", "artifactDigest", "archiveSize", "trust"]
+      },
+      ResourceExactRelease: {
+        allOf: [
+          { $ref: "#/components/schemas/Resource" },
+          { type: "object", properties: { release: { $ref: "#/components/schemas/ResourceRelease" } }, required: ["release"] }
+        ]
       },
       HarnessDetail: {
         type: "object",
@@ -3228,6 +3328,9 @@ export const openapi = {
           source: { type: "string", enum: ["workspace_private", "workspace_approved"] },
           hostedArchive: { type: "boolean" },
           sourceResourceId: { type: "string" },
+          pinnedVersion: { type: "string", description: "Immutable public release version approved by the workspace." },
+          pinnedArchiveHash: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Approved release archive SHA-256 digest." },
+          exactResourceUrl: { type: "string", format: "uri", description: "Human-facing URL for the exact approved release, never latest." },
           approvalState: { type: "string" },
           collections: { type: "array", items: { type: "string" } },
           detailCommand: { type: "string" },

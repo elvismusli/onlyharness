@@ -94,6 +94,20 @@ test("hosted skill instructions route explicit consent to the native client root
   const instructions = resourceInstructions(resource).join("\n");
   assert.match(instructions, /not a managed approval/);
   assert.match(instructions, /explicit install consent/);
-  assert.match(instructions, /onlyharness@0\.2\.17 resources install .* --target codex --allow-unreviewed --json/);
-  assert.match(instructions, /onlyharness@0\.2\.17 resources install .* --target claude-code --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.2\.18 resources install .* --target codex --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.2\.18 resources install .* --target claude-code --allow-unreviewed --json/);
+});
+
+test("failed hosted skill scan exposes no download or install instruction", () => {
+  const resource = {
+    id: "onlyharness:packages/blocked-skill",
+    resourceType: "skill",
+    installability: "importable",
+    trust: { sourceChecked: true, securityScan: "fail", riskTier: "CRITICAL" },
+    licenseStatus: "unknown",
+    actions: [{ id: "download_archive", label: "Download archive", url: "https://superskill.sh/api/resources/onlyharness%3Apackages%2Fblocked-skill/releases/0.1.0/archive" }]
+  } as Resource;
+  const instructions = resourceInstructions(resource, { version: "0.1.0", artifactDigest: "a".repeat(64), archiveSize: 123, trust: "unreviewed" }).join("\n");
+  assert.match(instructions, /Download and installation are blocked/);
+  assert.doesNotMatch(instructions, /resources install|Download hosted resource archive/);
 });

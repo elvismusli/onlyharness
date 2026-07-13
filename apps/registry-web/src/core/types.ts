@@ -407,7 +407,7 @@ export type WorkspaceSetupBundle = {
   version: string;
   generatedAt: string;
   target: "codex" | "claude-code" | string;
-  resources: Array<{ id: string; title: string; source: "workspace_private" | "workspace_approved"; hostedArchive: boolean }>;
+  resources: Array<{ id: string; title: string; source: "workspace_private" | "workspace_approved"; hostedArchive: boolean; sourceResourceId?: string; pinnedVersion?: string; pinnedArchiveHash?: string; exactResourceUrl?: string; installCommand?: string }>;
   configs: Array<{ path: string; content: string }>;
 };
 

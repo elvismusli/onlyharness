@@ -129,6 +129,7 @@ for (const required of [
   "activation_keep",
   "activation_remove",
   "agent_reported",
+  "never downgrade an exact link to an id-only/latest call",
   ".agents/skills",
   ".codex/harnesses"
 ]) check(superskillSkill.includes(required), `SuperSkill shared skill must include ${required}`);

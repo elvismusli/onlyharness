@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -59,7 +59,7 @@ try {
     capabilities: {},
     clientInfo: { name: "superskill-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.2.17") {
+  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.2.18") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 
@@ -501,11 +501,39 @@ async function smokeDurableResourcePublish() {
     if (longPathHttp.status !== 400 || longPathHttp.body.code !== "VALIDATION_FAILED") throw new Error(`Tar path bound HTTP guard failed: ${JSON.stringify(longPathHttp)}`);
     const longPathMcp = await rpc(911, "tools/call", { name: "publish_resource_package", arguments: longPathBody }, { Authorization: "Bearer local:durable-owner" }, baseUrl);
     assertToolError(longPathMcp, "VALIDATION_FAILED", 400);
+    for (const sensitivePath of ["docs/secrets.md", "prompts/credentials.txt", "src/private.json"]) {
+      const sensitiveBody = {
+        ...resourcePublishFixture(`sensitive-path-${sensitivePath.split("/")[0]}`),
+        files: [{ path: sensitivePath, content: "# Innocent-looking content\n" }]
+      };
+      const sensitiveHttp = await httpPublish(sensitiveBody, "Bearer local:durable-owner", baseUrl);
+      if (sensitiveHttp.status !== 400 || sensitiveHttp.body.code !== "VALIDATION_FAILED") {
+        throw new Error(`Sensitive nested basename was accepted: ${sensitivePath} ${JSON.stringify(sensitiveHttp)}`);
+      }
+    }
+    const oversizedBody = {
+      ...resourcePublishFixture("total-size-limit-proof"),
+      files: Array.from({ length: 33 }, (_, index) => ({
+        path: `docs/limit-${String(index).padStart(2, "0")}.md`,
+        content: `${"A".repeat(256 * 1024 - 1)}\n`
+      }))
+    };
+    const oversizedHttp = await httpPublish(oversizedBody, "Bearer local:durable-owner", baseUrl);
+    if (oversizedHttp.status !== 413 || oversizedHttp.body.code !== "VALIDATION_FAILED") {
+      throw new Error(`Package total byte limit was not enforced after route body parsing: ${JSON.stringify(oversizedHttp)}`);
+    }
     if (existsSync(env.RESOURCE_RELEASES_PATH!) || (existsSync(env.RESOURCE_IMPORT_ARCHIVE_DIR!) && readdirSync(env.RESOURCE_IMPORT_ARCHIVE_DIR!).length > 0)) {
       throw new Error("Rejected duplicate/tar-bound packages mutated release metadata or archives");
     }
 
-    const body = resourcePublishFixture("durable-resource-proof");
+    const body = {
+      ...resourcePublishFixture("durable-resource-proof"),
+      resourceType: "skill",
+      files: [{
+        path: "SKILL.md",
+        content: "---\nname: durable-resource-proof\ndescription: \"Clean immutable MCP release proof\"\n---\n\n# Durable resource proof\n"
+      }]
+    };
     const first = await httpPublish(body, "Bearer local:durable-owner", baseUrl) as {
       status: number;
       body: { resourceId?: string; version?: string; artifactDigest?: string; size?: number; trust?: string; replay?: boolean; archiveUrl?: string; code?: string };
@@ -513,6 +541,61 @@ async function smokeDurableResourcePublish() {
     if (first.status !== 201 || first.body.resourceId !== "onlyharness:packages/durable-resource-proof" || first.body.version !== "0.1.0"
       || !/^[a-f0-9]{64}$/.test(first.body.artifactDigest ?? "") || first.body.trust !== "unreviewed" || first.body.replay !== false) {
       throw new Error(`Durable publish contract failed: ${JSON.stringify(first)}`);
+    }
+    const cleanDetail = await fetch(`${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/releases/0.1.0`).then((response) => response.json()) as {
+      trust?: { securityScan?: string; riskTier?: string };
+      release?: { version?: string; artifactDigest?: string };
+    };
+    if (cleanDetail.trust?.securityScan !== "pass" || cleanDetail.trust.riskTier !== "UNKNOWN"
+      || cleanDetail.release?.version !== "0.1.0" || cleanDetail.release.artifactDigest !== first.body.artifactDigest) {
+      throw new Error(`Published clean package did not persist its exact static scan and release tuple: ${JSON.stringify(cleanDetail)}`);
+    }
+    const dangerousBody = {
+      ...resourcePublishFixture("dangerous-static-scan-proof"),
+      resourceType: "skill",
+      files: [{ path: "SKILL.md", content: "---\nname: dangerous-static-scan-proof\ndescription: \"Blocked static scan proof\"\n---\n\n# Dangerous\n\napi_key = \"sk-AAAAAAAAAAAAAAAAAAAAAAAA\"\n" }]
+    };
+    const releaseStateBeforeDangerous = existsSync(env.RESOURCE_RELEASES_PATH!) ? readFileSync(env.RESOURCE_RELEASES_PATH!, "utf8") : "";
+    const eventStateBeforeDangerous = existsSync(env.HARNESS_EVENTS_PATH!) ? readFileSync(env.HARNESS_EVENTS_PATH!, "utf8") : "";
+    const dangerous = await httpPublish(dangerousBody, "Bearer local:durable-owner", baseUrl) as {
+      status: number;
+      body: { resourceId?: string; version?: string; code?: string; failures?: string[] };
+    };
+    const dangerousWire = JSON.stringify(dangerous);
+    if (dangerous.status !== 422 || dangerous.body.code !== "SECURITY_SCAN_FAILED"
+      || !dangerous.body.failures?.includes("literal-secret:SKILL.md") || dangerousWire.includes("sk-AAAAAAAA")) {
+      throw new Error(`Dangerous package was not rejected with sanitized static scan evidence: ${dangerousWire}`);
+    }
+    const dangerousMcp = await rpc(914, "tools/call", {
+      name: "publish_resource_package",
+      arguments: dangerousBody
+    }, { Authorization: "Bearer local:durable-owner" }, baseUrl);
+    assertToolError(dangerousMcp, "VALIDATION_FAILED", 422);
+    if (JSON.stringify(dangerousMcp).includes("sk-AAAAAAAA")) throw new Error("MCP static scan failure echoed secret-like package content");
+    if ((existsSync(env.RESOURCE_RELEASES_PATH!) ? readFileSync(env.RESOURCE_RELEASES_PATH!, "utf8") : "") !== releaseStateBeforeDangerous
+      || (existsSync(env.HARNESS_EVENTS_PATH!) ? readFileSync(env.HARNESS_EVENTS_PATH!, "utf8") : "") !== eventStateBeforeDangerous) {
+      throw new Error("Rejected secret-like package mutated durable release or event state");
+    }
+    const dangerousDetailResponse = await fetch(`${baseUrl}/resources/${encodeURIComponent("onlyharness:packages/dangerous-static-scan-proof")}/releases/0.1.0`);
+    const dangerousArchiveResponse = await fetch(`${baseUrl}/resources/${encodeURIComponent("onlyharness:packages/dangerous-static-scan-proof")}/releases/0.1.0/archive`);
+    if (dangerousDetailResponse.status !== 404 || dangerousArchiveResponse.status !== 404) {
+      throw new Error("Rejected secret-like package remained visible through exact detail or archive routes");
+    }
+    const metadataSecret = "ghp_BBBBBBBBBBBBBBBBBBBBBBBB";
+    const metadataDangerous = await httpPublish({
+      ...resourcePublishFixture("dangerous-metadata-proof"),
+      title: `Leaked ${metadataSecret}`
+    }, "Bearer local:durable-owner", baseUrl);
+    const metadataDangerousWire = JSON.stringify(metadataDangerous);
+    if (metadataDangerous.status !== 422 || metadataDangerous.body.code !== "SECURITY_SCAN_FAILED" || metadataDangerousWire.includes(metadataSecret)) {
+      throw new Error(`Secret-like public metadata was not rejected safely: ${metadataDangerousWire}`);
+    }
+    const sensitiveSource = await httpPublish({
+      ...resourcePublishFixture("sensitive-source-url-proof"),
+      sourceUrl: "https://github.com/example/repo?signature=public-metadata-must-not-carry-this"
+    }, "Bearer local:durable-owner", baseUrl);
+    if (sensitiveSource.status !== 400 || sensitiveSource.body.code !== "VALIDATION_FAILED") {
+      throw new Error(`Sensitive source URL query was accepted: ${JSON.stringify(sensitiveSource)}`);
     }
     const replay = await httpPublish(body, "Bearer local:durable-owner", baseUrl) as { status: number; body: { artifactDigest?: string; replay?: boolean } };
     if (replay.status !== 200 || replay.body.replay !== true || replay.body.artifactDigest !== first.body.artifactDigest) {
@@ -523,6 +606,26 @@ async function smokeDurableResourcePublish() {
 
     if (!first.body.archiveUrl?.endsWith(`/releases/${first.body.version}/archive`)) throw new Error(`Publish response was not exact-version bound: ${JSON.stringify(first.body)}`);
     const v1ArchiveUrl = `${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/releases/0.1.0/archive`;
+    const v1ArchiveFile = readdirSync(env.RESOURCE_IMPORT_ARCHIVE_DIR!)
+      .map((file) => path.join(env.RESOURCE_IMPORT_ARCHIVE_DIR!, file))
+      .find((file) => sha256Bytes(readFileSync(file)) === first.body.artifactDigest);
+    if (!v1ArchiveFile) throw new Error("Could not locate exact v1 archive for storage-unavailable smoke");
+    const hiddenV1Archive = `${v1ArchiveFile}.missing`;
+    renameSync(v1ArchiveFile, hiddenV1Archive);
+    try {
+      const unavailableDetail = await fetch(`${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/releases/0.1.0`);
+      const unavailableDetailBody = await unavailableDetail.json() as { code?: string };
+      const unavailableArchive = await fetch(v1ArchiveUrl);
+      const unavailableArchiveBody = await unavailableArchive.json() as { code?: string };
+      const unavailableMcp = await rpc(917, "tools/call", { name: "resource_detail", arguments: { id: first.body.resourceId, version: "0.1.0" } }, {}, baseUrl);
+      if (unavailableDetail.status !== 503 || unavailableDetailBody.code !== "ARCHIVE_STORAGE_UNAVAILABLE"
+        || unavailableArchive.status !== 503 || unavailableArchiveBody.code !== "ARCHIVE_STORAGE_UNAVAILABLE") {
+        throw new Error(`Missing exact archive was mislabeled as downloadable/not-found: ${unavailableDetail.status} ${JSON.stringify(unavailableDetailBody)} / ${unavailableArchive.status} ${JSON.stringify(unavailableArchiveBody)}`);
+      }
+      assertToolError(unavailableMcp, "ARCHIVE_STORAGE_UNAVAILABLE", 503);
+    } finally {
+      renameSync(hiddenV1Archive, v1ArchiveFile);
+    }
     const before = await fetch(v1ArchiveUrl);
     const beforeBytes = Buffer.from(await before.arrayBuffer());
     if (!before.ok || sha256Bytes(beforeBytes) !== first.body.artifactDigest
@@ -532,10 +635,55 @@ async function smokeDurableResourcePublish() {
       throw new Error("Published archive digest metadata did not match response");
     }
 
-    const v2Body = { ...body, version: "0.2.0", idempotencyKey: "durable-resource-proof-v2-key", files: [{ path: "README.md", content: "# durable-resource-proof v2\n\nImmutable second release.\n" }] };
+    const v2Body = {
+      ...body,
+      version: "0.2.0",
+      idempotencyKey: "durable-resource-proof-v2-key",
+      files: [{
+        path: "SKILL.md",
+        content: "---\nname: durable-resource-proof\ndescription: \"Clean immutable MCP release proof v2\"\n---\n\n# Durable resource proof v2\n"
+      }]
+    };
     const second = await httpPublish(v2Body, "Bearer local:durable-owner", baseUrl) as { status: number; body: { artifactDigest?: string; version?: string; archiveUrl?: string } };
     if (second.status !== 201 || second.body.version !== "0.2.0" || second.body.artifactDigest === first.body.artifactDigest || !second.body.archiveUrl?.endsWith("/releases/0.2.0/archive")) {
       throw new Error(`Second immutable version publish failed: ${JSON.stringify(second)}`);
+    }
+    const exactMcpDetail = await rpc(912, "tools/call", {
+      name: "resource_detail",
+      arguments: { id: first.body.resourceId }
+    }, {}, baseUrl);
+    const exactMcpDetailText = exactMcpDetail.result?.content?.[0]?.text ?? "";
+    if (!exactMcpDetailText.includes(`"version": "0.2.0"`) || !exactMcpDetailText.includes(`"artifactDigest": "${second.body.artifactDigest}"`)) {
+      throw new Error(`MCP resource_detail did not expose the active exact release tuple: ${JSON.stringify(exactMcpDetail)}`);
+    }
+    const exactMcpInstructions = await rpc(913, "tools/call", {
+      name: "resource_use_instructions",
+      arguments: { id: first.body.resourceId }
+    }, {}, baseUrl);
+    const exactMcpInstructionsText = exactMcpInstructions.result?.content?.[0]?.text ?? "";
+    if (!exactMcpInstructionsText.includes(`"artifactDigest": "${second.body.artifactDigest}"`)
+      || !exactMcpInstructionsText.includes("resources install onlyharness:packages/durable-resource-proof --version 0.2.0 --target codex")) {
+      throw new Error(`MCP resource_use_instructions was not exact-version pinned: ${JSON.stringify(exactMcpInstructions)}`);
+    }
+    const historicalMcpDetail = await rpc(915, "tools/call", {
+      name: "resource_detail",
+      arguments: { id: first.body.resourceId, version: "0.1.0" }
+    }, {}, baseUrl);
+    const historicalMcpDetailText = historicalMcpDetail.result?.content?.[0]?.text ?? "";
+    if (!historicalMcpDetailText.includes(`"version": "0.1.0"`)
+      || !historicalMcpDetailText.includes(`"artifactDigest": "${first.body.artifactDigest}"`)
+      || historicalMcpDetailText.includes(`"artifactDigest": "${second.body.artifactDigest}"`)) {
+      throw new Error(`MCP exact historical resource_detail drifted to latest: ${JSON.stringify(historicalMcpDetail)}`);
+    }
+    const historicalMcpInstructions = await rpc(916, "tools/call", {
+      name: "resource_use_instructions",
+      arguments: { id: first.body.resourceId, version: "0.1.0" }
+    }, {}, baseUrl);
+    const historicalMcpInstructionsText = historicalMcpInstructions.result?.content?.[0]?.text ?? "";
+    if (!historicalMcpInstructionsText.includes(`"artifactDigest": "${first.body.artifactDigest}"`)
+      || !historicalMcpInstructionsText.includes("resources install onlyharness:packages/durable-resource-proof --version 0.1.0 --target codex")
+      || historicalMcpInstructionsText.includes("--version 0.2.0 --target codex")) {
+      throw new Error(`MCP exact historical resource_use_instructions drifted to latest: ${JSON.stringify(historicalMcpInstructions)}`);
     }
     const catalog = await fetch(`${baseUrl}/resources?q=durable-resource-proof&limit=10`).then((response) => response.json()) as { resources?: Array<{ id?: string; actions?: Array<{ id?: string; url?: string }> }> };
     const catalogMatches = (catalog.resources ?? []).filter((resource) => resource.id === first.body.resourceId);

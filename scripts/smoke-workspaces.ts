@@ -73,11 +73,18 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_API_HOST: "127.0.0.1",
     HARNESS_WORKSPACE_ROOT: root,
     HARNESS_STATE_PATH: path.join(tempRoot, "state.json"),
+    SUPABASE_URL: "",
+    SUPABASE_ANON_KEY: "",
+    SUPABASE_SERVICE_ROLE_KEY: "",
+    SUPERSKILL_SUBJECT_SALT: "workspace-smoke-subject-salt-at-least-32-bytes",
     HARNESS_WORKSPACES_PATH: workspaceStore,
     HARNESS_WORKSPACE_AUDIT_PATH: workspaceAudit,
     WORKSPACES_ENABLED: "true",
     RESOURCE_IMPORTS_PATH: path.join(tempRoot, "public-imports.json"),
     RESOURCE_ARCHIVE_DIR: path.join(tempRoot, "public-archives"),
+    RESOURCE_IMPORT_ARCHIVE_DIR: path.join(tempRoot, "public-import-archives"),
+    RESOURCE_RELEASES_PATH: path.join(tempRoot, "public-resource-releases.json"),
+    HOSTED_RESOURCE_PUBLISH_ENABLED: "true",
     WORKSPACE_RESOURCES_PATH: path.join(tempRoot, "workspace-resources"),
     WORKSPACE_COLLECTIONS_PATH: path.join(tempRoot, "workspace-collections"),
     WORKSPACE_SETUP_BUNDLES_PATH: path.join(tempRoot, "workspace-setup-bundles"),
@@ -101,6 +108,7 @@ try {
 
   const openapi = await fetch(`${baseUrl}/openapi.json`).then((response) => response.json()) as { paths?: Record<string, unknown> };
   for (const route of [
+    "/workspaces",
     "/workspaces/{slug}/workspace",
     "/workspaces/{slug}/setup-bundle",
     "/workspaces/{slug}/members",
@@ -126,6 +134,51 @@ try {
     if (!openapi.paths?.[route]) throw new Error(`OpenAPI missing ${route}`);
   }
   if (!openapi.paths?.["/webhooks/workspace-subscriptions"]) throw new Error("OpenAPI missing /webhooks/workspace-subscriptions");
+
+  const createdWorkspaceResponse = await fetch(`${baseUrl}/workspaces`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:creator-1", "content-type": "application/json" },
+    body: JSON.stringify({ slug: "tomorrow-team", name: "Tomorrow Team", type: "team", visibility: "invite_only" })
+  });
+  const createdWorkspace = await createdWorkspaceResponse.json() as { workspace?: { slug?: string }; member?: { user_id?: string; role?: string }; replay?: boolean };
+  if (createdWorkspaceResponse.status !== 201 || createdWorkspace.workspace?.slug !== "tomorrow-team" || createdWorkspace.member?.user_id !== "creator-1" || createdWorkspace.member.role !== "owner" || createdWorkspace.replay !== false) {
+    throw new Error(`Workspace create returned wrong payload: ${createdWorkspaceResponse.status} ${JSON.stringify(createdWorkspace)}`);
+  }
+  const replayWorkspaceResponse = await fetch(`${baseUrl}/workspaces`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:creator-1", "content-type": "application/json" },
+    body: JSON.stringify({ slug: "tomorrow-team", name: "Tomorrow Team" })
+  });
+  const replayWorkspace = await replayWorkspaceResponse.json() as { replay?: boolean };
+  if (replayWorkspaceResponse.status !== 200 || replayWorkspace.replay !== true) throw new Error(`Workspace create replay failed: ${replayWorkspaceResponse.status} ${JSON.stringify(replayWorkspace)}`);
+  const createdWorkspaceRead = await fetch(`${baseUrl}/workspaces/tomorrow-team/workspace`, { headers: { Authorization: "Bearer local:creator-1" } });
+  if (createdWorkspaceRead.status !== 200) throw new Error(`Workspace owner could not read created workspace: ${createdWorkspaceRead.status}`);
+  const ownerAssignment = await fetch(`${baseUrl}/workspaces/tomorrow-team/members`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:creator-1", "content-type": "application/json" },
+    body: JSON.stringify({ userId: "attacker", role: "owner", source: "direct" })
+  });
+  const ownerAssignmentBody = await ownerAssignment.json() as { code?: string };
+  if (ownerAssignment.status !== 409 || ownerAssignmentBody.code !== "OWNER_MUTATION_FORBIDDEN") {
+    throw new Error(`Generic member endpoint assigned workspace ownership: ${ownerAssignment.status} ${JSON.stringify(ownerAssignmentBody)}`);
+  }
+  const ownerDowngrade = await fetch(`${baseUrl}/workspaces/tomorrow-team/members`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:creator-1", "content-type": "application/json" },
+    body: JSON.stringify({ userId: "creator-1", role: "admin", source: "direct" })
+  });
+  const ownerDowngradeBody = await ownerDowngrade.json() as { code?: string };
+  if (ownerDowngrade.status !== 409 || ownerDowngradeBody.code !== "OWNER_MUTATION_FORBIDDEN") {
+    throw new Error(`Generic member endpoint mutated current owner: ${ownerDowngrade.status} ${JSON.stringify(ownerDowngradeBody)}`);
+  }
+  const ownerRemoval = await fetch(`${baseUrl}/workspaces/tomorrow-team/members/creator-1`, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer local:creator-1" }
+  });
+  const ownerRemovalBody = await ownerRemoval.json() as { code?: string };
+  if (ownerRemoval.status !== 409 || ownerRemovalBody.code !== "OWNER_MUTATION_FORBIDDEN") {
+    throw new Error(`Generic member endpoint removed current owner: ${ownerRemoval.status} ${JSON.stringify(ownerRemovalBody)}`);
+  }
 
   const noToken = await fetch(`${baseUrl}/workspaces/acme/workspace`);
   if (noToken.status !== 401) throw new Error(`Workspace without token should be 401, got ${noToken.status}`);
@@ -197,6 +250,80 @@ try {
   }
   if (publish.stdout.includes(token)) throw new Error("Workspace publish leaked raw token in stdout");
 
+  const publicReleaseResponse = await fetch(`${baseUrl}/imports/resource-package`, {
+    method: "POST",
+    headers: { Authorization: "Bearer local:public-publisher", "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "workspace-pin-proof",
+      version: "1.2.3",
+      idempotencyKey: "workspace-pin-proof-0001",
+      resourceType: "skill",
+      title: "Workspace pin proof",
+      summary: "Benign exact public release used by workspace pin smoke.",
+      files: [{ path: "SKILL.md", content: "---\nname: workspace-pin-proof\ndescription: \"Benign exact public release used by workspace pin smoke\"\n---\n\n# Workspace pin proof\n\nReview the supplied input and return a concise result.\n" }]
+    })
+  });
+  const publicRelease = await publicReleaseResponse.json() as { resourceId?: string; version?: string; artifactDigest?: string; code?: string; error?: string };
+  if (publicReleaseResponse.status !== 201 || publicRelease.resourceId !== "onlyharness:packages/workspace-pin-proof" || publicRelease.version !== "1.2.3" || !/^[a-f0-9]{64}$/.test(publicRelease.artifactDigest ?? "")) {
+    throw new Error(`Public exact release fixture failed: ${publicReleaseResponse.status} ${JSON.stringify(publicRelease)}`);
+  }
+
+  const incompletePin = await fetch(`${baseUrl}/workspaces/acme/resources/approve`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ resourceId: publicRelease.resourceId, resourceVersion: publicRelease.version })
+  });
+  const incompletePinBody = await incompletePin.json() as { code?: string };
+  if (incompletePin.status !== 400 || incompletePinBody.code !== "RESOURCE_RELEASE_PIN_INCOMPLETE") {
+    throw new Error(`Incomplete exact workspace pin should fail closed: ${incompletePin.status} ${JSON.stringify(incompletePinBody)}`);
+  }
+
+  const missingPin = await fetch(`${baseUrl}/workspaces/acme/resources/approve`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ resourceId: publicRelease.resourceId, resourceVersion: "9.9.9", artifactDigest: publicRelease.artifactDigest })
+  });
+  const missingPinBody = await missingPin.json() as { code?: string };
+  if (missingPin.status !== 404 || missingPinBody.code !== "RESOURCE_RELEASE_NOT_FOUND") {
+    throw new Error(`Missing exact workspace release should fail closed: ${missingPin.status} ${JSON.stringify(missingPinBody)}`);
+  }
+
+  const mismatchDigest = `${publicRelease.artifactDigest?.startsWith("0") ? "1" : "0"}${publicRelease.artifactDigest?.slice(1)}`;
+  const mismatchPin = await fetch(`${baseUrl}/workspaces/acme/resources/approve`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ resourceId: publicRelease.resourceId, resourceVersion: publicRelease.version, artifactDigest: mismatchDigest })
+  });
+  const mismatchPinBody = await mismatchPin.json() as { code?: string };
+  if (mismatchPin.status !== 409 || mismatchPinBody.code !== "RESOURCE_RELEASE_DIGEST_MISMATCH") {
+    throw new Error(`Mismatched exact workspace digest should fail closed: ${mismatchPin.status} ${JSON.stringify(mismatchPinBody)}`);
+  }
+
+  const exactPin = await fetch(`${baseUrl}/workspaces/acme/resources/approve`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      resourceId: publicRelease.resourceId,
+      collection: "approved",
+      resourceVersion: publicRelease.version,
+      artifactDigest: publicRelease.artifactDigest
+    })
+  });
+  const exactPinBody = await exactPin.json() as { item?: { sourceResourceId?: string; pinnedVersion?: string | null; pinnedArchiveHash?: string | null }; code?: string };
+  if (exactPin.status !== 201 || exactPinBody.item?.sourceResourceId !== publicRelease.resourceId || exactPinBody.item.pinnedVersion !== publicRelease.version || exactPinBody.item.pinnedArchiveHash !== publicRelease.artifactDigest) {
+    throw new Error(`Exact workspace approval did not persist release tuple: ${exactPin.status} ${JSON.stringify(exactPinBody)}`);
+  }
+
+  const exactCollectionPin = await fetch(`${baseUrl}/workspaces/acme/collections/pinned/items`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ resourceId: publicRelease.resourceId, resourceVersion: publicRelease.version, artifactDigest: publicRelease.artifactDigest })
+  });
+  const exactCollectionPinBody = await exactCollectionPin.json() as { item?: { pinnedVersion?: string | null; pinnedArchiveHash?: string | null }; code?: string };
+  if (exactCollectionPin.status !== 201 || exactCollectionPinBody.item?.pinnedVersion !== publicRelease.version || exactCollectionPinBody.item.pinnedArchiveHash !== publicRelease.artifactDigest) {
+    throw new Error(`Exact collection shortcut did not persist release tuple: ${exactCollectionPin.status} ${JSON.stringify(exactCollectionPinBody)}`);
+  }
+
   const unscannedApprove = run("node", [cliBin, "resources", "approve", "github:obra/superpowers", "--workspace", "acme", "--collection", "approved", "--json"], { env: cliEnv, allowFailure: true });
   if (unscannedApprove.status === 0 || !unscannedApprove.stderr.includes("has not been security scanned")) {
     throw new Error(`Unscanned resource approval should fail closed: ${unscannedApprove.stdout}\n${unscannedApprove.stderr}`);
@@ -209,7 +336,7 @@ try {
   if (approved.resource?.id !== "@acme/deep-market-researcher" || approved.resource.workspaceApproval?.sourceResourceId !== approvedSourceId || approved.approvalState !== "approved" || approved.verified !== false) {
     throw new Error(`Workspace approval returned wrong payload: ${approve.stdout}`);
   }
-  if (!approved.resource.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("/#/workspaces/acme/resources/deep-market-researcher"))) {
+  if (!approved.resource.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("/#/superskill/workspaces?workspace=acme&resource=deep-market-researcher"))) {
     throw new Error(`Workspace approval missing workspace OnlyHarness action: ${approve.stdout}`);
   }
   if (approved.resource.actions?.some((action) => action.id === "download_archive" && action.url?.includes("/api/workspaces/acme/resources/deep-market-researcher/archive"))) {
@@ -279,9 +406,22 @@ try {
 
   const setupBundle = await fetch(`${baseUrl}/workspaces/acme/setup-bundle?target=claude-code`, {
     headers: { Authorization: `Bearer ${token}` }
-  }).then((response) => response.json()) as { bundle?: { target?: string; resources?: Array<{ id?: string; hostedArchive?: boolean; source?: string }>; configs?: Array<{ path?: string; content?: string }> }; next?: string };
+  }).then((response) => response.json()) as { bundle?: { target?: string; resources?: Array<{ id?: string; hostedArchive?: boolean; source?: string; sourceResourceId?: string; pinnedVersion?: string; pinnedArchiveHash?: string; exactResourceUrl?: string; installCommand?: string }>; configs?: Array<{ path?: string; content?: string }> }; next?: string };
+  const exactSetupResource = setupBundle.bundle?.resources?.find((item) => item.id === "@acme/workspace-pin-proof");
+  const setupConfigContent = setupBundle.bundle?.configs?.map((item) => item.content ?? "").join("\n") ?? "";
   if (setupBundle.bundle?.target !== "claude-code" || !setupBundle.bundle.resources?.some((item) => item.id === "@acme/agent-tool" && item.hostedArchive === true) || !setupBundle.bundle.resources?.some((item) => item.id === "@acme/deep-market-researcher" && item.hostedArchive === false && item.source === "workspace_approved")) {
     throw new Error(`Workspace setup bundle missing expected resources: ${JSON.stringify(setupBundle)}`);
+  }
+  if (exactSetupResource?.sourceResourceId !== publicRelease.resourceId
+    || exactSetupResource.pinnedVersion !== publicRelease.version
+    || exactSetupResource.pinnedArchiveHash !== publicRelease.artifactDigest
+    || !exactSetupResource.exactResourceUrl?.includes(`/releases/${publicRelease.version}`)
+    || !exactSetupResource.installCommand?.includes(`onlyharness@0.2.18 resources install ${publicRelease.resourceId} --version ${publicRelease.version} --target claude-code`)
+    || !setupConfigContent.includes(publicRelease.version ?? "missing-version")
+    || !setupConfigContent.includes(publicRelease.artifactDigest ?? "missing-digest")
+    || !setupConfigContent.includes(exactSetupResource.exactResourceUrl ?? "missing-url")
+    || !setupConfigContent.includes(exactSetupResource.installCommand ?? "missing-install")) {
+    throw new Error(`Workspace setup bundle lost exact approved release instructions: ${JSON.stringify(exactSetupResource)}`);
   }
   if (!setupBundle.next?.includes("workspace setup acme") || JSON.stringify(setupBundle).includes(token)) {
     throw new Error(`Workspace setup bundle next step wrong or leaked token: ${JSON.stringify(setupBundle)}`);
@@ -342,6 +482,18 @@ try {
   }).then((response) => response.json()) as { collection?: { items?: Array<{ sourceResourceId?: string; itemRef?: string }> } };
   if (collectionAfterRemove.collection?.items?.some((item) => item.sourceResourceId === removableSourceId || item.itemRef === "@acme/launch-review")) {
     throw new Error(`Workspace collection still includes removed approval: ${JSON.stringify(collectionAfterRemove)}`);
+  }
+
+  for (const forbiddenRole of ["owner", "admin"]) {
+    const privilegedInvite = await fetch(`${baseUrl}/workspaces/acme/invites`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ role: forbiddenRole, maxUses: 1, expiresInSeconds: 3600 })
+    });
+    const privilegedInviteBody = await privilegedInvite.json() as { code?: string; error?: string };
+    if (privilegedInvite.status !== 400 || privilegedInviteBody.code !== "INVALID_INVITE_ROLE" || JSON.stringify(privilegedInviteBody).includes("ohwi_")) {
+      throw new Error(`Privileged workspace invite was not rejected: ${forbiddenRole} ${privilegedInvite.status} ${JSON.stringify(privilegedInviteBody)}`);
+    }
   }
 
   const invite = await fetch(`${baseUrl}/workspaces/acme/invites`, {

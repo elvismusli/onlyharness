@@ -631,7 +631,7 @@ const program = new Command();
 program
   .name("hh")
   .description("SuperSkill CLI compatibility runtime — find, inspect, install and publish reusable AI-agent capabilities (superskill.sh)")
-  .version("0.2.17");
+  .version("0.2.18");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -718,6 +718,7 @@ resourcesCommand.command("open")
 resourcesCommand.command("install")
   .description("install an explicitly selected hosted catalog skill into the native client skill root")
   .argument("<id>", "exact hosted skill ID, e.g. onlyharness:packages/my-skill")
+  .option("--version <semver>", "exact immutable release version")
   .requiredOption("--target <target>", "codex|claude-code")
   .option("--project-dir <path>", "project root", ".")
   .option("--allow-unreviewed", "explicitly consent to an unreviewed hosted skill after inspecting trust", false)
@@ -730,6 +731,7 @@ resourcesCommand.command("install")
       const result = await installHostedCatalogSkill({
         registryUrl,
         resourceId: id,
+        version: options.version,
         client,
         projectDir: options.projectDir,
         allowUnreviewed: Boolean(options.allowUnreviewed),
@@ -3150,7 +3152,8 @@ function deniedAgentResourcePath(file: string): boolean {
   const lower = file.toLowerCase();
   const segments = lower.split("/");
   if (segments.some((segment) => segment === ".env" || segment.startsWith(".env.") || segment === ".npmrc" || segment === ".pypirc" || segment === ".netrc")) return true;
-  if (segments.some((segment) => /^(id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts|secrets?|private|credentials?)$/.test(segment))) return true;
+  if (segments.some((segment) => /^(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|known_hosts)(?:\.|$)/.test(segment)
+    || /^(?:secrets?|private|credentials?)(?:[._-]|$)/.test(segment))) return true;
   return /\.(pem|key|p12|pfx|crt|cer|sqlite|sqlite3|db|zip|tar|tgz|gz|png|jpe?g|gif|webp|pdf|mp4|mov|avi|dmg|pkg)$/i.test(file);
 }
 

@@ -12,6 +12,7 @@ const INSTALL_ROUTE = buildSuperSkillRoute({ name: "install" });
 const ACCOUNT_ROUTE = buildSuperSkillRoute({ name: "account" });
 const PUBLISH_ROUTE = buildSuperSkillRoute({ name: "publish" });
 const WORKSPACES_ROUTE = buildSuperSkillRoute({ name: "workspaces" });
+const SEARCH_ROUTE = buildSuperSkillRoute({ name: "search" });
 
 export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -56,6 +57,7 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
         </button>
         <nav id="ss-primary-navigation" aria-label="SuperSkill" data-open={menuOpen ? "true" : "false"}>
           <a href={SHOWROOM_ROUTE} aria-current={route.name === "landing" ? "page" : undefined} onClick={closeMenu}>Showroom</a>
+          <a href={SEARCH_ROUTE} aria-current={route.name === "search" ? "page" : undefined} onClick={closeMenu}>Search</a>
           <a href={DOCS_ROUTE} aria-current={route.name === "docs" ? "page" : undefined} onClick={closeMenu}>Docs</a>
           <a href={AGENT_GUIDE_ROUTE} aria-current={route.name === "agent-guide" ? "page" : undefined} onClick={closeMenu}>Agent guide</a>
           <a href={PUBLISH_ROUTE} aria-current={route.name === "publish" ? "page" : undefined} onClick={closeMenu}>Publish</a>
@@ -69,7 +71,7 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
 }
 
 function routeName(route: RoutableSuperSkillRoute | { name: "not-found" }): string {
-  if (route.name === "capability" || route.name === "selected" || route.name === "category" || route.name === "resource") return `${route.name}:${JSON.stringify(route)}`;
+  if (route.name === "capability" || route.name === "selected" || route.name === "category" || route.name === "resource" || route.name === "search") return `${route.name}:${JSON.stringify(route)}`;
   if (route.name === "install") return `${route.name}:${route.capabilityId ?? "shared"}`;
   return route.name;
 }

@@ -77,6 +77,85 @@ test("hosted skill install routes to Claude and dry-run writes nothing", async (
   }
 });
 
+test("exact hosted skill install requests the immutable release detail route", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-exact-"));
+  const requested: string[] = [];
+  const fetchImpl: typeof fetch = (async (input) => {
+    requested.push(String(input));
+    return fixtureFetch()(input);
+  }) as typeof fetch;
+  try {
+    const planned = await installHostedCatalogSkill({
+      registryUrl: registry,
+      resourceId,
+      version: "0.1.1",
+      client: "codex",
+      projectDir: project,
+      allowUnreviewed: true,
+      dryRun: true,
+      fetchImpl
+    });
+    assert.equal(planned.version, "0.1.1");
+    assert.equal(requested[0], `${registry}/resources/${encodeURIComponent(resourceId)}/releases/0.1.1`);
+    assert.equal(requested[1], archiveUrl);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+for (const [label, releaseOverride] of [
+  ["version", { version: "0.1.0" }],
+  ["digest", { artifactDigest: "0".repeat(64) }],
+  ["size", { archiveSize: archive.length + 1 }],
+  ["trust", { trust: "verified" }]
+] as const) {
+  test(`hosted skill install rejects immutable detail/archive ${label} mismatch`, async () => {
+    const project = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-tuple-"));
+    let requests = 0;
+    const fetchImpl = fixtureFetch(archiveUrl, releaseOverride, () => { requests += 1; });
+    try {
+      await assert.rejects(
+        () => installHostedCatalogSkill({ registryUrl: registry, resourceId, version: "0.1.1", client: "codex", projectDir: project, allowUnreviewed: true, fetchImpl }),
+        hasReason("RESOURCE_ARCHIVE_INVALID")
+      );
+      if (label === "version" || label === "trust") assert.equal(requests, 1);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+}
+
+test("failing static scan blocks hosted skill before archive download", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-blocked-"));
+  let requests = 0;
+  const fetchImpl: typeof fetch = (async () => {
+    requests += 1;
+    return new Response(JSON.stringify({
+      id: resourceId,
+      resourceType: "skill",
+      installability: "importable",
+      upstreamRepo: "clean-user-skill",
+      trust: { securityScan: "fail", riskTier: "CRITICAL" },
+      release: {
+        version: "0.1.1",
+        artifactDigest: createHash("sha256").update(archive).digest("hex"),
+        archiveSize: archive.length,
+        trust: "unreviewed"
+      },
+      actions: [{ id: "download_archive", url: archiveUrl }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => installHostedCatalogSkill({ registryUrl: registry, resourceId, client: "codex", projectDir: project, allowUnreviewed: true, fetchImpl }),
+      hasReason("RESOURCE_BLOCKED")
+    );
+    assert.equal(requests, 1);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test("hosted skill install rejects cross-origin archives and symlinked native roots", async () => {
   const project = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-guards-"));
   const outside = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-outside-"));
@@ -110,8 +189,9 @@ test("hosted skill install rejects cross-origin archives and symlinked native ro
   }
 });
 
-function fixtureFetch(actionUrl = archiveUrl): typeof fetch {
+function fixtureFetch(actionUrl = archiveUrl, releaseOverride: Record<string, unknown> = {}, onRequest?: () => void): typeof fetch {
   return (async (input) => {
+    onRequest?.();
     const url = String(input);
     if (url.includes("/resources/") && !url.endsWith("/archive")) {
       return new Response(JSON.stringify({
@@ -120,6 +200,13 @@ function fixtureFetch(actionUrl = archiveUrl): typeof fetch {
         installability: "importable",
         upstreamRepo: "clean-user-skill",
         trust: { securityScan: "not_scanned", riskTier: "UNKNOWN" },
+        release: {
+          version: "0.1.1",
+          artifactDigest: createHash("sha256").update(archive).digest("hex"),
+          archiveSize: archive.length,
+          trust: "unreviewed",
+          ...releaseOverride
+        },
         actions: [{ id: "download_archive", url: actionUrl }]
       }), { status: 200, headers: { "content-type": "application/json" } });
     }

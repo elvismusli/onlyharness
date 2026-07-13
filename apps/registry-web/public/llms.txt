@@ -29,7 +29,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Managed recommendation, exact release/archive, hosted proof publish, and managed event routes use the same confirmed Supabase user Bearer plus an active `superskill:managed` server grant. Headless clients inherit `HH_TOKEN` only through an explicit environment allowlist; never put it in a manifest, tool argument, URL, log, analytics event, or localStorage. Legacy tester-specific `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility and is public-GO ineligible.
 - The checked-in managed catalog currently has 12 exact candidates and zero approved releases. The approved lane and managed recommendation remain empty/no-match until real Claude Code, Codex, and human review evidence exists; the selected shelf is discovery-only.
 - `onlyharness@0.2.14` is published but known-bad for one-link because its exact-version npm metadata request is rejected.
-- Current public `onlyharness@0.2.17` is pinned to official npm integrity. It keeps the dual MCP one-link and immutable native hosted-skill installation while making planned/unchanged copy status-accurate. `0.2.16` remains the previous functional release; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
+- Current public `onlyharness@0.2.18` is pinned to official npm integrity. It binds hosted-skill detail, archive headers and bytes to one immutable version/digest/size/trust tuple; exact MCP version reads never drift to latest. `0.2.17` remains the previous functional release; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
 - Approved current releases use one canonical URL: `https://superskill.sh/api/superskill/install/{capability-id}/{version}/{sha256-hex}`. It returns a signed-by-digest JSON contract, not executable script. Local install selects exactly one detected Codex/Claude client or fails closed; installation never implies activation.
 - SuperSkill Daylight is the locked human-facing surface on `superskill.sh` and `www.superskill.sh`; legacy skins are compatibility-only and cannot be selected on those hosts.
 
@@ -89,12 +89,14 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, bundle: { version, harnesses, configs } }. Use `HH_ORG_TOKEN=... hh setup @slug` instead of hand-writing files.
 - Org workspace: GET /orgs/{slug}/workspace
   Requires ORGS_ENABLED=true and Authorization: Bearer {org token}. Response: { organization, items, permissions, audit }. The audit rows are sanitized and permissions include riskMarkdown for the highest-risk org harness.
+- Workspace create: POST /workspaces
+  Requires WORKSPACES_ENABLED=true and a confirmed signed-in account. Body: { slug, name, type?, visibility? }. Atomically creates or replays the caller-owned workspace, owner membership, invite policy and default approved collection. Another owner's slug returns 409.
 - Workspace catalog: GET /workspaces/{slug}/workspace
   Requires WORKSPACES_ENABLED=true and either Authorization: Bearer {workspace token} or an active signed-in workspace member session. Response: { workspace, resources, items, joinPolicies, permissions, audit }. Use `HH_WORKSPACE_TOKEN=... hh resources search --workspace slug` for private workspace resources. CLI remains token-based; legacy org tokens are accepted as a migration fallback.
 - Workspace setup bundle: GET/PUT /workspaces/{slug}/setup-bundle
   GET requires workspace setup access and returns { workspace, bundle, next }. Use `HH_WORKSPACE_TOKEN=... hh workspace setup slug --target claude-code --json`. Setup installs workspace-hosted packages and writes instructions for approved public resources; it must not invent workspace archives for public listings that are only approved by the workspace. PUT stores bounded config snippets and requires publish/collection-write access.
 - Workspace members and invites: GET/POST /workspaces/{slug}/members, DELETE /workspaces/{slug}/members/{userId}, POST /workspaces/{slug}/invites, POST /workspaces/{slug}/join
-  Manage workspace access. Member and invite writes require `member:write`, `invite:write`, `workspace:admin`, or matching admin membership. Invite raw codes are returned once and stored only as hashes.
+  Manage workspace access. Member and invite writes require `member:write`, `invite:write`, `workspace:admin`, or matching admin membership. Invite raw codes are returned once and stored only as hashes. The SuperSkill web UI can copy a bounded fragment-only invite link; the fragment is not sent in HTTP requests.
 - Workspace join gates: GET/PUT /workspaces/{slug}/join-policies, POST /workspaces/{slug}/join-code, POST /workspaces/{slug}/join-code/verify, POST /workspaces/{slug}/join-grants
   Join policies cover invite, email domain, Telegram, Discord, entitlement and disabled future paid-subscription gates. A signed-in user mints a short-lived `ohwj_` code with `/join-code`. Bots verify it read-only with `gate:verify`; only `/join-grants` creates membership after the external Telegram/Discord/entitlement check passes. Active `paid_subscription` policies fail closed until subscription lifecycle is implemented.
 - Workspace resources: GET /workspaces/{slug}/resources, GET /workspaces/{slug}/resources/{id}, GET /workspaces/{slug}/resources/{id}/archive
@@ -120,7 +122,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Verified publish (auth required): POST /imports/harness-dir
   Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts bounded native package files, including `scripts/`, plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
 - Resource package publish (auth required): POST /imports/resource-package
-  Production containment is currently active: authenticated calls fail closed with `503 PUBLISH_DISABLED` while `HOSTED_RESOURCE_PUBLISH_ENABLED=false`; anonymous/invalid credentials still fail authentication first. After the durable archive migration is enabled, the request additionally requires a confirmed in-policy SuperSkill user, immutable semantic `version`, and a 16-200 character `idempotencyKey`. The response binds `resourceId`, version, archive digest/size, replay state and trust=`unreviewed`. Use `HH_TOKEN=... hh publish-resource <dir-or-git-url> --name my-agent-tool --version 0.1.0 --type command_pack`; the CLI supplies a deterministic retry key unless `--idempotency-key` is set. It does not grant a Verified or reviewed badge.
+  Production publishing is enabled. The request requires a confirmed in-policy SuperSkill user, immutable semantic `version`, and a 16-200 character `idempotencyKey`. Accepted responses bind `resourceId`, version, archive digest/size, replay state, exact static-v2 `pass`/`warn` state and trust=`unreviewed`; static pass does not infer runtime risk, so risk stays `UNKNOWN`. Use `HH_TOKEN=... hh publish-resource <dir-or-git-url> --name my-agent-tool --version 0.1.0 --type command_pack`; the CLI supplies a deterministic retry key unless `--idempotency-key` is set. A failed scan returns sanitized rule/file identifiers and is rejected before any archive, catalog or event mutation. Publishing does not grant a Verified or reviewed badge.
 - Exact hosted resource release: GET /resources/{id}/releases/{version}/archive
   Returns only the active immutable release matching the exact semantic version and durable digest/size metadata. The unversioned `/resources/{id}/archive` route remains a latest-version compatibility alias.
 - GitHub resource classify: POST /imports/github-resource
@@ -136,7 +138,7 @@ End-to-end example:
 
 Endpoint: https://superskill.sh/mcp
 
-Transport: Streamable HTTP. Server version: `0.2.17`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+Transport: Streamable HTTP. Server version: `0.2.18`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
 
 Official compatibility MCP Registry name: `com.onlyharness/registry`. The public `server.json` is remote-only and points at the canonical SuperSkill Streamable HTTP endpoint. The old coordinate is retained for installed-client compatibility.
 
@@ -151,9 +153,9 @@ Tools:
 - resource_use_instructions: return safe use/open/install guidance; hosted skills expose an exact-version native install command that requires explicit unreviewed consent when applicable, while upstream-only resources stay open-only.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
-- publish_resource_package: confirmed-user + managed-scope hosted package publish; requires semantic `version` and `idempotencyKey`, is idempotent for the same exact payload, uses `VALIDATION_FAILED` for all pre-mutation package validation failures across HTTP and MCP, and currently returns `PUBLISH_DISABLED` during storage containment; not a Verified harness badge.
+- publish_resource_package: confirmed-user + managed-scope hosted package publish; requires semantic `version` and `idempotencyKey`, is idempotent for the same exact payload, records static-v2 scan state, and uses `VALIDATION_FAILED` for all pre-mutation package validation failures across HTTP and MCP; not a Verified harness badge.
 
-This ten-tool inventory is exact for remote MCP v0.2.17. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `PUBLISH_DISABLED`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
+This ten-tool inventory is exact for remote MCP v0.2.18. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`; `PUBLISH_DISABLED` remains a fail-closed configuration error, not the normal production publish state. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
 
 Initialize example:
 
@@ -171,6 +173,7 @@ The npm CLI is published, so agents can run native harness workflows and mixed r
     npx onlyharness resources search superpowers --json
     npx onlyharness resources detail github:obra/superpowers --json
     npx onlyharness resources open github:obra/superpowers --json
+    npx onlyharness resources install onlyharness:packages/my-skill --version 0.1.0 --target codex --allow-unreviewed --json
     npx onlyharness suggest market research --apply --out suggested-deep-market-researcher --json
     npx onlyharness suggest market research --apply --target claude-code --out suggested-deep-market-researcher --adapter-out .claude/skills/deep-market-researcher --json
     npx onlyharness install harnesses/deep-market-researcher --target claude-code --json
@@ -190,6 +193,7 @@ For local development from the repo:
 - hh resources search {terms} --json     search all resources, including skills/plugins/workflows/MCP servers
 - hh resources detail github:obra/superpowers --json
 - hh resources open github:obra/superpowers
+- hh resources install onlyharness:packages/{name} --version <semver> --target codex|claude-code --allow-unreviewed --json   install an exact immutable hosted skill after explicit review and consent
   Opens the OnlyHarness resource page first; upstream GitHub stays attribution/source, not the primary use path.
 - hh resources import https://github.com/acme/agent-skills --json   classify before adding/listing a GitHub resource
 - hh suggest {terms}        return ranked candidates with trust fields plus selected detail trust summary; use --pick {rank}; --apply installs through the pull archive path

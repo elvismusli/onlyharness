@@ -15,6 +15,7 @@ function mustInclude(file: string, needles: string[]) {
 
 mustInclude("apps/harness-api/src/server.ts", [
   "const workspacesEnabled = process.env.WORKSPACES_ENABLED === \"true\"",
+  "app.post(\"/workspaces\"",
   "app.get(\"/workspaces/:slug/workspace\"",
   "app.get(\"/workspaces/:slug/members\"",
   "app.post(\"/workspaces/:slug/members\"",
@@ -58,6 +59,7 @@ mustInclude("apps/harness-api/src/workspace-subscriptions.ts", [
 ]);
 
 mustInclude("apps/harness-api/src/workspaces.ts", [
+  "createWorkspaceForUser",
   "authorizeWorkspaceToken",
   "authorizeWorkspaceMember",
   "workspaceMemberExpired",
@@ -83,6 +85,7 @@ mustInclude("apps/harness-api/src/workspaces.ts", [
 ]);
 
 mustInclude("apps/harness-api/src/openapi.ts", [
+  "\"/workspaces\"",
   "\"/workspaces/{slug}/workspace\"",
   "\"/workspaces/{slug}/setup-bundle\"",
   "\"/workspaces/{slug}/members\"",
@@ -167,7 +170,20 @@ mustInclude("supabase/migrations/20260708203000_workspace_subscriptions.sql", [
   "Users read own workspace subscriptions"
 ]);
 
+mustInclude("supabase/migrations/20260714143000_workspace_self_service_create.sql", [
+  "create or replace function public.create_workspace_for_user",
+  "security definer",
+  "current_setting('request.jwt.claim.role', true)",
+  "insert into public.workspace_members",
+  "insert into public.workspace_collections",
+  "insert into public.workspace_join_policies",
+  "revoke all on function public.create_workspace_for_user",
+  "to service_role"
+]);
+
 mustInclude("apps/registry-web/src/core/useWorkspace.ts", [
+  "createWorkspace",
+  "`${apiUrl}/workspaces`",
   "/workspaces/${encodeURIComponent(slug)}/workspace",
   "/workspaces/${encodeURIComponent(slug)}/members",
   "/workspaces/${encodeURIComponent(slug)}/invites",

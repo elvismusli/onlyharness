@@ -90,7 +90,7 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --jso
 - Public selected shelf: `GET /showroom/selected` lists current intake candidates as `selected_unreviewed`. It is discovery-only; managed recommendation and activation remain blocked until approval.
 - Protected managed routes use a confirmed account Bearer credential inherited as `HH_TOKEN` plus an active server-side `superskill:managed` grant. Clean users obtain a maximum 30-minute bearer with `eval "$(hh auth login --shell --client codex)"` (`claude-code` is the other client value); the signed-in Account page approves the one-time code and never receives the terminal token. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and cannot produce public-GO evidence. The browser must never receive or store either credential or send the task to analytics, URLs, logs, or localStorage.
 - The current checked-in supply is 12 candidates and zero approved items. The approved lane stays empty until dual-client compatibility and human review attestations exist; the separate selected shelf may show those candidates only as review-pending discovery.
-- `onlyharness@0.2.14` is a known-bad one-link release because its exact-version npm metadata request is rejected. `0.2.17` is the current public release, pinned to official npm integrity; it keeps the dual MCP one-link and immutable native hosted-skill installation while making planned/unchanged copy status-accurate. `0.2.16` remains the previous functional release. Clean new-client marketplace proof remains a rollout gate.
+- `onlyharness@0.2.14` is a known-bad one-link release because its exact-version npm metadata request is rejected. `0.2.18` is the current public release, pinned to official npm integrity; it binds hosted-skill installation to the detail version/digest/size/trust tuple and keeps exact historical MCP resource reads. `0.2.17` remains the previous functional release. Clean new-client marketplace proof remains a rollout gate.
 - SuperSkill is selected automatically and locked on `superskill.sh` and `www.superskill.sh`; query parameters and stored legacy skin choices cannot change the product surface. Legacy human routes redirect here.
 
 HTTP API base: `https://superskill.sh/api` (`https://onlyharness.com/api` remains a machine-only compatibility alias).
@@ -106,7 +106,9 @@ Core endpoints:
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/resources?q={terms}` | Search mixed source-aware resources: harnesses, skills, plugins, workflows, MCP servers, configs, guides, runtimes and directories |
 | GET | `/resources/{id}` | Resource detail; IDs with `/` must be URL-encoded, e.g. `github%3Aobra%2Fsuperpowers` |
+| GET | `/resources/{id}/releases/{version}` | Immutable public hosted-resource detail with exact version, artifact digest, static scan state and actions |
 | GET | `/resources/{id}/archive` | Download OnlyHarness-hosted resource package archives; listed-but-not-hosted resources return 409 `RESOURCE_ARCHIVE_NOT_HOSTED` |
+| GET | `/resources/{id}/releases/{version}/archive` | Download one immutable public hosted-resource release; version and digest headers must match exact detail |
 | GET | `/repos/{owner}/{name}/harness` | Manifest, trust, files, example |
 | GET | `/repos/{owner}/{name}/security-report` | Static security report for install/apply gating |
 | GET | `/repos/{owner}/{name}/archive?version={semver}` | Pull harness files; paid harnesses return 402 until entitled; directory shelf entries return 409 `DIRECTORY_LINK_ONLY`; may include x402 `PAYMENT-REQUIRED` |
@@ -130,6 +132,7 @@ Core endpoints:
 | GET | `/orgs/{slug}/workspace` | Network Neighborhood payload: org-private cards, sanitized audit rows, permission/risk summary |
 | POST | `/orgs/{slug}/imports/markdown-to-harness` | Publish org-private markdown harness; requires org token with publish scope |
 | POST | `/orgs/{slug}/imports/harness-dir` | Publish verified org-private harness directory after eval/gate; requires org token with publish scope |
+| POST | `/workspaces` | Confirmed signed-in user creates or idempotently replays a private/invite-only workspace with owner membership, invite policy and default approved collection |
 | GET | `/workspaces/{slug}/workspace` | Workspace catalog payload: private resources, sanitized audit rows, permission/risk summary; requires `WORKSPACES_ENABLED=true` and workspace token or active member session |
 | GET/POST | `/workspaces/{slug}/members` | List active members or add/update a member; write requires `member:write` or workspace admin membership |
 | DELETE | `/workspaces/{slug}/members/{userId}` | Remove a workspace member; requires `member:write` or workspace admin membership |
@@ -141,6 +144,7 @@ Core endpoints:
 | POST | `/workspaces/{slug}/join` | Join a workspace with an invite code or email-domain policy and authenticated user session |
 | GET/PUT | `/workspaces/{slug}/setup-bundle` | Read or update workspace setup bundle snippets; setup installs workspace-hosted packages and writes instructions for approved public resources without inventing workspace archives |
 | GET | `/workspaces/{slug}/resources` | Search private workspace resources; accepts workspace token, active member session, or legacy org token as compatibility fallback |
+| POST | `/workspaces/{slug}/resources/approve` | Add a public resource to a workspace collection; optional `resourceVersion` + `artifactDigest` freeze an exact hosted release; stores local trust evidence and never grants a Verified badge |
 | GET | `/workspaces/{slug}/resources/{id}` | Workspace resource detail; IDs can be short names or `@workspace/name` refs |
 | GET | `/workspaces/{slug}/resources/{id}/archive` | Download workspace-hosted resource package archives; no upstream redirect |
 | POST | `/workspaces/{slug}/imports/resource-package` | Publish a private hosted agent resource package into a workspace; requires `resource:publish` or legacy publish scope |
@@ -148,7 +152,7 @@ Core endpoints:
 | GET | `/storefront/{handle}` | Public creator storefront with referral attribution code |
 | POST | `/imports/markdown-to-harness` | Publish markdown as a small unverified scaffold; Bearer token required |
 | POST | `/imports/harness-dir` | Publish a verified public native package directory after eval/gate; Bearer token required |
-| POST | `/imports/resource-package` | Publish a hosted agent resource package for skills, plugins, workflows, MCP servers, commands, scripts, docs, or source bundles; Bearer token required; no Verified badge |
+| POST | `/imports/resource-package` | Publish an immutable hosted agent resource release for skills, plugins, workflows, MCP servers, commands, scripts, docs, or source bundles; confirmed Bearer required; static-v2 fail is rejected before durable mutation, pass/warn stays unreviewed and does not imply known runtime risk; no Verified badge |
 | POST | `/imports/github-resource` | Read-only GitHub resource classifier; GitHub allowlist, redirect, traversal, symlink and size guardrails apply |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
 

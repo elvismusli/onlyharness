@@ -1,9 +1,9 @@
 {
   "schemaVersion": "superskill.runtime.v1",
   "cliPackage": "onlyharness",
-  "cliVersion": "0.2.17",
+  "cliVersion": "0.2.18",
   "pluginVersion": "0.2.0",
-  "cliIntegrity": "sha512-pnFnNtjiSSz/Y1tNmUXUMWSSc8ZRbW0xbQCwo5lQPNFXG0ZNaLyydYbiAWDKqqEt5b2ZbHC7OggGG9jPDmJvSA==",
+  "cliIntegrity": "sha512-42S4kd6hEfPU/Pfwo7OVknUrWqV/y8VJ5Uwstkmd7xxU9N1cPkiUUMhOtnMDkNUE/89D39ANScuV3X8GO9oj/Q==",
   "cliReleaseStatus": "published",
   "activationContractVersion": "superskill.activation.v1"
 }

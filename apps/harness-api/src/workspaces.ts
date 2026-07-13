@@ -128,6 +128,9 @@ export type WorkspaceSetupBundleResource = {
   source: "workspace_private" | "workspace_approved";
   hostedArchive: boolean;
   sourceResourceId?: string;
+  pinnedVersion?: string;
+  pinnedArchiveHash?: string;
+  exactResourceUrl?: string;
   approvalState?: WorkspaceApprovalState;
   collections: string[];
   detailCommand: string;
@@ -290,8 +293,72 @@ export type WorkspaceJoinPolicyUpdateResult =
   | { ok: true; workspace: WorkspaceRecord; policies: WorkspaceJoinPolicy[] }
   | { ok: false; status: number; error: string; code: string };
 
+export type WorkspaceCreateResult =
+  | { ok: true; workspace: WorkspaceRecord; member: WorkspaceMember; replay: boolean }
+  | { ok: false; status: number; error: string; code: string };
+
 export function cleanWorkspaceSlug(value: string | undefined): string | undefined {
   return cleanOrgSlug(value);
+}
+
+export async function createWorkspaceForUser(input: {
+  userId?: string;
+  slug?: string;
+  name?: string;
+  type?: string;
+  visibility?: string;
+  description?: string | null;
+}): Promise<WorkspaceCreateResult> {
+  const userId = cleanUserId(input.userId);
+  const slug = cleanWorkspaceSlug(input.slug);
+  const name = cleanWorkspaceName(input.name);
+  const type = input.type === undefined ? "team" : normalizeStrictWorkspaceType(input.type);
+  const visibility = input.visibility === undefined ? "invite_only" : normalizeSelfServiceVisibility(input.visibility);
+  const description = cleanWorkspaceDescription(input.description);
+  if (!userId) return { ok: false, status: 401, error: "Sign in required before creating a workspace", code: "AUTH_REQUIRED" };
+  if (!slug) return { ok: false, status: 400, error: "Workspace slug must start with a letter and contain only lowercase letters, numbers, _ or -", code: "INVALID_WORKSPACE" };
+  if (!name) return { ok: false, status: 400, error: "Workspace name is required", code: "INVALID_WORKSPACE_NAME" };
+  if (!type) return { ok: false, status: 400, error: "Invalid workspace type", code: "INVALID_WORKSPACE_TYPE" };
+  if (!visibility) return { ok: false, status: 400, error: "Self-service workspaces must be private or invite-only", code: "INVALID_WORKSPACE_VISIBILITY" };
+  if (description === undefined) return { ok: false, status: 400, error: "Workspace description is too long or contains unsupported characters", code: "INVALID_WORKSPACE_DESCRIPTION" };
+
+  if (supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const response = await supabaseRpcRequest("create_workspace_for_user", {
+      p_owner_user_id: userId,
+      p_slug: slug,
+      p_name: name,
+      p_type: type,
+      p_visibility: visibility,
+      p_description: description
+    });
+    if (!response) return { ok: false, status: 503, error: "Workspace storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { code?: string; message?: string };
+      if (response.status === 409 || body.code === "23505") return { ok: false, status: 409, error: "Workspace slug is already in use", code: "WORKSPACE_SLUG_TAKEN" };
+      return { ok: false, status: response.status >= 500 ? 503 : 400, error: "Workspace could not be created", code: response.status >= 500 ? "WORKSPACE_UNAVAILABLE" : "WORKSPACE_CREATE_FAILED" };
+    }
+    const body = await response.json().catch(() => undefined) as unknown;
+    const parsed = parseWorkspaceCreateRpc(body, userId);
+    if (!parsed) return { ok: false, status: 503, error: "Workspace storage returned an invalid response", code: "WORKSPACE_UNAVAILABLE" };
+    return { ok: true, ...parsed };
+  }
+
+  if (process.env.NODE_ENV === "production") return { ok: false, status: 503, error: "Workspace storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  const store = readWorkspaceStore();
+  const existing = store.workspaces?.find((workspace) => workspace.slug === slug);
+  if (existing) {
+    const existingMember = (store.members ?? []).find((member) => memberBelongsToWorkspace(member, existing) && member.user_id === userId && member.role === "owner" && workspaceMemberActive(member));
+    if (!existingMember) return { ok: false, status: 409, error: "Workspace slug is already in use", code: "WORKSPACE_SLUG_TAKEN" };
+    return { ok: true, workspace: existing, member: existingMember, replay: true };
+  }
+  const workspace: WorkspaceRecord = { id: cryptoRandomId("workspace"), slug, name, type, visibility, plan: "free", description, avatar_url: null };
+  const member: WorkspaceMember = {
+    id: cryptoRandomId("member"), workspace_id: workspace.id, workspace_slug: slug, user_id: userId,
+    role: "owner", status: "active", source: "direct", joined_at: new Date().toISOString(), expires_at: null, removed_at: null
+  };
+  writeWorkspaceStore({ ...store, workspaces: [workspace, ...(store.workspaces ?? [])], members: [member, ...(store.members ?? [])] });
+  writeLocalWorkspaceJoinPolicies(workspace, defaultWorkspaceJoinPolicies(workspace));
+  return { ok: true, workspace, member, replay: false };
 }
 
 export async function authorizeWorkspaceToken(slugValue: string | undefined, token: string | undefined, requiredScopes: string[]): Promise<WorkspaceAuthResult> {
@@ -301,6 +368,7 @@ export async function authorizeWorkspaceToken(slugValue: string | undefined, tok
 
   const workspace = await readWorkspaceBySlug(slug, true);
   if (workspace.status === "found") return authorizeTokenFromWorkspace(workspace.value, token, requiredScopes);
+  if (workspace.status === "unavailable") return { ok: false, status: 503, error: "Workspace unavailable", slug, auditAction: "workspace_unavailable" };
 
   const legacy = await authorizeOrgToken(slug, token, mapWorkspaceScopesToLegacyOrgScopes(requiredScopes));
   if (legacy.ok) return { ok: true, workspace: workspaceFromLegacyOrg(legacy.org), tokenName: legacy.tokenName, via: "legacy_org_token" };
@@ -325,7 +393,11 @@ export async function authorizeWorkspaceMember(slugValue: string | undefined, us
 
   const workspace = await readWorkspaceBySlug(slug, false);
   if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", slug, auditAction: workspace.status === "missing" ? "workspace_missing" : "workspace_unavailable" };
-  const member = await readWorkspaceMember(workspace.value, userId);
+  const memberState = await readWorkspaceMemberState(workspace.value, userId);
+  if (memberState.status === "unavailable") {
+    return { ok: false, status: 503, error: "Workspace membership unavailable", slug, auditAction: "workspace_unavailable" };
+  }
+  const member = memberState.status === "found" ? memberState.value : undefined;
   if (!member || member.status !== "active" || member.removed_at) {
     return { ok: false, status: 403, error: "Workspace membership required", slug, auditAction: "workspace_member_denied" };
   }
@@ -355,12 +427,18 @@ export async function upsertWorkspaceMember(slugValue: string | undefined, input
   if (!userId) return { ok: false, status: 400, error: "userId is required", code: "INVALID_USER" };
   const workspace = await readWorkspaceBySlug(slug, false);
   if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
-  const role = normalizeWorkspaceRole(input.role);
+  const role = strictWorkspaceRole(input.role ?? "member");
+  if (!role) return { ok: false, status: 400, error: "Invalid workspace role", code: "INVALID_MEMBER_ROLE" };
+  if (role === "owner") return { ok: false, status: 409, error: "Workspace ownership cannot be assigned through the generic member endpoint", code: "OWNER_MUTATION_FORBIDDEN" };
+  const existingState = await readWorkspaceMemberState(workspace.value, userId);
+  if (existingState.status === "unavailable") return { ok: false, status: 503, error: "Workspace membership unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  const existing = existingState.status === "found" ? existingState.value : undefined;
+  if (existing?.role === "owner") return { ok: false, status: 409, error: "Workspace owner cannot be changed through the generic member endpoint", code: "OWNER_MUTATION_FORBIDDEN" };
   const source = normalizeMemberSource(input.source);
   const expiresAt = normalizeMemberExpiresAt(input.expiresAt ?? input.expires_at);
   if (!expiresAt.ok) return { ok: false, status: 400, error: "Invalid member expiry timestamp", code: "INVALID_MEMBER_EXPIRY" };
   const member: WorkspaceMember = {
-    id: existingLocalMember(workspace.value, userId)?.id,
+    id: existing?.id ?? existingLocalMember(workspace.value, userId)?.id,
     workspace_id: workspace.value.id,
     workspace_slug: workspace.value.slug,
     user_id: userId,
@@ -372,6 +450,9 @@ export async function upsertWorkspaceMember(slugValue: string | undefined, input
     removed_at: null
   };
   const remote = workspace.value.id ? await upsertSupabaseWorkspaceMember(workspace.value, member) : undefined;
+  if (workspace.value.id && supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY && !remote) {
+    return { ok: false, status: 503, error: "Workspace member storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  }
   return { ok: true, workspace: workspace.value, member: remote ?? upsertLocalWorkspaceMember(workspace.value, member) };
 }
 
@@ -382,16 +463,32 @@ export async function removeWorkspaceMember(slugValue: string | undefined, userI
   if (!userId) return { ok: false, status: 400, error: "Invalid user id", code: "INVALID_USER" };
   const workspace = await readWorkspaceBySlug(slug, false);
   if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
-  const existing = await readWorkspaceMember(workspace.value, userId);
+  const existingState = await readWorkspaceMemberState(workspace.value, userId);
+  if (existingState.status === "unavailable") return { ok: false, status: 503, error: "Workspace membership unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  const existing = existingState.status === "found" ? existingState.value : undefined;
   if (!existing) return { ok: false, status: 404, error: "Workspace member not found", code: "MEMBER_NOT_FOUND" };
+  if (existing.role === "owner") return { ok: false, status: 409, error: "Workspace owner cannot be removed through the generic member endpoint", code: "OWNER_MUTATION_FORBIDDEN" };
   const removed: WorkspaceMember = { ...existing, status: "removed", removed_at: new Date().toISOString() };
   const remote = workspace.value.id ? await removeSupabaseWorkspaceMember(workspace.value, userId, removed.removed_at ?? new Date().toISOString()) : undefined;
+  if (workspace.value.id && supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY && !remote) {
+    return { ok: false, status: 503, error: "Workspace member storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  }
   return { ok: true, workspace: workspace.value, member: remote ?? upsertLocalWorkspaceMember(workspace.value, removed) };
 }
 
 export async function createWorkspaceInvite(slugValue: string | undefined, input: { role?: string; maxUses?: number | null; expiresInSeconds?: number | null; email?: string | null; createdBy?: string | null }): Promise<WorkspaceInviteResult> {
   const slug = cleanWorkspaceSlug(slugValue);
   if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  const role = strictWorkspaceInviteRole(input.role ?? "member");
+  if (!role) return { ok: false, status: 400, error: "Invite role must be member or viewer", code: "INVALID_INVITE_ROLE" };
+  const maxUses = normalizeMaxUses(input.maxUses);
+  if (input.maxUses !== undefined && input.maxUses !== null && maxUses === null) {
+    return { ok: false, status: 400, error: "maxUses must be an integer from 1 to 10000", code: "INVALID_MAX_USES" };
+  }
+  const expiresAt = expiresAtFromSeconds(input.expiresInSeconds);
+  if (input.expiresInSeconds !== undefined && input.expiresInSeconds !== null && expiresAt === null) {
+    return { ok: false, status: 400, error: "expiresInSeconds must be between 1 second and 365 days", code: "INVALID_INVITE_EXPIRY" };
+  }
   const workspace = await readWorkspaceBySlug(slug, false);
   if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
   const code = `ohwi_${randomBytes(18).toString("base64url")}`;
@@ -402,15 +499,18 @@ export async function createWorkspaceInvite(slugValue: string | undefined, input
     workspace_slug: workspace.value.slug,
     email: cleanEmail(input.email),
     code_hash: tokenHash(code),
-    role: normalizeWorkspaceRole(input.role, "member"),
-    max_uses: normalizeMaxUses(input.maxUses),
+    role,
+    max_uses: maxUses,
     uses_count: 0,
-    expires_at: expiresAtFromSeconds(input.expiresInSeconds),
+    expires_at: expiresAt,
     created_by: cleanUserId(input.createdBy) ?? null,
     created_at: now,
     revoked_at: null
   };
   const remote = workspace.value.id ? await createSupabaseWorkspaceInvite(workspace.value, invite) : undefined;
+  if (workspace.value.id && supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY && !remote) {
+    return { ok: false, status: 503, error: "Workspace invite storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  }
   return { ok: true, workspace: workspace.value, invite: remote ?? upsertLocalWorkspaceInvite(workspace.value, invite), code };
 }
 
@@ -433,28 +533,70 @@ export async function upsertWorkspaceJoinPolicies(slugValue: string | undefined,
     return { ok: false, status: 409, error: "Subscription-gated workspace joins are not available until subscription lifecycle is implemented", code: "SUBSCRIPTION_GATES_NOT_AVAILABLE" };
   }
   const remote = workspace.value.id ? await replaceSupabaseWorkspaceJoinPolicies(workspace.value, policies) : undefined;
+  if (workspace.value.id && !remote && !localWorkspaceFallbackAllowed()) {
+    return { ok: false, status: 503, error: "Workspace join policy storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
+  }
   if (!remote) writeLocalWorkspaceJoinPolicies(workspace.value, policies);
   return { ok: true, workspace: workspace.value, policies: remote ?? policies };
 }
 
-export async function joinWorkspaceWithInvite(slugValue: string | undefined, input: { code?: string; userId?: string }): Promise<WorkspaceJoinResult> {
+export async function joinWorkspaceWithInvite(slugValue: string | undefined, input: { code?: string; userId?: string; email?: string }): Promise<WorkspaceJoinResult> {
   const slug = cleanWorkspaceSlug(slugValue);
   const userId = cleanUserId(input.userId);
+  const email = cleanEmail(input.email);
   if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
   if (!userId) return { ok: false, status: 401, error: "Sign in required before joining workspace", code: "AUTH_REQUIRED" };
   const inviteHash = cleanInviteCodeHash(input.code);
   if (!inviteHash) return { ok: false, status: 400, error: "Invite code is required", code: "INVALID_INVITE" };
-  const workspace = await readWorkspaceBySlug(slug, false);
-  if (workspace.status !== "found") return { ok: false, status: workspace.status === "missing" ? 404 : 503, error: workspace.status === "missing" ? "Workspace not found" : "Workspace unavailable", code: workspace.status === "missing" ? "WORKSPACE_NOT_FOUND" : "WORKSPACE_UNAVAILABLE" };
-  const invite = await readWorkspaceInviteByHash(workspace.value, inviteHash);
+
+  if (supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const response = await supabaseRpcRequest("join_workspace_with_invite", {
+      p_user_id: userId,
+      p_workspace_slug: slug,
+      p_code_hash: inviteHash,
+      p_user_email: email ?? null
+    });
+    if (!response?.ok) return { ok: false, status: 503, error: "Workspace invite service unavailable", code: "WORKSPACE_UNAVAILABLE" };
+    const body = await response.json().catch(() => undefined) as unknown;
+    return parseWorkspaceInviteJoinRpc(body, userId);
+  }
+  if (process.env.NODE_ENV === "production") return { ok: false, status: 503, error: "Workspace invite service unavailable", code: "WORKSPACE_UNAVAILABLE" };
+
+  const workspace = readLocalWorkspace(slug);
+  if (!workspace) return { ok: false, status: 404, error: "Workspace not found", code: "WORKSPACE_NOT_FOUND" };
+  const localPolicies = readLocalWorkspaceJoinPolicies(workspace);
+  const invitePolicy = (localPolicies.length ? localPolicies : defaultWorkspaceJoinPolicies(workspace))
+    .find((policy) => policy.kind === "invite" && policy.status === "active");
+  if (!invitePolicy) return { ok: false, status: 403, error: "Workspace invite joins are disabled", code: "JOIN_POLICY_DENIED" };
+  const invite = readLocalWorkspaceInvites(workspace).find((row) => tokenMatchesRawHash(inviteHash, row.code_hash));
   if (!invite || invite.revoked_at) return { ok: false, status: 404, error: "Invite not found", code: "INVITE_NOT_FOUND" };
+  if (invite.email && (!email || invite.email.toLowerCase() !== email.toLowerCase())) return { ok: false, status: 403, error: "Invite is restricted to another email", code: "INVITE_EMAIL_MISMATCH" };
+  const existing = existingLocalMember(workspace, userId);
+  if (existing && workspaceMemberActive(existing)) return { ok: true, workspace, invite, member: existing };
+  if (existing && (existing.status === "suspended" || existing.status === "removed")) return { ok: false, status: 403, error: "Workspace membership is blocked", code: "MEMBERSHIP_BLOCKED" };
   if (invite.expires_at && Date.parse(invite.expires_at) <= Date.now()) return { ok: false, status: 403, error: "Invite expired", code: "INVITE_EXPIRED" };
   if (invite.max_uses !== null && invite.max_uses !== undefined && invite.uses_count >= invite.max_uses) return { ok: false, status: 403, error: "Invite already used", code: "INVITE_EXHAUSTED" };
-  const member = await upsertWorkspaceMember(workspace.value.slug, { userId, role: invite.role, source: "invite" });
-  if (!member.ok) return member;
   const updatedInvite: WorkspaceInvite = { ...invite, uses_count: invite.uses_count + 1 };
-  const persistedInvite = workspace.value.id ? await updateSupabaseWorkspaceInviteUses(workspace.value, updatedInvite) : undefined;
-  return { ok: true, workspace: workspace.value, invite: persistedInvite ?? upsertLocalWorkspaceInvite(workspace.value, updatedInvite), member: member.member };
+  const member: WorkspaceMember = {
+    ...(existing ?? {}),
+    id: existing?.id ?? cryptoRandomId("member"),
+    workspace_id: workspace.id,
+    workspace_slug: workspace.slug,
+    user_id: userId,
+    role: strongerWorkspaceRole(existing?.role, invite.role),
+    status: "active",
+    source: "invite",
+    joined_at: new Date().toISOString(),
+    expires_at: null,
+    removed_at: null
+  };
+  const store = readWorkspaceStore();
+  writeWorkspaceStore({
+    ...store,
+    members: [member, ...(store.members ?? []).filter((row) => !(memberBelongsToWorkspace(row, workspace) && row.user_id === userId))],
+    invites: [updatedInvite, ...(store.invites ?? []).filter((row) => row.id !== updatedInvite.id && row.code_hash !== updatedInvite.code_hash)]
+  });
+  return { ok: true, workspace, invite: updatedInvite, member };
 }
 
 export async function joinWorkspaceWithEmailDomain(slugValue: string | undefined, input: { userId?: string; email?: string }): Promise<WorkspaceJoinResult> {
@@ -588,9 +730,30 @@ export function upsertWorkspaceCollection(slugValue: string, input: { slug?: str
   return collection;
 }
 
-export function approveWorkspacePublicResource(slugValue: string, workspaceName: string, publicResource: resources.Resource, input: { collectionSlug?: string; name?: string; note?: string; actor?: string }): WorkspaceApprovalResult {
+export function approveWorkspacePublicResource(
+  slugValue: string,
+  workspaceName: string,
+  publicResource: resources.Resource,
+  input: {
+    collectionSlug?: string;
+    name?: string;
+    note?: string;
+    actor?: string;
+    pinnedVersion?: string;
+    pinnedArchiveHash?: string;
+  }
+): WorkspaceApprovalResult {
   const slug = cleanWorkspaceSlug(slugValue);
   if (!slug) return { ok: false, status: 400, error: "Invalid workspace slug", code: "INVALID_WORKSPACE" };
+  const pin = normalizeWorkspaceApprovalPin(input.pinnedVersion, input.pinnedArchiveHash);
+  if (!pin.ok) {
+    return {
+      ok: false,
+      status: 400,
+      error: "pinnedVersion and pinnedArchiveHash must be a complete semantic-version and lowercase SHA-256 pair.",
+      code: "INVALID_RESOURCE_RELEASE_PIN"
+    };
+  }
   const scan = publicResource.trust?.securityScan ?? "not_scanned";
   if (scan === "not_scanned") {
     return {
@@ -635,9 +798,11 @@ export function approveWorkspacePublicResource(slugValue: string, workspaceName:
 
   const now = new Date().toISOString();
   const approvalState: WorkspaceApprovalState = scan === "warn" ? "approved_with_warning" : "approved";
-  const canonicalUrl = `https://superskill.sh/#/workspaces/${encodeURIComponent(slug)}/resources/${encodeURIComponent(name)}`;
+  const canonicalUrl = `https://superskill.sh/#/superskill/workspaces?workspace=${encodeURIComponent(slug)}&resource=${encodeURIComponent(name)}`;
   const riskSnapshot = {
     sourceResourceId: publicResource.id,
+    pinnedVersion: pin.version,
+    pinnedArchiveHash: pin.archiveHash,
     sourceCheckedAt: publicResource.sourceCheckedAt,
     sourceCheckStatus: publicResource.sourceCheckStatus,
     licenseStatus: publicResource.licenseStatus,
@@ -684,7 +849,9 @@ export function approveWorkspacePublicResource(slugValue: string, workspaceName:
     approvedBy: input.actor,
     approvedAt: now,
     note: cleanCollectionSummary(input.note) ?? null,
-    riskSnapshot
+    riskSnapshot,
+    pinnedVersion: pin.version,
+    pinnedArchiveHash: pin.archiveHash
   });
   const updatedCollection = workspaceCollectionDetail(slug, collectionSlug) ?? collection;
   return { ok: true, collection: updatedCollection, item, resource, approvalState };
@@ -817,6 +984,7 @@ function removeWorkspaceResourceIfOrphanedApproval(slug: string, item: Workspace
 async function readWorkspaceBySlug(slug: string, withTokens: boolean): Promise<SupabaseLoad<WorkspaceRecord>> {
   const remote = await readSupabaseWorkspaceBySlug(slug, withTokens);
   if (remote.status !== "unavailable") return remote;
+  if (!localWorkspaceFallbackAllowed()) return remote;
   const local = readLocalWorkspace(slug);
   return local ? { status: "found", value: local } : { status: "missing" };
 }
@@ -842,6 +1010,11 @@ async function readSupabaseWorkspaceBySlug(slug: string, withTokens: boolean): P
 }
 
 export async function readWorkspaceMember(workspace: WorkspaceRecord, userId: string): Promise<WorkspaceMember | undefined> {
+  const state = await readWorkspaceMemberState(workspace, userId);
+  return state.status === "found" ? state.value : undefined;
+}
+
+async function readWorkspaceMemberState(workspace: WorkspaceRecord, userId: string): Promise<SupabaseLoad<WorkspaceMember>> {
   if (workspace.id) {
     const rows = await supabaseRows<SupabaseMemberRow>("workspace_members", {
       select: "id,workspace_id,user_id,role,status,source,joined_at,expires_at,removed_at",
@@ -849,9 +1022,14 @@ export async function readWorkspaceMember(workspace: WorkspaceRecord, userId: st
       user_id: `eq.${userId}`,
       limit: "1"
     });
-    if (rows) return normalizeSupabaseMember(rows[0], workspace.slug)[0];
+    if (rows) {
+      const member = normalizeSupabaseMember(rows[0], workspace.slug)[0];
+      return member ? { status: "found", value: member } : { status: "missing" };
+    }
   }
-  return existingLocalMember(workspace, userId);
+  if (!localWorkspaceFallbackAllowed()) return { status: "unavailable" };
+  const member = existingLocalMember(workspace, userId);
+  return member ? { status: "found", value: member } : { status: "missing" };
 }
 
 async function readSupabaseWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[] | undefined> {
@@ -863,6 +1041,10 @@ async function readSupabaseWorkspaceMembers(workspaceId: string): Promise<Worksp
     limit: "200"
   });
   return rows?.flatMap((row) => normalizeSupabaseMember(row)).filter(workspaceMemberActive);
+}
+
+function localWorkspaceFallbackAllowed(): boolean {
+  return process.env.NODE_ENV !== "production" && !(supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 async function upsertSupabaseWorkspaceMember(workspace: WorkspaceRecord, member: WorkspaceMember): Promise<WorkspaceMember | undefined> {
@@ -933,39 +1115,11 @@ async function createSupabaseWorkspaceInvite(workspace: WorkspaceRecord, invite:
   }
 }
 
-async function readWorkspaceInviteByHash(workspace: WorkspaceRecord, codeHash: string): Promise<WorkspaceInvite | undefined> {
-  if (workspace.id) {
-    const rows = await supabaseRows<SupabaseInviteRow>("workspace_invites", {
-      select: "id,workspace_id,email,code_hash,role,max_uses,uses_count,expires_at,created_by,created_at,revoked_at",
-      workspace_id: `eq.${workspace.id}`,
-      code_hash: `eq.${codeHash}`,
-      limit: "1"
-    });
-    if (rows) return normalizeSupabaseInvite(rows[0], workspace.slug)[0];
-  }
-  return readLocalWorkspaceInvites(workspace).find((invite) => tokenMatchesRawHash(codeHash, invite.code_hash));
-}
-
-async function updateSupabaseWorkspaceInviteUses(workspace: WorkspaceRecord, invite: WorkspaceInvite): Promise<WorkspaceInvite | undefined> {
-  if (!workspace.id || !invite.id) return undefined;
-  const response = await supabaseRequest("workspace_invites", { id: `eq.${invite.id}` }, {
-    method: "PATCH",
-    headers: { ...supabaseHeaders(), "content-type": "application/json", prefer: "return=representation" },
-    body: JSON.stringify({ uses_count: invite.uses_count })
-  });
-  if (!response?.ok) return undefined;
-  try {
-    const body = await response.json() as SupabaseInviteRow[];
-    return normalizeSupabaseInvite(body[0], workspace.slug)[0];
-  } catch {
-    return undefined;
-  }
-}
-
 async function readWorkspaceJoinPolicies(workspace: WorkspaceRecord): Promise<WorkspaceJoinPolicy[]> {
   if (workspace.id) {
     const remote = await readSupabaseWorkspaceJoinPolicies(workspace);
     if (remote) return remote.length ? remote : defaultWorkspaceJoinPolicies(workspace);
+    if (!localWorkspaceFallbackAllowed()) return [];
   }
   const local = readLocalWorkspaceJoinPolicies(workspace);
   return local.length ? local : defaultWorkspaceJoinPolicies(workspace);
@@ -1425,6 +1579,57 @@ async function supabaseRequest(table: string, params?: Record<string, string>, i
   }
 }
 
+async function supabaseRpcRequest(functionName: string, body: Record<string, unknown>): Promise<Response | undefined> {
+  const url = supabaseUrl();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return undefined;
+  try {
+    return await fetch(`${url}/rest/v1/rpc/${functionName}`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function parseWorkspaceCreateRpc(value: unknown, userId: string): { workspace: WorkspaceRecord; member: WorkspaceMember; replay: boolean } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const body = value as { workspace?: SupabaseWorkspaceRow; member?: SupabaseMemberRow; replay?: unknown };
+  const workspace = normalizeSupabaseWorkspace(body.workspace);
+  const member = normalizeSupabaseMember(body.member, workspace?.slug)[0];
+  if (!workspace || !member || member.user_id !== userId || member.role !== "owner" || member.status !== "active") return undefined;
+  return { workspace, member, replay: body.replay === true };
+}
+
+function parseWorkspaceInviteJoinRpc(value: unknown, userId: string): WorkspaceJoinResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, status: 503, error: "Workspace invite service returned an invalid response", code: "WORKSPACE_UNAVAILABLE" };
+  const body = value as { ok?: unknown; code?: unknown; workspace?: SupabaseWorkspaceRow; invite?: SupabaseInviteRow; member?: SupabaseMemberRow };
+  if (body.ok !== true) return workspaceInviteJoinError(typeof body.code === "string" ? body.code : "WORKSPACE_UNAVAILABLE");
+  const workspace = normalizeSupabaseWorkspace(body.workspace);
+  const invite = normalizeSupabaseInvite(body.invite, workspace?.slug)[0];
+  const member = normalizeSupabaseMember(body.member, workspace?.slug)[0];
+  if (!workspace || !invite || !member || member.user_id !== userId || !workspaceMemberActive(member)) {
+    return { ok: false, status: 503, error: "Workspace invite service returned an invalid response", code: "WORKSPACE_UNAVAILABLE" };
+  }
+  return { ok: true, workspace, invite, member };
+}
+
+function workspaceInviteJoinError(code: string): WorkspaceJoinResult {
+  if (code === "WORKSPACE_NOT_FOUND") return { ok: false, status: 404, error: "Workspace not found", code };
+  if (code === "INVITE_NOT_FOUND") return { ok: false, status: 404, error: "Invite not found", code };
+  if (code === "INVALID_INVITE") return { ok: false, status: 400, error: "Invite code is invalid", code };
+  if (code === "AUTH_REQUIRED") return { ok: false, status: 401, error: "Sign in required before joining workspace", code };
+  if (code === "INVITE_EMAIL_MISMATCH") return { ok: false, status: 403, error: "Invite is restricted to another email", code };
+  if (code === "INVITE_EXPIRED") return { ok: false, status: 403, error: "Invite expired", code };
+  if (code === "INVITE_EXHAUSTED") return { ok: false, status: 403, error: "Invite already used", code };
+  if (code === "INVITE_ROLE_INVALID") return { ok: false, status: 403, error: "Invite role is not allowed", code };
+  if (code === "MEMBERSHIP_BLOCKED") return { ok: false, status: 403, error: "Workspace membership is blocked", code };
+  if (code === "JOIN_POLICY_DENIED") return { ok: false, status: 403, error: "Workspace invite joins are disabled", code };
+  return { ok: false, status: 503, error: "Workspace invite service unavailable", code: "WORKSPACE_UNAVAILABLE" };
+}
+
 function normalizeSupabaseWorkspace(row: SupabaseWorkspaceRow | undefined): WorkspaceRecord | undefined {
   const slug = cleanWorkspaceSlug(row?.slug);
   if (!slug || !row?.id) return undefined;
@@ -1493,13 +1698,15 @@ function normalizeLocalMember(row: WorkspaceMember | undefined): WorkspaceMember
 
 function normalizeSupabaseInvite(row: SupabaseInviteRow | undefined, workspaceSlug?: string): WorkspaceInvite[] {
   if (!row?.workspace_id || !row.code_hash?.startsWith("sha256:")) return [];
+  const role = strictWorkspaceInviteRole(row.role);
+  if (!role) return [];
   return [{
     id: row.id,
     workspace_id: row.workspace_id,
     workspace_slug: workspaceSlug,
     email: cleanEmail(row.email),
     code_hash: row.code_hash,
-    role: normalizeWorkspaceRole(row.role, "member"),
+    role,
     max_uses: normalizeMaxUses(row.max_uses),
     uses_count: normalizeUsesCount(row.uses_count),
     expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
@@ -1511,13 +1718,15 @@ function normalizeSupabaseInvite(row: SupabaseInviteRow | undefined, workspaceSl
 
 function normalizeLocalInvite(row: WorkspaceInvite | undefined): WorkspaceInvite[] {
   if (!row?.code_hash?.startsWith("sha256:") || (!row.workspace_id && !cleanWorkspaceSlug(row.workspace_slug))) return [];
+  const role = strictWorkspaceInviteRole(row.role);
+  if (!role) return [];
   return [{
     id: typeof row.id === "string" && row.id ? row.id : cryptoRandomId("invite"),
     workspace_id: typeof row.workspace_id === "string" ? row.workspace_id : undefined,
     workspace_slug: cleanWorkspaceSlug(row.workspace_slug),
     email: cleanEmail(row.email),
     code_hash: row.code_hash,
-    role: normalizeWorkspaceRole(row.role, "member"),
+    role,
     max_uses: normalizeMaxUses(row.max_uses),
     uses_count: normalizeUsesCount(row.uses_count),
     expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
@@ -1776,12 +1985,46 @@ function normalizeWorkspaceType(value: unknown): WorkspaceType {
   return ["company", "community", "team", "course", "agency", "chat"].includes(String(value)) ? value as WorkspaceType : "team";
 }
 
+function normalizeStrictWorkspaceType(value: unknown): WorkspaceType | undefined {
+  return ["company", "community", "team", "course", "agency", "chat"].includes(String(value)) ? value as WorkspaceType : undefined;
+}
+
+function strongerWorkspaceRole(current: WorkspaceRole | undefined, incoming: WorkspaceRole): WorkspaceRole {
+  const rank: Record<WorkspaceRole, number> = { owner: 6, admin: 5, moderator: 4, publisher: 3, member: 2, viewer: 1 };
+  return current && rank[current] >= rank[incoming] ? current : incoming;
+}
+
+function normalizeSelfServiceVisibility(value: unknown): Extract<WorkspaceVisibility, "private" | "invite_only"> | undefined {
+  return value === "private" || value === "invite_only" ? value : undefined;
+}
+
+function cleanWorkspaceName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const clean = value.trim();
+  return clean && clean.length <= 120 && !/[\0\u0001-\u001f\u007f]/.test(clean) ? clean : undefined;
+}
+
+function cleanWorkspaceDescription(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const clean = value.trim();
+  return clean.length <= 500 && !/[\0\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(clean) ? clean || null : undefined;
+}
+
 function normalizeWorkspaceVisibility(value: unknown): WorkspaceVisibility {
   return ["private", "invite_only", "gated", "public", "unlisted"].includes(String(value)) ? value as WorkspaceVisibility : "private";
 }
 
 function normalizeWorkspaceRole(value: unknown, fallback: WorkspaceRole = "member"): WorkspaceRole {
   return ["owner", "admin", "moderator", "publisher", "member", "viewer"].includes(String(value)) ? value as WorkspaceRole : fallback;
+}
+
+function strictWorkspaceRole(value: unknown): WorkspaceRole | undefined {
+  return ["owner", "admin", "moderator", "publisher", "member", "viewer"].includes(String(value)) ? value as WorkspaceRole : undefined;
+}
+
+function strictWorkspaceInviteRole(value: unknown): Extract<WorkspaceRole, "member" | "viewer"> | undefined {
+  return value === "member" || value === "viewer" ? value : undefined;
 }
 
 function normalizeMemberStatus(value: unknown): WorkspaceMemberStatus {
@@ -1820,6 +2063,19 @@ function cleanUserId(value: string | undefined | null): string | undefined {
 function cleanEmail(value: string | undefined | null): string | null {
   const clean = value?.trim().toLowerCase();
   return clean && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean) && clean.length <= 254 ? clean : null;
+}
+
+function normalizeWorkspaceApprovalPin(
+  versionValue: string | undefined,
+  archiveHashValue: string | undefined
+): { ok: true; version?: string; archiveHash?: string } | { ok: false } {
+  if (versionValue === undefined && archiveHashValue === undefined) return { ok: true };
+  if (typeof versionValue !== "string" || typeof archiveHashValue !== "string") return { ok: false };
+  const version = versionValue.trim();
+  const archiveHash = archiveHashValue.trim();
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) return { ok: false };
+  if (!/^[a-f0-9]{64}$/.test(archiveHash)) return { ok: false };
+  return { ok: true, version, archiveHash };
 }
 
 function normalizeMaxUses(value: unknown): number | null {
@@ -1933,6 +2189,16 @@ function setupBundleResource(workspace: WorkspaceRecord, resource: resources.Res
     .map((collection) => collection.slug);
   const installAction = resource.actions.find((action) => action.id === "install" && "command" in action) as Extract<resources.ResourceAction, { id: "install" }> | undefined;
   const hostedArchive = Boolean(workspaceResourceArchivePath(workspace.slug, resource.id));
+  const approvalPin = workspaceApprovalPin(resource, collections);
+  const exactResourceUrl = approvalPin
+    ? `https://superskill.sh/#/superskill/resources/${encodeURIComponent(approvalPin.sourceResourceId)}/releases/${encodeURIComponent(approvalPin.version)}`
+    : undefined;
+  const exactSkillInstall = approvalPin
+    && resource.resourceType === "skill"
+    && /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(approvalPin.sourceResourceId)
+    && (target === "codex" || target === "claude-code")
+    ? `npx --yes onlyharness@0.2.18 resources install ${approvalPin.sourceResourceId} --version ${approvalPin.version} --target ${target}${resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed"} --json`
+    : undefined;
   return {
     id: resource.id,
     name,
@@ -1941,13 +2207,30 @@ function setupBundleResource(workspace: WorkspaceRecord, resource: resources.Res
     source: resource.workspaceApproval ? "workspace_approved" : "workspace_private",
     hostedArchive,
     sourceResourceId: resource.workspaceApproval?.sourceResourceId,
+    pinnedVersion: approvalPin?.version,
+    pinnedArchiveHash: approvalPin?.archiveHash,
+    exactResourceUrl,
     approvalState: resource.workspaceApproval?.approvalState,
     collections: collectionSlugs,
-    detailCommand: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest resources detail ${resource.id} --json`,
-    openCommand: `npx onlyharness@latest resources open ${resource.id}`,
-    ...(installAction?.command ? { installCommand: installAction.command } : hostedArchive ? { installCommand: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${workspace.slug} --target ${target} --json` } : {}),
+    detailCommand: approvalPin
+      ? `curl -fsS https://superskill.sh/api/resources/${encodeURIComponent(approvalPin.sourceResourceId)}/releases/${encodeURIComponent(approvalPin.version)}`
+      : `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest resources detail ${resource.id} --json`,
+    openCommand: exactResourceUrl ?? `npx onlyharness@latest resources open ${resource.id}`,
+    ...(exactSkillInstall ? { installCommand: exactSkillInstall } : installAction?.command ? { installCommand: installAction.command } : hostedArchive ? { installCommand: `HH_WORKSPACE_TOKEN=<token> npx onlyharness@latest workspace setup ${workspace.slug} --target ${target} --json` } : {}),
     note: resource.workspaceApproval?.note ?? null
   };
+}
+
+function workspaceApprovalPin(resource: resources.Resource, collections: WorkspaceCollection[]): { sourceResourceId: string; version: string; archiveHash: string } | undefined {
+  const approval = resource.workspaceApproval;
+  if (!approval) return undefined;
+  const item = collections
+    .find((collection) => collection.slug === approval.collectionSlug)
+    ?.items.find((candidate) => candidate.itemRef === resource.id && candidate.sourceResourceId === approval.sourceResourceId);
+  if (!item?.pinnedVersion || !item.pinnedArchiveHash
+    || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(item.pinnedVersion)
+    || !/^[a-f0-9]{64}$/.test(item.pinnedArchiveHash)) return undefined;
+  return { sourceResourceId: approval.sourceResourceId, version: item.pinnedVersion, archiveHash: item.pinnedArchiveHash };
 }
 
 function defaultWorkspaceReadmeConfig(workspace: WorkspaceRecord, bundleResources: WorkspaceSetupBundleResource[], target: string): WorkspaceSetupBundleConfig {
@@ -1966,7 +2249,11 @@ function defaultWorkspaceReadmeConfig(workspace: WorkspaceRecord, bundleResource
     hosted.length ? hosted.map((resource) => `- ${resource.id} (${resource.resourceType})`).join("\n") : "- None",
     "",
     "## Approved Public Resources",
-    approved.length ? approved.map((resource) => `- ${resource.id}${resource.sourceResourceId ? ` from ${resource.sourceResourceId}` : ""} (${resource.approvalState ?? "approved"})`).join("\n") : "- None",
+    approved.length ? approved.map((resource) => [
+      `- ${resource.id}${resource.sourceResourceId ? ` from ${resource.sourceResourceId}` : ""}${resource.pinnedVersion && resource.pinnedArchiveHash ? ` @ ${resource.pinnedVersion} sha256:${resource.pinnedArchiveHash}` : " — no immutable pin; do not resolve latest"} (${resource.approvalState ?? "approved"})`,
+      ...(resource.exactResourceUrl ? [`  - Exact release: ${resource.exactResourceUrl}`] : []),
+      ...(resource.installCommand ? [`  - Install: \`${resource.installCommand}\``] : [])
+    ].join("\n")).join("\n") : "- None",
     "",
     "## Commands",
     "",
@@ -1991,6 +2278,8 @@ function defaultWorkspaceCommandsConfig(workspace: WorkspaceRecord, bundleResour
         "",
         `- Detail: \`${resource.detailCommand}\``,
         `- Open: \`${resource.openCommand}\``,
+        ...(resource.pinnedVersion && resource.pinnedArchiveHash ? [`- Exact release: \`${resource.pinnedVersion}\` · \`sha256:${resource.pinnedArchiveHash}\``] : []),
+        ...(resource.installCommand ? [`- Install: \`${resource.installCommand}\``] : []),
         resource.hostedArchive
           ? `- Hosted archive: installed by workspace setup into \`resources/${resource.name}\`.`
           : "- Hosted archive: not provided by this workspace; use the public/resource-specific instructions above.",
