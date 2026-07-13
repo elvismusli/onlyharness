@@ -141,6 +141,53 @@ export const curatedCatalogSchema = z.object({
   resources: z.array(curatedResourceSchema)
 }).strict();
 
+export const reviewWarningLimitationCodes = {
+  scanner: "[SCANNER_WARN]",
+  capabilityDiff: "[CAPABILITY_DIFF_WARN]",
+  evalCommand: "[EVAL_COMMAND_WARN]"
+} as const;
+
+export function hasReviewWarningLimitation(limitations: string[], code: string): boolean {
+  return limitations.some((limitation) => limitation.startsWith(`${code} `)
+    && limitation.slice(code.length).trim().length >= 8);
+}
+
+const reviewCompatibilitySchema = z.array(z.object({
+  client: clientSchema,
+  clientVersion: z.string().min(1).max(40),
+  os: z.enum(["darwin", "linux", "win32"]),
+  verdict: z.enum(["pass", "fail"]),
+  checkedAt: rfc3339Schema,
+  fixtureId: z.string().min(1)
+}).strict()).length(2).superRefine((rows, context) => {
+  for (const client of clientSchema.options) {
+    if (rows.filter((row) => row.client === client).length !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `compatibility must contain exactly one ${client} row`
+      });
+    }
+  }
+});
+
+const reviewHumanCasesSchema = z.array(z.object({
+  caseId: z.string().trim().min(1),
+  verdict: z.enum(["pass", "partial", "fail"]),
+  limitationCodes: z.array(z.string().min(1))
+}).strict()).superRefine((rows, context) => {
+  const seen = new Set<string>();
+  rows.forEach((row, index) => {
+    if (seen.has(row.caseId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "human case IDs must be unique",
+        path: [index, "caseId"]
+      });
+    }
+    seen.add(row.caseId);
+  });
+});
+
 export const reviewAttestationSchema = z.object({
   schemaVersion: z.literal("superskill.review.v1"),
   capability: z.object({
@@ -170,25 +217,31 @@ export const reviewAttestationSchema = z.object({
     }).strict()),
     differences: z.array(z.object({ field: z.string().min(1), declared: z.string(), inferred: z.string() }).strict())
   }).strict(),
-  compatibility: z.array(z.object({
-    client: clientSchema,
-    clientVersion: z.string().min(1).max(40),
-    os: z.enum(["darwin", "linux", "win32"]),
-    verdict: z.enum(["pass", "fail"]),
-    checkedAt: rfc3339Schema,
-    fixtureId: z.string().min(1)
-  }).strict()),
-  humanCases: z.array(z.object({
-    caseId: z.string().min(1),
-    verdict: z.enum(["pass", "partial", "fail"]),
-    limitationCodes: z.array(z.string().min(1))
-  }).strict()),
-  reviewer: z.object({ label: z.string().min(2).max(100) }).strict(),
+  compatibility: reviewCompatibilitySchema,
+  humanCases: reviewHumanCasesSchema,
+  reviewer: z.object({
+    label: z.string().min(2).max(100).regex(/^[^\r\n]+$/).refine(
+      (label) => !/[^\s@]+@[^\s@]+\.[^\s@]+/.test(label.trim()),
+      "reviewer label must be public-safe and must not be an email address"
+    )
+  }).strict(),
   limitations: z.array(z.string().min(1)),
   reviewedAt: rfc3339Schema,
   expiresAt: rfc3339Schema,
   replacement: z.object({ ref: z.string().min(3), version: z.string().min(1), artifactDigest: digestSchema }).strict().optional()
-}).strict();
+}).strict().superRefine((review, context) => {
+  const missingCodes = [
+    ...(review.scanner.status === "warn" ? [reviewWarningLimitationCodes.scanner] : []),
+    ...(review.capabilityDiff.status === "warn" ? [reviewWarningLimitationCodes.capabilityDiff] : [])
+  ].filter((code) => !hasReviewWarningLimitation(review.limitations, code));
+  for (const code of missingCodes) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${code} requires an explicit public limitation`,
+      path: ["limitations"]
+    });
+  }
+});
 
 export const revocationTombstoneSchema = z.object({
   schemaVersion: z.literal("superskill.revoke.v1"),

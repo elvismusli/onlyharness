@@ -267,12 +267,23 @@ type ReviewAttestation = {
 Validation rules:
 
 - capability tuple equals curated tuple byte-for-byte;
-- exactly one passing, unexpired compatibility row for each first client;
-- at least three human cases and none with `fail` for approved status;
+- compatibility contains exactly two rows: one `claude-code` and one `codex`; approved
+  status requires both to be passing, not future-dated and no older than 90 days;
+- at least three human cases with unique trimmed `caseId` values and none with `fail` for
+  approved status;
 - scanner/capability diff `fail` blocks approval;
+- scanner/capability `warn` requires an explicit public limitation beginning with
+  `[SCANNER_WARN]` or `[CAPABILITY_DIFF_WARN]` respectively;
+- a non-empty manifest `evals.command` is author-declared shell-shaped metadata and
+  requires an explicit public limitation beginning with `[EVAL_COMMAND_WARN]`; managed
+  activation never executes it;
 - `not_detected` means only “no static signal”; it never proves declared `false` and
   public copy keeps declared value separate from scanner observation;
-- reviewer contains a public-safe team label, not email/user ID;
+- reviewer contains a public-safe team label, not email/user ID, including an email
+  embedded inside a longer label;
+- `reviewedAt` and mandatory evidence cannot be future-dated beyond five minutes of clock
+  skew; human review is valid at most 180 days; `expiresAt` must be after `reviewedAt` and
+  no later than 180 days after it;
 - quarantine/revoke reason and timestamp live in the append-only tombstone overlay, not
   by rewriting this attestation.
 

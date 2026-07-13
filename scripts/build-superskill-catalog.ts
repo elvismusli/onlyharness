@@ -5,7 +5,9 @@ import {
   curatedCatalogSchema,
   managedCapabilityHistorySchema,
   managedCapabilityIndexSchema,
+  hasReviewWarningLimitation,
   reviewAttestationSchema,
+  reviewWarningLimitationCodes,
   type CuratedResource,
   type ManagedCapability,
   type ManagedCapabilityIndex,
@@ -16,6 +18,7 @@ import {
 } from "@harnesshub/capability-schema/browser";
 import { parseManifestText, type HarnessManifest } from "@harnesshub/schema";
 import { canonicalArtifactDigest, readArtifactFilesFromRoot } from "@harnesshub/capability-schema/node";
+import YAML from "yaml";
 import * as registry from "../apps/harness-api/src/registry.js";
 import { evaluateManagedEligibility } from "../apps/harness-api/src/trust-policy.js";
 import { recomputeCapabilityDiff, scanHarnessFiles } from "../apps/harness-api/src/security-scan.js";
@@ -24,6 +27,11 @@ const root = path.resolve(import.meta.dirname, "..");
 const curatedPath = path.join(root, "data/superskill/curated.json");
 const indexPath = path.join(root, "data/superskill/index.json");
 const historyPath = path.join(root, "data/superskill/history.json");
+const minuteMs = 60_000;
+const dayMs = 86_400_000;
+const approvalClockSkewMs = 5 * minuteMs;
+const compatibilityFreshnessMs = 90 * dayMs;
+const humanReviewFreshnessMs = 180 * dayMs;
 
 export function buildSuperskillIndex(now = new Date()): ManagedCapabilityIndex {
   const curated = curatedCatalogSchema.parse(JSON.parse(readFileSync(curatedPath, "utf8")));
@@ -68,13 +76,13 @@ function buildCapability(resource: CuratedResource, now: Date): ManagedCapabilit
   const snapshotFiles = snapshot.files.map((file) => ({ path: file.path, content: file.content }));
   const snapshotScan = scanHarnessFiles(snapshotFiles, { networkAllowlist: permissions.networkAllowlist, scannedAt: snapshot.createdAt });
   const snapshotDiff = recomputeCapabilityDiff(snapshotFiles, permissions);
-  validateApprovalEvidence(resource, review, now);
+  validateApprovalEvidence(resource, review, now, { evalCommand: manifest.evals.command });
   if (review) verifyAttestationAgainstSnapshot(resource, review, snapshotScan, snapshotDiff, {
     url: manifest.source.upstream_url,
     license: manifest.source.upstream_license
   });
   if (resource.status === "approved") {
-    assertInstructionOnly(snapshot.files.map((file) => file.path), resource);
+    assertManagedInstructionOnly(snapshot.files, resource, manifest);
     const currentPaths = registry.listHarnessFiles(sourceRoot);
     if (registry.countHarnessFiles(sourceRoot) !== currentPaths.length) throw new Error(`Approved managed source exceeds the complete file limit: ${resource.id}`);
     const currentDigest = canonicalArtifactDigest(readArtifactFilesFromRoot(sourceRoot, currentPaths));
@@ -169,16 +177,63 @@ function loadReview(resource: CuratedResource): ReviewAttestation {
   return review;
 }
 
-function validateApprovalEvidence(resource: CuratedResource, review: ReviewAttestation | undefined, now: Date): void {
+export function validateApprovalEvidence(
+  resource: CuratedResource,
+  review: ReviewAttestation | undefined,
+  now: Date,
+  context: { evalCommand?: string } = {}
+): void {
   if (resource.status !== "approved") return;
   if (!review) throw new Error(`Approved capability requires a review: ${resource.id}`);
   if (review.scanner.status === "fail" || review.capabilityDiff.status === "fail") throw new Error(`Approved capability has failing review evidence: ${resource.id}`);
-  if (Date.parse(review.expiresAt) <= now.getTime()) throw new Error(`Approved capability review expired: ${resource.id}`);
-  if (review.humanCases.length < 3 || review.humanCases.some((item) => item.verdict === "fail")) throw new Error(`Approved capability requires three non-failing human cases: ${resource.id}`);
-  for (const client of ["claude-code", "codex"] as const) {
-    const compatible = review.compatibility.some((item) => item.client === client && item.verdict === "pass" && now.getTime() - Date.parse(item.checkedAt) <= 90 * 86_400_000);
-    if (!compatible) throw new Error(`Approved capability requires fresh ${client} compatibility evidence: ${resource.id}`);
+  const nowMs = now.getTime();
+  const reviewedAtMs = Date.parse(review.reviewedAt);
+  const expiresAtMs = Date.parse(review.expiresAt);
+  if (reviewedAtMs > nowMs + approvalClockSkewMs) throw new Error(`Approved capability review date is in the future: ${resource.id}`);
+  if (nowMs - reviewedAtMs > humanReviewFreshnessMs) throw new Error(`Approved capability human review is stale: ${resource.id}`);
+  if (expiresAtMs <= reviewedAtMs || expiresAtMs > reviewedAtMs + humanReviewFreshnessMs) {
+    throw new Error(`Approved capability review expiry must be after review and within 180 days: ${resource.id}`);
   }
+  if (expiresAtMs <= nowMs) throw new Error(`Approved capability review expired: ${resource.id}`);
+  const scannerCheckedAtMs = Date.parse(review.scanner.checkedAt);
+  if (scannerCheckedAtMs > nowMs + approvalClockSkewMs || scannerCheckedAtMs > reviewedAtMs + approvalClockSkewMs) {
+    throw new Error(`Approved capability scanner evidence is future-dated: ${resource.id}`);
+  }
+  const compatibilityCounts = new Map<string, number>();
+  for (const item of review.compatibility) compatibilityCounts.set(item.client, (compatibilityCounts.get(item.client) ?? 0) + 1);
+  for (const client of ["claude-code", "codex"] as const) {
+    if (compatibilityCounts.get(client) !== 1) throw new Error(`Approved capability requires exactly one ${client} compatibility row: ${resource.id}`);
+  }
+  if (review.humanCases.length < 3 || review.humanCases.some((item) => item.verdict === "fail")) throw new Error(`Approved capability requires three non-failing human cases: ${resource.id}`);
+  if (new Set(review.humanCases.map((item) => item.caseId.trim())).size !== review.humanCases.length) {
+    throw new Error(`Approved capability requires unique human case IDs: ${resource.id}`);
+  }
+  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(review.reviewer.label.trim())) {
+    throw new Error(`Approved capability reviewer label must be public-safe: ${resource.id}`);
+  }
+  if (review.scanner.status === "warn" && !hasWarningLimitation(review, reviewWarningLimitationCodes.scanner)) {
+    throw new Error(`Approved capability scanner warning requires ${reviewWarningLimitationCodes.scanner} limitation: ${resource.id}`);
+  }
+  if (review.capabilityDiff.status === "warn" && !hasWarningLimitation(review, reviewWarningLimitationCodes.capabilityDiff)) {
+    throw new Error(`Approved capability capability warning requires ${reviewWarningLimitationCodes.capabilityDiff} limitation: ${resource.id}`);
+  }
+  if (context.evalCommand?.trim() && !hasWarningLimitation(review, reviewWarningLimitationCodes.evalCommand)) {
+    throw new Error(`Approved capability manifest eval command requires ${reviewWarningLimitationCodes.evalCommand} limitation: ${resource.id}`);
+  }
+  for (const client of ["claude-code", "codex"] as const) {
+    const row = review.compatibility.find((item) => item.client === client)!;
+    const checkedAtMs = Date.parse(row.checkedAt);
+    if (checkedAtMs > nowMs + approvalClockSkewMs || checkedAtMs > reviewedAtMs + approvalClockSkewMs) {
+      throw new Error(`Approved capability ${client} compatibility evidence is future-dated: ${resource.id}`);
+    }
+    if (row.verdict !== "pass" || nowMs - checkedAtMs > compatibilityFreshnessMs) {
+      throw new Error(`Approved capability requires fresh ${client} compatibility evidence: ${resource.id}`);
+    }
+  }
+}
+
+function hasWarningLimitation(review: ReviewAttestation, code: string): boolean {
+  return hasReviewWarningLimitation(review.limitations, code);
 }
 
 function buildChecks(resource: CuratedResource, checkedAt: string, review?: ReviewAttestation): TrustCheck[] {
@@ -234,10 +289,73 @@ function assertUnique(resources: CuratedResource[]): void {
   }
 }
 
-function assertInstructionOnly(files: string[], resource: CuratedResource): void {
-  const allowed = /^(?:harness\.yaml|README\.md|(?:agents|prompts|runbooks)\/.+\.md|examples\/.+\.md|evals\/(?:promptfooconfig\.yaml|cases\/.+\.(?:yaml|yml|json|md)))$/i;
-  const forbidden = files.filter((file) => !allowed.test(file));
+export function assertManagedInstructionOnly(
+  files: Array<{ path: string; content: string; truncated?: boolean }>,
+  resource: Pick<CuratedResource, "id">,
+  manifest: Pick<HarnessManifest, "evals">
+): void {
+  const allowed = /^(?:harness\.yaml|README\.md|(?:agents|prompts|runbooks)\/[a-z0-9][a-z0-9._/-]*\.md|examples\/[a-z0-9][a-z0-9._/-]*\.md|evals\/(?:promptfooconfig\.yaml|cases\/[a-z0-9][a-z0-9._/-]*\.(?:yaml|yml|json|md)))$/;
+  const forbidden = files.map((file) => file.path).filter((file) => {
+    const segments = file.split("/");
+    return file.includes("\\") || segments.some((segment) => !segment || segment === "." || segment === "..") || !allowed.test(file);
+  });
   if (forbidden.length) throw new Error(`Approved capability is not instruction-only: ${resource.id} (${forbidden.join(", ")})`);
+  const expectedConfigPath = "evals/promptfooconfig.yaml";
+  if (manifest.evals.promptfoo_config !== expectedConfigPath) {
+    throw new Error(`Approved capability must bind its eval config to ${expectedConfigPath}: ${resource.id} (${manifest.evals.promptfoo_config})`);
+  }
+  const evalConfigs = files.filter((file) => file.path === expectedConfigPath);
+  if (evalConfigs.length !== 1) throw new Error(`Approved capability must contain exactly one ${expectedConfigPath}: ${resource.id}`);
+  validateManagedEvalConfig(evalConfigs[0], files, resource);
+}
+
+function validateManagedEvalConfig(
+  configFile: { path: string; content: string; truncated?: boolean },
+  files: Array<{ path: string; content: string; truncated?: boolean }>,
+  resource: Pick<CuratedResource, "id">
+): void {
+  const fail = (reason: string): never => {
+    throw new Error(`Approved capability has unsafe declarative eval config: ${resource.id} (${reason})`);
+  };
+  if (configFile.truncated) fail("config is truncated");
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(configFile.content, { maxAliasCount: 0 });
+  } catch {
+    fail("invalid YAML");
+  }
+  const config = isPlainObject(parsed) ? parsed : fail("top level must be a mapping");
+  const allowedKeys = new Set(["description", "prompts", "providers"]);
+  const unknownKeys = Object.keys(config).filter((key) => !allowedKeys.has(key));
+  if (unknownKeys.length) fail(`unsupported keys: ${unknownKeys.join(", ")}`);
+  if (config.description !== undefined && (typeof config.description !== "string" || config.description.length > 500)) {
+    fail("description must be a short string");
+  }
+  const prompts = Array.isArray(config.prompts) ? config.prompts : fail("prompts must contain 1-16 local markdown references");
+  if (prompts.length === 0 || prompts.length > 16) {
+    fail("prompts must contain 1-16 local markdown references");
+  }
+  const artifactPaths = new Set(files.filter((file) => !file.truncated).map((file) => file.path));
+  for (const prompt of prompts) {
+    if (typeof prompt !== "string" || !/^(?:agents|prompts|runbooks|examples|evals\/cases)\/[a-z0-9][a-z0-9._/-]*\.md$/.test(prompt)
+      || prompt.includes("..") || prompt.includes("\\") || !artifactPaths.has(prompt)) {
+      fail(`prompt must reference an existing local markdown file: ${String(prompt)}`);
+    }
+  }
+  const providers = Array.isArray(config.providers) ? config.providers : fail("provider must be exactly echo");
+  if (providers.length !== 1 || providers[0] !== "echo") {
+    fail("provider must be exactly echo");
+  }
+  const scalarText = [config.description, ...prompts, ...providers]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+  if (/(?:(?:https?|ssh|ftp|file|mailto|data|javascript|tel):|[a-z][a-z0-9+.-]*:\/\/|\/\/[a-z0-9.-]|www\.)/i.test(scalarText)) fail("URLs are not allowed");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function historyKey(capability: ManagedCapability): string {

@@ -98,3 +98,30 @@ Not accepted:
 
 - Claude-first/Codex-later contradicts the explicit product requirement that both are
   first clients, so dual-client scope remains unchanged.
+
+## Cycle 3 — instruction-only eval contract correction
+
+Implementation review found a mismatch: the canonical instruction-only list allowed only
+`evals/cases/**`, while catalog build also allowed `evals/promptfooconfig.yaml` by path
+without validating its contents.
+
+Correction:
+
+- `evals/promptfooconfig.yaml` is now an explicit, narrow declarative-evidence exception;
+- approved artifacts parse it fail-closed and allow only a short description, existing
+  local Markdown prompt references and the literal `echo` provider;
+- URLs, commands, functions, plugins, exec and remote providers are rejected;
+- the config is excluded from managed runtime/model context and is never executed;
+- `harness.yaml` `evals.command` remains inert during managed activation and its shell
+  signal must be recorded as a review limitation.
+
+This is a post-Cycle-2 contract change. An independent reviewer must validate the code,
+tests and canonical wording before any exact release using this exception is approved.
+
+Cycle 3 reviewer rejected the first correction because case-insensitive path matching
+allowed a config alias to bypass validation, manifest `evals.promptfoo_config` was not
+bound to the validated file, and the eval-command limitation existed only in prose. The
+follow-up correction makes all managed paths case-sensitive, requires the manifest path
+to equal `evals/promptfooconfig.yaml`, validates exactly that file, and enforces the
+deterministic `[EVAL_COMMAND_WARN]` attestation limitation before approval. This follow-up
+remains unaccepted until the independent reviewer rechecks the adversarial tests.

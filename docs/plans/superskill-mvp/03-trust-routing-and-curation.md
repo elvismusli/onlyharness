@@ -85,7 +85,22 @@ prompts/**/*.md
 runbooks/**/*.md
 examples/**/*.md
 evals/cases/**/*.{yaml,yml,json,md}
+evals/promptfooconfig.yaml
 ```
+
+`evals/promptfooconfig.yaml` — узкое исключение только для declarative evidence metadata.
+Путь case-sensitive и должен byte-for-byte совпадать с
+`harness.yaml#evals.promptfoo_config`; единственное допустимое значение manifest —
+`evals/promptfooconfig.yaml`. Build парсит YAML fail-closed и допускает только top-level
+`description`, `prompts` и `providers`: `prompts` обязаны ссылаться на существующие
+локальные lowercase Markdown-файлы, а единственный provider обязан быть literal `echo`.
+URL, commands, functions, plugins, exec и remote providers запрещены. Этот файл не
+загружается в managed runtime или model context и не исполняется.
+
+Поле `evals.command` в `harness.yaml` остаётся author-declared локальной командой. Managed
+activation его не исполняет; наличие non-empty shell-shaped command требует публичной
+attestation limitation с prefix `[EVAL_COMMAND_WARN]` и не является
+compatibility/runtime proof.
 
 `.harnesshub/results.json` может быть evidence input, но не загружается в model context.
 

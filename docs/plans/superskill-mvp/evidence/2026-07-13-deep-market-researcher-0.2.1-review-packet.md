@@ -61,34 +61,76 @@ the human-review requirement.
   `superskill@onlyharness` installed and enabled as plugin version `0.1.0`;
 - `npx --yes onlyharness@0.2.13 doctor --json`: `ok: true`.
 
-This proves clean installation only. It does not yet prove exact-release recommendation,
-activation, pin reuse or outcome behavior for `0.2.1`.
+By itself this proves clean installation only; exact-release recommendation, activation,
+pin reuse and outcome evidence for `0.2.1` is recorded below.
 
-## Required compatibility smokes still missing
+### Exact-release bootstrap activation
 
-Run against this exact digest after it is available to the internal managed client flow:
+- real immutable archive: 12 files, complete, not truncated, digest matched;
+- both Claude Code and Codex adapter lifecycles passed
+  `recommend → start/resume → loaded → invoked → finish unknown → keep → live doctor → pinned reuse → remove`;
+- native pins used `.claude/skills/superskill-deep-market-researcher` and
+  `.agents/skills/superskill-deep-market-researcher`; `.codex/harnesses` was untouched;
+- checked-in curated/index/history/reviews and exact snapshot hashes were unchanged;
+- this was an ephemeral bootstrap-only eligibility overlay, so adapter lifecycle alone is
+  not compatibility attestation evidence and cannot authorize promotion.
+
+## Compatibility evidence status
+
+Durable sanitized source:
+`2026-07-13-deep-market-researcher-0.2.1-client-evidence.json`, generated only after
+both opt-in real-client sessions passed. It contains no token, task text, absolute path or
+raw model output and explicitly keeps `promotionAuthorized`, `attestationCreated` and
+`humanReviewEvidence` false.
 
 ### Claude Code
 
-- fresh isolated config and project;
+- current result: **pass** on Claude Code `2.1.112`;
+- checked at `2026-07-13T12:52:21.475Z`;
+- fixture ID `deep-market-researcher-0.2.1-real-claude-code-v1`;
+- exact Skill tool-call, pinned activation state and managed events `activation_started`,
+  `activation_ready`, `activation_loaded`, `activation_invoked`, `outcome_reported` were
+  observed in exact order with no duplicates; outcome stayed honestly `unknown/unknown`;
+- fresh temporary project; session persistence disabled; only the project settings source
+  was enabled;
+- the subprocess inherited an explicit runtime environment allowlist plus empty temporary
+  npm user/global config files, not ambient credential or application variables;
+- existing client auth was used in place; credential files were neither copied nor read
+  by the smoke (isolated clean plugin installation is recorded separately above);
 - shared SuperSkill discovered in a new session;
 - task recommends `deep-market-researcher@0.2.1` only when appropriate;
 - exact digest displayed before consent;
 - temporary activation writes only project `.onlyharness` state;
-- pin writes `.claude/skills/deep-market-researcher`;
+- pin writes `.claude/skills/superskill-deep-market-researcher`;
 - new session discovers the pinned exact version;
-- verdict and timestamp recorded.
+- verdict and timestamp recorded. **Completed for this exact release.**
 
 ### Codex CLI
 
-- fresh isolated `CODEX_HOME` and project;
+- current result: **pass** on Codex CLI `0.135.0`;
+- checked at `2026-07-13T12:53:03.771Z`;
+- fixture ID `deep-market-researcher-0.2.1-real-codex-v1`;
+- exact project skill discovery, pinned activation state and managed events
+  `activation_started`, `activation_ready`, `activation_loaded`, `activation_invoked`,
+  `outcome_reported` were observed in exact order with no duplicates; outcome stayed
+  honestly `unknown/unknown`;
+- fresh temporary project; `codex exec --ephemeral --ignore-user-config` ran with a
+  temporary `CODEX_HOME` containing only an auth-only symlink, so user config, plugins,
+  memories and global skills were unavailable;
+- the subprocess inherited an explicit runtime environment allowlist plus empty temporary
+  npm user/global config files; existing auth was used in place without copying or reading
+  credential contents by the smoke;
+- structured successful Codex `command_execution` records proved one exact project
+  `SKILL.md` read plus exact pinned start, loaded, invoked and finish-unknown operations;
+  the accepted trace contains five completed exit-zero executions, no rejected execution,
+  composition or helper command; raw commands and output were not retained;
 - shared SuperSkill discovered in a new task;
 - task recommends the same exact release;
 - exact digest displayed before consent;
 - temporary activation writes only project `.onlyharness` state;
-- pin writes `.agents/skills/deep-market-researcher`;
+- pin writes `.agents/skills/superskill-deep-market-researcher`;
 - new task discovers the pinned exact version;
-- verdict and timestamp recorded.
+- verdict and timestamp recorded. **Completed for this exact release.**
 
 ## Required human-reviewed cases still missing
 
@@ -132,7 +174,12 @@ Do not create the review attestation and do not change curated status to `approv
 
 - both exact-release compatibility smokes pass within the 90-day window;
 - all three human cases have no `fail` verdict;
-- the static `warn` findings are explicitly accepted with limitations;
+- the static scanner `warn` is explicitly accepted in an attestation limitation beginning
+  with `[SCANNER_WARN]`;
+- the capability-diff `warn` is explicitly accepted in an attestation limitation beginning
+  with `[CAPABILITY_DIFF_WARN]`;
+- the inert author-declared manifest `evals.command` is explicitly accepted in an
+  attestation limitation beginning with `[EVAL_COMMAND_WARN]`;
 - the reviewer supplies a public-safe team label and review date;
 - the attestation expires on a bounded date;
 - `check:superskill-catalog`, `check:superskill-router` and `smoke:superskill` pass twice.
