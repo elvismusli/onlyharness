@@ -416,7 +416,7 @@ try {
     || exactSetupResource.pinnedVersion !== publicRelease.version
     || exactSetupResource.pinnedArchiveHash !== publicRelease.artifactDigest
     || !exactSetupResource.exactResourceUrl?.includes(`/releases/${publicRelease.version}`)
-    || !exactSetupResource.installCommand?.includes(`onlyharness@0.2.18 resources install ${publicRelease.resourceId} --version ${publicRelease.version} --target claude-code`)
+    || !exactSetupResource.installCommand?.includes(`onlyharness@0.2.19 resources install ${publicRelease.resourceId} --version ${publicRelease.version} --target claude-code`)
     || !setupConfigContent.includes(publicRelease.version ?? "missing-version")
     || !setupConfigContent.includes(publicRelease.artifactDigest ?? "missing-digest")
     || !setupConfigContent.includes(exactSetupResource.exactResourceUrl ?? "missing-url")

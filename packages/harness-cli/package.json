@@ -1,6 +1,6 @@
 {
   "name": "onlyharness",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "SuperSkill universal installer and compatibility CLI (hh) for reviewed AI-agent capabilities",
   "type": "module",
   "license": "MIT",

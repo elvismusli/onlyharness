@@ -217,13 +217,15 @@ test("workspace curation continuation keeps the exact release tuple in the fragm
   const setWorkspaceApprovalResourceId = vi.fn();
   const setWorkspaceApprovalVersion = vi.fn();
   const setWorkspaceApprovalArtifactDigest = vi.fn();
+  const loadWorkspace = vi.fn().mockResolvedValue(undefined);
   harness.value = {
     ...harness.value,
     user: { email: "ada@example.com", email_confirmed_at: "2026-07-14T00:00:00Z" },
     setWorkspaceSlug,
     setWorkspaceApprovalResourceId,
     setWorkspaceApprovalVersion,
-    setWorkspaceApprovalArtifactDigest
+    setWorkspaceApprovalArtifactDigest,
+    loadWorkspace
   };
   render(<WorkspacesPage />);
 
@@ -231,6 +233,42 @@ test("workspace curation continuation keeps the exact release tuple in the fragm
   expect(setWorkspaceApprovalResourceId).toHaveBeenCalledWith("onlyharness:packages/research");
   expect(setWorkspaceApprovalVersion).toHaveBeenCalledWith("1.2.3");
   expect(setWorkspaceApprovalArtifactDigest).toHaveBeenCalledWith(digest);
+  expect(loadWorkspace).toHaveBeenCalledWith("acme");
+});
+
+test("cold exact workspace link waits for auth hydration and then loads once", async () => {
+  const digest = "e".repeat(64);
+  window.location.hash = `#/superskill/workspaces?workspace=acme&resource=onlyharness%3Apackages%2Fcold-skill&version=4.2.0&digest=${digest}&approve=1`;
+  const setWorkspaceSlug = vi.fn();
+  const setWorkspaceApprovalResourceId = vi.fn();
+  const setWorkspaceApprovalVersion = vi.fn();
+  const setWorkspaceApprovalArtifactDigest = vi.fn();
+  const loadWorkspace = vi.fn().mockResolvedValue(undefined);
+  harness.value = {
+    ...harness.value,
+    user: undefined,
+    setWorkspaceSlug,
+    setWorkspaceApprovalResourceId,
+    setWorkspaceApprovalVersion,
+    setWorkspaceApprovalArtifactDigest,
+    loadWorkspace
+  };
+  const rendered = render(<WorkspacesPage />);
+  expect(loadWorkspace).not.toHaveBeenCalled();
+
+  harness.value = {
+    ...harness.value,
+    user: { id: "user-cold", email: "cold@example.com", email_confirmed_at: "2026-07-14T00:00:00Z" }
+  };
+  rendered.rerender(<WorkspacesPage />);
+
+  await waitFor(() => expect(loadWorkspace).toHaveBeenCalledWith("acme"));
+  expect(setWorkspaceSlug).toHaveBeenCalledOnce();
+  expect(setWorkspaceApprovalResourceId).toHaveBeenCalledWith("onlyharness:packages/cold-skill");
+  expect(setWorkspaceApprovalVersion).toHaveBeenCalledWith("4.2.0");
+  expect(setWorkspaceApprovalArtifactDigest).toHaveBeenCalledWith(digest);
+  rendered.rerender(<WorkspacesPage />);
+  expect(loadWorkspace).toHaveBeenCalledOnce();
 });
 
 test("incomplete exact approval link is visibly rejected without prefill", () => {

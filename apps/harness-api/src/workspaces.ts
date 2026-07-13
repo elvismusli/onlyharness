@@ -2197,7 +2197,7 @@ function setupBundleResource(workspace: WorkspaceRecord, resource: resources.Res
     && resource.resourceType === "skill"
     && /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(approvalPin.sourceResourceId)
     && (target === "codex" || target === "claude-code")
-    ? `npx --yes onlyharness@0.2.18 resources install ${approvalPin.sourceResourceId} --version ${approvalPin.version} --target ${target}${resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed"} --json`
+    ? `npx --yes onlyharness@0.2.19 resources install ${approvalPin.sourceResourceId} --version ${approvalPin.version} --target ${target}${resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed"} --json`
     : undefined;
   return {
     id: resource.id,

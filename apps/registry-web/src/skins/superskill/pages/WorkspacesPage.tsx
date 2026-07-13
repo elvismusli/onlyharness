@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useHarness } from "../../../core/store";
 import { buildSuperSkillRoute } from "../../../core/superskill-route";
@@ -18,20 +18,29 @@ export function WorkspacesPage() {
   const installHandoff = superskillInstallHandoff();
   const incomingShare = workspaceShareFromHash();
   const confirmedAccount = Boolean(h.user?.email_confirmed_at);
+  const incomingShareCaptured = useRef(false);
+  const incomingWorkspaceLoaded = useRef(false);
 
   useEffect(() => {
     if (!h.user || !incomingShare.workspace) return;
-    h.setWorkspaceSlug(incomingShare.workspace);
-    if (incomingShare.invite) h.setWorkspaceJoinCode(incomingShare.invite);
-    if (incomingShare.approve && incomingShare.resource) {
-      h.setWorkspaceApprovalResourceId(incomingShare.resource);
-      h.setWorkspaceApprovalVersion(incomingShare.version ?? "");
-      h.setWorkspaceApprovalArtifactDigest(incomingShare.digest ?? "");
+    if (!incomingShareCaptured.current) {
+      incomingShareCaptured.current = true;
+      h.setWorkspaceSlug(incomingShare.workspace);
+      if (incomingShare.invite) h.setWorkspaceJoinCode(incomingShare.invite);
+      if (incomingShare.approve && incomingShare.resource) {
+        h.setWorkspaceApprovalResourceId(incomingShare.resource);
+        h.setWorkspaceApprovalVersion(incomingShare.version ?? "");
+        h.setWorkspaceApprovalArtifactDigest(incomingShare.digest ?? "");
+      }
+      if (incomingShare.invite) scrubWorkspaceInviteFromHash();
     }
-    if (incomingShare.invite) scrubWorkspaceInviteFromHash();
-    // The raw invite now remains only in the in-memory password field.
+    if (confirmedAccount && incomingShare.approve && !incomingWorkspaceLoaded.current) {
+      incomingWorkspaceLoaded.current = true;
+      void h.loadWorkspace(incomingShare.workspace);
+    }
+    // A raw invite is captured once and then remains only in the in-memory password field.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [h.user?.id, h.user?.email_confirmed_at]);
 
   if (!h.user) {
     const accountHref = workspaceAccountHref(incomingShare);

@@ -47,7 +47,7 @@ Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex
 Universal bootstrap (available only after the exact CLI release and official npm integrity are published):
 
 ```bash
-npx --yes onlyharness@0.2.18 superskill install https://superskill.sh/api/superskill/install --auto
+npx --yes onlyharness@0.2.19 superskill install https://superskill.sh/api/superskill/install --auto
 ```
 
 Approved capability pages bind the same command to one immutable URL containing capability id, version and sha256. Exactly one detected client transactionally writes its project-native shared skill and merges both the public `superskill` browse MCP and exact-version `superskill_local` lifecycle MCP into `.codex/config.toml` or `.mcp.json`; an exact link also records a private pending handoff. Existing unrelated config is preserved, conflicting entries fail before writes, rollback restores byte-exact originals, and no token is stored. Both/none fail with `CLIENT_AMBIGUOUS`/`CLIENT_NOT_DETECTED`. Use `--target codex|claude-code`, explicit `--all`, or `--dry-run`. Nothing is activated and routing/activation consent remain separate.
@@ -55,7 +55,7 @@ Approved capability pages bind the same command to one immutable URL containing 
 The public catalog is a separate explicit-consent path. Hosted resources with `resourceType: skill` can be installed into the native project skill root after reviewing provenance and scan state:
 
 ```bash
-npx --yes onlyharness@0.2.18 resources install onlyharness:packages/example-skill --version 0.1.0 --target codex --allow-unreviewed --json
+npx --yes onlyharness@0.2.19 resources install onlyharness:packages/example-skill --version 0.1.0 --target codex --allow-unreviewed --json
 ```
 
 Codex writes `.agents/skills/<name>` and Claude Code writes `.claude/skills/<name>`. The CLI downloads one exact release, verifies the server-pinned SHA-256 digest, validates safe package paths and root `SKILL.md`, writes an ownership marker atomically, and records the install event only after files exist. `--allow-unreviewed` is required for hosted skills without a passing scan; it is explicit acceptance of the shown risk, never a Verified or managed-approval claim. Open-only resources, failed scans, non-skill packages, symlinks, cross-origin archives and destination collisions fail closed.

@@ -57,7 +57,7 @@ export type UseWorkspaceResult = {
   workspaceSetupBundle: WorkspaceSetupBundle | undefined;
   workspaceSetupStatus: string;
   createWorkspace: () => Promise<void>;
-  loadWorkspace: () => Promise<void>;
+  loadWorkspace: (slugOverride?: string) => Promise<void>;
   loadWorkspaceMembers: () => Promise<void>;
   loadWorkspaceJoinPolicies: () => Promise<void>;
   createWorkspaceInvite: () => Promise<void>;
@@ -199,8 +199,8 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     }
   }
 
-  async function loadWorkspace() {
-    const slug = cleanSlug(workspaceSlug);
+  async function loadWorkspace(slugOverride?: string) {
+    const slug = cleanSlug(slugOverride ?? workspaceSlug);
     if (!slug) return;
     const epoch = ++requestEpoch.current;
     const principal = principalRef.current;

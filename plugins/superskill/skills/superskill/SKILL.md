@@ -9,13 +9,13 @@ Use the same managed flow in Claude Code and Codex. The project-local `superskil
 
 ## Runtime preflight
 
-This plugin is bound to `onlyharness@0.2.18` and activation contract `superskill.activation.v1`.
+This plugin is bound to `onlyharness@0.2.19` and activation contract `superskill.activation.v1`.
 
 Before managed work, require the project-local `superskill_local` MCP with exactly the eight lifecycle tools listed below. A fresh client session and normal MCP trust approval may be required after one-link install. If it is absent, stop with `LOCAL_MCP_UNAVAILABLE`; do not silently replace the lifecycle with shell commands, a global CLI, `latest`, or the public MCP. The pinned CLI is only a fail-closed installer/diagnostic recovery path.
 
 Never ask the user or tools to print/read `HH_TOKEN`. It may exist only in the inherited process environment and is sent by the local MCP runtime only as an Authorization header. It is never a tool argument or stored in project config. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and is not public proof.
 
-If managed access reports `SUPERSKILL_AUTH_REQUIRED` or `SUPERSKILL_AUTH_INVALID`, do not run login through an agent shell or ask for a pasted token. Tell a Codex user to run `eval "$(npx --yes onlyharness@0.2.18 auth login --shell --client codex)"` in a trusted terminal; use the `claude-code` client value for Claude Code. They approve the one-time code on the signed-in SuperSkill Account page, then start a fresh client session from that terminal. The short-lived token must never enter agent context or project files.
+If managed access reports `SUPERSKILL_AUTH_REQUIRED` or `SUPERSKILL_AUTH_INVALID`, do not run login through an agent shell or ask for a pasted token. Tell a Codex user to run `eval "$(npx --yes onlyharness@0.2.19 auth login --shell --client codex)"` in a trusted terminal; use the `claude-code` client value for Claude Code. They approve the one-time code on the signed-in SuperSkill Account page, then start a fresh client session from that terminal. The short-lived token must never enter agent context or project files.
 
 Set one explicit `client` on every tool call:
 
@@ -38,7 +38,7 @@ Keep this separate from managed recommendation. Use it only when the user explic
 2. Install only a `skill` with an exact `onlyharness:packages/<name>` ID and a SuperSkill-hosted immutable archive. Refuse `open_only`, missing-archive, redirecting, failing-scan or non-skill resources.
 3. Show title, exact resource ID, current version, security-scan/risk/license state, and that browse-catalog install is neither managed approval nor Verified evidence.
 4. Ask explicit install consent. This consent is not routing, activation or pin consent. `not_scanned`/`warn` requires a direct acknowledgement before `--allow-unreviewed`; never infer it from a generic request.
-5. After consent, use the exact current-client command returned by `resource_use_instructions`. It must be pinned to `onlyharness@0.2.18`, pass the explicit `--target`, and use `--allow-unreviewed` only for the disclosed release.
+5. After consent, use the exact current-client command returned by `resource_use_instructions`. It must be pinned to `onlyharness@0.2.19`, pass the explicit `--target`, and use `--allow-unreviewed` only for the disclosed release.
 6. Report the returned native target, exact version and archive digest. A new client task may be required before the newly installed skill triggers.
 
 Never call managed lifecycle tools for a browse-catalog install or describe the installed files as activated, reviewed, approved, pinned or kept.

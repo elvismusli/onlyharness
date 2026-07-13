@@ -2,23 +2,23 @@
   "schemaVersion": "superskill.bootstrap-contract.v1",
   "installer": {
     "package": "onlyharness",
-    "version": "0.2.18",
-    "integrity": "sha512-42S4kd6hEfPU/Pfwo7OVknUrWqV/y8VJ5Uwstkmd7xxU9N1cPkiUUMhOtnMDkNUE/89D39ANScuV3X8GO9oj/Q==",
+    "version": "0.2.19",
+    "integrity": "sha512-xzS9PdyAJWeMQ92IqCTO0NtBKAJu8A7CTsXRHY6U0XTuJexNK2U3+eUGRDuBjjnFXQvIyrd//Td8SSbqotfoaA==",
     "releaseStatus": "published"
   },
   "universalSkill": {
     "name": "superskill",
     "version": "0.2.0",
-    "artifactDigest": "sha256:fe301b2db2f04fc0c63806c4c998a4368e74b231ae9546ec0c260e20dd1bf190"
+    "artifactDigest": "sha256:d6dd2d9c2d6eb04255ab9301f6807f16dbfa6b7f092a8a12540de6768d731df8"
   },
   "clientAdapters": {
     "codex": {
       "path": ".codex/config.toml",
-      "contractDigest": "sha256:c10f41a1a6ef57ceecc1ff64046f084f9b757db8b50a311fc52e9439fd1b6526"
+      "contractDigest": "sha256:2d15f1144154b162dcc6ccea671f4b4141c72dd96f209d0790bffd221f950069"
     },
     "claude-code": {
       "path": ".mcp.json",
-      "contractDigest": "sha256:7f41070387294549535f0749534c6da92a35e23ce49ae149335c99ff6fdd7d01"
+      "contractDigest": "sha256:72383ad21026cd83190b09ffe26c31cc68b210bfc2e3bfe411d02c571594a08b"
     }
   }
 }
