@@ -756,8 +756,17 @@ Artifact digest: \`${record.capability.artifactDigest}\`
    \`npx --yes ${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion} activation start --from-pinned ${markerRelative} --activation-request <req_id> --target ${record.client} --consent explicit --json\`
 
 5. Do not proceed offline. Read only files returned in the activation plan.
-6. Mark \`loaded\`, then mark \`invoked\` immediately before applying the first stage.
-7. Finish with honest \`agent_reported\`, \`user_confirmed\`, or \`unknown\` evidence. Agent-reported success is not verified business outcome.
+6. Read \`activationId\` from the start result and run these commands with that exact ID:
+
+   \`npx --yes ${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion} activation mark <activation_id> --state loaded --json\`
+
+   \`npx --yes ${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion} activation mark <activation_id> --state invoked --json\`
+
+7. Finish with the same exact ID and honest \`agent_reported\`, \`user_confirmed\`, or \`unknown\` evidence:
+
+   \`npx --yes ${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion} activation finish <activation_id> --outcome <success|failed|unknown> --evidence <agent_reported|user_confirmed|unknown> --json\`
+
+Agent-reported success is not verified business outcome. Never report \`success\` with \`unknown\` evidence.
 
 ## Reviewed instruction files
 

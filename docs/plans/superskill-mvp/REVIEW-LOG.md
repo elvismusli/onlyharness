@@ -123,5 +123,35 @@ allowed a config alias to bypass validation, manifest `evals.promptfoo_config` w
 bound to the validated file, and the eval-command limitation existed only in prose. The
 follow-up correction makes all managed paths case-sensitive, requires the manifest path
 to equal `evals/promptfooconfig.yaml`, validates exactly that file, and enforces the
-deterministic `[EVAL_COMMAND_WARN]` attestation limitation before approval. This follow-up
-remains unaccepted until the independent reviewer rechecks the adversarial tests.
+deterministic `[EVAL_COMMAND_WARN]` attestation limitation before approval. The follow-up
+was independently rechecked and accepted on 2026-07-13 after the adversarial tests and
+exact-release evidence hardening passed. That code/policy acceptance is not human case
+sign-off and does not authorize any capability approval.
+
+## Phase 6 pre-review low-risk batch
+
+The first four remaining low-risk candidates were cut independently to immutable
+`0.2.1` snapshots after removing only `.gitea/workflows/harness-ci.yml` and bumping the
+manifest version. Their `0.2.0` snapshots remain in history. The checked-in
+`source-releases.json` state makes seed regeneration reproduce the exact source instead
+of silently restoring the executable workflow.
+
+The release cutter is dry-run by default and requires explicit ID/from/to plus `--write`.
+It verifies source = old snapshot = curated tuple, rejects unsafe instruction files and
+blocking capability diffs, uses an exclusive writer lock plus durable recovery journal,
+and never creates an attestation, preview or approval. Capability inference now ignores declarative manifest
+metadata and negated/review-only prose while adversarial tests retain detection of real
+imperative credential, network and money actions.
+
+Clean Claude Code `2.1.112` and Codex CLI `0.135.0` exact lifecycle sessions passed for:
+
+- `founder-decision-memo@0.2.1`;
+- `product-strategy-critic@0.2.1`;
+- `launch-readiness-reviewer@0.2.1`;
+- `repo-truth-auditor@0.2.1`.
+
+The first Claude attempt for `repo-truth-auditor` stopped after `activation_ready` and
+was not accepted as evidence. The generated pinned SKILL.md lifecycle was corrected to
+include exact loaded/invoked/finish commands; the diagnostic and final dual-client runs
+then passed. All four durable reports remain non-promotional and all human-case packet
+review fields remain blank. Status: **pre-review prepared; human sign-off pending**.

@@ -197,6 +197,9 @@ for (const client of ["claude-code", "codex"] as const) {
       assert.equal(pinnedUse.executionState, "ready");
 
       const originalSkill = readFileSync(path.join(path.dirname(markerFile), "SKILL.md"), "utf8");
+      assert.match(originalSkill, /activation mark <activation_id> --state loaded --json/);
+      assert.match(originalSkill, /activation mark <activation_id> --state invoked --json/);
+      assert.match(originalSkill, /activation finish <activation_id> --outcome <success\|failed\|unknown> --evidence <agent_reported\|user_confirmed\|unknown> --json/);
       writeFileSync(path.join(path.dirname(markerFile), "SKILL.md"), `${originalSkill}\nchanged\n`);
       await assert.rejects(() => removeActivation(project, markerRelative, true), hasReason("MANAGED_FILE_CHANGED"));
       assert.ok(statSync(markerFile).isFile(), "changed-file preflight must preserve marker and every remaining file");

@@ -120,8 +120,12 @@ export function recomputeCapabilityDiff(files: SecurityScanFile[], declared: Man
   const evidence = new Map<CapabilityKey, Array<{ file: string; rule: string }>>();
   for (const key of capabilityKeys) evidence.set(key, []);
   for (const file of [...files].sort((left, right) => Buffer.compare(Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8")))) {
+    // The manifest declares capabilities, sources and eval commands. Treating those
+    // structured fields as agent behavior makes the diff compare declarations to
+    // themselves and turns source attribution URLs into false network evidence.
+    if (isStructuredHarnessManifest(file.path)) continue;
     for (const rule of RULES) {
-      if (!rule.capability || !rule.pattern.test(file.content)) continue;
+      if (!rule.capability || !hasBehavioralCapabilityMatch(file.content, rule)) continue;
       evidence.get(rule.capability)!.push({ file: file.path, rule: rule.id });
     }
   }
@@ -139,6 +143,59 @@ export function recomputeCapabilityDiff(files: SecurityScanFile[], declared: Man
     else if (status === "pass") status = "warn";
   }
   return { status, declared, inferred, differences };
+}
+
+function isStructuredHarnessManifest(file: string): boolean {
+  const basename = file.replaceAll("\\", "/").split("/").at(-1)?.toLowerCase();
+  return basename === "harness.yaml" || basename === "harness.yml";
+}
+
+function hasBehavioralCapabilityMatch(content: string, rule: StaticRule): boolean {
+  for (const clause of content.split(/(?:\r?\n|[.!?;]\s+)/)) {
+    const flags = rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`;
+    const pattern = new RegExp(rule.pattern.source, flags);
+    for (const match of clause.matchAll(pattern)) {
+      const before = clause.slice(0, match.index ?? 0);
+      if (isNonBehavioralCapabilityContext(before)) continue;
+      if (!hasRequiredBehavioralAction(rule.capability!, clause)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+function isNonBehavioralCapabilityContext(before: string): boolean {
+  const normalized = before.replace(/[`*_>#-]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  const resetAt = Math.max(normalized.lastIndexOf(","), normalized.lastIndexOf(":"), normalized.lastIndexOf("—"));
+  let scoped = normalized.slice(resetAt + 1).trim();
+  const transition = [...scoped.matchAll(/\b(?:but|however|then)\b/gi)].at(-1);
+  if (transition?.index !== undefined) scoped = scoped.slice(transition.index + transition[0].length).trim();
+  if (/\b(?:do not|don't|never)\s+(?:hesitate|delay|fail|forget)\s+to\b/i.test(scoped)
+    || /\bwithout\s+(?:waiting|delay)\b/i.test(scoped)) {
+    return false;
+  }
+  if (/\b(?:do not|don't|never|must not|should not|cannot|can't|without|no|avoid(?:s|ed|ing)?|prevent(?:s|ed|ing)?|prohibit(?:s|ed|ing)?|block(?:s|ed|ing)?|forbid(?:s|den|ding)?)\b[^.!?;]*$/i.test(scoped)) {
+    return true;
+  }
+  return /\b(?:review|audit|assess|analy[sz]e|check|verify|identify|flag|report|describe|document|discuss|explain|recommend|draft|simulate|test)\s+(?:(?:whether|if|how)\b|(?:the\s+)?(?:risk|possibility|capability|requirement|policy|handling|behavior|attempt|mention|usage)\b)[^.!?;]*$/i.test(scoped)
+    || /\b(?:risk|possibility|capability|requirement|policy)\s+(?:of|for|to)\b[^.!?;]*$/i.test(scoped);
+}
+
+function hasRequiredBehavioralAction(capability: CapabilityKey, clause: string): boolean {
+  if (capability === "credentials") {
+    return /\b(?:use|read|load|access|retrieve|obtain|get|inject|pass|store|save|write|export|send|upload|rotate)\s+(?:the\s+|an?\s+)?(?:api[ _-]?key|access token|auth token|credential|credentials|private key|environment variable|env var)\b/i.test(clause)
+      || /\bread\s+(?:from\s+)?(?:~\/|\/(?:Users|home)\/|[A-Za-z]:\\Users\\)[^\s]*\.(?:ssh|aws|gnupg|kube)\b/i.test(clause);
+  }
+  if (capability === "network") {
+    return /\b(?:curl|wget)\b|\bfetch\s*\(|\b(?:perform|run|use)\s+(?:an?\s+)?web search\b/i.test(clause)
+      || /\b(?:use|fetch|download|upload|post|request|call|query|open|visit|navigate|send)\b[^\n]{0,100}(?:https?:\/\/|\b(?:api|endpoint|website|web page)\b)/i.test(clause);
+  }
+  if (capability === "moneyMovement") {
+    return /\b(?:issue|process|execute|make|send|initiate|perform|approve|capture|settle|reverse|trigger)\s+(?:an?\s+|the\s+)?(?:payment|refund|withdrawal|transfer|debit|credit)\b/i.test(clause)
+      || /\b(?:pay|charge|refund|withdraw|transfer|debit|credit)\s+(?:(?:the|a|an)\s+)?(?:customer|user|account|card|wallet|ledger|transaction|payment|money|funds|\$|USD\b|EUR\b)/i.test(clause);
+  }
+  return true;
 }
 
 const capabilityKeys: CapabilityKey[] = ["network", "shell", "filesystem", "browser", "credentials", "externalSend", "moneyMovement", "userData"];

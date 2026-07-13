@@ -1,10 +1,11 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 
 const root = path.resolve(import.meta.dirname, "..");
 const seedRoot = path.join(root, "seed-harnesses");
+const sourceReleasePath = path.join(root, "data/superskill/source-releases.json");
 
 type Seed = {
   name: string;
@@ -18,6 +19,8 @@ type Seed = {
   exampleOutput: string;
   webSearchMcp?: boolean;
 };
+
+type SourceRelease = { id: string; version: string; includeCiWorkflow: boolean };
 
 const seeds: Seed[] = [
   {
@@ -304,10 +307,13 @@ const seeds: Seed[] = [
 ];
 
 export function createSeeds(outputRoot = seedRoot): void {
+const sourceReleases = readSourceReleases();
 rmSync(outputRoot, { recursive: true, force: true });
 mkdirSync(outputRoot, { recursive: true });
 
 for (const seed of seeds) {
+  const sourceRelease = sourceReleases.get(seed.name);
+  if (!sourceRelease) throw new Error(`Missing source release state for ${seed.name}`);
   const dir = path.join(outputRoot, seed.name);
   for (const folder of ["agents", "evals/cases", "examples", "runbooks", ".gitea/workflows", ".harnesshub"]) {
     mkdirSync(path.join(dir, folder), { recursive: true });
@@ -317,7 +323,7 @@ for (const seed of seeds) {
     name: seed.name,
     title: seed.title,
     summary: seed.summary,
-    version: "0.2.0",
+    version: sourceRelease.version,
     license: "MIT",
     source: {
       upstream_url: `https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/${seed.name}`,
@@ -385,7 +391,9 @@ for (const seed of seeds) {
   writeFileSync(path.join(dir, "examples/input.md"), `# Input\n\n${seed.exampleInput}\n`);
   writeFileSync(path.join(dir, "examples/expected.md"), `# Expected\n\n${seed.exampleOutput}\n`);
   writeFileSync(path.join(dir, "runbooks/local-run.md"), `# Local run\n\n\`\`\`bash\nhh validate\nhh eval\nhh gate\n\`\`\`\n`);
-  writeFileSync(path.join(dir, ".gitea/workflows/harness-ci.yml"), workflow());
+  if (sourceRelease.includeCiWorkflow) {
+    writeFileSync(path.join(dir, ".gitea/workflows/harness-ci.yml"), workflow());
+  }
 
   const score = Number((seed.cases.reduce((sum, item) => sum + item.score, 0) / seed.cases.length).toFixed(3));
   writeFileSync(path.join(dir, ".harnesshub/results.json"), JSON.stringify({
@@ -407,6 +415,33 @@ for (const seed of seeds) {
       verification_status: "declared_score"
     }))
   }, null, 2));
+}
+
+function readSourceReleases(): Map<string, SourceRelease> {
+  const parsed = JSON.parse(readFileSync(sourceReleasePath, "utf8")) as {
+    schemaVersion?: unknown;
+    resources?: unknown;
+  };
+  if (parsed.schemaVersion !== "superskill.source-releases.v1" || !Array.isArray(parsed.resources)) {
+    throw new Error("Invalid SuperSkill source release state");
+  }
+  const releases = new Map<string, SourceRelease>();
+  for (const value of parsed.resources) {
+    if (!value || typeof value !== "object") throw new Error("Invalid SuperSkill source release entry");
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.id !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.id)
+      || typeof entry.version !== "string" || !/^\d+\.\d+\.\d+$/.test(entry.version)
+      || typeof entry.includeCiWorkflow !== "boolean"
+      || Object.keys(entry).some((key) => !["id", "version", "includeCiWorkflow"].includes(key))) {
+      throw new Error("Invalid SuperSkill source release entry");
+    }
+    if (releases.has(entry.id)) throw new Error(`Duplicate source release state for ${entry.id}`);
+    releases.set(entry.id, entry as SourceRelease);
+  }
+  if (releases.size !== seeds.length || seeds.some((seed) => !releases.has(seed.name))) {
+    throw new Error("SuperSkill source release state must cover the exact seed set");
+  }
+  return releases;
 }
 
 console.log(`Created ${seeds.length} seed harnesses in ${outputRoot}`);

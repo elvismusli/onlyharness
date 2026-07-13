@@ -10,15 +10,23 @@ const repoRoot = path.resolve(packageRoot, "../..");
 
 test("all 12 managed seed candidates are honest instruction-only v0.2 manifests", () => {
   const seedRoot = path.join(repoRoot, "seed-harnesses");
+  const sourceReleaseState = JSON.parse(readFileSync(path.join(repoRoot, "data/superskill/source-releases.json"), "utf8")) as {
+    schemaVersion?: string;
+    resources?: Array<{ id: string; version: string; includeCiWorkflow: boolean }>;
+  };
+  assert.equal(sourceReleaseState.schemaVersion, "superskill.source-releases.v1");
+  const expectedVersions = new Map(sourceReleaseState.resources?.map((item) => [item.id, item.version]));
   const manifests = readdirSync(seedRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(seedRoot, entry.name, "harness.yaml"))
     .sort();
 
   assert.equal(manifests.length, 12, "expected the complete Stage A seed set");
+  assert.equal(expectedVersions.size, manifests.length, "source release state must cover the exact seed set");
   for (const manifestPath of manifests) {
     const manifest = parseManifestText(readFileSync(manifestPath, "utf8"));
-    const expectedVersion = path.basename(path.dirname(manifestPath)) === "deep-market-researcher" ? "0.2.1" : "0.2.0";
+    const expectedVersion = expectedVersions.get(path.basename(path.dirname(manifestPath)));
+    assert.ok(expectedVersion, `missing source release state: ${manifestPath}`);
     assert.equal(manifest.schemaVersion, "harness.v0.2", manifestPath);
     assert.equal(manifest.version, expectedVersion, manifestPath);
     assert.equal(manifest.visibility, "public", manifestPath);

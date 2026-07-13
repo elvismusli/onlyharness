@@ -100,8 +100,8 @@
     {
       "id": "founder-decision-memo",
       "ref": "harnesses/founder-decision-memo",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:c8dad8b0ce500a3a8a537bf11d68d3a8e2bbba5c0b3191299b356cf7d662a49f",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:0bc35e1b235de5fb5b4ae5875a8a5cec3ed608e7c062dabe9547dec795958017",
       "status": "candidate",
       "jobs": [
         {
@@ -169,8 +169,8 @@
     {
       "id": "launch-readiness-reviewer",
       "ref": "harnesses/launch-readiness-reviewer",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:8f83294f64498493efbb7fadf3b93a96a38983389e783b6922df193a5de85939",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:63130e155874f3908edcdb53793b31d8a0db4013a4654372afd87479bc68828f",
       "status": "candidate",
       "jobs": [
         {
@@ -192,8 +192,8 @@
     {
       "id": "product-strategy-critic",
       "ref": "harnesses/product-strategy-critic",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:c59dfbde60a86307c4f73f6eca0cd842db36d74eb1f17a7a645a15dd4f329aeb",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:60cd5ed41ab16f81049cdae739c11e55c1b7bc4b6f229cecb3780a8d70ecbb0f",
       "status": "candidate",
       "jobs": [
         {
@@ -215,8 +215,8 @@
     {
       "id": "repo-truth-auditor",
       "ref": "harnesses/repo-truth-auditor",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:a094a162e992da8223f3faec2c591c2d47ab5bc67d595011ea0214835137ae49",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:39a2871ddae6d76921d640051367d96096aaaf28b649bf7cf775228e7241f5fa",
       "status": "candidate",
       "jobs": [
         {

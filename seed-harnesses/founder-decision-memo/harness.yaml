@@ -3,7 +3,7 @@ name: founder-decision-memo
 title: Founder Decision Memo
 summary: Converts messy context into a short decision memo with recommendation,
   tradeoffs and next action.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/founder-decision-memo

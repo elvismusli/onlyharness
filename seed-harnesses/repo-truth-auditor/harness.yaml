@@ -3,7 +3,7 @@ name: repo-truth-auditor
 title: Repo Truth Auditor
 summary: Checks claims against code, commands, tests and runtime evidence before
   giving a grounded verdict.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/repo-truth-auditor

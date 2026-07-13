@@ -1,6 +1,6 @@
 {
   "schemaVersion": "superskill.history.v1",
-  "generatedAt": "2026-07-13T10:30:42.310Z",
+  "generatedAt": "2026-07-13T13:08:41.169Z",
   "capabilities": [
     {
       "id": "agent-harness-refactorer",
@@ -870,6 +870,150 @@
       }
     },
     {
+      "id": "founder-decision-memo",
+      "type": "instruction_harness",
+      "title": "Founder Decision Memo",
+      "summary": "Converts messy context into a short decision memo with recommendation, tradeoffs and next action.",
+      "jobs": [
+        {
+          "id": "founder-decision",
+          "intents": [
+            "write founder decision memo",
+            "compare strategic options"
+          ],
+          "outcomes": [
+            "decision-ready recommendation"
+          ],
+          "exclusions": [
+            "announce decision",
+            "send memo"
+          ]
+        }
+      ],
+      "release": {
+        "ref": "harnesses/founder-decision-memo",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:0bc35e1b235de5fb5b4ae5875a8a5cec3ed608e7c062dabe9547dec795958017",
+        "immutable": true,
+        "publishedAt": "2026-07-13T13:08:38.331Z",
+        "delivery": "free_archive"
+      },
+      "source": {
+        "owner": "OnlyHarness",
+        "url": "https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/founder-decision-memo",
+        "license": "MIT"
+      },
+      "compatibility": [
+        {
+          "client": "claude-code",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        },
+        {
+          "client": "codex",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        }
+      ],
+      "permissions": {
+        "network": "allowlist",
+        "networkAllowlist": [
+          "api.openai.com"
+        ],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "runtime_injected",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      },
+      "contextCost": {
+        "approxTokens": 207,
+        "files": 5,
+        "bytes": 829,
+        "status": "estimated"
+      },
+      "trust": {
+        "status": "candidate",
+        "riskScore": 25,
+        "riskTier": "MEDIUM",
+        "checks": [
+          {
+            "id": "schema",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Native manifest schema validated"
+          },
+          {
+            "id": "artifact_digest",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Immutable artifact digest matches curated release"
+          },
+          {
+            "id": "source_license",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Source and license are declared"
+          },
+          {
+            "id": "static_security",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Static managed review not run"
+          },
+          {
+            "id": "capability_diff",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Capability diff not run"
+          },
+          {
+            "id": "claude_code_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Claude Code exact-release activation smoke"
+          },
+          {
+            "id": "codex_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Codex exact-release activation smoke"
+          },
+          {
+            "id": "human_review",
+            "status": "not_run",
+            "evidenceLevel": "human_reviewed",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Human task review not run"
+          },
+          {
+            "id": "independent_eval",
+            "status": "not_run",
+            "evidenceLevel": "independently_evaluated",
+            "checkedAt": "2026-07-13T13:08:38.331Z",
+            "summary": "Independent outcome evaluation not run"
+          }
+        ],
+        "limitations": [
+          "Candidate has not completed exact-release managed review"
+        ],
+        "reviewedAt": "2026-07-13T13:08:38.331Z"
+      }
+    },
+    {
       "id": "gtm-research-sprint",
       "type": "instruction_harness",
       "title": "GTM Research Sprint",
@@ -1298,6 +1442,148 @@
       }
     },
     {
+      "id": "launch-readiness-reviewer",
+      "type": "instruction_harness",
+      "title": "Launch Readiness Reviewer",
+      "summary": "Reviews launch scope, user-visible promises, rollout gates and rollback criteria before a feature goes live.",
+      "jobs": [
+        {
+          "id": "launch-readiness",
+          "intents": [
+            "review launch readiness",
+            "audit release plan"
+          ],
+          "outcomes": [
+            "go no-go readiness report"
+          ],
+          "exclusions": [
+            "deploy release",
+            "announce launch"
+          ]
+        }
+      ],
+      "release": {
+        "ref": "harnesses/launch-readiness-reviewer",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:63130e155874f3908edcdb53793b31d8a0db4013a4654372afd87479bc68828f",
+        "immutable": true,
+        "publishedAt": "2026-07-13T13:08:39.919Z",
+        "delivery": "free_archive"
+      },
+      "source": {
+        "owner": "OnlyHarness",
+        "url": "https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/launch-readiness-reviewer",
+        "license": "MIT"
+      },
+      "compatibility": [
+        {
+          "client": "claude-code",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        },
+        {
+          "client": "codex",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        }
+      ],
+      "permissions": {
+        "network": "false",
+        "networkAllowlist": [],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "false",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      },
+      "contextCost": {
+        "approxTokens": 279,
+        "files": 5,
+        "bytes": 1115,
+        "status": "estimated"
+      },
+      "trust": {
+        "status": "candidate",
+        "riskScore": 5,
+        "riskTier": "LOW",
+        "checks": [
+          {
+            "id": "schema",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Native manifest schema validated"
+          },
+          {
+            "id": "artifact_digest",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Immutable artifact digest matches curated release"
+          },
+          {
+            "id": "source_license",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Source and license are declared"
+          },
+          {
+            "id": "static_security",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Static managed review not run"
+          },
+          {
+            "id": "capability_diff",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Capability diff not run"
+          },
+          {
+            "id": "claude_code_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Claude Code exact-release activation smoke"
+          },
+          {
+            "id": "codex_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Codex exact-release activation smoke"
+          },
+          {
+            "id": "human_review",
+            "status": "not_run",
+            "evidenceLevel": "human_reviewed",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Human task review not run"
+          },
+          {
+            "id": "independent_eval",
+            "status": "not_run",
+            "evidenceLevel": "independently_evaluated",
+            "checkedAt": "2026-07-13T13:08:39.919Z",
+            "summary": "Independent outcome evaluation not run"
+          }
+        ],
+        "limitations": [
+          "Candidate has not completed exact-release managed review"
+        ],
+        "reviewedAt": "2026-07-13T13:08:39.919Z"
+      }
+    },
+    {
       "id": "product-strategy-critic",
       "type": "instruction_harness",
       "title": "Product Strategy Critic",
@@ -1442,6 +1728,150 @@
       }
     },
     {
+      "id": "product-strategy-critic",
+      "type": "instruction_harness",
+      "title": "Product Strategy Critic",
+      "summary": "Critiques product plans, identifies weak assumptions and returns a concrete MVP recommendation.",
+      "jobs": [
+        {
+          "id": "product-strategy",
+          "intents": [
+            "critique product strategy",
+            "review mvp plan"
+          ],
+          "outcomes": [
+            "concrete product recommendation"
+          ],
+          "exclusions": [
+            "build product",
+            "publish roadmap"
+          ]
+        }
+      ],
+      "release": {
+        "ref": "harnesses/product-strategy-critic",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:60cd5ed41ab16f81049cdae739c11e55c1b7bc4b6f229cecb3780a8d70ecbb0f",
+        "immutable": true,
+        "publishedAt": "2026-07-13T13:08:38.971Z",
+        "delivery": "free_archive"
+      },
+      "source": {
+        "owner": "OnlyHarness",
+        "url": "https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/product-strategy-critic",
+        "license": "MIT"
+      },
+      "compatibility": [
+        {
+          "client": "claude-code",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        },
+        {
+          "client": "codex",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        }
+      ],
+      "permissions": {
+        "network": "allowlist",
+        "networkAllowlist": [
+          "api.openai.com"
+        ],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "runtime_injected",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      },
+      "contextCost": {
+        "approxTokens": 218,
+        "files": 5,
+        "bytes": 870,
+        "status": "estimated"
+      },
+      "trust": {
+        "status": "candidate",
+        "riskScore": 25,
+        "riskTier": "MEDIUM",
+        "checks": [
+          {
+            "id": "schema",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Native manifest schema validated"
+          },
+          {
+            "id": "artifact_digest",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Immutable artifact digest matches curated release"
+          },
+          {
+            "id": "source_license",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Source and license are declared"
+          },
+          {
+            "id": "static_security",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Static managed review not run"
+          },
+          {
+            "id": "capability_diff",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Capability diff not run"
+          },
+          {
+            "id": "claude_code_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Claude Code exact-release activation smoke"
+          },
+          {
+            "id": "codex_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Codex exact-release activation smoke"
+          },
+          {
+            "id": "human_review",
+            "status": "not_run",
+            "evidenceLevel": "human_reviewed",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Human task review not run"
+          },
+          {
+            "id": "independent_eval",
+            "status": "not_run",
+            "evidenceLevel": "independently_evaluated",
+            "checkedAt": "2026-07-13T13:08:38.971Z",
+            "summary": "Independent outcome evaluation not run"
+          }
+        ],
+        "limitations": [
+          "Candidate has not completed exact-release managed review"
+        ],
+        "reviewedAt": "2026-07-13T13:08:38.971Z"
+      }
+    },
+    {
       "id": "repo-truth-auditor",
       "type": "instruction_harness",
       "title": "Repo Truth Auditor",
@@ -1583,6 +2013,150 @@
           "Candidate has not completed exact-release managed review"
         ],
         "reviewedAt": "2026-07-12T10:58:34.475Z"
+      }
+    },
+    {
+      "id": "repo-truth-auditor",
+      "type": "instruction_harness",
+      "title": "Repo Truth Auditor",
+      "summary": "Checks claims against code, commands, tests and runtime evidence before giving a grounded verdict.",
+      "jobs": [
+        {
+          "id": "repo-audit",
+          "intents": [
+            "audit repository truth",
+            "compare docs and runtime"
+          ],
+          "outcomes": [
+            "evidence-backed repository audit"
+          ],
+          "exclusions": [
+            "modify code",
+            "deploy repository"
+          ]
+        }
+      ],
+      "release": {
+        "ref": "harnesses/repo-truth-auditor",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:39a2871ddae6d76921d640051367d96096aaaf28b649bf7cf775228e7241f5fa",
+        "immutable": true,
+        "publishedAt": "2026-07-13T13:08:41.169Z",
+        "delivery": "free_archive"
+      },
+      "source": {
+        "owner": "OnlyHarness",
+        "url": "https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/repo-truth-auditor",
+        "license": "MIT"
+      },
+      "compatibility": [
+        {
+          "client": "claude-code",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        },
+        {
+          "client": "codex",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        }
+      ],
+      "permissions": {
+        "network": "allowlist",
+        "networkAllowlist": [
+          "api.openai.com"
+        ],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "runtime_injected",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      },
+      "contextCost": {
+        "approxTokens": 206,
+        "files": 5,
+        "bytes": 823,
+        "status": "estimated"
+      },
+      "trust": {
+        "status": "candidate",
+        "riskScore": 25,
+        "riskTier": "MEDIUM",
+        "checks": [
+          {
+            "id": "schema",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Native manifest schema validated"
+          },
+          {
+            "id": "artifact_digest",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Immutable artifact digest matches curated release"
+          },
+          {
+            "id": "source_license",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Source and license are declared"
+          },
+          {
+            "id": "static_security",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Static managed review not run"
+          },
+          {
+            "id": "capability_diff",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Capability diff not run"
+          },
+          {
+            "id": "claude_code_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Claude Code exact-release activation smoke"
+          },
+          {
+            "id": "codex_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Codex exact-release activation smoke"
+          },
+          {
+            "id": "human_review",
+            "status": "not_run",
+            "evidenceLevel": "human_reviewed",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Human task review not run"
+          },
+          {
+            "id": "independent_eval",
+            "status": "not_run",
+            "evidenceLevel": "independently_evaluated",
+            "checkedAt": "2026-07-13T13:08:41.169Z",
+            "summary": "Independent outcome evaluation not run"
+          }
+        ],
+        "limitations": [
+          "Candidate has not completed exact-release managed review"
+        ],
+        "reviewedAt": "2026-07-13T13:08:41.169Z"
       }
     },
     {

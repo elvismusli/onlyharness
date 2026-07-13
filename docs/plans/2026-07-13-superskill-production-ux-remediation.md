@@ -79,8 +79,8 @@ canonical-domain пункты из таблицы закрыты deploy-ем `3b
 
 Повторно проверено после внешнего review плана и production deploy:
 
-- `HEAD=3bdb523f9cde57ba5025539cde58eaee74e7fea2`;
-- `origin/main` указывает на тот же commit;
+- shipped UX baseline: `3bdb523f9cde57ba5025539cde58eaee74e7fea2`;
+- exact-release evidence hardening и повторный production deploy: `7290c5fe4c68975a9a075489ff46e9a4f4da261c`;
 - `apps/registry-web/**` не содержит dirty changes;
 - generic install route, CTA и optional `capabilityId` уже закоммичены;
 - этот exact commit задеплоен стандартным production script из clean temporary worktree;
@@ -348,7 +348,7 @@ Acceptance:
 - recommendation router выбирает resource только для matching task и fail closed для
   exclusions/no-match.
 
-### Phase 6 — обработать оставшиеся 11 selected skills — PENDING
+### Phase 6 — обработать оставшиеся 11 selected skills — IN PROGRESS
 
 Не делать один массовый approval commit. Работать batch-ами по риску:
 
@@ -369,6 +369,33 @@ Batch acceptance:
 - approval count растёт только после реального evidence;
 - revoked/quarantined/stale state немедленно убирает managed activation;
 - после каждого batch обновляются review log и production smoke expectations.
+
+Текущий pre-review progress:
+
+- добавлен dry-run-by-default `npm run prepare:superskill-release -- --id <id>
+  --from <version> --to <version>`; запись требует отдельный `--write`, exclusive lock и
+  durable recovery journal, заранее проверяет весь cut и восстанавливает pre-write bytes
+  после обработанной ошибки или следующего запуска после crash;
+- генератор seed-ов читает checked-in `data/superskill/source-releases.json`, поэтому
+  повторный `npm run seed` больше не возвращает sanitized release к старой версии и не
+  восстанавливает удалённый workflow;
+- low-risk batch подготовлен как четыре отдельных immutable `0.2.1` release cuts:
+  `founder-decision-memo`, `product-strategy-critic`, `launch-readiness-reviewer`,
+  `repo-truth-auditor`;
+- все четыре остаются `candidate`, без `reviewFile`, preview, human verdict или managed
+  activation; старые `0.2.0` остаются в immutable history;
+- для всех четырёх прошли clean Claude Code `2.1.112` и Codex CLI `0.135.0` exact
+  activation sessions; public-safe evidence сохраняет `promotionAuthorized=false`,
+  `attestationCreated=false` и `humanReviewEvidence=false`;
+- для каждого подготовлен отдельный normal/ambiguous/adversarial human-case packet с
+  пустыми reviewer/date/verdict полями; synthetic outputs явно помечены как не полученные
+  из managed runtime и не являются attestation;
+- первый Claude run для `repo-truth-auditor` честно остановился после `activation_ready`;
+  pinned SKILL.md был исправлен так, чтобы показывать точные loaded/invoked/finish
+  commands, после чего diagnostic и полный dual-client run прошли;
+- capability inference отделён от declarative `harness.yaml` и от negated/review-only
+  safety prose, при этом positive imperative credential/network/money actions продолжают
+  давать blocking diff; это защищено adversarial positive/negative tests.
 
 ## 6. Тесты и verification gates
 
@@ -456,11 +483,15 @@ npm run smoke
 
 Текущее состояние commits:
 
-1. UX, canonical domain, adaptive showroom checker и sanitized pre-review release shipped
-   одним проверенным commit `3bdb523f9cde57ba5025539cde58eaee74e7fea2`.
-2. Следующий commit `Approve first reviewed SuperSkill exact release` разрешён только
-   после exact-release Claude/Codex evidence и человеческого sign-off.
-3. Phase 6 публикуется отдельными risk-batch commits; один broken review не должен
+1. UX и canonical-domain baseline shipped commit
+   `3bdb523f9cde57ba5025539cde58eaee74e7fea2`; evidence hardening и повторный deploy
+   shipped commit `7290c5fe4c68975a9a075489ff46e9a4f4da261c`.
+2. Pre-review tooling/release-cut commits могут публиковать только immutable candidate
+   tuples и пустые review packets; они не должны создавать attestation, preview или
+   activation handoff.
+3. Commit `Approve first reviewed SuperSkill exact release` разрешён только после
+   exact-release Claude/Codex evidence и человеческого sign-off.
+4. Phase 6 публикуется отдельными risk-batch commits; один broken review не должен
    смешиваться с прошедшими resources.
 
 Перед каждым следующим commit проверить staged diff и исключить unrelated dirty files.

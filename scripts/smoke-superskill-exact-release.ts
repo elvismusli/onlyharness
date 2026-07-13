@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -39,32 +40,38 @@ const indexFile = path.join(root, "data/superskill/index.json");
 const curatedFile = path.join(root, "data/superskill/curated.json");
 const historyFile = path.join(root, "data/superskill/history.json");
 const reviewsRoot = path.join(root, "data/superskill/reviews");
-const exactSnapshotFile = path.join(root, "data/harness-versions/harnesses/deep-market-researcher/0.2.1.json");
 const cliPackageFile = path.join(root, "packages/harness-cli/package.json");
-const expected = {
+const defaultExpected = {
   id: "deep-market-researcher",
   ref: "harnesses/deep-market-researcher",
   version: "0.2.1",
   artifactDigest: "sha256:9ebad5b23017dc95b758a77361080f026832538903735cdcb7d9a669f204927e"
 } as const;
-const taskSummary = "competitor research market map source-backed comparison";
+const defaultTaskSummary = "competitor research market map source-backed comparison";
 const cliVersion = "0.2.13";
-const realClientSessionsRequested = process.argv.includes("--real-client-sessions");
-const realClientFilter = argumentValue("--real-client");
-const evidenceOutRequested = process.argv.includes("--evidence-out");
-const evidenceOutArgument = argumentValue("--evidence-out");
-if (realClientFilter && realClientFilter !== "claude-code" && realClientFilter !== "codex") {
-  throw new Error("--real-client must be claude-code or codex");
+const smokeArguments = parseArguments(process.argv.slice(2));
+const realClientSessionsRequested = smokeArguments.realClientSessions;
+const realClientFilter = smokeArguments.realClient;
+if (realClientFilter && !realClientSessionsRequested) {
+  throw new Error("--real-client requires --real-client-sessions");
 }
-if (evidenceOutRequested && !evidenceOutArgument) throw new Error("--evidence-out requires a JSON path");
-if (evidenceOutRequested && (!realClientSessionsRequested || realClientFilter)) {
+if (smokeArguments.evidenceOut && (!realClientSessionsRequested || realClientFilter)) {
   throw new Error("--evidence-out requires unfiltered --real-client-sessions so both clients are evidenced");
 }
+const originalIndex = managedCapabilityIndexSchema.parse(JSON.parse(readFileSync(indexFile, "utf8")));
+const requestedCapabilityId = smokeArguments.capabilityId ?? defaultExpected.id;
+assertCapabilityId(requestedCapabilityId);
+const exactCandidate = originalIndex.capabilities.find((capability) => capability.id === requestedCapabilityId);
+assert.ok(exactCandidate, `Missing ${requestedCapabilityId} from checked-in SuperSkill index`);
+assert.equal(exactCandidate.trust.status, "candidate", "Bootstrap smoke must begin from the honest checked-in candidate state");
+const expected = resolveExpectedTuple(exactCandidate, smokeArguments);
+const taskSummary = resolveTaskSummary(expected, smokeArguments.taskSummary);
+const exactSnapshotFile = path.join(root, "data/harness-versions", expected.ref, `${expected.version}.json`);
+assert.ok(existsSync(exactSnapshotFile), `Missing immutable snapshot for ${expected.ref}@${expected.version}`);
 const evidenceDirectory = path.join(root, "docs/plans/superskill-mvp/evidence");
-const evidenceOutFile = evidenceOutArgument ? path.resolve(root, evidenceOutArgument) : undefined;
-if (evidenceOutFile && (!evidenceOutFile.startsWith(`${evidenceDirectory}${path.sep}`) || path.extname(evidenceOutFile) !== ".json")) {
-  throw new Error("--evidence-out must be a JSON file under docs/plans/superskill-mvp/evidence");
-}
+const evidenceOutFile = smokeArguments.evidenceOut
+  ? resolveEvidenceOutput(smokeArguments.evidenceOut, expected.id, expected.version)
+  : undefined;
 const realClientSessionTimeoutMs = 180_000;
 
 type CliResult = Record<string, unknown>;
@@ -80,14 +87,10 @@ const sourceTruthBefore = sourceTruthHashes();
 assert.ok(existsSync(cliFile), "Build packages/harness-cli/dist/hh.mjs before running this smoke");
 assert.equal((JSON.parse(readFileSync(cliPackageFile, "utf8")) as { version?: string }).version, cliVersion);
 
-const originalIndex = managedCapabilityIndexSchema.parse(JSON.parse(readFileSync(indexFile, "utf8")));
-const exactCandidate = originalIndex.capabilities.find((capability) => capability.id === expected.id);
-assert.ok(exactCandidate, `Missing ${expected.id} from checked-in SuperSkill index`);
 assertExactTuple(exactCandidate);
-assert.equal(exactCandidate.trust.status, "candidate", "Bootstrap smoke must begin from the honest checked-in candidate state");
 const exactArchive = buildManagedArchive(exactCandidate);
 assert.equal(exactArchive.artifactDigest, expected.artifactDigest);
-assert.equal(exactArchive.totalFileCount, 12);
+assert.ok(exactArchive.totalFileCount > 0, "Exact archive must contain at least one file");
 assert.equal(exactArchive.files.length, exactArchive.totalFileCount);
 assert.equal(exactArchive.archiveTruncated, false);
 assert.ok(exactArchive.files.every((file) => file.truncated === false));
@@ -205,7 +208,7 @@ try {
       taskPersistedInProjectOrEvents: false,
       absolutePathIncludedInPublicReportOrEvents: false
     },
-    outcomePolicy: "No real research task was executed; both activation outcomes are unknown with unknown evidence.",
+    outcomePolicy: "No real capability task was executed; both activation outcomes are unknown with unknown evidence.",
     nextGate: "Human review and a valid exact-release attestation are still required before promotion."
   };
   const publicJson = JSON.stringify(report, null, 2);
@@ -443,7 +446,7 @@ async function runRealClientSession(
     client === "codex"
       ? "The exact cat command above is the only non-activation shell command allowed; do not compose commands or run discovery helpers."
       : "Run no other Bash command.",
-    "Do not perform the research task, keep, remove, update, inspect environment variables, or print tokens or absolute paths.",
+    "Do not perform the requested capability task, keep, remove, update, inspect environment variables, or print tokens or absolute paths.",
     "Do not answer until every required activation command has completed successfully. Then reply only: lifecycle complete."
   ].join("\n");
   const sessionEnv: NodeJS.ProcessEnv = allowlistedClientSessionEnvironment({
@@ -971,7 +974,158 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function argumentValue(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
+type SmokeArguments = {
+  realClientSessions: boolean;
+  realClient?: Client;
+  evidenceOut?: string;
+  capabilityId?: string;
+  ref?: string;
+  version?: string;
+  digest?: string;
+  taskSummary?: string;
+};
+
+type ExpectedTuple = {
+  id: string;
+  ref: string;
+  version: string;
+  artifactDigest: string;
+};
+
+function parseArguments(args: string[]): SmokeArguments {
+  const parsed: SmokeArguments = { realClientSessions: false };
+  const seen = new Set<string>();
+  const values = new Set([
+    "--real-client",
+    "--evidence-out",
+    "--capability-id",
+    "--ref",
+    "--version",
+    "--digest",
+    "--task-summary"
+  ]);
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index]!;
+    if (seen.has(argument)) throw new Error(`${argument} may only be provided once`);
+    seen.add(argument);
+    if (argument === "--real-client-sessions") {
+      parsed.realClientSessions = true;
+      continue;
+    }
+    if (!values.has(argument)) throw new Error(`Unknown argument: ${argument}`);
+    const value = args[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${argument} requires a value`);
+    index += 1;
+    if (argument === "--real-client") {
+      if (value !== "claude-code" && value !== "codex") throw new Error("--real-client must be claude-code or codex");
+      parsed.realClient = value;
+    } else if (argument === "--evidence-out") parsed.evidenceOut = value;
+    else if (argument === "--capability-id") parsed.capabilityId = value;
+    else if (argument === "--ref") parsed.ref = value;
+    else if (argument === "--version") parsed.version = value;
+    else if (argument === "--digest") parsed.digest = value;
+    else if (argument === "--task-summary") parsed.taskSummary = value;
+  }
+  return parsed;
+}
+
+function resolveExpectedTuple(candidate: ManagedCapability, args: SmokeArguments): ExpectedTuple {
+  assertCapabilityId(candidate.id);
+  assertCapabilityRef(candidate.release.ref, candidate.id);
+  assertVersion(candidate.release.version);
+  assertArtifactDigest(candidate.release.artifactDigest);
+  const expected: ExpectedTuple = {
+    id: candidate.id,
+    ref: candidate.release.ref,
+    version: candidate.release.version,
+    artifactDigest: candidate.release.artifactDigest
+  };
+  if (args.capabilityId === undefined && args.ref === undefined && args.version === undefined && args.digest === undefined) {
+    assert.deepEqual(expected, defaultExpected, "Default smoke release no longer matches the pinned deep-market-researcher tuple");
+  }
+  if (args.ref !== undefined) {
+    assertCapabilityRef(args.ref, expected.id);
+    assert.equal(args.ref, expected.ref, `--ref does not match checked-in release for ${expected.id}`);
+  }
+  if (args.version !== undefined) {
+    assertVersion(args.version);
+    assert.equal(args.version, expected.version, `--version does not match checked-in release for ${expected.id}`);
+  }
+  if (args.digest !== undefined) {
+    assertArtifactDigest(args.digest);
+    assert.equal(args.digest, expected.artifactDigest, `--digest does not match checked-in release for ${expected.id}`);
+  }
+  return expected;
+}
+
+function resolveTaskSummary(expected: ExpectedTuple, explicit: string | undefined): string {
+  const curated = JSON.parse(readFileSync(curatedFile, "utf8")) as {
+    resources?: Array<{
+      id?: unknown;
+      ref?: unknown;
+      version?: unknown;
+      expectedDigest?: unknown;
+      status?: unknown;
+      jobs?: Array<{ intents?: unknown; outcomes?: unknown }>;
+    }>;
+  };
+  const matches = curated.resources?.filter((resource) => resource.id === expected.id) ?? [];
+  assert.equal(matches.length, 1, `Expected exactly one curated source row for ${expected.id}`);
+  const resource = matches[0]!;
+  assert.equal(resource.ref, expected.ref, `Curated ref mismatch for ${expected.id}`);
+  assert.equal(resource.version, expected.version, `Curated version mismatch for ${expected.id}`);
+  assert.equal(resource.expectedDigest, expected.artifactDigest, `Curated digest mismatch for ${expected.id}`);
+  assert.equal(resource.status, "candidate", `Curated ${expected.id} must remain candidate during bootstrap smoke`);
+  if (explicit !== undefined) return validateTaskSummary(explicit);
+  if (expected.id === defaultExpected.id) return defaultTaskSummary;
+  const job = resource.jobs?.[0];
+  const intent = Array.isArray(job?.intents) && typeof job.intents[0] === "string" ? job.intents[0] : undefined;
+  const outcome = Array.isArray(job?.outcomes) && typeof job.outcomes[0] === "string" ? job.outcomes[0] : undefined;
+  assert.ok(intent && outcome, `Curated ${expected.id} requires at least one intent and outcome to derive a smoke task`);
+  return validateTaskSummary(`${intent} ${outcome}`);
+}
+
+function validateTaskSummary(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  assert.ok(normalized.length >= 3 && normalized.length <= 256, "--task-summary must contain 3 to 256 characters");
+  assert.equal(/[\u0000-\u001f\u007f]/.test(normalized), false, "--task-summary must not contain control characters");
+  return normalized;
+}
+
+function assertCapabilityId(value: string): void {
+  assert.match(value, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Capability id must be a lowercase kebab-case slug");
+  assert.ok(value.length <= 80, "Capability id must not exceed 80 characters");
+}
+
+function assertCapabilityRef(value: string, id: string): void {
+  assert.equal(value, `harnesses/${id}`, `Capability ref must be exactly harnesses/${id}`);
+}
+
+function assertVersion(value: string): void {
+  assert.match(value, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/, "Version must be a valid exact semver");
+}
+
+function assertArtifactDigest(value: string): void {
+  assert.match(value, /^sha256:[0-9a-f]{64}$/, "Artifact digest must be a lowercase sha256 digest");
+}
+
+function resolveEvidenceOutput(argument: string, capabilityId: string, version: string): string {
+  assert.equal(path.extname(argument), ".json", "--evidence-out must name a .json file");
+  const evidenceRoot = realpathSync(evidenceDirectory);
+  const output = path.resolve(root, argument);
+  const parent = path.dirname(output);
+  assert.ok(existsSync(parent), "--evidence-out parent directory must already exist");
+  const realParent = realpathSync(parent);
+  assert.ok(isContainedPath(evidenceRoot, realParent), "--evidence-out parent must resolve under docs/plans/superskill-mvp/evidence");
+  assert.ok(path.basename(output).includes(`${capabilityId}-${version}`), "--evidence-out filename must include the exact capability id and version");
+  if (existsSync(output)) {
+    assert.equal(lstatSync(output).isSymbolicLink(), false, "--evidence-out must not overwrite a symlink");
+    assert.ok(isContainedPath(evidenceRoot, realpathSync(output)), "--evidence-out target must resolve under docs/plans/superskill-mvp/evidence");
+  }
+  return output;
+}
+
+function isContainedPath(parent: string, target: string): boolean {
+  const relative = path.relative(parent, target);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }

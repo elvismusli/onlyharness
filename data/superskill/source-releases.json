@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "superskill.source-releases.v1",
+  "resources": [
+    {
+      "id": "agent-harness-refactorer",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    },
+    {
+      "id": "data-quality-sentinel",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    },
+    {
+      "id": "deep-market-researcher",
+      "version": "0.2.1",
+      "includeCiWorkflow": false
+    },
+    {
+      "id": "finance-payment-safety-reviewer",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    },
+    {
+      "id": "founder-decision-memo",
+      "version": "0.2.1",
+      "includeCiWorkflow": false
+    },
+    {
+      "id": "gtm-research-sprint",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    },
+    {
+      "id": "incident-rca-commander",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    },
+    {
+      "id": "launch-readiness-reviewer",
+      "version": "0.2.1",
+      "includeCiWorkflow": false
+    },
+    {
+      "id": "product-strategy-critic",
+      "version": "0.2.1",
+      "includeCiWorkflow": false
+    },
+    {
+      "id": "repo-truth-auditor",
+      "version": "0.2.1",
+      "includeCiWorkflow": false
+    },
+    {
+      "id": "security-permission-auditor",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    },
+    {
+      "id": "support-triage-agent",
+      "version": "0.2.0",
+      "includeCiWorkflow": true
+    }
+  ]
+}

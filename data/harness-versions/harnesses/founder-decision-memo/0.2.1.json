@@ -1,0 +1,71 @@
+{
+  "owner": "harnesses",
+  "repo": "founder-decision-memo",
+  "version": "0.2.1",
+  "createdAt": "2026-07-13T13:08:38.331Z",
+  "files": [
+    {
+      "path": "README.md",
+      "truncated": false,
+      "content": "# Founder Decision Memo\n\nConverts messy context into a short decision memo with recommendation, tradeoffs and next action.\n\n## How to improve\n\n1. Fork this harness.\n2. Change one agent prompt or eval case.\n3. Run `hh validate && hh eval && hh gate`.\n4. Open PR and read the semantic diff.\n"
+    },
+    {
+      "path": "agents/context_compressor.md",
+      "truncated": false,
+      "content": "Extract decision, constraints and real options.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "agents/memo_writer.md",
+      "truncated": false,
+      "content": "Lead with recommendation and keep caveats explicit.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "agents/option_critic.md",
+      "truncated": false,
+      "content": "Compare options by speed, risk, evidence and reversibility.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "evals/cases/case-1.yaml",
+      "truncated": false,
+      "content": "title: recommendation first\nscore: 0.9\n"
+    },
+    {
+      "path": "evals/cases/case-2.yaml",
+      "truncated": false,
+      "content": "title: clear tradeoffs\nscore: 0.87\n"
+    },
+    {
+      "path": "evals/cases/case-3.yaml",
+      "truncated": false,
+      "content": "title: concrete next action\nscore: 0.91\n"
+    },
+    {
+      "path": "evals/promptfooconfig.yaml",
+      "truncated": false,
+      "content": "description: Founder Decision Memo smoke eval\nprompts:\n  - agents/memo_writer.md\nproviders:\n  - echo\n"
+    },
+    {
+      "path": "examples/expected.md",
+      "truncated": false,
+      "content": "# Expected\n\nRecommendation: stock Gitea sidecar first; fork only after the core loop is proven.\n"
+    },
+    {
+      "path": "examples/input.md",
+      "truncated": false,
+      "content": "# Input\n\nDecide whether to fork Gitea or build sidecar services first.\n"
+    },
+    {
+      "path": "harness.yaml",
+      "truncated": false,
+      "content": "schemaVersion: harness.v0.2\nname: founder-decision-memo\ntitle: Founder Decision Memo\nsummary: Converts messy context into a short decision memo with recommendation,\n  tradeoffs and next action.\nversion: 0.2.1\nlicense: MIT\nsource:\n  upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/founder-decision-memo\n  upstream_license: MIT\n  attribution: OnlyHarness first-party instruction harness\n  authors:\n    - OnlyHarness\n  vendor_policy: original\nmaintainers:\n  - name: Harness.Hub Local\ntags:\n  - founder\n  - decision\n  - memo\nruntime:\n  primary: none\n  adapters: []\ninputs:\n  - id: request\n    type: markdown\n    required: true\noutputs:\n  - id: final_result\n    type: markdown\nagents:\n  - id: context_compressor\n    role: compress_context\n    title: Context Compressor\n    prompt: agents/context_compressor.md\n    tools: []\n    handoffs: []\n  - id: option_critic\n    role: compare_options\n    title: Option Critic\n    prompt: agents/option_critic.md\n    tools: []\n    handoffs: []\n  - id: memo_writer\n    role: write_memo\n    title: Memo Writer\n    prompt: agents/memo_writer.md\n    tools: []\n    handoffs: []\nworkflow:\n  entrypoint: context_compressor\n  stages:\n    - id: compress\n      agent: context_compressor\n    - id: compare\n      agent: option_critic\n    - id: memo\n      agent: memo_writer\ntools:\n  mcp_servers:\n    - id: web_search\n      required: false\n      package: \"@modelcontextprotocol/server-web-search\"\n      pinned: true\n      allowlist:\n        - api.openai.com\n  function_tools: []\n  external_apis: []\npermissions:\n  network: allowlist\n  network_allowlist:\n    - api.openai.com\n  filesystem: readonly\n  shell: false\n  browser: false\n  credentials: runtime_injected\n  external_send: false\n  money_movement: false\n  user_data: false\n  human_approval_required:\n    - external_send\n    - money_movement\nsecrets:\n  required: []\n  optional: []\nevals:\n  promptfoo_config: evals/promptfooconfig.yaml\n  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o\n    .harnesshub/results.json -o .harnesshub/report.html -o\n    .harnesshub/results.junit.xml\nquality_gates:\n  min_score: 0.82\n  max_regression: 0.03\n  max_cost_usd_per_run: 3\n  max_risk_score: 39\n  required_checks:\n    - schema_valid\n    - eval_passed\n    - no_high_risk_permission_delta\nexamples:\n  - title: Smoke example\n    input: examples/input.md\n    output: examples/expected.md\n"
+    },
+    {
+      "path": "runbooks/local-run.md",
+      "truncated": false,
+      "content": "# Local run\n\n```bash\nhh validate\nhh eval\nhh gate\n```\n"
+    }
+  ],
+  "totalFileCount": 12,
+  "archiveTruncated": false,
+  "artifactDigest": "sha256:0bc35e1b235de5fb5b4ae5875a8a5cec3ed608e7c062dabe9547dec795958017"
+}

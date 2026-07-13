@@ -1,0 +1,203 @@
+{
+  "schemaVersion": "superskill.exact-release-bootstrap-smoke.v1",
+  "bootstrapOnly": true,
+  "promotionAuthorized": false,
+  "attestationCreated": false,
+  "humanReviewEvidence": false,
+  "sourceTruthUnchanged": true,
+  "release": {
+    "id": "repo-truth-auditor",
+    "ref": "harnesses/repo-truth-auditor",
+    "version": "0.2.1",
+    "artifactDigest": "sha256:39a2871ddae6d76921d640051367d96096aaaf28b649bf7cf775228e7241f5fa"
+  },
+  "archive": {
+    "totalFileCount": 12,
+    "complete": true,
+    "truncated": false
+  },
+  "runtime": {
+    "cli": "onlyharness@0.2.13",
+    "api": "registerSuperskillRoutes+buildManagedArchive",
+    "routePrefix": "/api"
+  },
+  "realClientSessions": {
+    "requested": true,
+    "filter": "both",
+    "allEligible": true,
+    "attemptPolicy": "one bounded fresh session per client; failures stay ineligible"
+  },
+  "clients": [
+    {
+      "client": "claude-code",
+      "realClientSession": "passed",
+      "compatibilitySessionEligible": true,
+      "compatibilityEvidenceEligible": true,
+      "compatibilityAttestationEligible": true,
+      "clientBinaryVersionObservedOnly": "2.1.112 (Claude Code)",
+      "realClientEvidence": {
+        "status": "passed",
+        "compatibilitySessionEligible": true,
+        "blocker": null,
+        "sessionPersistence": "disabled",
+        "sandbox": "restricted Skill+Bash allowlist",
+        "clientVersion": "2.1.112",
+        "checkedAt": "2026-07-13T13:21:24.786Z",
+        "fixtureId": "repo-truth-auditor-0.2.1-real-claude-code-v1",
+        "sessionStartedAt": "2026-07-13T13:20:53.091Z",
+        "skillTraceObserved": true,
+        "skillDiscoveryEvidence": "skill_tool_call",
+        "stateEvidence": true,
+        "eventEvidence": {
+          "valid": true,
+          "ordered": true,
+          "unique": true,
+          "kinds": [
+            "activation_started",
+            "activation_ready",
+            "activation_loaded",
+            "activation_invoked",
+            "outcome_reported"
+          ]
+        },
+        "lifecycle": [
+          "activation_started",
+          "activation_ready",
+          "activation_loaded",
+          "activation_invoked",
+          "outcome_reported"
+        ],
+        "outcome": {
+          "value": "unknown",
+          "evidence": "unknown"
+        },
+        "publicOutputSanitized": true,
+        "configIsolation": "project settings only; session persistence disabled",
+        "environmentHandling": "explicit runtime allowlist plus empty temporary npm user/global configs; ambient credential and application variables are not inherited",
+        "authHandling": "existing client auth used in place; no credential files copied or read by smoke"
+      },
+      "lifecycle": [
+        "recommend",
+        "start",
+        "resume",
+        "loaded",
+        "invoked",
+        "finish_unknown",
+        "keep",
+        "doctor_live",
+        "pinned_reuse",
+        "remove"
+      ],
+      "temporaryCacheReused": true,
+      "nativeMarker": ".claude/skills/superskill-repo-truth-auditor/.superskill-managed.json",
+      "legacyCodexHarnessesCreated": false,
+      "doctorExactReleaseStatus": "approved_in_bootstrap_overlay",
+      "pinnedReuse": "ready",
+      "outcome": {
+        "value": "unknown",
+        "evidence": "unknown"
+      },
+      "removal": "owned_files_removed_unrelated_file_preserved",
+      "removalEvent": "queued_locally_for_offline_safe_flush"
+    },
+    {
+      "client": "codex",
+      "realClientSession": "passed",
+      "compatibilitySessionEligible": true,
+      "compatibilityEvidenceEligible": true,
+      "compatibilityAttestationEligible": true,
+      "clientBinaryVersionObservedOnly": "codex-cli 0.135.0",
+      "realClientEvidence": {
+        "status": "passed",
+        "compatibilitySessionEligible": true,
+        "blocker": null,
+        "sessionPersistence": "ephemeral",
+        "sandbox": "workspace-write; model tools disabled except local shell",
+        "clientVersion": "0.135.0",
+        "checkedAt": "2026-07-13T13:22:09.821Z",
+        "fixtureId": "repo-truth-auditor-0.2.1-real-codex-v1",
+        "sessionStartedAt": "2026-07-13T13:21:26.781Z",
+        "skillTraceObserved": true,
+        "skillDiscoveryEvidence": "exact_project_skill_read_plus_structured_successful_activation_commands",
+        "codexToolEvidence": {
+          "valid": true,
+          "commandExecutions": 5,
+          "rejectedExecutions": 0,
+          "executionShapes": [
+            "skillLoad",
+            "startFromPinned",
+            "loaded",
+            "invoked",
+            "finishUnknown"
+          ],
+          "failureReasons": [],
+          "skillLoadObserved": true,
+          "requiredOperations": {
+            "startFromPinned": true,
+            "loaded": true,
+            "invoked": true,
+            "finishUnknown": true
+          }
+        },
+        "stateEvidence": true,
+        "eventEvidence": {
+          "valid": true,
+          "ordered": true,
+          "unique": true,
+          "kinds": [
+            "activation_started",
+            "activation_ready",
+            "activation_loaded",
+            "activation_invoked",
+            "outcome_reported"
+          ]
+        },
+        "lifecycle": [
+          "activation_started",
+          "activation_ready",
+          "activation_loaded",
+          "activation_invoked",
+          "outcome_reported"
+        ],
+        "outcome": {
+          "value": "unknown",
+          "evidence": "unknown"
+        },
+        "publicOutputSanitized": true,
+        "configIsolation": "temporary CODEX_HOME with auth-only symlink; no user config, plugins, memories, or global skills",
+        "environmentHandling": "explicit runtime allowlist plus empty temporary npm user/global configs; ambient credential and application variables are not inherited",
+        "authHandling": "existing auth used in place through an auth-only symlink; credential contents are not copied or read by smoke"
+      },
+      "lifecycle": [
+        "recommend",
+        "start",
+        "resume",
+        "loaded",
+        "invoked",
+        "finish_unknown",
+        "keep",
+        "doctor_live",
+        "pinned_reuse",
+        "remove"
+      ],
+      "temporaryCacheReused": true,
+      "nativeMarker": ".agents/skills/superskill-repo-truth-auditor/.superskill-managed.json",
+      "legacyCodexHarnessesCreated": false,
+      "doctorExactReleaseStatus": "approved_in_bootstrap_overlay",
+      "pinnedReuse": "ready",
+      "outcome": {
+        "value": "unknown",
+        "evidence": "unknown"
+      },
+      "removal": "owned_files_removed_unrelated_file_preserved",
+      "removalEvent": "queued_locally_for_offline_safe_flush"
+    }
+  ],
+  "privacy": {
+    "tokenPersistedInProjectOrEvents": false,
+    "taskPersistedInProjectOrEvents": false,
+    "absolutePathIncludedInPublicReportOrEvents": false
+  },
+  "outcomePolicy": "No real capability task was executed; both activation outcomes are unknown with unknown evidence.",
+  "nextGate": "Human review and a valid exact-release attestation are still required before promotion."
+}

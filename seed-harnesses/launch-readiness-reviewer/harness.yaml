@@ -3,7 +3,7 @@ name: launch-readiness-reviewer
 title: Launch Readiness Reviewer
 summary: Reviews launch scope, user-visible promises, rollout gates and rollback
   criteria before a feature goes live.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/launch-readiness-reviewer

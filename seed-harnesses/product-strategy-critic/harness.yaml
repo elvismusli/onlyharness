@@ -3,7 +3,7 @@ name: product-strategy-critic
 title: Product Strategy Critic
 summary: Critiques product plans, identifies weak assumptions and returns a
   concrete MVP recommendation.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/product-strategy-critic
