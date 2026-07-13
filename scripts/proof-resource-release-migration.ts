@@ -30,7 +30,7 @@ try {
   const upgradeArgs = postgresArgs(port, "onlyharness_upgrade_proof");
   bootstrapDatabase(upgradeArgs, false);
   assertEqual(String(productionAppliedMigrations.length), "17", "production baseline migration count changed; update the explicit rollout cutoff");
-  assertEqual(String(productionPendingMigrations.length), "11", "production pending migration count changed; review the rollout proof before shipping");
+  assertEqual(String(productionPendingMigrations.length), "13", "production pending migration count changed; review the rollout proof before shipping");
   const seededLedger = applyPendingMigrations(productionAppliedMigrations, upgradeArgs);
   assertEqual(seededLedger.join(","), productionAppliedMigrations.join(","), "existing-ledger setup did not stop at the production cutoff");
   seedProductionLikeData(upgradeArgs);
@@ -189,6 +189,13 @@ async function proveReleaseStore(baseArgs: string[]): Promise<void> {
   expectSqlFailure("set role service_role; update public.resource_package_releases set version='9.9.9' where id='10000000-0000-4000-8000-000000000001';", baseArgs, /permission denied|immutable/);
   expectSqlFailure("set role service_role; update public.resource_package_releases set status='failed', activated_at=null, failed_at=now(), failure_code='LATE' where id='10000000-0000-4000-8000-000000000001';", baseArgs, /invalid resource release state transition/);
 
+  const scanned = releaseRow("10000000-0000-4000-8000-000000000003", "onlyharness:packages/sql-scan-pass", "1.0.0", subject("3"), "7", "3", "pass");
+  sql(`set role service_role; select public.claim_resource_package_release(${literalJson(scanned)}::jsonb);`, baseArgs);
+  assertEqual(sql("select resource_payload->'trust'->>'securityScan' from public.resource_package_releases where id='10000000-0000-4000-8000-000000000003';", baseArgs), "pass", "claim RPC rejected or rewrote a passing static scan verdict");
+  const failedScan = releaseRow("10000000-0000-4000-8000-000000000004", "onlyharness:packages/sql-scan-fail", "1.0.0", subject("4"), "8", "4", "fail");
+  expectSqlFailure(`set role service_role; select public.claim_resource_package_release(${literalJson(failedScan)}::jsonb);`, baseArgs, /invalid pending resource release/);
+  assertEqual(sql("select count(*) from public.resource_package_owners where resource_id='onlyharness:packages/sql-scan-fail';", baseArgs), "0", "failed static scan claimed a durable resource owner");
+
   const abortable = releaseRow("10000000-0000-4000-8000-000000000002", "onlyharness:packages/sql-abort", "1.0.0", subject("b"), "2", "b");
   sql(`set role service_role; select public.claim_resource_package_release(${literalJson(abortable)}::jsonb);`, baseArgs);
   assertEqual(sql(`set role service_role; select public.abort_resource_package_release('${abortable.id}', '${abortable.owner_subject}', '${abortable.idempotency_key_hash}');`, baseArgs), "t", "abort RPC did not remove exact pending row");
@@ -241,7 +248,15 @@ function proveManagedAccessStore(baseArgs: string[]): void {
   assertEqual(sql("select has_function_privilege('service_role','public.upsert_superskill_access_grant(text,uuid,text,text,timestamptz,text)','EXECUTE')::text || ':' || has_function_privilege('anon','public.upsert_superskill_access_grant(text,uuid,text,text,timestamptz,text)','EXECUTE')::text;", baseArgs), "true:false", "operator RPC grants are not fail-closed");
 }
 
-function releaseRow(id: string, resourceId: string, version: string, owner: string, keySeed: string, digestSeed: string) {
+function releaseRow(
+  id: string,
+  resourceId: string,
+  version: string,
+  owner: string,
+  keySeed: string,
+  digestSeed: string,
+  securityScan: "not_scanned" | "pass" | "warn" | "fail" = "not_scanned"
+) {
   return {
     id,
     resource_id: resourceId,
@@ -254,7 +269,7 @@ function releaseRow(id: string, resourceId: string, version: string, owner: stri
     storage_key: `${Buffer.from(`${resourceId}@${version}`).toString("base64url")}.tar.gz`,
     status: "pending",
     trust: "unreviewed",
-    resource_payload: { id: resourceId, creatorName: "OnlyHarness publisher", trust: { securityScan: "not_scanned" } },
+    resource_payload: { id: resourceId, creatorName: "OnlyHarness publisher", trust: { securityScan } },
     created_at: "2026-07-13T00:00:00.000Z",
     activated_at: null,
     failed_at: null,
