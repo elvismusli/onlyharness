@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -11,9 +11,16 @@ const hostedRoot = path.join(root, "data/imports/mcp-smoke-hosted-harness");
 const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-smoke-"));
 const orgRoot = path.join(smokeDataRoot, "org-harnesses");
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
+const resourceArchiveRoot = path.join(smokeDataRoot, "resource-archives");
+const resourceImportsPath = path.join(smokeDataRoot, "imported-resources.json");
+const markdownSmokeName = "mcp-markdown-safe-output-smoke";
+const markdownSmokeRoot = path.join(root, "data/imports", markdownSmokeName);
+const markdownSmokeVersions = path.join(root, "data/harness-versions/local", markdownSmokeName);
 
 createPaidHarness(paidRoot);
 createHostedHarness(hostedRoot);
+rmSync(markdownSmokeRoot, { recursive: true, force: true });
+rmSync(markdownSmokeVersions, { recursive: true, force: true });
 createOrgHarness(path.join(orgRoot, "acme", "mcp-private-harness"));
 createOrgStore(orgsPath, "mcp-org-token");
 
@@ -30,6 +37,11 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     HARNESS_ORG_AUDIT_PATH: path.join(smokeDataRoot, "org-audit.jsonl"),
     ORGS_ENABLED: "true",
     HARNESS_EVENTS_PATH: path.join(smokeDataRoot, "events.jsonl"),
+    SUPABASE_URL: "",
+    SUPABASE_ANON_KEY: "",
+    HOSTED_RESOURCE_PUBLISH_ENABLED: "false",
+    RESOURCE_ARCHIVE_DIR: resourceArchiveRoot,
+    RESOURCE_IMPORTS_PATH: resourceImportsPath,
     PAYMENTS_ENABLED: "true",
     HARNESS_MANUAL_ENTITLEMENTS: "mcp-paid-token=local/mcp-smoke-paid-harness",
     DOCS_URL: path.join(root, "apps/registry-web/public/llms.txt")
@@ -49,9 +61,19 @@ try {
   }
 
   const tools = await rpc(2, "tools/list", {});
-  const names = tools.result?.tools?.map((tool: { name: string }) => tool.name) ?? [];
-  for (const expected of ["search_harnesses", "harness_detail", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package", "search_resources", "resource_detail", "resource_use_instructions"]) {
-    if (!names.includes(expected)) throw new Error(`MCP tool missing: ${expected}`);
+  const listedTools = tools.result?.tools ?? [];
+  const names = listedTools.map((tool: { name: string }) => tool.name);
+  const expectedNames = ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"];
+  if (JSON.stringify(names) !== JSON.stringify(expectedNames)) {
+    throw new Error(`MCP tool inventory drifted: ${JSON.stringify(names)}`);
+  }
+  for (const tool of listedTools as Array<{ name: string; annotations?: Record<string, boolean> }>) {
+    const expected = tool.name.startsWith("publish_")
+      ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
+      : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+    if (JSON.stringify(tool.annotations) !== JSON.stringify(expected)) {
+      throw new Error(`MCP tool annotations drifted for ${tool.name}: ${JSON.stringify(tool.annotations)}`);
+    }
   }
 
   const docs = await rpc(21, "tools/call", {
@@ -68,6 +90,7 @@ try {
     arguments: { query: "research", limit: 2 }
   });
   const searchText = search.result?.content?.[0]?.text ?? "";
+  assertToolSuccess(search, "search_harnesses");
   if (!searchText.includes("deep-market-researcher")) {
     throw new Error(`MCP search_harnesses returned wrong content: ${JSON.stringify(search)}`);
   }
@@ -102,6 +125,12 @@ try {
   if (!hasResourceUsePath || !hasResourceAvailability || !resourceInstructionsText.includes("upstream attribution")) {
     throw new Error(`MCP resource_use_instructions returned unsafe guidance: ${JSON.stringify(resourceInstructions)}`);
   }
+
+  const missingResource = await rpc(321, "tools/call", {
+    name: "resource_detail",
+    arguments: { id: "onlyharness:missing/resource" }
+  });
+  assertToolError(missingResource, "RESOURCE_NOT_FOUND", 404);
 
   const detail = await rpc(4, "tools/call", {
     name: "harness_detail",
@@ -160,6 +189,7 @@ try {
   if (!paidText.includes("PAYMENT_REQUIRED") || paidText.includes("\"files\"")) {
     throw new Error(`MCP paid pull did not return payment requirements: ${JSON.stringify(paidPull)}`);
   }
+  assertToolError(paidPull, "PAYMENT_REQUIRED", 402);
 
   const entitledDetail = await rpc(61, "tools/call", {
     name: "harness_detail",
@@ -187,33 +217,37 @@ try {
   if (!hostedText.includes("HOSTED_EXECUTION_NOT_AVAILABLE") || hostedText.includes("\"files\"")) {
     throw new Error(`MCP hosted per-call pull should fail closed: ${JSON.stringify(hostedPull)}`);
   }
+  assertToolError(hostedPull, "HOSTED_EXECUTION_NOT_AVAILABLE", 409);
 
   const privateDetail = await rpc(8, "tools/call", {
     name: "harness_detail",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   });
   const privateDetailText = privateDetail.result?.content?.[0]?.text ?? "";
-  if (!privateDetailText.includes("Org token required") || privateDetailText.includes("\"manifest\"")) {
+  if (!privateDetailText.includes("AUTH_REQUIRED") || privateDetailText.includes("\"manifest\"")) {
     throw new Error(`MCP private detail leaked without org token: ${JSON.stringify(privateDetail)}`);
   }
+  assertToolError(privateDetail, "AUTH_REQUIRED", 401);
 
   const privateInstructions = await rpc(9, "tools/call", {
     name: "pull_instructions",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   });
   const privateInstructionsText = privateInstructions.result?.content?.[0]?.text ?? "";
-  if (!privateInstructionsText.includes("Org token required") || privateInstructionsText.includes("archiveUrl")) {
+  if (!privateInstructionsText.includes("AUTH_REQUIRED") || privateInstructionsText.includes("archiveUrl")) {
     throw new Error(`MCP private pull instructions leaked without org token: ${JSON.stringify(privateInstructions)}`);
   }
+  assertToolError(privateInstructions, "AUTH_REQUIRED", 401);
 
   const privatePull = await rpc(10, "tools/call", {
     name: "pull_harness",
     arguments: { owner: "@acme", name: "mcp-private-harness" }
   });
   const privatePullText = privatePull.result?.content?.[0]?.text ?? "";
-  if (!privatePullText.includes("Org token required") || privatePullText.includes("\"files\"")) {
+  if (!privatePullText.includes("AUTH_REQUIRED") || privatePullText.includes("\"files\"")) {
     throw new Error(`MCP private pull leaked without org token: ${JSON.stringify(privatePull)}`);
   }
+  assertToolError(privatePull, "AUTH_REQUIRED", 401);
 
   const authorizedPrivateDetail = await rpc(11, "tools/call", {
     name: "harness_detail",
@@ -232,9 +266,10 @@ try {
     }
   });
   const publishText = publish.result?.content?.[0]?.text ?? "";
-  if (!publishText.includes("Authorization required") || !publishText.includes("oauth-protected-resource")) {
+  if (!publishText.includes("AUTH_REQUIRED") || !publishText.includes("oauth-protected-resource")) {
     throw new Error(`MCP publish auth guard failed: ${JSON.stringify(publish)}`);
   }
+  assertToolError(publish, "AUTH_REQUIRED", 401);
 
   const publishResource = await rpc(121, "tools/call", {
     name: "publish_resource_package",
@@ -245,23 +280,112 @@ try {
     }
   });
   const publishResourceText = publishResource.result?.content?.[0]?.text ?? "";
-  if (!publishResourceText.includes("Authorization required") || !publishResourceText.includes("oauth-protected-resource")) {
+  if (!publishResourceText.includes("oauth-protected-resource") || !publishResourceText.includes("AUTH_REQUIRED")) {
     throw new Error(`MCP resource package publish auth guard failed: ${JSON.stringify(publishResource)}`);
+  }
+  assertToolError(publishResource, "AUTH_REQUIRED", 401);
+
+  const malformedAnonymousPublish = await rpc(1211, "tools/call", {
+    name: "publish_resource_package",
+    arguments: {}
+  });
+  assertToolError(malformedAnonymousPublish, "AUTH_REQUIRED", 401);
+
+  const unknownTool = await rpc(1212, "tools/call", {
+    name: "onlyharness_tool_that_does_not_exist",
+    arguments: {}
+  });
+  assertToolError(unknownTool, "TOOL_NOT_FOUND", 404);
+
+  const markdownPublish = await rpc(1213, "tools/call", {
+    name: "publish_markdown_to_harness",
+    arguments: {
+      name: markdownSmokeName,
+      markdown: "# MCP markdown output smoke\n\nReturn only public-safe result fields."
+    }
+  }, { Authorization: "Bearer local:mcp-markdown-publisher" });
+  assertToolSuccess(markdownPublish, "publish_markdown_to_harness");
+  const markdownWire = JSON.stringify(markdownPublish);
+  if (markdownWire.includes('"output"') || /\/app\/|\/Users\/|\/tmp\//.test(markdownWire)) {
+    throw new Error(`MCP markdown publish leaked process output or a server path: ${markdownWire}`);
+  }
+  const leakedMarkdownSources = readdirSync(path.join(root, "data")).filter((entry) => entry.startsWith(`.import-${markdownSmokeName}-`) && entry.endsWith(".source.md"));
+  if (leakedMarkdownSources.length) throw new Error(`MCP markdown publish left staging source files: ${leakedMarkdownSources.join(", ")}`);
+
+  const malformedRead = await rpc(1214, "tools/call", {
+    name: "resource_detail",
+    arguments: {}
+  });
+  assertToolError(malformedRead, "VALIDATION_FAILED", 422);
+
+  const omittedDefaultArguments = await rpc(1215, "tools/call", {
+    name: "search_docs"
+  });
+  assertToolSuccess(omittedDefaultArguments, "search_docs without arguments");
+
+  const omittedRequiredArguments = await rpc(1216, "tools/call", {
+    name: "resource_detail"
+  });
+  assertToolError(omittedRequiredArguments, "VALIDATION_FAILED", 422);
+
+  const invalidPublishResource = await rpc(122, "tools/call", {
+    name: "publish_resource_package",
+    arguments: resourcePublishFixture("invalid-auth-resource")
+  }, { Authorization: "Bearer invalid-containment-token" });
+  assertSafePublishFailure(invalidPublishResource.result?.content?.[0]?.text ?? "", "AUTH_INVALID", "invalid-containment-token");
+  assertToolError(invalidPublishResource, "AUTH_INVALID", 401);
+
+  const disabledPublishResource = await rpc(123, "tools/call", {
+    name: "publish_resource_package",
+    arguments: resourcePublishFixture("disabled-mcp-resource")
+  }, { Authorization: "Bearer local:mcp-publisher" });
+  assertSafePublishFailure(disabledPublishResource.result?.content?.[0]?.text ?? "", "PUBLISH_DISABLED", "local:mcp-publisher");
+  assertToolError(disabledPublishResource, "PUBLISH_DISABLED", 503);
+
+  const anonymousHttpPublish = await httpPublish(resourcePublishFixture("anonymous-http-resource"));
+  if (anonymousHttpPublish.status !== 401 || anonymousHttpPublish.body.code !== "AUTH_REQUIRED") {
+    throw new Error(`HTTP anonymous resource publish did not fail authentication first: ${JSON.stringify(anonymousHttpPublish)}`);
+  }
+  assertSafePublishFailure(JSON.stringify(anonymousHttpPublish.body), "AUTH_REQUIRED");
+
+  const invalidHttpPublish = await httpPublish(resourcePublishFixture("invalid-http-resource"), "Bearer invalid-containment-token");
+  if (invalidHttpPublish.status !== 401 || invalidHttpPublish.body.code !== "AUTH_INVALID") {
+    throw new Error(`HTTP invalid resource publish did not fail authentication first: ${JSON.stringify(invalidHttpPublish)}`);
+  }
+  assertSafePublishFailure(JSON.stringify(invalidHttpPublish.body), "AUTH_INVALID", "invalid-containment-token");
+
+  const disabledHttpPublish = await httpPublish(resourcePublishFixture("disabled-http-resource"), "Bearer local:http-publisher");
+  if (disabledHttpPublish.status !== 503 || disabledHttpPublish.body.code !== "PUBLISH_DISABLED") {
+    throw new Error(`HTTP authenticated resource publish did not honor containment: ${JSON.stringify(disabledHttpPublish)}`);
+  }
+  assertSafePublishFailure(JSON.stringify(disabledHttpPublish.body), "PUBLISH_DISABLED", "local:http-publisher");
+
+  if (existsSync(resourceImportsPath) || (existsSync(resourceArchiveRoot) && readdirSync(resourceArchiveRoot).length > 0)) {
+    throw new Error("Containment publish attempts mutated resource metadata or archive storage");
+  }
+
+  const protocolFailure = await rpc(999, "onlyharness/unknown-method", {});
+  if (!protocolFailure.error || protocolFailure.result || protocolFailure.error.code !== -32601) {
+    throw new Error(`MCP protocol failure did not use the JSON-RPC error envelope: ${JSON.stringify(protocolFailure)}`);
   }
 
   const getResponse = await fetch(`${apiUrl}/mcp`);
   if (getResponse.status !== 405) throw new Error(`Expected GET /mcp 405, got ${getResponse.status}`);
 
-  console.log("MCP smoke passed: initialize, tools/list, search_harnesses, search_resources, resource instructions, search_docs public source, pull_harness, purchase-aware detail/instructions, paid pull gate, hosted per-call guard, org-private gates, publish auth guards, GET 405");
+  console.log("MCP smoke passed: initialize, exact annotated tools/list, structured reads/errors, entitlement gates, org-private gates, auth-first hosted publish containment, JSON-RPC protocol error, GET 405");
 } finally {
   api.kill("SIGTERM");
   rmSync(paidRoot, { recursive: true, force: true });
   rmSync(hostedRoot, { recursive: true, force: true });
   rmSync(smokeDataRoot, { recursive: true, force: true });
+  rmSync(markdownSmokeRoot, { recursive: true, force: true });
+  rmSync(markdownSmokeVersions, { recursive: true, force: true });
 }
 
-async function rpc(id: number, method: string, params: unknown, headers: Record<string, string> = {}) {
-  const response = await fetch(`${apiUrl}/mcp`, {
+await smokeArchiveStorageFailure();
+
+async function rpc(id: number, method: string, params: unknown, headers: Record<string, string> = {}, baseUrl = apiUrl) {
+  const response = await fetch(`${baseUrl}/mcp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -273,6 +397,97 @@ async function rpc(id: number, method: string, params: unknown, headers: Record<
   const text = await response.text();
   if (!response.ok) throw new Error(`MCP ${method} HTTP ${response.status}: ${text}`);
   return parseMcpBody(text);
+}
+
+async function httpPublish(body: unknown, authorization?: string, baseUrl = apiUrl) {
+  const response = await fetch(`${baseUrl}/imports/resource-package`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(authorization ? { Authorization: authorization } : {})
+    },
+    body: JSON.stringify(body)
+  });
+  return { status: response.status, body: await response.json() as { error?: string; code?: string } };
+}
+
+async function smokeArchiveStorageFailure() {
+  const storageSmokeRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-storage-smoke-"));
+  const unavailableArchiveRoot = path.join(storageSmokeRoot, "archive-root-is-a-file");
+  const importsPath = path.join(storageSmokeRoot, "imported-resources.json");
+  const baseUrl = "http://127.0.0.1:8797";
+  writeFileSync(unavailableArchiveRoot, "not a directory\n");
+  const child = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
+    cwd: root,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      HARNESS_API_PORT: "8797",
+      HARNESS_API_HOST: "127.0.0.1",
+      HARNESS_WORKSPACE_ROOT: root,
+      SUPABASE_URL: "",
+      SUPABASE_ANON_KEY: "",
+      HOSTED_RESOURCE_PUBLISH_ENABLED: "true",
+      RESOURCE_ARCHIVE_DIR: unavailableArchiveRoot,
+      RESOURCE_IMPORTS_PATH: importsPath,
+      HARNESS_EVENTS_PATH: path.join(storageSmokeRoot, "events.jsonl")
+    }
+  });
+  try {
+    await waitForApi(`${baseUrl}/healthz`);
+    const malformed = await rpc(900, "tools/call", {
+      name: "publish_resource_package",
+      arguments: {}
+    }, { Authorization: "Bearer local:storage-validation-publisher" }, baseUrl);
+    assertToolError(malformed, "VALIDATION_FAILED", 422);
+    const body = resourcePublishFixture("unavailable-archive-resource");
+    const http = await httpPublish(body, "Bearer local:storage-http-publisher", baseUrl);
+    if (http.status !== 503 || http.body.code !== "ARCHIVE_STORAGE_UNAVAILABLE") {
+      throw new Error(`HTTP archive storage failure was not sanitized: ${JSON.stringify(http)}`);
+    }
+    assertSafePublishFailure(JSON.stringify(http.body), "ARCHIVE_STORAGE_UNAVAILABLE", "storage-http-publisher");
+
+    const mcp = await rpc(901, "tools/call", { name: "publish_resource_package", arguments: body }, { Authorization: "Bearer local:storage-mcp-publisher" }, baseUrl);
+    const mcpText = mcp.result?.content?.[0]?.text ?? "";
+    assertSafePublishFailure(mcpText, "ARCHIVE_STORAGE_UNAVAILABLE", "storage-mcp-publisher");
+    assertToolError(mcp, "ARCHIVE_STORAGE_UNAVAILABLE", 503);
+    if (existsSync(importsPath)) throw new Error("Archive storage failure created public resource metadata");
+  } finally {
+    child.kill("SIGTERM");
+    rmSync(storageSmokeRoot, { recursive: true, force: true });
+  }
+}
+
+function resourcePublishFixture(name: string) {
+  return {
+    name,
+    resourceType: "command_pack",
+    files: [{ path: "README.md", content: `# ${name}\n\nContainment smoke fixture that must never be published.` }]
+  };
+}
+
+function assertSafePublishFailure(text: string, code: string, secretFragment?: string) {
+  if (!text.includes(code)) throw new Error(`Expected safe publish failure ${code}: ${text}`);
+  for (const forbidden of ["/var/lib", "/app/", "tar:", "stderr", secretFragment].filter(Boolean) as string[]) {
+    if (text.includes(forbidden)) throw new Error(`Publish failure leaked forbidden detail ${forbidden}: ${text}`);
+  }
+}
+
+function assertToolSuccess(response: any, name: string) {
+  if (response.result?.isError || response.result?.structuredContent?.code !== "OK" || response.result?.structuredContent?.status !== 200) {
+    throw new Error(`MCP ${name} did not return structured success metadata: ${JSON.stringify(response)}`);
+  }
+}
+
+function assertToolError(response: any, code: string, status: number) {
+  const result = response.result;
+  if (result?.isError !== true || result?.structuredContent?.code !== code || result?.structuredContent?.status !== status) {
+    throw new Error(`MCP tool error contract mismatch for ${code}: ${JSON.stringify(response)}`);
+  }
+  const wire = JSON.stringify(response);
+  for (const forbidden of ["/var/lib/", "/app/", "/Users/", "\"stack\"", "\"stderr\"", "Bearer "]) {
+    if (wire.includes(forbidden)) throw new Error(`MCP tool error leaked forbidden detail ${forbidden}: ${wire}`);
+  }
 }
 
 function createOrgStore(target: string, token: string) {

@@ -38,6 +38,7 @@ const apiRuntimeEnv = [
   "SUPERSKILL_TELEMETRY_ENABLED",
   "COMMUNITY_INVITE_SECRET",
   "HARNESS_WEBHOOK_TOKEN",
+  "HOSTED_RESOURCE_PUBLISH_ENABLED",
   "RESOURCE_ARCHIVE_DIR"
 ] as const;
 
@@ -72,6 +73,7 @@ const exampleEnv = [
   "COMMUNITY_INVITE_SECRET",
   "GITEA_BASE_URL",
   "HARNESS_WEBHOOK_TOKEN",
+  "HOSTED_RESOURCE_PUBLISH_ENABLED",
   "RESOURCE_ARCHIVE_DIR",
   "ONLYHARNESS_WEB_PORT"
 ] as const;
@@ -87,6 +89,8 @@ for (const name of exampleEnv) {
 check(compose.includes("PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-manual}"), "PAYMENT_PROVIDER must default to manual");
 check(compose.includes("X402_ENABLED: ${X402_ENABLED:-false}"), "X402_ENABLED must default off");
 check(compose.includes("SUPERSKILL_ENABLED: ${SUPERSKILL_ENABLED:-false}"), "SUPERSKILL_ENABLED must default off");
+check(compose.includes("HOSTED_RESOURCE_PUBLISH_ENABLED: ${HOSTED_RESOURCE_PUBLISH_ENABLED:-false}"), "hosted public resource publishing must default off");
+check(compose.includes("${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:ro"), "the existing resource archive mirror must stay read-only during containment");
 check(compose.includes("VITE_DEFAULT_SKIN: ${VITE_DEFAULT_SKIN:-win98}"), "production web must default to the win98 skin until rollout gates pass");
 check(compose.includes("VITE_ENABLE_SKIN_SWITCHER: ${VITE_ENABLE_SKIN_SWITCHER:-false}"), "production skin switcher must default off");
 check(compose.includes("https://superskill.sh,https://www.superskill.sh"), "production API CORS must allow both SuperSkill hostnames");
@@ -97,6 +101,7 @@ check(envExample.includes("PAYMENTS_ENABLED=false"), "production.env.example mus
 check(envExample.includes("ORGS_ENABLED=false"), "production.env.example must keep orgs off by default");
 check(envExample.includes("WORKSPACES_ENABLED=false"), "production.env.example must keep workspaces off by default");
 check(envExample.includes("SUPERSKILL_ENABLED=false"), "production.env.example must keep SuperSkill managed routes off by default");
+check(envExample.includes("HOSTED_RESOURCE_PUBLISH_ENABLED=false"), "production.env.example must keep hosted public resource publishing off by default");
 check(envExample.includes("VITE_DEFAULT_SKIN=win98"), "production.env.example must keep win98 as the safe default skin");
 check(envExample.includes("VITE_ENABLE_SKIN_SWITCHER=false"), "production.env.example must keep the skin switcher off by default");
 check(gitignore.split("\n").includes("infra/production.env"), "infra/production.env must stay gitignored");
@@ -111,8 +116,17 @@ check(standaloneSuperSkillRedirect.includes("Strict-Transport-Security"), "stand
 check(caddyfile.includes("onlyharness.com, www.onlyharness.com, superskill.sh {"), "standalone Caddy must keep www.onlyharness.com proxied while serving the SuperSkill apex");
 check(!caddyfile.includes("onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {"), "standalone Caddy must not serve www.superskill.sh as an HTML origin");
 check(deployProduction.includes('RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"'), "deploy-production.sh must run public smoke by default");
+check(deployProduction.includes('configured_publish_flag="${configured_publish_flag:-false}"'), "deploy-production.sh must fail closed when the containment publish flag is missing");
+check(deployProduction.includes('HOSTED_RESOURCE_PUBLISH_ENABLED must remain false during containment'), "deploy-production.sh must reject enabling hosted public resource publishing during containment");
+check(deployProduction.includes('env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose'), "deploy-production.sh must override inherited process env for every containment compose command");
+check(deployProduction.includes(`docker compose --env-file infra/production.env $COMPOSE_FILES config | grep -q 'HOSTED_RESOURCE_PUBLISH_ENABLED: \\"false\\"'`), "deploy-production.sh must verify the rendered containment compose config");
 check(deployProduction.includes('for seed_dir in directories resources'), "deploy-production.sh must hydrate both directory and resource seed data into the API volume");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1'), "deploy-production.sh must smoke seeded resources after deploy");
+check(deployProduction.includes('$PUBLIC_BASE_URL/api/imports/resource-package'), "deploy-production.sh must smoke the public hosted resource publish containment gate");
+check(deployProduction.includes('"code":"AUTH_REQUIRED"'), "deploy-production.sh must prove public publish authenticates before reporting containment state");
+check(deployProduction.includes('DEPLOY_SMOKE_ACCESS_TOKEN is required for authenticated containment proof'), "deploy-production.sh must require authenticated containment evidence");
+check(deployProduction.indexOf('DEPLOY_SMOKE_ACCESS_TOKEN is required for authenticated containment proof') < deployProduction.indexOf('ssh -o BatchMode=yes'), "deploy-production.sh must require the authenticated smoke token before the first production mutation");
+check(deployProduction.includes('"code":"PUBLISH_DISABLED"'), "deploy-production.sh must prove authenticated public publish stays disabled");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/showroom/selected?limit=12'), "deploy-production.sh must smoke selected SuperSkill intake cards after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/mcp'), "deploy-production.sh must smoke the public MCP endpoint");
 check(systemSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "deploy-production.sh must permanently redirect www.superskill.sh to the apex while preserving the URI");

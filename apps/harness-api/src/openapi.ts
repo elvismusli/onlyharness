@@ -620,7 +620,6 @@ export const openapi = {
                   type: "object",
                   properties: {
                     item: { $ref: "#/components/schemas/RegistryItem" },
-                    output: { type: "string" },
                     snapshotVersion: { type: "string" },
                     warnings: { type: "array", items: { type: "string" } },
                     next: { type: "string" }
@@ -754,7 +753,7 @@ export const openapi = {
     "/imports/resource-package": {
       post: {
         summary: "Publish a hosted agent resource package",
-        description: "Auth required. Packages bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into OnlyHarness archive storage and lists it in the mixed resource catalog. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
+        description: "Auth required. Temporarily fail closed with 503 PUBLISH_DISABLED while HOSTED_RESOURCE_PUBLISH_ENABLED=false. When enabled after the durable archive migration, packages bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into OnlyHarness archive storage and lists it in the mixed resource catalog. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -815,7 +814,24 @@ export const openapi = {
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
-          "413": { $ref: "#/components/responses/BadRequest" }
+          "413": { $ref: "#/components/responses/BadRequest" },
+          "503": {
+            description: "Hosted resource publishing is disabled or archive storage is unavailable. No package was published.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string" },
+                    code: { type: "string", enum: ["PUBLISH_DISABLED", "ARCHIVE_STORAGE_UNAVAILABLE"] },
+                    status: { type: "integer", const: 503 },
+                    next: { type: "string" }
+                  },
+                  required: ["error", "code"]
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1677,7 +1693,7 @@ export const openapi = {
         responses: {
           "200": {
             description: "Imported org harness",
-            content: { "application/json": { schema: { type: "object", properties: { item: { $ref: "#/components/schemas/RegistryItem" }, output: { type: "string" }, snapshotVersion: { type: "string" } } } } }
+            content: { "application/json": { schema: { type: "object", properties: { item: { $ref: "#/components/schemas/RegistryItem" }, snapshotVersion: { type: "string" } } } } }
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
@@ -1824,9 +1840,11 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "JSON-RPC MCP endpoint with tools: search_harnesses, harness_detail, pull_instructions, pull_harness, search_resources, resource_detail, resource_use_instructions, search_docs, publish_markdown_to_harness, publish_resource_package.",
+        description: "OnlyHarness MCP server v0.2.13. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
+        "x-mcp-server-version": "0.2.13",
+        "x-mcp-tools": ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"],
         responses: {
-          "200": { description: "MCP JSON-RPC response over JSON or text/event-stream" }
+          "200": { description: "MCP JSON-RPC response over JSON or text/event-stream. Tool-level failures remain protocol-successful JSON-RPC responses but carry result.isError=true and a stable result.structuredContent.code." }
         }
       }
     },

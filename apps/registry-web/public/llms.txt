@@ -116,7 +116,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Verified publish (auth required): POST /imports/harness-dir
   Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts bounded native package files, including `scripts/`, plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
 - Resource package publish (auth required): POST /imports/resource-package
-  Use `HH_TOKEN=... hh publish-resource <dir-or-git-url> --name my-agent-tool --type command_pack`, with optional `--path` for a repo subdirectory. This packages safe bounded text files from skills, plugins, workflows, MCP servers, command packs, scripts, docs or source bundles into OnlyHarness archive storage and lists the item in `/resources`. It does not grant a Verified harness badge.
+  Production containment is currently active: authenticated calls fail closed with `503 PUBLISH_DISABLED` while `HOSTED_RESOURCE_PUBLISH_ENABLED=false`; anonymous/invalid credentials still fail authentication first. After the durable archive migration is enabled, use `HH_TOKEN=... hh publish-resource <dir-or-git-url> --name my-agent-tool --type command_pack`, with optional `--path` for a repo subdirectory. It packages safe bounded text files into OnlyHarness archive storage and does not grant a Verified harness badge.
 - GitHub resource classify: POST /imports/github-resource
   Body { url, path?, action:"classify" }. Read-only. Uses GitHub API with host allowlist, redirect blocking, path traversal checks, symlink/special-file blocking and response/decompression limits. Upstream listing is allowed; use `hh publish-resource` for an explicit hosted package upload when license and ownership allow it.
 
@@ -130,7 +130,7 @@ End-to-end example:
 
 Endpoint: https://onlyharness.com/mcp
 
-Transport: Streamable HTTP. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+Transport: Streamable HTTP. Server version: `0.2.13`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
 
 Official MCP Registry name: `com.onlyharness/registry`. The public `server.json` is remote-only and points at the same Streamable HTTP endpoint. Registry publish still requires domain ownership proof for `onlyharness.com`.
 
@@ -145,7 +145,9 @@ Tools:
 - resource_use_instructions: return safe use/open/install guidance; hosted packages expose OnlyHarness archive URLs, upstream-only resources stay open-only.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
-- publish_resource_package: publish a hosted agent resource package from bounded file contents; auth required; not a Verified harness badge.
+- publish_resource_package: auth-gated hosted package publish; currently returns `PUBLISH_DISABLED` for authenticated callers during storage containment; not a Verified harness badge.
+
+This ten-tool inventory is exact for remote MCP v0.2.13. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `PUBLISH_DISABLED`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
 
 Initialize example:
 

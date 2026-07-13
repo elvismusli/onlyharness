@@ -9,7 +9,7 @@ import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff
 import { decodePaymentSignatureHeader, encodePaymentResponseHeader, HTTPFacilitatorClient } from "@x402/core/http";
 import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from "@x402/core/types";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { buildMcpServer, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
+import { buildMcpServer, MCP_TOOL_NAMES, mcpError, mcpToolCallPreflight, type McpErrorCode, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, createWorkspaceJoinCode, verifyCommunityInviteCode, verifyWorkspaceJoinCode } from "./community.js";
 import { openapi } from "./openapi.js";
@@ -34,6 +34,7 @@ const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
 const orgsEnabled = process.env.ORGS_ENABLED === "true";
 const workspacesEnabled = process.env.WORKSPACES_ENABLED === "true";
+const hostedResourcePublishEnabled = process.env.HOSTED_RESOURCE_PUBLISH_ENABLED === "true";
 const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected-resource";
 
 type ImportRequest = {
@@ -279,6 +280,7 @@ type AuthResult = {
   user?: AuthUser;
   status?: number;
   error?: string;
+  code?: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_UNAVAILABLE";
 };
 
 type ArchiveClientResponse = {
@@ -1414,7 +1416,7 @@ app.post("/workspaces/:slug/imports/resource-package", async (request, reply) =>
   if ("error" in result) {
     const payload: { error: string; code?: string; failures?: string[] } = { error: result.error ?? "Workspace resource package import failed" };
     if ("code" in result && result.code) payload.code = result.code;
-    if ("failures" in result && result.failures) payload.failures = result.failures;
+    if ("failures" in result && Array.isArray(result.failures)) payload.failures = result.failures;
     await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_publish_rejected", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: body.name, via: auth.via });
     return reply.code(result.status ?? 500).send(payload);
   }
@@ -1492,6 +1494,15 @@ app.get("/prs/:owner/:repo/:number/semantic-diff", async (request, reply) => {
 });
 
 app.post("/mcp", async (request, reply) => {
+  const mcpBody = normalizeMcpToolCallBody(request.body);
+  const preflight = await preflightMcpToolCall(mcpBody, headerValue(request.headers.authorization));
+  if (preflight) {
+    return reply.code(200).send({
+      jsonrpc: "2.0",
+      id: mcpRequestId(mcpBody),
+      result: preflight
+    });
+  }
   const server = buildMcpServer({
     publishMarkdown: publishMarkdownFromMcp,
     publishResourcePackage: publishResourcePackageFromMcp,
@@ -1508,7 +1519,7 @@ app.post("/mcp", async (request, reply) => {
 
   try {
     await server.connect(transport);
-    await transport.handleRequest(request.raw, reply.raw, request.body);
+    await transport.handleRequest(request.raw, reply.raw, mcpBody);
   } catch (error) {
     request.log.error({ error }, "MCP request failed");
     if (!reply.raw.headersSent) {
@@ -1521,6 +1532,52 @@ app.post("/mcp", async (request, reply) => {
     }
   }
 });
+
+function normalizeMcpToolCallBody(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body;
+  const request = body as { method?: unknown; params?: unknown };
+  if (request.method !== "tools/call" || !request.params || typeof request.params !== "object" || Array.isArray(request.params)) return body;
+  const params = request.params as Record<string, unknown>;
+  if (params.arguments !== undefined && params.arguments !== null) return body;
+  return { ...request, params: { ...params, arguments: {} } };
+}
+
+async function preflightMcpToolCall(body: unknown, authorization: string | undefined) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const request = body as { method?: unknown; params?: unknown };
+  if (request.method !== "tools/call" || !request.params || typeof request.params !== "object" || Array.isArray(request.params)) return undefined;
+  const params = request.params as { name?: unknown; arguments?: unknown };
+  if (typeof params.name !== "string" || !MCP_TOOL_NAMES.includes(params.name as typeof MCP_TOOL_NAMES[number])) {
+    return mcpToolCallPreflight(params.name, params.arguments);
+  }
+  if (params.name !== "publish_markdown_to_harness" && params.name !== "publish_resource_package") {
+    return mcpToolCallPreflight(params.name, params.arguments);
+  }
+
+  const auth = await authenticatePublicResourcePublish(authorization);
+  if (!auth.user) {
+    const code: McpErrorCode = auth.code === "AUTH_REQUIRED"
+      ? "AUTH_REQUIRED"
+      : auth.code === "AUTH_INVALID"
+        ? "AUTH_INVALID"
+        : "SERVICE_UNAVAILABLE";
+    return mcpError({
+      code,
+      status: auth.status ?? (code === "SERVICE_UNAVAILABLE" ? 503 : 401),
+      details: { resource_metadata: resourceMetadataUrl }
+    });
+  }
+  if (params.name === "publish_resource_package" && !hostedResourcePublishEnabled) {
+    return mcpError({ code: "PUBLISH_DISABLED", status: 503, next: publicResourcePublishDisabled().next });
+  }
+  return mcpToolCallPreflight(params.name, params.arguments);
+}
+
+function mcpRequestId(body: unknown): string | number | null {
+  if (!body || typeof body !== "object" || Array.isArray(body) || !("id" in body)) return null;
+  const id = (body as { id?: unknown }).id;
+  return typeof id === "string" || typeof id === "number" || id === null ? id : null;
+}
 
 app.get("/mcp", async (_request, reply) => mcpMethodNotAllowed(reply));
 app.delete("/mcp", async (_request, reply) => mcpMethodNotAllowed(reply));
@@ -1548,14 +1605,15 @@ app.post("/imports/harness-dir", async (request, reply) => {
 });
 
 app.post("/imports/resource-package", async (request, reply) => {
-  const user = await requireUser(request, reply);
-  if (!user) return;
+  const auth = await authenticatePublicResourcePublish(headerValue(request.headers.authorization));
+  if (!auth.user) return sendPublicResourcePublishAuthFailure(reply, auth);
+  if (!hostedResourcePublishEnabled) return reply.code(503).send(publicResourcePublishDisabled());
   const body = request.body && typeof request.body === "object" ? request.body as ResourcePackageImportRequest : {};
-  const result = await importResourcePackage(body, user);
+  const result = await importResourcePackage(body, auth.user);
   if ("error" in result) {
     const payload: { error: string; code?: string; failures?: string[] } = { error: result.error ?? "Resource package import failed" };
     if ("code" in result && result.code) payload.code = result.code;
-    if ("failures" in result && result.failures) payload.failures = result.failures;
+    if ("failures" in result && Array.isArray(result.failures)) payload.failures = result.failures;
     return reply.code(result.status ?? 500).send(payload);
   }
   return reply.code(201).send(result);
@@ -1797,6 +1855,43 @@ async function requireUser(request: FastifyRequest, reply: FastifyReply): Promis
   return undefined;
 }
 
+async function authenticatePublicResourcePublish(authorization: string | undefined): Promise<AuthResult> {
+  if (!authorization) {
+    return { status: 401, error: "Sign in required", code: "AUTH_REQUIRED" };
+  }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    const local = authorization.match(/^Bearer\s+local:([A-Za-z0-9._:-]{2,80})$/);
+    if (!local) return { status: 401, error: "Invalid or expired session", code: "AUTH_INVALID" };
+    return { user: { id: local[1] } };
+  }
+  const result = await userFromAuthorization(authorization);
+  if (result.user) return result;
+  return {
+    ...result,
+    code: result.status === 401 ? "AUTH_INVALID" : "AUTH_UNAVAILABLE"
+  };
+}
+
+function sendPublicResourcePublishAuthFailure(reply: FastifyReply, auth: AuthResult) {
+  if ((auth.status ?? 401) === 401) {
+    reply.header("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl}"`);
+  }
+  return reply.code(auth.status ?? 401).send({
+    error: auth.error ?? "Sign in required",
+    code: auth.code ?? "AUTH_REQUIRED",
+    resource_metadata: resourceMetadataUrl
+  });
+}
+
+function publicResourcePublishDisabled() {
+  return {
+    error: "Hosted resource publishing is temporarily unavailable",
+    code: "PUBLISH_DISABLED",
+    status: 503,
+    next: "Retry after hosted archive storage has passed production readiness checks."
+  } as const;
+}
+
 async function userFromAuthorization(authorization: string | undefined): Promise<AuthResult> {
   if (!supabaseUrl || !supabaseAnonKey) {
     const local = authorization?.match(/^Bearer\s+local:([A-Za-z0-9._:-]{2,80})$/);
@@ -1839,14 +1934,16 @@ const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorizatio
 };
 
 const publishResourcePackageFromMcp: PublishResourcePackageHandler = async (body, authorization) => {
-  const auth = await userFromAuthorization(authorization);
+  const auth = await authenticatePublicResourcePublish(authorization);
   if (!auth.user) {
     return {
       error: auth.error ?? "Authorization required",
       status: auth.status ?? 401,
+      code: auth.code ?? "AUTH_REQUIRED",
       resource_metadata: resourceMetadataUrl
     };
   }
+  if (!hostedResourcePublishEnabled) return publicResourcePublishDisabled();
   const result = await importResourcePackage(body, auth.user);
   return "error" in result ? result : result;
 };
@@ -2356,9 +2453,9 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
   const name = slugify(body.name ?? firstHeading(body.markdown) ?? "imported-harness");
   const owner = options.owner ?? "local";
   const target = options.orgSlug ? path.join(registry.orgImportRoot(options.orgSlug), name) : path.join(registry.importRoot, name);
-  const tempTarget = path.join(registry.workspaceRoot, "data", `.import-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const tempTarget = path.join(registry.workspaceRoot, "data", `.import-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(path.dirname(target), { recursive: true });
-  const tempSource = path.join(registry.workspaceRoot, "data", `${name}.source.md`);
+  const tempSource = `${tempTarget}.source.md`;
   try {
     writeFileSync(tempSource, body.markdown);
     const cliCommand = importCliCommand(tempSource, tempTarget, name);
@@ -2367,7 +2464,8 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
       encoding: "utf8"
     });
     if (cli.status !== 0) {
-      return { status: 500, error: cli.stderr || cli.stdout || "import failed" };
+      app.log.error({ operation: "markdown_import", processStatus: cli.status, processSignal: cli.signal }, "Markdown import command failed");
+      return { status: 500, error: "Markdown import failed", code: "IMPORT_FAILED" };
     }
     if (options.orgSlug) applyOrgManifest(tempTarget, options.orgSlug);
     let snapshot: registry.ArchiveSnapshot;
@@ -2389,7 +2487,6 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
     appendState({ type: "import", name, target, userId: user.id, at: new Date().toISOString() });
     return {
       item,
-      output: cli.stdout,
       snapshotVersion: writtenSnapshot?.version,
       ...(licenseWarning ? {
         warnings: [licenseWarning],
@@ -2398,6 +2495,7 @@ async function importMarkdownToHarness(body: ImportRequest, user: AuthUser, opti
     };
   } finally {
     rmSync(tempTarget, { recursive: true, force: true });
+    rmSync(tempSource, { force: true });
   }
 }
 
@@ -2523,15 +2621,24 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
 
     const workspaceSlug = options.workspaceSlug ? workspaces.cleanWorkspaceSlug(options.workspaceSlug) : undefined;
     const id = workspaceSlug ? workspaces.workspaceResourceId(workspaceSlug, name) : `onlyharness:packages/${name}`;
-    const archiveRoot = workspaceSlug ? workspaces.workspaceResourceArchiveRoot(workspaceSlug) : resources.resourceArchiveRoot();
-    const archivePath = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.tar.gz`);
-    const archiveTemp = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.${Date.now()}.tmp`);
-    const tar = spawnSync("tar", ["-czf", archiveTemp, "-C", temp, "."], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
-    if (tar.status !== 0) {
-      rmSync(archiveTemp, { force: true });
-      return { status: 500, error: "failed to create hosted resource archive", failures: [tar.stderr || tar.stdout || "tar exited with an error"] };
+    let archivePath: string;
+    let archiveTemp: string | undefined;
+    try {
+      const archiveRoot = workspaceSlug ? workspaces.workspaceResourceArchiveRoot(workspaceSlug) : resources.resourceArchiveRoot();
+      archivePath = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.tar.gz`);
+      archiveTemp = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.${Date.now()}.tmp`);
+      const tar = spawnSync("tar", ["-czf", archiveTemp, "-C", temp, "."], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
+      if (tar.status !== 0) {
+        rmSync(archiveTemp, { force: true });
+        app.log.error({ operation: "resource_archive_create", processStatus: tar.status, processSignal: tar.signal }, "Hosted resource archive creation failed");
+        return archiveStorageUnavailable();
+      }
+      renameSync(archiveTemp, archivePath);
+    } catch (error) {
+      if (archiveTemp) rmSync(archiveTemp, { force: true });
+      app.log.error({ operation: "resource_archive_commit", errorCode: filesystemErrorCode(error) }, "Hosted resource archive storage unavailable");
+      return archiveStorageUnavailable();
     }
-    renameSync(archiveTemp, archivePath);
 
     const now = new Date().toISOString();
     const signals = { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 };
@@ -2620,6 +2727,21 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+}
+
+function archiveStorageUnavailable() {
+  return {
+    status: 503,
+    error: "Hosted resource archive storage is temporarily unavailable",
+    code: "ARCHIVE_STORAGE_UNAVAILABLE",
+    next: "Retry later. No resource package was published."
+  } as const;
+}
+
+function filesystemErrorCode(error: unknown): string {
+  if (!error || typeof error !== "object" || !("code" in error)) return "UNKNOWN";
+  const code = String((error as { code?: unknown }).code ?? "UNKNOWN");
+  return /^[A-Z0-9_]{1,40}$/.test(code) ? code : "UNKNOWN";
 }
 
 function applyOrgManifest(root: string, orgSlug: string) {

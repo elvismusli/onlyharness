@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { openapi } from "../apps/harness-api/src/openapi.js";
 
 type ServerJson = {
   $schema?: string;
@@ -46,6 +47,18 @@ const readmePath = path.join(root, "README.md");
 const expectedSchema = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
 const expectedName = "com.onlyharness/registry";
 const expectedRemoteUrl = "https://onlyharness.com/mcp";
+const expectedMcpTools = [
+  "search_harnesses",
+  "harness_detail",
+  "search_resources",
+  "resource_detail",
+  "resource_use_instructions",
+  "pull_instructions",
+  "pull_harness",
+  "search_docs",
+  "publish_markdown_to_harness",
+  "publish_resource_package"
+];
 
 const rootText = readFileSync(rootServerPath, "utf8");
 const publicText = readFileSync(publicServerPath, "utf8");
@@ -56,6 +69,7 @@ const authorizationServer = JSON.parse(readFileSync(authorizationServerPath, "ut
 const caddyfiles = caddyfilePaths.map((file) => ({ file, text: readFileSync(file, "utf8") }));
 const cliPackage = JSON.parse(readFileSync(cliPackagePath, "utf8")) as { version?: string };
 const cliSource = readFileSync(cliSourcePath, "utf8");
+const mcpSource = readFileSync(path.join(root, "apps/harness-api/src/mcp.ts"), "utf8");
 const llms = readFileSync(llmsPath, "utf8");
 const readme = readFileSync(readmePath, "utf8");
 
@@ -69,6 +83,14 @@ check(rootServer.repository?.url === "https://github.com/elvismusli/onlyharness"
 check(rootServer.repository?.source === "github", "server.json repository source must be github");
 check(rootServer.version === cliPackage.version, "server.json version must match packages/harness-cli/package.json version");
 check(cliSource.includes(`.version("${cliPackage.version}")`), "hh --version source must match packages/harness-cli/package.json version");
+check(mcpSource.includes(`MCP_SERVER_VERSION = "${cliPackage.version}"`), "MCP server version must match packages/harness-cli/package.json version");
+const mcpInventorySource = /export const MCP_TOOL_NAMES = \[([\s\S]*?)\] as const;/.exec(mcpSource)?.[1] ?? "";
+const mcpInventory = [...mcpInventorySource.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+check(JSON.stringify(mcpInventory) === JSON.stringify(expectedMcpTools), "MCP source tool inventory must stay exact and ordered");
+const openapiMcp = openapi.paths["/mcp"].post as { "x-mcp-server-version"?: string; "x-mcp-tools"?: string[]; description?: string };
+check(openapiMcp["x-mcp-server-version"] === cliPackage.version, "OpenAPI MCP version must match the runtime version");
+check(JSON.stringify(openapiMcp["x-mcp-tools"]) === JSON.stringify(expectedMcpTools), "OpenAPI MCP tool inventory must match runtime order exactly");
+check(Boolean(openapiMcp.description?.includes("isError=true") && openapiMcp.description.includes("structuredContent")), "OpenAPI must document MCP logical failure semantics");
 
 check(Array.isArray(rootServer.remotes) && rootServer.remotes.length === 1, "server.json must expose exactly one remote transport");
 const remote = rootServer.remotes?.[0];
@@ -120,6 +142,9 @@ for (const docs of [
   check(docs.text.includes("https://onlyharness.com/api/openapi.json"), `${docs.name} must link OpenAPI`);
   check(docs.text.includes("https://onlyharness.com/.well-known/oauth-protected-resource"), `${docs.name} must link OAuth protected resource metadata`);
   check(docs.text.includes("https://onlyharness.com/.well-known/oauth-authorization-server"), `${docs.name} must link OAuth authorization-server metadata`);
+  for (const tool of expectedMcpTools) check(docs.text.includes(tool), `${docs.name} must list MCP tool ${tool}`);
+  check(docs.text.includes("structuredContent"), `${docs.name} must document MCP structured results`);
+  check(docs.text.includes("isError"), `${docs.name} must document MCP logical error results`);
 }
 
 console.log("MCP Registry metadata check passed: server.json schema, remote transport, public copy, and docs links are in sync");
