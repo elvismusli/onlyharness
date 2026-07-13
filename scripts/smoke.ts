@@ -120,15 +120,16 @@ try {
     throw new Error(`/resources did not return source-aware superpowers seed: ${JSON.stringify(resources)}`);
   }
   const resourceDetail = await fetch("http://127.0.0.1:8799/resources/github%3Aobra%2Fsuperpowers").then((response) => response.json()) as { id?: string; mirror?: { status?: string; url?: string }; actions?: Array<{ id?: string; url?: string }> };
-  if (resourceDetail.id !== "github:obra/superpowers" || !resourceDetail.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("superskill.sh/#/resources/github%3Aobra%2Fsuperpowers")) || !resourceDetail.actions?.some((action) => action.id === "open_upstream" && action.url?.includes("github.com/obra/superpowers"))) {
+  if (resourceDetail.id !== "github:obra/superpowers" || !resourceDetail.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("superskill.sh/#/superskill/resources/github%3Aobra%2Fsuperpowers")) || !resourceDetail.actions?.some((action) => action.id === "open_upstream" && action.url?.includes("github.com/obra/superpowers"))) {
     throw new Error(`/resources/{id} did not return resource detail: ${JSON.stringify(resourceDetail)}`);
   }
-  if (resourceDetail.mirror?.status === "ready" && !resourceDetail.actions?.some((action) => action.id === "download_archive" && action.url?.includes("/api/resources/github%3Aobra%2Fsuperpowers/archive"))) {
-    throw new Error(`/resources/{id} did not return hosted archive action: ${JSON.stringify(resourceDetail)}`);
+  if (resourceDetail.actions?.some((action) => action.id === "download_archive")) {
+    throw new Error(`/resources/{id} treated an upstream legacy mirror as hosted: ${JSON.stringify(resourceDetail)}`);
   }
   const resourceArchive = await fetch("http://127.0.0.1:8799/resources/github%3Aobra%2Fsuperpowers/archive");
-  if (resourceArchive.status !== 200 || !resourceArchive.headers.get("content-type")?.includes("application/gzip")) {
-    throw new Error(`Resource archive is not hosted by API: ${resourceArchive.status} ${resourceArchive.headers.get("content-type")}`);
+  const resourceArchiveBody = await resourceArchive.json() as { code?: string };
+  if (resourceArchive.status !== 409 || resourceArchiveBody.code !== "RESOURCE_ARCHIVE_NOT_HOSTED") {
+    throw new Error(`Upstream resource archive did not fail open-only: ${resourceArchive.status} ${JSON.stringify(resourceArchiveBody)}`);
   }
   if (!Array.isArray(registry.items) || registry.items.length < 8) throw new Error(`Registry returned ${registry.items?.length ?? 0} items`);
   if (registry.items.some((item) => item.repoPath || item.forgeUrl?.startsWith("file://"))) throw new Error(`Registry leaked local paths: ${JSON.stringify(registry.items.filter((item) => item.repoPath || item.forgeUrl?.startsWith("file://")))}`);

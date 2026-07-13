@@ -72,7 +72,7 @@ test("openResource shows copyable SuperSkill-first resource use rows", async () 
     upstreamOwner: "obra",
     upstreamRepo: "superpowers",
     actions: [
-      { id: "open_onlyharness", label: "Use in SuperSkill", url: "https://superskill.sh/#/resources/github%3Aobra%2Fsuperpowers" },
+      { id: "open_onlyharness", label: "Use in SuperSkill", url: "https://superskill.sh/#/superskill/resources/github%3Aobra%2Fsuperpowers" },
       { id: "download_archive", label: "Download archive", url: "https://superskill.sh/api/resources/github%3Aobra%2Fsuperpowers/archive" },
       { id: "open_upstream", label: "Open upstream", url: "https://github.com/obra/superpowers" }
     ]
@@ -95,5 +95,6 @@ test("openResource shows copyable SuperSkill-first resource use rows", async () 
     expect(dialog?.resourceUse?.rows[1].value).toBe("npx onlyharness@latest resources detail github:obra/superpowers --json");
     expect(dialog?.resourceUse?.rows[2].value).toBe("npx onlyharness@latest resources open github:obra/superpowers --json");
     expect(dialog?.resourceUse?.rows[3].muted).toBeFalsy();
+    expect(window.location.hash).toBe("#/superskill/resources/github%3Aobra%2Fsuperpowers");
   });
 });

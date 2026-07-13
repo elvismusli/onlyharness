@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { EXPECTED_RESOURCE_COUNT, hasCyrillic, parseCatalogMarkdown, readJsonFile } from "./resource-catalog-shared.js";
 
@@ -46,15 +46,9 @@ test("resource seed has stable ids, English summaries and expected key categorie
   assert.ok(generated.resources.every((resource) => resource.installability === "open_only"));
   assert.ok(generated.resources.every((resource) => resource.sourceCheckedAt === "2026-07-05"));
   assert.ok(generated.resources.every((resource) => resource.sourceCheckStatus === "active"));
-  assert.ok(generated.resources.every((resource) => resource.actions.some((action) => action.id === "open_onlyharness")));
+  assert.ok(generated.resources.every((resource) => resource.actions.some((action) => action.id === "open_onlyharness" && action.url?.startsWith("https://superskill.sh/#/superskill/resources/"))));
   assert.ok(generated.resources.every((resource) => resource.actions.some((action) => action.id === "open_upstream")));
-  assert.ok(generated.resources.every((resource) => {
-    const archiveExists = existsSync(path.join(root, "data/resources/archives", `${Buffer.from(resource.id, "utf8").toString("base64url")}.tar.gz`));
-    const action = resource.actions.find((candidate) => candidate.id === "download_archive");
-    return archiveExists
-      ? action?.label === "Download from SuperSkill" && action.url?.startsWith("https://superskill.sh/api/resources/")
-      : !action;
-  }));
+  assert.ok(generated.resources.every((resource) => !resource.actions.some((action) => action.id === "download_archive")), "upstream catalog entries must remain open-only even when a legacy mirror file exists");
   assert.ok(generated.resources.every((resource) => !resource.actions.some((action) => action.id === "convert_to_harness")));
   assert.equal(generated.resources.filter((resource) => resource.resourceType === "mcp_server").length, 24);
   assert.equal(generated.resources.find((resource) => resource.id === "github:obra/superpowers")?.resourceType, "skill");

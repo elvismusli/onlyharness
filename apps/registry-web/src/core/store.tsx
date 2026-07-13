@@ -225,12 +225,12 @@ function useHarnessStore() {
 
   function openResource(item: ResourceItem) {
     const onlyHarnessUrl = item.actions?.find((action) => action.id === "open_onlyharness" && "url" in action)?.url
-      ?? `https://superskill.sh/#/resources/${encodeURIComponent(item.id)}`;
+      ?? `https://superskill.sh/#/superskill/resources/${encodeURIComponent(item.id)}`;
     const archiveUrl = item.actions?.find((action) => action.id === "download_archive" && "url" in action)?.url;
     const upstreamUrl = item.actions?.find((action) => action.id === "open_upstream" && "url" in action)?.url ?? item.canonicalUrl;
     const cliDetail = `npx onlyharness@latest resources detail ${item.id} --json`;
     const cliOpen = `npx onlyharness@latest resources open ${item.id} --json`;
-    window.history.replaceState(null, "", `#/resources/${encodeURIComponent(item.id)}`);
+    window.history.replaceState(null, "", `#/superskill/resources/${encodeURIComponent(item.id)}`);
     showDialog({
       title: `Use ${item.title}`,
       icon: "🌐",

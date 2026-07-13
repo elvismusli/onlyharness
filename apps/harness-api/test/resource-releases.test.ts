@@ -207,6 +207,17 @@ test("legacy read fallback is allowed only when it matches active migrated diges
   assert.equal(releases.resourceArchivePathForRead(input.resource.id), legacy);
 });
 
+test("an upstream legacy mirror never becomes a hosted public release", () => {
+  const resourceId = "github:obra/superpowers";
+  mkdirSync(process.env.RESOURCE_ARCHIVE_DIR!, { recursive: true });
+  writeFileSync(
+    path.join(process.env.RESOURCE_ARCHIVE_DIR!, `${Buffer.from(resourceId).toString("base64url")}.tar.gz`),
+    "legacy mirror bytes"
+  );
+  assert.equal(releases.resourceArchivePathForRead(resourceId), undefined);
+  assert.equal(releases.resourceArchivePathForRead(resourceId, "1.0.0"), undefined);
+});
+
 test("inventory reports digest and size parity and fails closed on corruption", () => {
   const target = releases.activeReleaseArchivePath("onlyharness:packages/versions", "2.0.0");
   assert.ok(target);

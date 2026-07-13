@@ -409,7 +409,7 @@ function resourceFromRow(row: ParsedCatalogRow, summaryMap: Record<string, strin
 }
 
 export function onlyHarnessResourceUrl(id: string): string {
-  return `https://superskill.sh/#/resources/${encodeURIComponent(id)}`;
+  return `https://superskill.sh/#/superskill/resources/${encodeURIComponent(id)}`;
 }
 
 export function onlyHarnessResourceArchiveUrl(id: string): string {

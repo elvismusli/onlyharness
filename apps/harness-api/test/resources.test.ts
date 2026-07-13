@@ -43,6 +43,7 @@ test("resource detail resolves URL-encoded resource ids", () => {
   assert.equal(detail?.installability, "open_only");
   assert.equal(detail?.licenseStatus, "unknown");
   assert.ok(detail?.actions.some((action) => action.id === "open_upstream"));
+  assert.ok(!detail?.actions.some((action) => action.id === "download_archive"));
 });
 
 function fixtureDirectoryItem(): RegistryItem {

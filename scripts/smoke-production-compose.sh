@@ -77,7 +77,10 @@ docker compose \
 curl -fsS "$BASE_URL/api/showroom/capabilities?limit=12" | node "$ROOT/scripts/check-superskill-showroom-response.mjs" approved
 curl -fsS "$BASE_URL/api/showroom/selected?limit=12" | node "$ROOT/scripts/check-superskill-showroom-response.mjs" selected
 curl -fsS "$BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
-curl -fsS "$BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive" -o /dev/null
+legacy_archive_response="$(mktemp)"
+test "$(curl -sS -o "$legacy_archive_response" -w '%{http_code}' "$BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive")" = "409"
+grep -q '"code":"RESOURCE_ARCHIVE_NOT_HOSTED"' "$legacy_archive_response"
+rm -f "$legacy_archive_response"
 curl -fsS "$BASE_URL/api/leaderboard?limit=1" | grep -q '"items"'
 curl -fsS "$BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'
 curl -fsS "$BASE_URL/.well-known/oauth-protected-resource" | grep -q '"resource": "https://superskill.sh/mcp"'

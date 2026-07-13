@@ -68,7 +68,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-code"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-code"
         },
         {
           "id": "open_upstream",
@@ -164,7 +164,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fskills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fskills"
         },
         {
           "id": "open_upstream",
@@ -262,7 +262,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-plugins-official"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-plugins-official"
         },
         {
           "id": "open_upstream",
@@ -360,7 +360,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-plugins-community"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-plugins-community"
         },
         {
           "id": "open_upstream",
@@ -457,7 +457,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-cookbooks"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-cookbooks"
         },
         {
           "id": "open_upstream",
@@ -555,7 +555,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-agent-sdk-python"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-agent-sdk-python"
         },
         {
           "id": "open_upstream",
@@ -653,7 +653,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-agent-sdk-typescript"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-agent-sdk-typescript"
         },
         {
           "id": "open_upstream",
@@ -751,7 +751,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-code-action"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-code-action"
         },
         {
           "id": "open_upstream",
@@ -850,7 +850,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-code-security-review"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-code-security-review"
         },
         {
           "id": "open_upstream",
@@ -946,7 +946,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fprompt-eng-interactive-tutorial"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fprompt-eng-interactive-tutorial"
         },
         {
           "id": "open_upstream",
@@ -1044,7 +1044,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanthropics%2Fclaude-quickstarts"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanthropics%2Fclaude-quickstarts"
         },
         {
           "id": "open_upstream",
@@ -1139,7 +1139,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ashubhamsaboo%2Fawesome-llm-apps"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ashubhamsaboo%2Fawesome-llm-apps"
         },
         {
           "id": "open_upstream",
@@ -1236,7 +1236,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apunkpeye%2Fawesome-mcp-servers"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apunkpeye%2Fawesome-mcp-servers"
         },
         {
           "id": "open_upstream",
@@ -1334,7 +1334,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acomposiohq%2Fawesome-claude-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acomposiohq%2Fawesome-claude-skills"
         },
         {
           "id": "open_upstream",
@@ -1430,7 +1430,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Avoltagent%2Fawesome-openclaw-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Avoltagent%2Fawesome-openclaw-skills"
         },
         {
           "id": "open_upstream",
@@ -1528,7 +1528,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ahesreallyhim%2Fawesome-claude-code"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ahesreallyhim%2Fawesome-claude-code"
         },
         {
           "id": "open_upstream",
@@ -1629,7 +1629,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asickn33%2Fantigravity-awesome-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asickn33%2Fantigravity-awesome-skills"
         },
         {
           "id": "open_upstream",
@@ -1726,7 +1726,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apatrickjs%2Fawesome-cursorrules"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apatrickjs%2Fawesome-cursorrules"
         },
         {
           "id": "open_upstream",
@@ -1822,7 +1822,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agithub%2Fawesome-copilot"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agithub%2Fawesome-copilot"
         },
         {
           "id": "open_upstream",
@@ -1917,7 +1917,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ahesamsheikh%2Fawesome-openclaw-usecases"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ahesamsheikh%2Fawesome-openclaw-usecases"
         },
         {
           "id": "open_upstream",
@@ -2014,7 +2014,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Avoltagent%2Fawesome-agent-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Avoltagent%2Fawesome-agent-skills"
         },
         {
           "id": "open_upstream",
@@ -2111,7 +2111,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Avoltagent%2Fawesome-claude-code-subagents"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Avoltagent%2Fawesome-claude-code-subagents"
         },
         {
           "id": "open_upstream",
@@ -2209,7 +2209,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Atravisvn%2Fawesome-claude-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Atravisvn%2Fawesome-claude-skills"
         },
         {
           "id": "open_upstream",
@@ -2306,7 +2306,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ayzfly%2Fawesome-mcp-zh"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ayzfly%2Fawesome-mcp-zh"
         },
         {
           "id": "open_upstream",
@@ -2402,7 +2402,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aheilcheng%2Fawesome-agent-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aheilcheng%2Fawesome-agent-skills"
         },
         {
           "id": "open_upstream",
@@ -2499,7 +2499,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aappcypher%2Fawesome-mcp-servers"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aappcypher%2Fawesome-mcp-servers"
         },
         {
           "id": "open_upstream",
@@ -2596,7 +2596,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Awong2%2Fawesome-mcp-servers"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Awong2%2Fawesome-mcp-servers"
         },
         {
           "id": "open_upstream",
@@ -2693,7 +2693,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajaw9c%2Fawesome-remote-mcp-servers"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajaw9c%2Fawesome-remote-mcp-servers"
         },
         {
           "id": "open_upstream",
@@ -2774,7 +2774,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajamesmurdza%2Fawesome-ai-devtools"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajamesmurdza%2Fawesome-ai-devtools"
         },
         {
           "id": "open_upstream",
@@ -2855,7 +2855,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Afilipecalegario%2Fawesome-vibe-coding"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Afilipecalegario%2Fawesome-vibe-coding"
         },
         {
           "id": "open_upstream",
@@ -2939,7 +2939,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adavepoon%2Fbuildwithclaude"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adavepoon%2Fbuildwithclaude"
         },
         {
           "id": "open_upstream",
@@ -3022,7 +3022,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Arohitg00%2Fawesome-claude-code-toolkit"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Arohitg00%2Fawesome-claude-code-toolkit"
         },
         {
           "id": "open_upstream",
@@ -3105,7 +3105,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acomposiohq%2Fawesome-claude-plugins"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acomposiohq%2Fawesome-claude-plugins"
         },
         {
           "id": "open_upstream",
@@ -3187,7 +3187,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aobra%2Fsuperpowers"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aobra%2Fsuperpowers"
         },
         {
           "id": "open_upstream",
@@ -3284,7 +3284,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amultica-ai%2Fandrej-karpathy-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amultica-ai%2Fandrej-karpathy-skills"
         },
         {
           "id": "open_upstream",
@@ -3366,7 +3366,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aaddyosmani%2Fagent-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aaddyosmani%2Fagent-skills"
         },
         {
           "id": "open_upstream",
@@ -3448,7 +3448,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aagentskills%2Fagentskills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aagentskills%2Fagentskills"
         },
         {
           "id": "open_upstream",
@@ -3530,7 +3530,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Akepano%2Fobsidian-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Akepano%2Fobsidian-skills"
         },
         {
           "id": "open_upstream",
@@ -3612,7 +3612,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajimliu%2Fbaoyu-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajimliu%2Fbaoyu-skills"
         },
         {
           "id": "open_upstream",
@@ -3695,7 +3695,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aalirezarezvani%2Fclaude-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aalirezarezvani%2Fclaude-skills"
         },
         {
           "id": "open_upstream",
@@ -3778,7 +3778,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajeffallan%2Fclaude-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajeffallan%2Fclaude-skills"
         },
         {
           "id": "open_upstream",
@@ -3860,7 +3860,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aorchestra-research%2Fai-research-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aorchestra-research%2Fai-research-skills"
         },
         {
           "id": "open_upstream",
@@ -3942,7 +3942,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amicrosoft%2Fskillopt"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amicrosoft%2Fskillopt"
         },
         {
           "id": "open_upstream",
@@ -4026,7 +4026,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agoogle-labs-code%2Fstitch-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agoogle-labs-code%2Fstitch-skills"
         },
         {
           "id": "open_upstream",
@@ -4108,7 +4108,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Atech-leads-club%2Fagent-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Atech-leads-club%2Fagent-skills"
         },
         {
           "id": "open_upstream",
@@ -4190,7 +4190,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajnmetacode%2Fsuperpowers-zh"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajnmetacode%2Fsuperpowers-zh"
         },
         {
           "id": "open_upstream",
@@ -4273,7 +4273,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Arefly-ai%2Frefly"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Arefly-ai%2Frefly"
         },
         {
           "id": "open_upstream",
@@ -4355,7 +4355,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Axingkongliang%2Fskills-manager"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Axingkongliang%2Fskills-manager"
         },
         {
           "id": "open_upstream",
@@ -4437,7 +4437,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aactiveloopai%2Fhivemind"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aactiveloopai%2Fhivemind"
         },
         {
           "id": "open_upstream",
@@ -4519,7 +4519,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aobra%2Fsuperpowers-marketplace"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aobra%2Fsuperpowers-marketplace"
         },
         {
           "id": "open_upstream",
@@ -4601,7 +4601,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anextlevelbuilder%2Fui-ux-pro-max-skill"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anextlevelbuilder%2Fui-ux-pro-max-skill"
         },
         {
           "id": "open_upstream",
@@ -4683,7 +4683,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajuliusbrussee%2Fcaveman"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajuliusbrussee%2Fcaveman"
         },
         {
           "id": "open_upstream",
@@ -4765,7 +4765,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agraphify-labs%2Fgraphify"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agraphify-labs%2Fgraphify"
         },
         {
           "id": "open_upstream",
@@ -4847,7 +4847,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adietrichgebert%2Fponytail"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adietrichgebert%2Fponytail"
         },
         {
           "id": "open_upstream",
@@ -4929,7 +4929,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aegonex-ai%2Funderstand-anything"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aegonex-ai%2Funderstand-anything"
         },
         {
           "id": "open_upstream",
@@ -5015,7 +5015,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acolbymchenry%2Fcodegraph"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acolbymchenry%2Fcodegraph"
         },
         {
           "id": "open_upstream",
@@ -5097,7 +5097,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aleonxlnx%2Ftaste-skill"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aleonxlnx%2Ftaste-skill"
         },
         {
           "id": "open_upstream",
@@ -5179,7 +5179,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apanniantong%2Fagent-reach"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apanniantong%2Fagent-reach"
         },
         {
           "id": "open_upstream",
@@ -5261,7 +5261,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amvanhorn%2Flast30days-skill"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amvanhorn%2Flast30days-skill"
         },
         {
           "id": "open_upstream",
@@ -5343,7 +5343,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ablader%2Fhumanizer"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ablader%2Fhumanizer"
         },
         {
           "id": "open_upstream",
@@ -5425,7 +5425,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azarazhangrui%2Ffrontend-slides"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azarazhangrui%2Ffrontend-slides"
         },
         {
           "id": "open_upstream",
@@ -5507,7 +5507,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ateng-lin%2Fnotebooklm-py"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ateng-lin%2Fnotebooklm-py"
         },
         {
           "id": "open_upstream",
@@ -5589,7 +5589,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aalchaincyf%2Fhuashu-design"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aalchaincyf%2Fhuashu-design"
         },
         {
           "id": "open_upstream",
@@ -5671,7 +5671,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aop7418%2Fhumanizer-zh"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aop7418%2Fhumanizer-zh"
         },
         {
           "id": "open_upstream",
@@ -5753,7 +5753,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Atwostraws%2Fswiftui-agent-skill"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Atwostraws%2Fswiftui-agent-skill"
         },
         {
           "id": "open_upstream",
@@ -5836,7 +5836,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajimliu%2Fbaoyu-design"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajimliu%2Fbaoyu-design"
         },
         {
           "id": "open_upstream",
@@ -5918,7 +5918,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asamber%2Fcc-skills-golang"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asamber%2Fcc-skills-golang"
         },
         {
           "id": "open_upstream",
@@ -6001,7 +6001,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asantifer%2Fcareer-ops"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asantifer%2Fcareer-ops"
         },
         {
           "id": "open_upstream",
@@ -6083,7 +6083,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aimbad0202%2Facademic-research-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aimbad0202%2Facademic-research-skills"
         },
         {
           "id": "open_upstream",
@@ -6165,7 +6165,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acoreyhaines31%2Fmarketingskills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acoreyhaines31%2Fmarketingskills"
         },
         {
           "id": "open_upstream",
@@ -6247,7 +6247,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acalesthio%2Fopenmontage"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acalesthio%2Fopenmontage"
         },
         {
           "id": "open_upstream",
@@ -6329,7 +6329,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ak-dense-ai%2Fscientific-agent-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ak-dense-ai%2Fscientific-agent-skills"
         },
         {
           "id": "open_upstream",
@@ -6412,7 +6412,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amukul975%2Fanthropic-cybersecurity-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amukul975%2Fanthropic-cybersecurity-skills"
         },
         {
           "id": "open_upstream",
@@ -6496,7 +6496,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adonchitos%2Fclaude-code-game-studios"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adonchitos%2Fclaude-code-game-studios"
         },
         {
           "id": "open_upstream",
@@ -6578,7 +6578,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aphuryn%2Fpm-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aphuryn%2Fpm-skills"
         },
         {
           "id": "open_upstream",
@@ -6661,7 +6661,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Awanshuiyin%2Fauto-claude-code-research-in-sleep"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Awanshuiyin%2Fauto-claude-code-research-in-sleep"
         },
         {
           "id": "open_upstream",
@@ -6744,7 +6744,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aagricidaniel%2Fclaude-seo"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aagricidaniel%2Fclaude-seo"
         },
         {
           "id": "open_upstream",
@@ -6827,7 +6827,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aagricidaniel%2Fclaude-obsidian"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aagricidaniel%2Fclaude-obsidian"
         },
         {
           "id": "open_upstream",
@@ -6910,7 +6910,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Atrailofbits%2Fskills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Atrailofbits%2Fskills"
         },
         {
           "id": "open_upstream",
@@ -6992,7 +6992,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asamuraigpt%2Fgenerative-media-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asamuraigpt%2Fgenerative-media-skills"
         },
         {
           "id": "open_upstream",
@@ -7074,7 +7074,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anowork-studio%2Fnotfair"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anowork-studio%2Fnotfair"
         },
         {
           "id": "open_upstream",
@@ -7156,7 +7156,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aaaron-he-zhu%2Faaron-marketing-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aaaron-he-zhu%2Faaron-marketing-skills"
         },
         {
           "id": "open_upstream",
@@ -7238,7 +7238,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adata-goblin%2Fpower-bi-agentic-development"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adata-goblin%2Fpower-bi-agentic-development"
         },
         {
           "id": "open_upstream",
@@ -7321,7 +7321,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aquant-sentiment-ai%2Fclaude-equity-research"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aquant-sentiment-ai%2Fclaude-equity-research"
         },
         {
           "id": "open_upstream",
@@ -7403,7 +7403,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aromainsimon%2Fpaperasse"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aromainsimon%2Fpaperasse"
         },
         {
           "id": "open_upstream",
@@ -7485,7 +7485,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Awshobson%2Fagents"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Awshobson%2Fagents"
         },
         {
           "id": "open_upstream",
@@ -7567,7 +7567,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajnmetacode%2Fagency-agents-zh"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajnmetacode%2Fagency-agents-zh"
         },
         {
           "id": "open_upstream",
@@ -7649,7 +7649,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acontains-studio%2Fagents"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acontains-studio%2Fagents"
         },
         {
           "id": "open_upstream",
@@ -7732,7 +7732,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Arevfactory%2Fharness"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Arevfactory%2Fharness"
         },
         {
           "id": "open_upstream",
@@ -7815,7 +7815,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Avijaythecoder%2Fawesome-claude-agents"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Avijaythecoder%2Fawesome-claude-agents"
         },
         {
           "id": "open_upstream",
@@ -7897,7 +7897,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agentleman-programming%2Fagent-teams-lite"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agentleman-programming%2Fagent-teams-lite"
         },
         {
           "id": "open_upstream",
@@ -7979,7 +7979,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apcliangx%2Fappgenesisforge"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apcliangx%2Fappgenesisforge"
         },
         {
           "id": "open_upstream",
@@ -8061,7 +8061,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agarrytan%2Fgstack"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agarrytan%2Fgstack"
         },
         {
           "id": "open_upstream",
@@ -8145,7 +8145,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adavila7%2Fclaude-code-templates"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adavila7%2Fclaude-code-templates"
         },
         {
           "id": "open_upstream",
@@ -8230,7 +8230,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Afarion1231%2Fcc-switch"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Afarion1231%2Fcc-switch"
         },
         {
           "id": "open_upstream",
@@ -8314,7 +8314,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acursor%2Fcommunity-plugins"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acursor%2Fcommunity-plugins"
         },
         {
           "id": "open_upstream",
@@ -8399,7 +8399,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajeremylongshore%2Fclaude-code-plugins-plus-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajeremylongshore%2Fclaude-code-plugins-plus-skills"
         },
         {
           "id": "open_upstream",
@@ -8481,7 +8481,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anotlikedev%2Fccplugins"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anotlikedev%2Fccplugins"
         },
         {
           "id": "open_upstream",
@@ -8566,7 +8566,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aqdhenry%2Fclaude-command-suite"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aqdhenry%2Fclaude-command-suite"
         },
         {
           "id": "open_upstream",
@@ -8652,7 +8652,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acloudai-x%2Fclaude-workflow-v2"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acloudai-x%2Fclaude-workflow-v2"
         },
         {
           "id": "open_upstream",
@@ -8738,7 +8738,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anumman-ali%2Fn-skills"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anumman-ali%2Fn-skills"
         },
         {
           "id": "open_upstream",
@@ -8822,7 +8822,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acarlrannaberg%2Fclaudekit"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acarlrannaberg%2Fclaudekit"
         },
         {
           "id": "open_upstream",
@@ -8907,7 +8907,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asangrokjung%2Fclaude-forge"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asangrokjung%2Fclaude-forge"
         },
         {
           "id": "open_upstream",
@@ -8989,7 +8989,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aseulee26%2Fmckinsey-pptx"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aseulee26%2Fmckinsey-pptx"
         },
         {
           "id": "open_upstream",
@@ -9076,7 +9076,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Afcakyon%2Fclaude-codex-settings"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Afcakyon%2Fclaude-codex-settings"
         },
         {
           "id": "open_upstream",
@@ -9160,7 +9160,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajarrodwatts%2Fclaude-code-config"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajarrodwatts%2Fclaude-code-config"
         },
         {
           "id": "open_upstream",
@@ -9244,7 +9244,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Axu-xiang%2Feverything-claude-code-zh"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Axu-xiang%2Feverything-claude-code-zh"
         },
         {
           "id": "open_upstream",
@@ -9326,7 +9326,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agithub%2Fspec-kit"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agithub%2Fspec-kit"
         },
         {
           "id": "open_upstream",
@@ -9408,7 +9408,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agsd-build%2Fget-shit-done"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agsd-build%2Fget-shit-done"
         },
         {
           "id": "open_upstream",
@@ -9490,7 +9490,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Abmad-code-org%2Fbmad-method"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Abmad-code-org%2Fbmad-method"
         },
         {
           "id": "open_upstream",
@@ -9576,7 +9576,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aeyaltoledano%2Fclaude-task-master"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aeyaltoledano%2Fclaude-task-master"
         },
         {
           "id": "open_upstream",
@@ -9658,7 +9658,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aothmanadi%2Fplanning-with-files"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aothmanadi%2Fplanning-with-files"
         },
         {
           "id": "open_upstream",
@@ -9740,7 +9740,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acoleam00%2Fcontext-engineering-intro"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acoleam00%2Fcontext-engineering-intro"
         },
         {
           "id": "open_upstream",
@@ -9822,7 +9822,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asnarktank%2Fai-dev-tasks"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asnarktank%2Fai-dev-tasks"
         },
         {
           "id": "open_upstream",
@@ -9904,7 +9904,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Abuildermethods%2Fagent-os"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Abuildermethods%2Fagent-os"
         },
         {
           "id": "open_upstream",
@@ -9989,7 +9989,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aoneredoak%2Fclaude-code-workflows"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aoneredoak%2Fclaude-code-workflows"
         },
         {
           "id": "open_upstream",
@@ -10073,7 +10073,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apimzino%2Fclaude-code-spec-workflow"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apimzino%2Fclaude-code-spec-workflow"
         },
         {
           "id": "open_upstream",
@@ -10155,7 +10155,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agemini-cli-extensions%2Fconductor"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agemini-cli-extensions%2Fconductor"
         },
         {
           "id": "open_upstream",
@@ -10237,7 +10237,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agotalab%2Fcc-sdd"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agotalab%2Fcc-sdd"
         },
         {
           "id": "open_upstream",
@@ -10319,7 +10319,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Awirasm%2Fprps-agentic-eng"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Awirasm%2Fprps-agentic-eng"
         },
         {
           "id": "open_upstream",
@@ -10404,7 +10404,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agmickel%2Fflow-next"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agmickel%2Fflow-next"
         },
         {
           "id": "open_upstream",
@@ -10486,7 +10486,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azhu1090093659%2Fspec_driven_develop"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azhu1090093659%2Fspec_driven_develop"
         },
         {
           "id": "open_upstream",
@@ -10568,7 +10568,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ashotgun-sh%2Fshotgun"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ashotgun-sh%2Fshotgun"
         },
         {
           "id": "open_upstream",
@@ -10650,7 +10650,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azscole%2Fadversarial-spec"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azscole%2Fadversarial-spec"
         },
         {
           "id": "open_upstream",
@@ -10734,7 +10734,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ashinpr%2Fclaude-code-workflows"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ashinpr%2Fclaude-code-workflows"
         },
         {
           "id": "open_upstream",
@@ -10816,7 +10816,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anizos%2Ftdd-guard"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anizos%2Ftdd-guard"
         },
         {
           "id": "open_upstream",
@@ -10899,7 +10899,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aaffaan-m%2Fecc"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aaffaan-m%2Fecc"
         },
         {
           "id": "open_upstream",
@@ -10981,7 +10981,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Abytedance%2Fdeer-flow"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Abytedance%2Fdeer-flow"
         },
         {
           "id": "open_upstream",
@@ -11065,7 +11065,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aruvnet%2Fruflo"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aruvnet%2Fruflo"
         },
         {
           "id": "open_upstream",
@@ -11148,7 +11148,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azhayujie%2Fcowagent"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azhayujie%2Fcowagent"
         },
         {
           "id": "open_upstream",
@@ -11232,7 +11232,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ayeachan-heo%2Foh-my-claudecode"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ayeachan-heo%2Foh-my-claudecode"
         },
         {
           "id": "open_upstream",
@@ -11314,7 +11314,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aaden-hive%2Fhive"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aaden-hive%2Fhive"
         },
         {
           "id": "open_upstream",
@@ -11400,7 +11400,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asmtg-ai%2Fclaude-squad"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asmtg-ai%2Fclaude-squad"
         },
         {
           "id": "open_upstream",
@@ -11482,7 +11482,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Akyegomez%2Fswarms"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Akyegomez%2Fswarms"
         },
         {
           "id": "open_upstream",
@@ -11569,7 +11569,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aomnigent-ai%2Fomnigent"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aomnigent-ai%2Fomnigent"
         },
         {
           "id": "open_upstream",
@@ -11654,7 +11654,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agolutra%2Fgolutra"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agolutra%2Fgolutra"
         },
         {
           "id": "open_upstream",
@@ -11738,7 +11738,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anyldn%2Fclaude-octopus"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anyldn%2Fclaude-octopus"
         },
         {
           "id": "open_upstream",
@@ -11823,7 +11823,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apreset-io%2Fagor"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apreset-io%2Fagor"
         },
         {
           "id": "open_upstream",
@@ -11905,7 +11905,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ayohey-w%2Fmulti-agent-shogun"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ayohey-w%2Fmulti-agent-shogun"
         },
         {
           "id": "open_upstream",
@@ -11987,7 +11987,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ajayminwest%2Foverstory"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ajayminwest%2Foverstory"
         },
         {
           "id": "open_upstream",
@@ -12069,7 +12069,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adisler%2Finfinite-agentic-loop"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adisler%2Finfinite-agentic-loop"
         },
         {
           "id": "open_upstream",
@@ -12151,7 +12151,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aswarmclawai%2Fswarmclaw"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aswarmclawai%2Fswarmclaw"
         },
         {
           "id": "open_upstream",
@@ -12235,7 +12235,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Athedotmack%2Fclaude-mem"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Athedotmack%2Fclaude-mem"
         },
         {
           "id": "open_upstream",
@@ -12317,7 +12317,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Artk-ai%2Frtk"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Artk-ai%2Frtk"
         },
         {
           "id": "open_upstream",
@@ -12399,7 +12399,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amem0ai%2Fmem0"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amem0ai%2Fmem0"
         },
         {
           "id": "open_upstream",
@@ -12481,7 +12481,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aheadroomlabs-ai%2Fheadroom"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aheadroomlabs-ai%2Fheadroom"
         },
         {
           "id": "open_upstream",
@@ -12563,7 +12563,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agetzep%2Fgraphiti"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agetzep%2Fgraphiti"
         },
         {
           "id": "open_upstream",
@@ -12645,7 +12645,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Atopoteretes%2Fcognee"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Atopoteretes%2Fcognee"
         },
         {
           "id": "open_upstream",
@@ -12727,7 +12727,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Arohitg00%2Fagentmemory"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Arohitg00%2Fagentmemory"
         },
         {
           "id": "open_upstream",
@@ -12809,7 +12809,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ascreenpipe%2Fscreenpipe"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ascreenpipe%2Fscreenpipe"
         },
         {
           "id": "open_upstream",
@@ -12891,7 +12891,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amksglu%2Fcontext-mode"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amksglu%2Fcontext-mode"
         },
         {
           "id": "open_upstream",
@@ -12975,7 +12975,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aparcadei%2Fcontinuous-claude-v3"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aparcadei%2Fcontinuous-claude-v3"
         },
         {
           "id": "open_upstream",
@@ -13057,7 +13057,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azilliztech%2Fmemsearch"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azilliztech%2Fmemsearch"
         },
         {
           "id": "open_upstream",
@@ -13141,7 +13141,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acoleam00%2Fclaude-memory-compiler"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acoleam00%2Fclaude-memory-compiler"
         },
         {
           "id": "open_upstream",
@@ -13223,7 +13223,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aclaudiodrews%2Fmemory-os"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aclaudiodrews%2Fmemory-os"
         },
         {
           "id": "open_upstream",
@@ -13305,7 +13305,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Arohitg00%2Fpro-workflow"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Arohitg00%2Fpro-workflow"
         },
         {
           "id": "open_upstream",
@@ -13387,7 +13387,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agrapeot%2Fcontext-infrastructure"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agrapeot%2Fcontext-infrastructure"
         },
         {
           "id": "open_upstream",
@@ -13471,7 +13471,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asethgammon%2Fcitadel"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asethgammon%2Fcitadel"
         },
         {
           "id": "open_upstream",
@@ -13553,7 +13553,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Araiyanyahya%2Frecall"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Araiyanyahya%2Frecall"
         },
         {
           "id": "open_upstream",
@@ -13635,7 +13635,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aalash3al%2Fstash"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aalash3al%2Fstash"
         },
         {
           "id": "open_upstream",
@@ -13721,7 +13721,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adisler%2Fclaude-code-hooks-mastery"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adisler%2Fclaude-code-hooks-mastery"
         },
         {
           "id": "open_upstream",
@@ -13807,7 +13807,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adisler%2Fclaude-code-hooks-multi-agent-observability"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adisler%2Fclaude-code-hooks-multi-agent-observability"
         },
         {
           "id": "open_upstream",
@@ -13891,7 +13891,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Akenryu42%2Fcc-safety-net"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Akenryu42%2Fcc-safety-net"
         },
         {
           "id": "open_upstream",
@@ -13977,7 +13977,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apantheon-security%2Fmedusa"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apantheon-security%2Fmedusa"
         },
         {
           "id": "open_upstream",
@@ -14063,7 +14063,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aseverity1%2Fclaude-code-prompt-improver"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aseverity1%2Fclaude-code-prompt-improver"
         },
         {
           "id": "open_upstream",
@@ -14147,7 +14147,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aalibaba%2Fopen-code-review"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aalibaba%2Fopen-code-review"
         },
         {
           "id": "open_upstream",
@@ -14231,7 +14231,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agemini-cli-extensions%2Fsecurity"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agemini-cli-extensions%2Fsecurity"
         },
         {
           "id": "open_upstream",
@@ -14315,7 +14315,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agemini-cli-extensions%2Fcode-review"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agemini-cli-extensions%2Fcode-review"
         },
         {
           "id": "open_upstream",
@@ -14401,7 +14401,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Areflexioai%2Fclaude-smart"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Areflexioai%2Fclaude-smart"
         },
         {
           "id": "open_upstream",
@@ -14485,7 +14485,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ahyhmrright%2Fbrooks-lint"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ahyhmrright%2Fbrooks-lint"
         },
         {
           "id": "open_upstream",
@@ -14568,7 +14568,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amodelcontextprotocol%2Fservers"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amodelcontextprotocol%2Fservers"
         },
         {
           "id": "open_upstream",
@@ -14651,7 +14651,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aupstash%2Fcontext7"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aupstash%2Fcontext7"
         },
         {
           "id": "open_upstream",
@@ -14734,7 +14734,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amicrosoft%2Fplaywright-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amicrosoft%2Fplaywright-mcp"
         },
         {
           "id": "open_upstream",
@@ -14817,7 +14817,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agithub%2Fgithub-mcp-server"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agithub%2Fgithub-mcp-server"
         },
         {
           "id": "open_upstream",
@@ -14900,7 +14900,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aoraios%2Fserena"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aoraios%2Fserena"
         },
         {
           "id": "open_upstream",
@@ -14983,7 +14983,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aprefecthq%2Ffastmcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aprefecthq%2Ffastmcp"
         },
         {
           "id": "open_upstream",
@@ -15066,7 +15066,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amcp-use%2Fmcp-use"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amcp-use%2Fmcp-use"
         },
         {
           "id": "open_upstream",
@@ -15149,7 +15149,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aawslabs%2Fmcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aawslabs%2Fmcp"
         },
         {
           "id": "open_upstream",
@@ -15232,7 +15232,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aahujasid%2Fblender-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aahujasid%2Fblender-mcp"
         },
         {
           "id": "open_upstream",
@@ -15315,7 +15315,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aglips%2Ffigma-context-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aglips%2Ffigma-context-mcp"
         },
         {
           "id": "open_upstream",
@@ -15398,7 +15398,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aidosal%2Fgit-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aidosal%2Fgit-mcp"
         },
         {
           "id": "open_upstream",
@@ -15481,7 +15481,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aagentdeskai%2Fbrowser-tools-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aagentdeskai%2Fbrowser-tools-mcp"
         },
         {
           "id": "open_upstream",
@@ -15564,7 +15564,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Afirecrawl%2Ffirecrawl-mcp-server"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Afirecrawl%2Ffirecrawl-mcp-server"
         },
         {
           "id": "open_upstream",
@@ -15649,7 +15649,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3A21st-dev%2Fmagic-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3A21st-dev%2Fmagic-mcp"
         },
         {
           "id": "open_upstream",
@@ -15732,7 +15732,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asooperset%2Fmcp-atlassian"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asooperset%2Fmcp-atlassian"
         },
         {
           "id": "open_upstream",
@@ -15815,7 +15815,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amakenotion%2Fnotion-mcp-server"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amakenotion%2Fnotion-mcp-server"
         },
         {
           "id": "open_upstream",
@@ -15898,7 +15898,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acloudflare%2Fmcp-server-cloudflare"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acloudflare%2Fmcp-server-cloudflare"
         },
         {
           "id": "open_upstream",
@@ -15981,7 +15981,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ahomeassistant-ai%2Fha-mcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ahomeassistant-ai%2Fha-mcp"
         },
         {
           "id": "open_upstream",
@@ -16064,7 +16064,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Abrowserbase%2Fmcp-server-browserbase"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Abrowserbase%2Fmcp-server-browserbase"
         },
         {
           "id": "open_upstream",
@@ -16147,7 +16147,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asupabase%2Fmcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asupabase%2Fmcp"
         },
         {
           "id": "open_upstream",
@@ -16230,7 +16230,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apunkpeye%2Ffastmcp"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apunkpeye%2Ffastmcp"
         },
         {
           "id": "open_upstream",
@@ -16313,7 +16313,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ametorial%2Fmetorial"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ametorial%2Fmetorial"
         },
         {
           "id": "open_upstream",
@@ -16396,7 +16396,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aamoylab%2Funla"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aamoylab%2Funla"
         },
         {
           "id": "open_upstream",
@@ -16480,7 +16480,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Atimescale%2Fpg-aiguide"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Atimescale%2Fpg-aiguide"
         },
         {
           "id": "open_upstream",
@@ -16562,7 +16562,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aopenclaw%2Fopenclaw"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aopenclaw%2Fopenclaw"
         },
         {
           "id": "open_upstream",
@@ -16644,7 +16644,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anousresearch%2Fhermes-agent"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anousresearch%2Fhermes-agent"
         },
         {
           "id": "open_upstream",
@@ -16726,7 +16726,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aanomalyco%2Fopencode"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aanomalyco%2Fopencode"
         },
         {
           "id": "open_upstream",
@@ -16808,7 +16808,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agoogle-gemini%2Fgemini-cli"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agoogle-gemini%2Fgemini-cli"
         },
         {
           "id": "open_upstream",
@@ -16892,7 +16892,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aopenai%2Fcodex"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aopenai%2Fcodex"
         },
         {
           "id": "open_upstream",
@@ -16974,7 +16974,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aopenhands%2Fopenhands"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aopenhands%2Fopenhands"
         },
         {
           "id": "open_upstream",
@@ -17056,7 +17056,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acline%2Fcline"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acline%2Fcline"
         },
         {
           "id": "open_upstream",
@@ -17138,7 +17138,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aaaif-goose%2Fgoose"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aaaif-goose%2Fgoose"
         },
         {
           "id": "open_upstream",
@@ -17220,7 +17220,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aaider-ai%2Faider"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aaider-ai%2Faider"
         },
         {
           "id": "open_upstream",
@@ -17303,7 +17303,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ahkuds%2Fnanobot"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ahkuds%2Fnanobot"
         },
         {
           "id": "open_upstream",
@@ -17385,7 +17385,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azeroclaw-labs%2Fzeroclaw"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azeroclaw-labs%2Fzeroclaw"
         },
         {
           "id": "open_upstream",
@@ -17468,7 +17468,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ananocoai%2Fnanoclaw"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ananocoai%2Fnanoclaw"
         },
         {
           "id": "open_upstream",
@@ -17550,7 +17550,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asipeed%2Fpicoclaw"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asipeed%2Fpicoclaw"
         },
         {
           "id": "open_upstream",
@@ -17632,7 +17632,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acharmbracelet%2Fcrush"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acharmbracelet%2Fcrush"
         },
         {
           "id": "open_upstream",
@@ -17714,7 +17714,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aqwenlm%2Fqwen-code"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aqwenlm%2Fqwen-code"
         },
         {
           "id": "open_upstream",
@@ -17796,7 +17796,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Akilo-org%2Fkilocode"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Akilo-org%2Fkilocode"
         },
         {
           "id": "open_upstream",
@@ -17878,7 +17878,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Akortix-ai%2Fsuna"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Akortix-ai%2Fsuna"
         },
         {
           "id": "open_upstream",
@@ -17960,7 +17960,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aagent0ai%2Fagent-zero"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aagent0ai%2Fagent-zero"
         },
         {
           "id": "open_upstream",
@@ -18044,7 +18044,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ashareai-lab%2Flearn-claude-code"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ashareai-lab%2Flearn-claude-code"
         },
         {
           "id": "open_upstream",
@@ -18128,7 +18128,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amusistudio%2Fclaude-code-router"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amusistudio%2Fclaude-code-router"
         },
         {
           "id": "open_upstream",
@@ -18212,7 +18212,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Arouter-for-me%2Fcliproxyapi"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Arouter-for-me%2Fcliproxyapi"
         },
         {
           "id": "open_upstream",
@@ -18294,7 +18294,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acherryhq%2Fcherry-studio"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acherryhq%2Fcherry-studio"
         },
         {
           "id": "open_upstream",
@@ -18377,7 +18377,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adaytonaio%2Fdaytona"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adaytonaio%2Fdaytona"
         },
         {
           "id": "open_upstream",
@@ -18459,7 +18459,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aiofficeai%2Faionui"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aiofficeai%2Faionui"
         },
         {
           "id": "open_upstream",
@@ -18541,7 +18541,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aeigent-ai%2Feigent"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aeigent-ai%2Feigent"
         },
         {
           "id": "open_upstream",
@@ -18629,7 +18629,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asiteboon%2Fclaudecodeui"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asiteboon%2Fclaudecodeui"
         },
         {
           "id": "open_upstream",
@@ -18713,7 +18713,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Accusage%2Fccusage"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Accusage%2Fccusage"
         },
         {
           "id": "open_upstream",
@@ -18797,7 +18797,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Amaciek-roboblog%2Fclaude-code-usage-monitor"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Amaciek-roboblog%2Fclaude-code-usage-monitor"
         },
         {
           "id": "open_upstream",
@@ -18879,7 +18879,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Awinfunc%2Fopcode"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Awinfunc%2Fopcode"
         },
         {
           "id": "open_upstream",
@@ -18962,7 +18962,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Anvidia%2Fnemoclaw"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Anvidia%2Fnemoclaw"
         },
         {
           "id": "open_upstream",
@@ -19044,7 +19044,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agoogleworkspace%2Fcli"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agoogleworkspace%2Fcli"
         },
         {
           "id": "open_upstream",
@@ -19126,7 +19126,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aformkit%2Fformkit"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aformkit%2Fformkit"
         },
         {
           "id": "open_upstream",
@@ -19208,7 +19208,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Axixu-me%2Fxget"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Axixu-me%2Fxget"
         },
         {
           "id": "open_upstream",
@@ -19291,7 +19291,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ashanraisshan%2Fclaude-code-best-practice"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ashanraisshan%2Fclaude-code-best-practice"
         },
         {
           "id": "open_upstream",
@@ -19374,7 +19374,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aluongnv89%2Fclaude-howto"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aluongnv89%2Fclaude-howto"
         },
         {
           "id": "open_upstream",
@@ -19455,7 +19455,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agarrytan%2Fgbrain"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agarrytan%2Fgbrain"
         },
         {
           "id": "open_upstream",
@@ -19536,7 +19536,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aliyupi%2Fai-guide"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aliyupi%2Fai-guide"
         },
         {
           "id": "open_upstream",
@@ -19620,7 +19620,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adiet103%2Fclaude-code-infrastructure-showcase"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adiet103%2Fclaude-code-infrastructure-showcase"
         },
         {
           "id": "open_upstream",
@@ -19703,7 +19703,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aykdojo%2Fclaude-code-tips"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aykdojo%2Fclaude-code-tips"
         },
         {
           "id": "open_upstream",
@@ -19787,7 +19787,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Achriswiles%2Fclaude-code-showcase"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Achriswiles%2Fclaude-code-showcase"
         },
         {
           "id": "open_upstream",
@@ -19872,7 +19872,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aflorianbruniaux%2Fclaude-code-ultimate-guide"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aflorianbruniaux%2Fclaude-code-ultimate-guide"
         },
         {
           "id": "open_upstream",
@@ -19955,7 +19955,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Azebbern%2Fclaude-code-guide"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Azebbern%2Fclaude-code-guide"
         },
         {
           "id": "open_upstream",
@@ -20038,7 +20038,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Awesammustafa%2Fclaude-code-everything-you-need-to-know"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Awesammustafa%2Fclaude-code-everything-you-need-to-know"
         },
         {
           "id": "open_upstream",
@@ -20119,7 +20119,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aombharatiya%2Fai-system-design-guide"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aombharatiya%2Fai-system-design-guide"
         },
         {
           "id": "open_upstream",
@@ -20205,7 +20205,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Athedecipherist%2Fclaude-code-mastery"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Athedecipherist%2Fclaude-code-mastery"
         },
         {
           "id": "open_upstream",
@@ -20289,7 +20289,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Akeskinonur%2Fclaude-code-ios-dev-guide"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Akeskinonur%2Fclaude-code-ios-dev-guide"
         },
         {
           "id": "open_upstream",
@@ -20370,7 +20370,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aferroxlabs%2Fagents-md"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aferroxlabs%2Fagents-md"
         },
         {
           "id": "open_upstream",
@@ -20452,7 +20452,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Alanggenius%2Fdify"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Alanggenius%2Fdify"
         },
         {
           "id": "open_upstream",
@@ -20534,7 +20534,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Alangchain-ai%2Flanggraph"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Alangchain-ai%2Flanggraph"
         },
         {
           "id": "open_upstream",
@@ -20616,7 +20616,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Acrewaiinc%2Fcrewai"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Acrewaiinc%2Fcrewai"
         },
         {
           "id": "open_upstream",
@@ -20698,7 +20698,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Aopenai%2Fopenai-agents-python"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Aopenai%2Fopenai-agents-python"
         },
         {
           "id": "open_upstream",
@@ -20780,7 +20780,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Apydantic%2Fpydantic-ai"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Apydantic%2Fpydantic-ai"
         },
         {
           "id": "open_upstream",
@@ -20862,7 +20862,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Agoogle%2Fadk-python"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Agoogle%2Fadk-python"
         },
         {
           "id": "open_upstream",
@@ -20944,7 +20944,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Ahuggingface%2Fsmolagents"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Ahuggingface%2Fsmolagents"
         },
         {
           "id": "open_upstream",
@@ -21028,7 +21028,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Alastmile-ai%2Fmcp-agent"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Alastmile-ai%2Fmcp-agent"
         },
         {
           "id": "open_upstream",
@@ -21110,7 +21110,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Athe-pocket%2Fpocketflow"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Athe-pocket%2Fpocketflow"
         },
         {
           "id": "open_upstream",
@@ -21192,7 +21192,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Asimstudioai%2Fsim"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Asimstudioai%2Fsim"
         },
         {
           "id": "open_upstream",
@@ -21274,7 +21274,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Afellouai%2Feko"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Afellouai%2Feko"
         },
         {
           "id": "open_upstream",
@@ -21356,7 +21356,7 @@
         {
           "id": "open_onlyharness",
           "label": "Use in SuperSkill",
-          "url": "https://superskill.sh/#/resources/github%3Adagucloud%2Fdagu"
+          "url": "https://superskill.sh/#/superskill/resources/github%3Adagucloud%2Fdagu"
         },
         {
           "id": "open_upstream",

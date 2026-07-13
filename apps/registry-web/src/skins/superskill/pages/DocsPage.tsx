@@ -13,7 +13,7 @@ export function DocsPage() {
 
       <section className="ss-doc-section" aria-labelledby="ss-doc-install">
         <h2 id="ss-doc-install">Install in your client</h2>
-        <p>The shared runtime is staged at <code>{superskillRuntime.cliPackage}@{superskillRuntime.cliVersion}</code>.</p>
+        <p>The exact shared runtime target is <code>{superskillRuntime.cliPackage}@{superskillRuntime.cliVersion}</code>.</p>
         {handoff.status === "available" ? <><CopyField label="Universal install command" value={handoff.installCommand} /><p>The installer transactionally writes the matching project-native skill root and merges one project-local <code>superskill_local</code> MCP entry into <code>.mcp.json</code> or <code>.codex/config.toml</code>. An exact capability link also writes one private pending handoff. Existing unrelated config is preserved; collisions or rollback faults fail closed. No token is stored.</p><p>Ambiguous or absent client detection fails closed; choose <code>--target</code> explicitly or use <code>--all</code> only when both adapters are intended.</p></> : <StatePanel kind="blocked" title="Install command not published" reason={handoff.reason} next="Wait until the exact npm release and official integrity are both published. Do not use @latest or an unverified substitute." />}
         <p className="ss-honest-state">Copying commands does not prove that a plugin is Installed, Detected, Loaded, or Invoked. Verify the command result in the terminal and start a new client session.</p>
       </section>

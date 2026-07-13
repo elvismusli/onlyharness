@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { onlyHarnessResourceArchiveUrl, onlyHarnessResourceUrl, type ResourceAction, type ResourceCatalog, type ResourceMirror, type SeedResource } from "./resource-catalog-shared.js";
+import { onlyHarnessResourceUrl, type ResourceAction, type ResourceCatalog, type ResourceMirror, type SeedResource } from "./resource-catalog-shared.js";
 
 type MirrorStatus = ResourceMirror["status"];
 
@@ -348,7 +348,6 @@ function actionsForMirror(resource: SeedResource, mirror: ResourceMirror): Resou
   const rest = resource.actions.filter((action) => action.id !== "open_onlyharness" && action.id !== "open_mirror" && action.id !== "open_upstream" && action.id !== "download_archive");
   const actions: ResourceAction[] = [
     { id: "open_onlyharness", label: "Use in SuperSkill", url: onlyHarnessResourceUrl(resource.id) },
-    ...(localArchiveExists(resource.id) ? [{ id: "download_archive" as const, label: "Download from SuperSkill", url: onlyHarnessResourceArchiveUrl(resource.id) }] : []),
     { id: "open_upstream", label: "Open upstream source", url: resource.canonicalUrl }
   ];
   return [...actions, ...rest];
@@ -358,18 +357,9 @@ function upstreamActions(resource: SeedResource): ResourceAction[] {
   const rest = resource.actions.filter((action) => action.id !== "open_onlyharness" && action.id !== "open_mirror" && action.id !== "open_upstream" && action.id !== "download_archive");
   const actions: ResourceAction[] = [
     { id: "open_onlyharness", label: "Use in SuperSkill", url: onlyHarnessResourceUrl(resource.id) },
-    ...(localArchiveExists(resource.id) ? [{ id: "download_archive" as const, label: "Download from SuperSkill", url: onlyHarnessResourceArchiveUrl(resource.id) }] : []),
     { id: "open_upstream", label: "Use upstream", url: resource.canonicalUrl },
   ];
   return [...actions, ...rest];
-}
-
-function localArchiveExists(id: string): boolean {
-  return existsSync(path.join(archiveRoot(), `${Buffer.from(id, "utf8").toString("base64url")}.tar.gz`));
-}
-
-function archiveRoot(): string {
-  return process.env.RESOURCE_ARCHIVE_DIR ? path.resolve(process.env.RESOURCE_ARCHIVE_DIR) : path.join(root, "data/resources/archives");
 }
 
 function isGitHubMirrorCandidate(resource: SeedResource): boolean {

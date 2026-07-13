@@ -476,7 +476,11 @@ export function activeReleaseArchivePath(resourceId: string, version?: string): 
 
 export function resourceArchivePathForRead(resourceId: string, version?: string): string | undefined {
   const release = activeRelease(resourceId, version);
-  if (!release) return version ? undefined : legacyResourceArchivePath(resourceId);
+  // Legacy mirrors are never proof that SuperSkill hosts an upstream resource.
+  // A public archive is readable only when durable release metadata owns the
+  // exact resource/version; the legacy directory is a digest-matched fallback
+  // for an already migrated release, not a catalog-wide hosting signal.
+  if (!release) return undefined;
   const imported = process.env.RESOURCE_IMPORT_READ_ENABLED === "false" ? undefined : activeReleaseArchivePath(resourceId, version);
   if (imported) return imported;
   const legacy = legacyResourceArchivePath(resourceId);

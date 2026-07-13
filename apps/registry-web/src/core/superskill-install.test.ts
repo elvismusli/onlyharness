@@ -4,7 +4,7 @@ import { superskillRuntime } from "../generated/superskill-runtime";
 import { superskillInstallHandoff } from "./superskill-install";
 
 test("staged unpublished runtime exposes no URL or copyable command", () => {
-  const handoff = superskillInstallHandoff();
+  const handoff = superskillInstallHandoff(undefined, { ...superskillRuntime, cliReleaseStatus: "unpublished", cliIntegrity: null });
   expect(handoff.status).toBe("unavailable");
   if (handoff.status !== "unavailable") throw new Error("unpublished runtime must be unavailable");
   expect(handoff.installUrl).toBeNull();
@@ -20,8 +20,8 @@ test("published runtime without official integrity remains unavailable", () => {
   expect(handoff.installCommand).toBeNull();
 });
 
-test("published integrity-pinned runtime exposes one exact command without latest or script piping", () => {
-  const handoff = superskillInstallHandoff(undefined, { ...superskillRuntime, cliReleaseStatus: "published", cliIntegrity: "sha512-YWJj" });
+test("current published integrity-pinned runtime exposes one exact command without latest or script piping", () => {
+  const handoff = superskillInstallHandoff();
   expect(handoff.status).toBe("available");
   if (handoff.status !== "available") throw new Error("published fixture must be available");
   expect(handoff.installUrl).toBe("https://superskill.sh/api/superskill/install");
