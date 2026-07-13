@@ -105,3 +105,35 @@ test("published resource page keeps unscanned packages visibly outside managed a
   expect(screen.getByText(/not a reviewed managed capability/i)).toBeTruthy();
   expect(screen.getByRole("link", { name: "Download current archive" })).toHaveAttribute("href", "https://superskill.sh/api/archive");
 });
+
+test("open-only resource page never claims a hosted archive", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    id: "github:obra/superpowers",
+    title: "superpowers",
+    summary: "Upstream skill collection.",
+    resourceType: "skill",
+    sourcePlatform: "github",
+    canonicalUrl: "https://superskill.sh/#/superskill/resources/github%3Aobra%2Fsuperpowers",
+    upstreamId: "obra/superpowers",
+    upstreamOwner: "obra",
+    upstreamRepo: "superpowers",
+    licenseStatus: "unknown",
+    sourceCheckedAt: "2026-07-14T00:00:00Z",
+    sourceCheckStatus: "active",
+    lastSeenAt: "2026-07-14T00:00:00Z",
+    installability: "open_only",
+    tags: ["skill"],
+    worksWith: ["claude-code", "codex"],
+    upstreamPopularity: { sourceLabel: "GitHub" },
+    onlyHarnessSignals: { stars: 0, opens: 0, imports: 0, installs: 0, threads: 0, passedGates: 0 },
+    popularityScore: 0,
+    trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+    actions: [{ id: "open_upstream", label: "Open upstream", url: "https://github.com/obra/superpowers" }]
+  }), { status: 200 })));
+  render(<ResourcePage resourceId="github:obra/superpowers" />);
+  expect(await screen.findByRole("heading", { name: "superpowers" })).toBeTruthy();
+  expect(screen.getByText(/has no SuperSkill-hosted archive/i)).toBeTruthy();
+  expect(screen.queryByText(/public and downloadable/i)).toBeNull();
+  expect(screen.queryByRole("link", { name: "Download current archive" })).toBeNull();
+  expect(screen.getByRole("link", { name: "Open upstream source" })).toHaveAttribute("href", "https://github.com/obra/superpowers");
+});
