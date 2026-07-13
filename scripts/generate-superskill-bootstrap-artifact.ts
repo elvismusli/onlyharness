@@ -24,17 +24,40 @@ export const UNIVERSAL_SUPERSKILL_FILES = ${JSON.stringify(files, null, 2)} as c
 export const UNIVERSAL_SUPERSKILL_ARTIFACT_DIGEST = ${JSON.stringify(artifactDigest)} as const;
 `;
 const adapterContract = (client: "codex" | "claude-code") => {
-  const base = {
-    client,
-    path: client === "codex" ? ".codex/config.toml" : ".mcp.json",
-    serverName: "superskill_local",
-    command: "npx",
-    args: ["--yes", `${runtime.cliPackage}@${runtime.cliVersion}`, "mcp", "superskill"],
-    tokenStored: false
-  };
   return client === "codex"
-    ? { ...base, envVars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"], approvalMode: "prompt" }
-    : { ...base, credentialTransport: "inherited-environment" };
+    ? {
+      client,
+      path: ".codex/config.toml",
+      mcp_servers: {
+        superskill: {
+          url: "https://superskill.sh/mcp",
+          default_tools_approval_mode: "prompt"
+        },
+        superskill_local: {
+          command: "npx",
+          args: ["--yes", `${runtime.cliPackage}@${runtime.cliVersion}`, "mcp", "superskill"],
+          env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
+          default_tools_approval_mode: "prompt"
+        }
+      },
+      tokenStored: false
+    }
+    : {
+      client,
+      path: ".mcp.json",
+      mcpServers: {
+        superskill: {
+          type: "http",
+          url: "https://superskill.sh/mcp"
+        },
+        superskill_local: {
+          command: "npx",
+          args: ["--yes", `${runtime.cliPackage}@${runtime.cliVersion}`, "mcp", "superskill"]
+        }
+      },
+      credentialTransport: "inherited-environment",
+      tokenStored: false
+    };
 };
 const adapter = (client: "codex" | "claude-code") => ({
   path: client === "codex" ? ".codex/config.toml" : ".mcp.json",

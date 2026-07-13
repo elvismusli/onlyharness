@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, sy
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { parse as parseToml } from "smol-toml";
 import {
   bootstrapManifestDigest,
   canonicalInstallUrl,
@@ -10,6 +11,7 @@ import {
   fetchBootstrapManifest,
   installUniversalSkill,
   resolveInstallClients,
+  SUPERSKILL_PUBLIC_MCP_URL,
   universalSkillArtifactDigest,
   validateBootstrapManifest,
   verifyOfficialPackageIntegrity,
@@ -50,6 +52,26 @@ for (const client of ["codex", "claude-code"] as const) {
       assert.equal(first.activationPerformed, false);
       assert.equal(first.explicitActivationConsentRequired, true);
       assert.match(readFileSync(path.join(project, target, "SKILL.md"), "utf8"), /separate explicit activation consent/);
+      if (client === "claude-code") {
+        const config = JSON.parse(readFileSync(path.join(project, ".mcp.json"), "utf8"));
+        assert.deepEqual(config.mcpServers.superskill, { type: "http", url: SUPERSKILL_PUBLIC_MCP_URL });
+        assert.deepEqual(config.mcpServers.superskill_local, {
+          command: "npx",
+          args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"]
+        });
+      } else {
+        const config = parseToml(readFileSync(path.join(project, ".codex/config.toml"), "utf8")) as Record<string, any>;
+        assert.deepEqual(config.mcp_servers.superskill, {
+          url: SUPERSKILL_PUBLIC_MCP_URL,
+          default_tools_approval_mode: "prompt"
+        });
+        assert.deepEqual(config.mcp_servers.superskill_local, {
+          command: "npx",
+          args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
+          env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
+          default_tools_approval_mode: "prompt"
+        });
+      }
       const handoff = JSON.parse(readFileSync(path.join(project, ".onlyharness/superskill-handoff.json"), "utf8"));
       assert.deepEqual(handoff.capability, capability);
       assert.equal(handoff.status, "pending_explicit_activation_consent");
@@ -96,10 +118,13 @@ test("installer preserves unrelated MCP config, rejects collisions before writes
     const claude = JSON.parse(readFileSync(path.join(project, ".mcp.json"), "utf8"));
     assert.equal(claude.unrelated, true);
     assert.deepEqual(claude.mcpServers.existing, { command: "safe-tool", args: ["serve"] });
-    assert.deepEqual(claude.mcpServers.superskill_local, { command: "npx", args: ["--yes", "onlyharness@0.2.15", "mcp", "superskill"] });
+    assert.deepEqual(claude.mcpServers.superskill, { type: "http", url: SUPERSKILL_PUBLIC_MCP_URL });
+    assert.deepEqual(claude.mcpServers.superskill_local, { command: "npx", args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"] });
     const codex = readFileSync(path.join(project, ".codex/config.toml"), "utf8");
     assert.match(codex, /model = "gpt-5"/);
     assert.match(codex, /\[mcp_servers\.existing\]/);
+    assert.match(codex, /\[mcp_servers\.superskill\]/);
+    assert.match(codex, /url = "https:\/\/superskill\.sh\/mcp"/);
     assert.match(codex, /\[mcp_servers\.superskill_local\]/);
     assert.equal(codex.includes("fixture-secret"), false);
     assert.deepEqual(installed.mcpConfigs.sort(), [".codex/config.toml", ".mcp.json"]);
@@ -141,6 +166,139 @@ test("installer preserves unrelated MCP config, rejects collisions before writes
     rmSync(rollback, { recursive: true, force: true });
   }
 });
+
+test("installer repairs either missing canonical MCP entry and then requires both for idempotency", () => {
+  const claudeProject = mkdtempSync(path.join(os.tmpdir(), "superskill-bootstrap-claude-partial-"));
+  const codexProject = mkdtempSync(path.join(os.tmpdir(), "superskill-bootstrap-codex-partial-"));
+  try {
+    writeFileSync(path.join(claudeProject, ".mcp.json"), `${JSON.stringify({
+      unrelated: "preserved",
+      mcpServers: { superskill: { type: "http", url: SUPERSKILL_PUBLIC_MCP_URL } }
+    }, null, 2)}\n`);
+    const claudeInstalled = installUniversalSkill({
+      verifiedBootstrap: verified(validManifest(null)),
+      clients: ["claude-code"],
+      projectDir: claudeProject
+    });
+    assert.equal(claudeInstalled.status, "installed");
+    const claude = JSON.parse(readFileSync(path.join(claudeProject, ".mcp.json"), "utf8"));
+    assert.equal(claude.unrelated, "preserved");
+    assert.deepEqual(claude.mcpServers.superskill, { type: "http", url: SUPERSKILL_PUBLIC_MCP_URL });
+    assert.deepEqual(claude.mcpServers.superskill_local, {
+      command: "npx",
+      args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"]
+    });
+    assert.equal(installUniversalSkill({ verifiedBootstrap: verified(validManifest(null)), clients: ["claude-code"], projectDir: claudeProject }).status, "unchanged");
+
+    mkdirSync(path.join(codexProject, ".codex"), { recursive: true });
+    writeFileSync(path.join(codexProject, ".codex/config.toml"), [
+      'model = "preserved"',
+      "",
+      "[mcp_servers.superskill_local]",
+      'command = "npx"',
+      `args = ["--yes", "onlyharness@${SUPERSKILL_RUNTIME.cliVersion}", "mcp", "superskill"]`,
+      'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
+      'default_tools_approval_mode = "prompt"',
+      ""
+    ].join("\n"));
+    const codexInstalled = installUniversalSkill({
+      verifiedBootstrap: verified(validManifest(null)),
+      clients: ["codex"],
+      projectDir: codexProject
+    });
+    assert.equal(codexInstalled.status, "installed");
+    const codex = parseToml(readFileSync(path.join(codexProject, ".codex/config.toml"), "utf8")) as Record<string, any>;
+    assert.equal(codex.model, "preserved");
+    assert.deepEqual(codex.mcp_servers.superskill, {
+      url: SUPERSKILL_PUBLIC_MCP_URL,
+      default_tools_approval_mode: "prompt"
+    });
+    assert.deepEqual(codex.mcp_servers.superskill_local, {
+      command: "npx",
+      args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
+      env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
+      default_tools_approval_mode: "prompt"
+    });
+    assert.equal(installUniversalSkill({ verifiedBootstrap: verified(validManifest(null)), clients: ["codex"], projectDir: codexProject }).status, "unchanged");
+  } finally {
+    rmSync(claudeProject, { recursive: true, force: true });
+    rmSync(codexProject, { recursive: true, force: true });
+  }
+});
+
+for (const fixture of [
+  {
+    name: "Claude public",
+    client: "claude-code" as const,
+    write(project: string) {
+      writeFileSync(path.join(project, ".mcp.json"), JSON.stringify({ mcpServers: {
+        superskill: { type: "http", url: "https://attacker.invalid/mcp" },
+        superskill_local: { command: "npx", args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"] }
+      } }));
+    }
+  },
+  {
+    name: "Claude local",
+    client: "claude-code" as const,
+    write(project: string) {
+      writeFileSync(path.join(project, ".mcp.json"), JSON.stringify({ mcpServers: {
+        superskill: { type: "http", url: SUPERSKILL_PUBLIC_MCP_URL },
+        superskill_local: { command: "attacker" }
+      } }));
+    }
+  },
+  {
+    name: "Codex public",
+    client: "codex" as const,
+    write(project: string) {
+      mkdirSync(path.join(project, ".codex"), { recursive: true });
+      writeFileSync(path.join(project, ".codex/config.toml"), [
+        "[mcp_servers.superskill]",
+        'url = "https://attacker.invalid/mcp"',
+        'default_tools_approval_mode = "prompt"',
+        "",
+        "[mcp_servers.superskill_local]",
+        'command = "npx"',
+        `args = ["--yes", "onlyharness@${SUPERSKILL_RUNTIME.cliVersion}", "mcp", "superskill"]`,
+        'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
+        'default_tools_approval_mode = "prompt"',
+        ""
+      ].join("\n"));
+    }
+  },
+  {
+    name: "Codex local",
+    client: "codex" as const,
+    write(project: string) {
+      mkdirSync(path.join(project, ".codex"), { recursive: true });
+      writeFileSync(path.join(project, ".codex/config.toml"), [
+        "[mcp_servers.superskill]",
+        `url = ${JSON.stringify(SUPERSKILL_PUBLIC_MCP_URL)}`,
+        'default_tools_approval_mode = "prompt"',
+        "",
+        "[mcp_servers.superskill_local]",
+        'command = "attacker"',
+        ""
+      ].join("\n"));
+    }
+  }
+]) {
+  test(`${fixture.name} MCP collision fails before any installer write`, () => {
+    const project = mkdtempSync(path.join(os.tmpdir(), "superskill-bootstrap-mcp-collision-"));
+    try {
+      fixture.write(project);
+      assert.throws(
+        () => installUniversalSkill({ verifiedBootstrap: verified(validManifest(capability)), clients: [fixture.client], projectDir: project }),
+        hasReason("TARGET_COLLISION")
+      );
+      assert.equal(exists(path.join(project, ".agents")), false);
+      assert.equal(exists(path.join(project, ".claude")), false);
+      assert.equal(exists(path.join(project, ".onlyharness")), false);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+}
 
 test("bad manifest digest and offline bootstrap fail before any state write", async () => {
   const good = validManifest(capability);

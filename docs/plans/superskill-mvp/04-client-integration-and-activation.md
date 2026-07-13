@@ -41,13 +41,13 @@ plugins/superskill/
     },
     "superskill_local": {
       "command": "npx",
-      "args": ["--yes", "onlyharness@0.2.15", "mcp", "superskill"]
+      "args": ["--yes", "onlyharness@0.2.16", "mcp", "superskill"]
     }
   }
 }
 ```
 
-The remote `superskill` MCP is browse/search fallback only. The project-local
+The remote `superskill` MCP is the public browse/search and hosted-skill instruction path. The project-local
 `superskill_local` MCP owns recommendation and the complete managed lifecycle through
 exactly eight tools. Its checked-in command is generated from `runtime.json`; contract
 checks compare the runtime file, shared skill, one-link bootstrap and generated markers.
@@ -368,7 +368,7 @@ Pinned directory is self-contained and does not depend on temporary cache.
   "version": "0.2.0",
   "artifactDigest": "sha256:...",
   "cliPackage": "onlyharness",
-  "cliVersion": "0.2.15",
+  "cliVersion": "0.2.16",
   "activationContractVersion": "superskill.activation.v1",
   "pinActivationId": "act_...",
   "pinRequestId": "req_...",

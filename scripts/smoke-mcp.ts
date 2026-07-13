@@ -59,7 +59,7 @@ try {
     capabilities: {},
     clientInfo: { name: "superskill-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.2.15") {
+  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.2.16") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 
@@ -525,7 +525,12 @@ async function smokeDurableResourcePublish() {
     const v1ArchiveUrl = `${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/releases/0.1.0/archive`;
     const before = await fetch(v1ArchiveUrl);
     const beforeBytes = Buffer.from(await before.arrayBuffer());
-    if (!before.ok || sha256Bytes(beforeBytes) !== first.body.artifactDigest) throw new Error("Published archive digest did not match response");
+    if (!before.ok || sha256Bytes(beforeBytes) !== first.body.artifactDigest
+      || before.headers.get("x-onlyharness-resource-version") !== "0.1.0"
+      || before.headers.get("x-superskill-artifact-sha256") !== first.body.artifactDigest
+      || before.headers.get("etag") !== `"sha256:${first.body.artifactDigest}"`) {
+      throw new Error("Published archive digest metadata did not match response");
+    }
 
     const v2Body = { ...body, version: "0.2.0", idempotencyKey: "durable-resource-proof-v2-key", files: [{ path: "README.md", content: "# durable-resource-proof v2\n\nImmutable second release.\n" }] };
     const second = await httpPublish(v2Body, "Bearer local:durable-owner", baseUrl) as { status: number; body: { artifactDigest?: string; version?: string; archiveUrl?: string } };
@@ -538,7 +543,11 @@ async function smokeDurableResourcePublish() {
       throw new Error(`Catalog did not project latest-only v2: ${JSON.stringify(catalogMatches)}`);
     }
     const latest = await fetch(`${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/archive`);
-    if (!latest.ok || sha256Bytes(Buffer.from(await latest.arrayBuffer())) !== second.body.artifactDigest) throw new Error("Latest compatibility route did not resolve v2");
+    if (!latest.ok || sha256Bytes(Buffer.from(await latest.arrayBuffer())) !== second.body.artifactDigest
+      || latest.headers.get("x-onlyharness-resource-version") !== "0.2.0"
+      || latest.headers.get("x-superskill-artifact-sha256") !== second.body.artifactDigest) {
+      throw new Error("Latest compatibility route did not resolve v2 with exact digest metadata");
+    }
 
     child.kill("SIGTERM");
     await new Promise<void>((resolve) => child.once("exit", () => resolve()));

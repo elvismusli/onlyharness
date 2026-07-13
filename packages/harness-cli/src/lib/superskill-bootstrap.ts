@@ -29,6 +29,7 @@ import { CAPABILITY_ID_RE, DIGEST_RE, SUPERSKILL_RUNTIME, SuperSkillCliError } f
 export const SUPERSKILL_INSTALL_ORIGIN = "https://superskill.sh";
 export const SUPERSKILL_INSTALL_PATH = "/api/superskill/install";
 export const SUPERSKILL_PLUGIN_VERSION = "0.2.0";
+export const SUPERSKILL_PUBLIC_MCP_URL = "https://superskill.sh/mcp";
 
 export { UNIVERSAL_SUPERSKILL_FILES };
 
@@ -93,17 +94,40 @@ export function bootstrapManifestDigest(manifest: Omit<SuperSkillBootstrapManife
 }
 
 export function clientAdapterContractDigest(client: SuperSkillClient): string {
-  const base = {
-    client,
-    path: client === "codex" ? ".codex/config.toml" : ".mcp.json",
-    serverName: "superskill_local",
-    command: "npx",
-    args: ["--yes", `${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
-    tokenStored: false
-  };
   const contract = client === "codex"
-    ? { ...base, envVars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"], approvalMode: "prompt" }
-    : { ...base, credentialTransport: "inherited-environment" };
+    ? {
+      client,
+      path: ".codex/config.toml",
+      mcp_servers: {
+        superskill: {
+          url: SUPERSKILL_PUBLIC_MCP_URL,
+          default_tools_approval_mode: "prompt"
+        },
+        superskill_local: {
+          command: "npx",
+          args: ["--yes", `${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
+          env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
+          default_tools_approval_mode: "prompt"
+        }
+      },
+      tokenStored: false
+    }
+    : {
+      client,
+      path: ".mcp.json",
+      mcpServers: {
+        superskill: {
+          type: "http",
+          url: SUPERSKILL_PUBLIC_MCP_URL
+        },
+        superskill_local: {
+          command: "npx",
+          args: ["--yes", `${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"]
+        }
+      },
+      credentialTransport: "inherited-environment",
+      tokenStored: false
+    };
   return `sha256:${createHash("sha256").update(canonicalJson(contract), "utf8").digest("hex")}`;
 }
 
@@ -403,6 +427,15 @@ type McpConfigPlan = {
 type InstalledConfig = { plan: McpConfigPlan; backup?: string };
 
 const LOCAL_MCP_ARGS = ["--yes", `${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"] as const;
+const CLAUDE_PUBLIC_MCP = { type: "http", url: SUPERSKILL_PUBLIC_MCP_URL } as const;
+const CLAUDE_LOCAL_MCP = { command: "npx", args: [...LOCAL_MCP_ARGS] } as const;
+const CODEX_PUBLIC_MCP = { url: SUPERSKILL_PUBLIC_MCP_URL, default_tools_approval_mode: "prompt" } as const;
+const CODEX_LOCAL_MCP = {
+  command: "npx",
+  args: [...LOCAL_MCP_ARGS],
+  env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
+  default_tools_approval_mode: "prompt"
+} as const;
 
 function preflightMcpConfig(projectRoot: string, client: SuperSkillClient): McpConfigPlan {
   return client === "codex" ? preflightCodexMcpConfig(projectRoot) : preflightClaudeMcpConfig(projectRoot);
@@ -426,12 +459,19 @@ function preflightClaudeMcpConfig(projectRoot: string): McpConfigPlan {
   const currentServers = parsed.mcpServers;
   if (currentServers !== undefined && !isPlainRecord(currentServers)) throw targetCollision("Existing Claude project MCP servers config is invalid.");
   const servers = (currentServers ?? {}) as Record<string, unknown>;
-  const expected = { command: "npx", args: [...LOCAL_MCP_ARGS] };
-  if (servers.superskill_local !== undefined) {
-    if (canonicalJson(servers.superskill_local) !== canonicalJson(expected)) throw targetCollision("Claude project already defines a different superskill_local MCP server.");
+  if (servers.superskill !== undefined && canonicalJson(servers.superskill) !== canonicalJson(CLAUDE_PUBLIC_MCP)) {
+    throw targetCollision("Claude project already defines a different superskill MCP server.");
+  }
+  if (servers.superskill_local !== undefined && canonicalJson(servers.superskill_local) !== canonicalJson(CLAUDE_LOCAL_MCP)) {
+    throw targetCollision("Claude project already defines a different superskill_local MCP server.");
+  }
+  if (servers.superskill !== undefined && servers.superskill_local !== undefined) {
     return { client: "claude-code", absolute, relative, state: "unchanged", original, content: original ?? "" };
   }
-  const content = `${JSON.stringify({ ...parsed, mcpServers: { ...servers, superskill_local: expected } }, null, 2)}\n`;
+  const content = `${JSON.stringify({
+    ...parsed,
+    mcpServers: { ...servers, superskill: CLAUDE_PUBLIC_MCP, superskill_local: CLAUDE_LOCAL_MCP }
+  }, null, 2)}\n`;
   return { client: "claude-code", absolute, relative, state: "write", original, content };
 }
 
@@ -452,26 +492,36 @@ function preflightCodexMcpConfig(projectRoot: string): McpConfigPlan {
   }
   const mcpServers = parsed.mcp_servers;
   if (mcpServers !== undefined && !isPlainRecord(mcpServers)) throw targetCollision("Existing Codex MCP servers config is invalid.");
-  const existing = isPlainRecord(mcpServers) ? mcpServers.superskill_local : undefined;
-  const expected = {
-    command: "npx",
-    args: [...LOCAL_MCP_ARGS],
-    env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
-    default_tools_approval_mode: "prompt"
-  };
-  if (existing !== undefined) {
-    if (canonicalJson(existing) !== canonicalJson(expected)) throw targetCollision("Codex project already defines a different superskill_local MCP server.");
+  const publicExisting = isPlainRecord(mcpServers) ? mcpServers.superskill : undefined;
+  const localExisting = isPlainRecord(mcpServers) ? mcpServers.superskill_local : undefined;
+  if (publicExisting !== undefined && canonicalJson(publicExisting) !== canonicalJson(CODEX_PUBLIC_MCP)) {
+    throw targetCollision("Codex project already defines a different superskill MCP server.");
+  }
+  if (localExisting !== undefined && canonicalJson(localExisting) !== canonicalJson(CODEX_LOCAL_MCP)) {
+    throw targetCollision("Codex project already defines a different superskill_local MCP server.");
+  }
+  if (publicExisting !== undefined && localExisting !== undefined) {
     return { client: "codex", absolute, relative, state: "unchanged", original, content: original ?? "" };
   }
-  const block = [
-    "[mcp_servers.superskill_local]",
-    'command = "npx"',
-    `args = [${LOCAL_MCP_ARGS.map((item) => JSON.stringify(item)).join(", ")}]`,
-    'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
-    'default_tools_approval_mode = "prompt"',
-    ""
-  ].join("\n");
-  const content = original && original.trim() ? `${original.trimEnd()}\n\n${block}` : block;
+  const blocks: string[] = [];
+  if (publicExisting === undefined) {
+    blocks.push([
+      "[mcp_servers.superskill]",
+      `url = ${JSON.stringify(SUPERSKILL_PUBLIC_MCP_URL)}`,
+      'default_tools_approval_mode = "prompt"'
+    ].join("\n"));
+  }
+  if (localExisting === undefined) {
+    blocks.push([
+      "[mcp_servers.superskill_local]",
+      'command = "npx"',
+      `args = [${LOCAL_MCP_ARGS.map((item) => JSON.stringify(item)).join(", ")}]`,
+      'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
+      'default_tools_approval_mode = "prompt"'
+    ].join("\n"));
+  }
+  const addition = `${blocks.join("\n\n")}\n`;
+  const content = original && original.trim() ? `${original.trimEnd()}\n\n${addition}` : addition;
   try { parseToml(content); } catch { throw targetCollision("Codex project MCP config could not be merged safely."); }
   return { client: "codex", absolute, relative, state: "write", original, content };
 }

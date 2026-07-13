@@ -29,7 +29,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Managed recommendation, exact release/archive, hosted proof publish, and managed event routes use the same confirmed Supabase user Bearer plus an active `superskill:managed` server grant. Headless clients inherit `HH_TOKEN` only through an explicit environment allowlist; never put it in a manifest, tool argument, URL, log, analytics event, or localStorage. Legacy tester-specific `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility and is public-GO ineligible.
 - The checked-in managed catalog currently has 12 exact candidates and zero approved releases. The approved lane and managed recommendation remain empty/no-match until real Claude Code, Codex, and human review evidence exists; the selected shelf is discovery-only.
 - `onlyharness@0.2.14` is published but known-bad for one-link because its exact-version npm metadata request is rejected.
-- Current public `onlyharness@0.2.15` fixes exact-version npm integrity verification, is pinned to the official npm integrity, and clean-installs from the production one-link into empty Codex and Claude Code projects. Its published local MCP exposes exactly the eight documented lifecycle tools. Clean new-client marketplace proof remains a rollout gate; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
+- Source stages `onlyharness@0.2.16` for the public browse MCP plus exact local lifecycle MCP and explicit-consent hosted skill installation into native Codex/Claude skill roots. It remains unavailable until that exact npm release and official integrity are pinned. `0.2.15` is the previous clean one-link release; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
 - Approved current releases use one canonical URL: `https://superskill.sh/api/superskill/install/{capability-id}/{version}/{sha256-hex}`. It returns a signed-by-digest JSON contract, not executable script. Local install selects exactly one detected Codex/Claude client or fails closed; installation never implies activation.
 - SuperSkill Daylight is the locked human-facing surface on `superskill.sh` and `www.superskill.sh`; legacy skins are compatibility-only and cannot be selected on those hosts.
 
@@ -136,7 +136,7 @@ End-to-end example:
 
 Endpoint: https://superskill.sh/mcp
 
-Transport: Streamable HTTP. Server version: `0.2.15`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+Transport: Streamable HTTP. Server version: `0.2.16`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
 
 Official compatibility MCP Registry name: `com.onlyharness/registry`. The public `server.json` is remote-only and points at the canonical SuperSkill Streamable HTTP endpoint. The old coordinate is retained for installed-client compatibility.
 
@@ -148,12 +148,12 @@ Tools:
 - pull_harness: return archive files; paid harnesses return payment requirements unless Bearer token is entitled.
 - search_resources: search the mixed source-aware resource catalog.
 - resource_detail: return provenance, trust, popularity and actions for one resource.
-- resource_use_instructions: return safe use/open/install guidance; hosted packages expose OnlyHarness archive URLs, upstream-only resources stay open-only.
+- resource_use_instructions: return safe use/open/install guidance; hosted skills expose an exact-version native install command that requires explicit unreviewed consent when applicable, while upstream-only resources stay open-only.
 - search_docs: search this llms.txt and agent guidance.
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
 - publish_resource_package: confirmed-user + managed-scope hosted package publish; requires semantic `version` and `idempotencyKey`, is idempotent for the same exact payload, uses `VALIDATION_FAILED` for all pre-mutation package validation failures across HTTP and MCP, and currently returns `PUBLISH_DISABLED` during storage containment; not a Verified harness badge.
 
-This ten-tool inventory is exact for remote MCP v0.2.15. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `PUBLISH_DISABLED`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
+This ten-tool inventory is exact for remote MCP v0.2.16. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `PUBLISH_DISABLED`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
 
 Initialize example:
 

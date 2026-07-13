@@ -6,7 +6,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
-export const MCP_SERVER_VERSION = "0.2.15";
+export const MCP_SERVER_VERSION = "0.2.16";
 export const MCP_TOOL_NAMES = [
   "search_harnesses",
   "harness_detail",
@@ -226,7 +226,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "resource_use_instructions",
     {
       title: "Resource use instructions",
-      description: "Return the best safe next action for a mixed resource. Hosted packages expose SuperSkill archive URLs; upstream-only resources stay open-only.",
+      description: "Return the best safe next action for a mixed resource. Hosted skills expose explicit-consent native client install commands; upstream-only resources stay open-only.",
       annotations: readOnlyToolAnnotations,
       inputSchema: resourceIdInputSchema.shape
     },
@@ -345,7 +345,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
   return server;
 }
 
-function resourceInstructions(resource: resources.Resource): string[] {
+export function resourceInstructions(resource: resources.Resource): string[] {
   const lines: string[] = [];
   const install = resource.actions.find((action) => action.id === "install");
   const onlyHarness = resource.actions.find((action) => action.id === "open_onlyharness");
@@ -369,6 +369,13 @@ function resourceInstructions(resource: resources.Resource): string[] {
   }
   if (archive && "url" in archive) {
     lines.push(`Download hosted resource archive from SuperSkill: ${archive.url}`);
+  }
+  if (archive && resource.resourceType === "skill" && /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(resource.id)) {
+    const consentFlag = resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed";
+    lines.push("This hosted skill is a browse-catalog install, not a managed approval or activation.");
+    if (resource.trust.securityScan !== "pass") lines.push("Show the unreviewed/not-scanned trust state and ask explicit install consent before using --allow-unreviewed.");
+    lines.push(`Install for Codex after consent: npx --yes onlyharness@0.2.16 resources install ${resource.id} --target codex${consentFlag} --json`);
+    lines.push(`Install for Claude Code after consent: npx --yes onlyharness@0.2.16 resources install ${resource.id} --target claude-code${consentFlag} --json`);
   }
   if (open && "url" in open) {
     lines.push(`Upstream source: ${open.url}`);

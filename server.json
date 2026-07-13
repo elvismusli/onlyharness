@@ -8,7 +8,7 @@
     "url": "https://github.com/elvismusli/onlyharness",
     "source": "github"
   },
-  "version": "0.2.15",
+  "version": "0.2.16",
   "remotes": [
     {
       "type": "streamable-http",

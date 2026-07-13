@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mcpCall, mcpResult, mcpToolCallPreflight } from "../src/mcp.js";
+import { mcpCall, mcpResult, mcpToolCallPreflight, resourceInstructions } from "../src/mcp.js";
+import type { Resource } from "../src/resources.js";
 
 test("MCP logical not-found result is a structured tool error", () => {
   const result = mcpResult({ error: "Resource not found", status: 404, id: "missing" });
@@ -76,4 +77,23 @@ test("MCP transport preflight returns stable validation and unknown-tool errors"
   assert.equal(malformedRead?.isError, true);
   assert.equal(malformedRead?.structuredContent.code, "VALIDATION_FAILED");
   assert.equal(malformedRead?.structuredContent.status, 422);
+});
+
+test("hosted skill instructions route explicit consent to the native client root", () => {
+  const resource = {
+    id: "onlyharness:packages/clean-user-skill",
+    resourceType: "skill",
+    installability: "importable",
+    trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
+    licenseStatus: "unknown",
+    actions: [
+      { id: "open_onlyharness", label: "Use in SuperSkill", url: "https://superskill.sh/#/superskill/resources/onlyharness%3Apackages%2Fclean-user-skill" },
+      { id: "download_archive", label: "Download archive", url: "https://superskill.sh/api/resources/onlyharness%3Apackages%2Fclean-user-skill/releases/0.1.1/archive" }
+    ]
+  } as Resource;
+  const instructions = resourceInstructions(resource).join("\n");
+  assert.match(instructions, /not a managed approval/);
+  assert.match(instructions, /explicit install consent/);
+  assert.match(instructions, /onlyharness@0\.2\.16 resources install .* --target codex --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.2\.16 resources install .* --target claude-code --allow-unreviewed --json/);
 });

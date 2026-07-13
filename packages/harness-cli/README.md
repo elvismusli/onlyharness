@@ -36,7 +36,7 @@ Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path
 # Sign in through a one-time code approved on the SuperSkill Account page.
 # stdout is one export command; progress and the verification code stay on stderr.
 eval "$(hh auth login --shell --client codex)"
-# Recovery diagnostics only; the installed skill uses superskill_local MCP tools.
+# Recovery diagnostics only; managed lifecycle uses superskill_local MCP tools.
 hh activation doctor --target codex --live --json
 ```
 
@@ -47,10 +47,18 @@ Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex
 Universal bootstrap (available only after the exact CLI release and official npm integrity are published):
 
 ```bash
-npx --yes onlyharness@0.2.15 superskill install https://superskill.sh/api/superskill/install --auto
+npx --yes onlyharness@0.2.16 superskill install https://superskill.sh/api/superskill/install --auto
 ```
 
-Approved capability pages bind the same command to one immutable URL containing capability id, version and sha256. Exactly one detected client transactionally writes its project-native shared skill and merges the `superskill_local` project MCP entry into `.codex/config.toml` or `.mcp.json`; an exact link also records a private pending handoff. Existing unrelated config is preserved, conflicting entries fail before writes, rollback restores byte-exact originals, and no token is stored. Both/none fail with `CLIENT_AMBIGUOUS`/`CLIENT_NOT_DETECTED`. Use `--target codex|claude-code`, explicit `--all`, or `--dry-run`. Nothing is activated and routing/activation consent remain separate.
+Approved capability pages bind the same command to one immutable URL containing capability id, version and sha256. Exactly one detected client transactionally writes its project-native shared skill and merges both the public `superskill` browse MCP and exact-version `superskill_local` lifecycle MCP into `.codex/config.toml` or `.mcp.json`; an exact link also records a private pending handoff. Existing unrelated config is preserved, conflicting entries fail before writes, rollback restores byte-exact originals, and no token is stored. Both/none fail with `CLIENT_AMBIGUOUS`/`CLIENT_NOT_DETECTED`. Use `--target codex|claude-code`, explicit `--all`, or `--dry-run`. Nothing is activated and routing/activation consent remain separate.
+
+The public catalog is a separate explicit-consent path. Hosted resources with `resourceType: skill` can be installed into the native project skill root after reviewing provenance and scan state:
+
+```bash
+npx --yes onlyharness@0.2.16 resources install onlyharness:packages/example-skill --target codex --allow-unreviewed --json
+```
+
+Codex writes `.agents/skills/<name>` and Claude Code writes `.claude/skills/<name>`. The CLI downloads one exact release, verifies the server-pinned SHA-256 digest, validates safe package paths and root `SKILL.md`, writes an ownership marker atomically, and records the install event only after files exist. `--allow-unreviewed` is required for hosted skills without a passing scan; it is explicit acceptance of the shown risk, never a Verified or managed-approval claim. Open-only resources, failed scans, non-skill packages, symlinks, cross-origin archives and destination collisions fail closed.
 
 After starting a fresh trusted client session, use the eight `superskill_local` MCP tools. `recommend` first discloses or explicitly dismisses a pending exact handoff; otherwise it routes the consented privacy-safe task summary. `activation_start` acknowledges an exact handoff only after `ready`, and the remaining mark/finish/keep/remove tools own lifecycle state. The CLI `superskill handoff` command is diagnostic compatibility only and must not replace the MCP lifecycle. `HH_SUPERSKILL_TOKEN` remains legacy internal-alpha compatibility only.
 

@@ -21,6 +21,8 @@ import { registerAuthCommands } from "./commands/auth.js";
 import { registerRecommendCommand } from "./commands/recommend.js";
 import { registerSuperSkillInstallCommand } from "./commands/superskill-install.js";
 import { registerSuperSkillMcpCommand } from "./mcp/superskill-server.js";
+import { installHostedCatalogSkill } from "./lib/resource-skill-install.js";
+import { SuperSkillCliError } from "./lib/superskill-types.js";
 import { scanInventory as scanManagedInventory } from "./lib/client-adapters.js";
 
 type OutputFormat = "json" | "markdown" | "text";
@@ -629,7 +631,7 @@ const program = new Command();
 program
   .name("hh")
   .description("SuperSkill CLI compatibility runtime — find, inspect, install and publish reusable AI-agent capabilities (superskill.sh)")
-  .version("0.2.15");
+  .version("0.2.16");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -711,6 +713,48 @@ resourcesCommand.command("open")
     const opened = openUrl(url);
     if (options.json) return writeStdout({ id: resource.id, url, opened });
     writeStdout(opened ? `Opened ${url}\n` : `${url}\n`);
+  });
+
+resourcesCommand.command("install")
+  .description("install an explicitly selected hosted catalog skill into the native client skill root")
+  .argument("<id>", "exact hosted skill ID, e.g. onlyharness:packages/my-skill")
+  .requiredOption("--target <target>", "codex|claude-code")
+  .option("--project-dir <path>", "project root", ".")
+  .option("--allow-unreviewed", "explicitly consent to an unreviewed hosted skill after inspecting trust", false)
+  .option("--dry-run", "download, validate and plan without writing", false)
+  .option("--json", "print JSON", false)
+  .action(async (id: string, options) => {
+    const client = options.target === "codex" || options.target === "claude-code" ? options.target : undefined;
+    if (!client) fail("Unsupported skill install target.", EXIT.VALIDATION, "Use --target codex or --target claude-code.", options.json);
+    try {
+      const result = await installHostedCatalogSkill({
+        registryUrl,
+        resourceId: id,
+        client,
+        projectDir: options.projectDir,
+        allowUnreviewed: Boolean(options.allowUnreviewed),
+        dryRun: Boolean(options.dryRun)
+      });
+      if (result.status === "installed") await recordCliRegistryEvent({
+        registry: registryUrl,
+        kind: "install",
+        owner: "onlyharness",
+        repo: id.replace(/^onlyharness:packages\//, ""),
+        version: result.version,
+        target: client,
+        client: client === "claude-code" ? "claude-code" : "hh"
+      });
+      if (options.json) return writeStdout(result);
+      writeStdout([
+        `${result.resourceId}@${result.version} ${result.status} at ${result.target}`,
+        `Archive digest: ${result.archiveDigest}`,
+        result.warning ?? "Security scan passed; managed approval remains separate.",
+        ""
+      ].join("\n"));
+    } catch (error) {
+      if (error instanceof SuperSkillCliError) fail(error.message, error.exitCode, error.next, options.json, { reasonCode: error.reasonCode });
+      throw error;
+    }
   });
 
 resourcesCommand.command("approve")

@@ -8,7 +8,7 @@ import type { ManagedCapability } from "@harnesshub/capability-schema/browser";
 import { canonicalInstallUrl, type BootstrapCapability } from "../src/lib/superskill-bootstrap.js";
 import { computeDecisionDigest } from "../src/lib/superskill-client.js";
 import { consumePendingSuperSkillHandoff, readPendingSuperSkillHandoff } from "../src/lib/superskill-handoff.js";
-import { SuperSkillCliError } from "../src/lib/superskill-types.js";
+import { SUPERSKILL_RUNTIME, SuperSkillCliError } from "../src/lib/superskill-types.js";
 
 const expiresAt = "2099-01-01T00:00:00.000Z";
 const tuple: BootstrapCapability = { id: "market-research", version: "0.2.0", artifactDigest: `sha256:${"a".repeat(64)}` };
@@ -108,7 +108,7 @@ test("pending exact handoff is disclosed online without activation and retries a
     assert.equal(first.recommendation.selected?.capability.release.artifactDigest, tuple.artifactDigest);
     assert.deepEqual(first.recommendation.selected?.capability.permissions, capability.permissions);
     assert.deepEqual(first.recommendation.selected?.capability.trust.checks, capability.trust.checks);
-    assert.match(first.activation.command, /^npx --yes onlyharness@0\.2\.15 activation start market-research /);
+    assert.ok(first.activation.command.startsWith(`npx --yes onlyharness@${SUPERSKILL_RUNTIME.cliVersion} activation start market-research `));
     assert.match(first.activation.command, /--target codex --mode temporary --consent explicit --json$/);
     assert.match(first.activation.command, /--activation-request req_[A-Za-z0-9_-]{8,}/);
     assert.equal(first.activation.command.includes("<"), false);

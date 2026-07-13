@@ -384,18 +384,28 @@ async function sendPublicResourceArchive(resource: resources.Resource, version: 
       next: "This resource is listed in SuperSkill, but its files are not hosted by SuperSkill yet."
     });
   }
+  const release = resourceReleases.activeReleaseMetadata(resource.id, version);
+  if (!release) return reply.code(503).send({
+    error: "Hosted resource release metadata unavailable",
+    code: "ARCHIVE_STORAGE_UNAVAILABLE",
+    id: resource.id,
+    next: "Retry later; the archive will not be served without its immutable digest metadata."
+  });
   await recordEvent({
     kind: "pull",
     owner: resource.upstreamOwner,
     repo: resource.upstreamRepo ?? resource.title,
-    version,
+    version: release.version,
     target: "resource-archive",
     client: "api"
   });
   return reply
     .header("content-type", "application/gzip")
     .header("content-disposition", `attachment; filename="${resources.resourceArchiveFileName(resource)}"`)
-    .header("x-onlyharness-resource-version", version ?? "latest")
+    .header("content-length", String(release.archiveSize))
+    .header("etag", `"sha256:${release.artifactDigest}"`)
+    .header("x-onlyharness-resource-version", release.version)
+    .header("x-superskill-artifact-sha256", release.artifactDigest)
     .send(createReadStream(archivePath));
 }
 

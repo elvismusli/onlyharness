@@ -474,6 +474,17 @@ export function activeReleaseArchivePath(resourceId: string, version?: string): 
   }
 }
 
+export function activeReleaseMetadata(resourceId: string, version?: string): Pick<ResourceRelease, "version" | "artifactDigest" | "archiveSize" | "trust"> | undefined {
+  const release = activeRelease(resourceId, version);
+  if (!release || release.status !== "active") return undefined;
+  return {
+    version: release.version,
+    artifactDigest: release.artifactDigest,
+    archiveSize: release.archiveSize,
+    trust: release.trust
+  };
+}
+
 export function resourceArchivePathForRead(resourceId: string, version?: string): string | undefined {
   const release = activeRelease(resourceId, version);
   // Legacy mirrors are never proof that SuperSkill hosts an upstream resource.
