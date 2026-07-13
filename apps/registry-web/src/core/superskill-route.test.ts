@@ -8,11 +8,17 @@ describe("SuperSkill hash routes", () => {
     { name: "capability", capabilityId: "market-research" },
     { name: "selected", owner: "harnesses", skill: "deep-market-researcher" },
     { name: "install", capabilityId: "market-research" },
+    { name: "install" },
     { name: "category", job: "market-research" }
   ];
 
   test.each(routes)("round-trips $name", (route) => {
     expect(parseSuperSkillRoute(buildSuperSkillRoute(route))).toEqual(route);
+  });
+
+  test("generic install handoff has a direct entry point", () => {
+    expect(parseSuperSkillRoute("#/superskill/install")).toEqual({ name: "install" });
+    expect(buildSuperSkillRoute({ name: "install" })).toBe("#/superskill/install");
   });
 
   test("selected skill detail stays inside the SuperSkill route namespace", () => {

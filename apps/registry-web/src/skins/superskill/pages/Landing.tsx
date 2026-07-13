@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { SuperSkillClient } from "../../../core/superskill-types";
 import { useSelectedShowroomCapabilities } from "../../../core/useSelectedShowroomCapabilities";
 import { useShowroomCapabilities } from "../../../core/useShowroomCapabilities";
+import { ExampleSkillCard } from "../components/ExampleSkillCard";
 import { SelectedSkillCard } from "../components/SelectedSkillCard";
 import { SkillCard } from "../components/SkillCard";
 import { StatePanel } from "../components/StatePanel";
@@ -31,7 +32,7 @@ export function Landing() {
         <SectionHeading eyebrow="one exact release">Featured from the managed showroom</SectionHeading>
         {showroom.state.status === "loading" || showroom.state.status === "idle" ? <StatePanel kind="loading" title="Loading approved releases" reason="Reading the public showroom projection." /> : null}
         {showroom.state.status === "error" ? <StatePanel kind="error" title="Showroom API unavailable" reason={showroom.state.reason} next={showroom.state.next} onRetry={showroom.refresh} /> : null}
-        {showroom.state.status === "empty" ? <StatePanel kind="empty" title="No approved public releases yet" reason="No release is being promoted without an approved exact digest." next="You can still install the client plugin and use its honest no-match flow." /> : null}
+        {showroom.state.status === "empty" ? <><StatePanel kind="empty" title="No approved public releases yet" reason="No release is being promoted without an approved exact digest." next="You can still install the client plugin and use its honest no-match flow." /><ExampleSkillCard /></> : null}
         {featured ? <SkillCard item={featured} variant="featured" label="Featured · curated, not popularity-ranked" /> : null}
       </section>
 

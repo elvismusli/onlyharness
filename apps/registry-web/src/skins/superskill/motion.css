@@ -7,6 +7,30 @@
 .skin-superskill .ss-aurora { animation: ssFloat 15s ease-in-out infinite; }
 .skin-superskill .ss-state--loading .ss-state-glyph { animation: ssSpin 7s linear infinite; }
 
+/* Scroll reveal — staggered fade + rise (per-sibling delay set in useReveal). */
+.skin-superskill.ss-reveal-ready [data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity .6s ease, transform .6s cubic-bezier(.2, .7, .2, 1);
+  will-change: opacity, transform;
+}
+.skin-superskill.ss-reveal-ready [data-reveal].is-revealed { opacity: 1; transform: none; }
+
+/* Calm scan sweep on reviewed preview panels ("watch skills work"). */
+.skin-superskill .ss-preview { isolation: isolate; }
+.skin-superskill .ss-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 0;
+  height: 44%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--ss-action) 16%, transparent), transparent);
+  transform: translateY(-130%);
+  animation: ssScan 4.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.skin-superskill .ss-preview > * { position: relative; z-index: 1; }
+
 @media (prefers-reduced-motion: reduce) {
   .skin-superskill *,
   .skin-superskill *::before,

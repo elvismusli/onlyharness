@@ -8,21 +8,23 @@ import { InstallHandoff } from "./pages/InstallHandoff";
 import { Landing } from "./pages/Landing";
 import { SelectedSkillPage } from "./pages/SelectedSkillPage";
 import { TrustPage } from "./pages/TrustPage";
+import { useReveal } from "./useReveal";
 import "./tokens.css";
 import "./motion.css";
 
 const FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&family=Spectral:ital,wght@0,400;0,500;1,400;1,500&display=swap";
+  "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500&display=swap";
 
 export function SuperskillSkin() {
   const route = useSuperSkillRoute();
   useSuperskillEnvironment();
+  useReveal();
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [route]);
   return (
     <div className="skin-superskill" data-skin="superskill">
-      <header className="ss-nav"><div className="ss-nav-inner"><ShellLink className="ss-brand" href="#/superskill"><span aria-hidden>S</span><strong>SuperSkill</strong></ShellLink><nav aria-label="SuperSkill"><a href="#/superskill">Showroom</a><a href="/llms.txt">Docs</a><a href="/AGENTS.md">Agent guide</a></nav><ShellLink className="ss-link--primary" href="#/superskill">Get SuperSkill</ShellLink></div></header>
+      <header className="ss-nav"><div className="ss-nav-inner"><ShellLink className="ss-brand" href="#/superskill"><span aria-hidden>S</span><strong>SuperSkill</strong></ShellLink><nav aria-label="SuperSkill"><a href="#/superskill">Showroom</a><a href="/llms.txt">Docs</a><a href="/AGENTS.md">Agent guide</a></nav><ShellLink className="ss-link--primary" href="#/superskill/install">Get SuperSkill</ShellLink></div></header>
       {renderRoute(route)}
       <footer className="ss-footer"><div className="ss-content"><strong>SuperSkill by OnlyHarness</strong><span>Evidence over badges · exact release trust · explicit consent</span></div></footer>
     </div>
@@ -51,8 +53,8 @@ function useSuperskillEnvironment() {
     }
     const { body, documentElement } = document;
     const previous = { body: body.style.background, html: documentElement.style.background };
-    body.style.background = "#f7f6f1";
-    documentElement.style.background = "#f7f6f1";
+    body.style.background = "#f6f4ef";
+    documentElement.style.background = "#f6f4ef";
     return () => {
       body.style.background = previous.body;
       documentElement.style.background = previous.html;

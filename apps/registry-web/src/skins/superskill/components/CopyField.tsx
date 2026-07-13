@@ -4,16 +4,19 @@ import { SSButton } from "../primitives";
 
 export function CopyField({ label, value }: { label: string; value: string }) {
   const [status, setStatus] = useState("");
+  const [copied, setCopied] = useState(false);
   async function copy() {
     try {
       await navigator.clipboard.writeText(value);
+      setCopied(true);
       setStatus("Copied");
     } catch {
+      setCopied(false);
       setStatus("Clipboard unavailable — select and copy the value manually.");
     }
   }
   return (
-    <div className="ss-copy-field">
+    <div className="ss-copy-field" data-copied={copied ? "true" : undefined}>
       <label><span>{label}</span><textarea readOnly rows={value.includes("\n") ? 3 : 1} value={value} /></label>
       <SSButton type="button" variant="secondary" onClick={copy}>Copy</SSButton>
       <span className="ss-sr-live" aria-live="polite">{status}</span>

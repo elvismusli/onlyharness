@@ -6,7 +6,7 @@ export type SuperSkillRoute =
   | { name: "landing" }
   | { name: "capability"; capabilityId: string }
   | { name: "selected"; owner: string; skill: string }
-  | { name: "install"; capabilityId: string }
+  | { name: "install"; capabilityId?: string }
   | { name: "category"; job: string }
   | { name: "not-found" };
 
@@ -15,6 +15,7 @@ export function parseSuperSkillRoute(hash: string): SuperSkillRoute {
   if (raw === "/" || raw === "/superskill") return { name: "landing" };
   const parts = raw.split("/").filter(Boolean).map(decodeSegment);
   if (parts.some((part) => part === null) || parts[0] !== "superskill") return { name: "not-found" };
+  if (parts.length === 2 && parts[1] === "install") return { name: "install" };
   if (parts.length === 4 && parts[1] === "selected" && validSlug(parts[2]) && validSlug(parts[3])) {
     return { name: "selected", owner: parts[2]!, skill: parts[3]! };
   }
@@ -33,7 +34,7 @@ export function buildSuperSkillRoute(route: Exclude<SuperSkillRoute, { name: "no
     case "selected":
       return `#/superskill/selected/${assertSlug(route.owner)}/${assertSlug(route.skill)}`;
     case "install":
-      return `#/superskill/c/${assertSlug(route.capabilityId)}/install`;
+      return route.capabilityId ? `#/superskill/c/${assertSlug(route.capabilityId)}/install` : "#/superskill/install";
     case "category":
       return `#/superskill/tasks/${assertSlug(route.job)}`;
   }
