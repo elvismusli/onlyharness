@@ -40,6 +40,16 @@ create table if not exists public.workspace_subscription_events (
   unique (provider, provider_event_ref)
 );
 
+-- Fresh-chain compatibility only: this historical migration originally used
+-- workspace_members.expires_at before declaring it. Existing migration ledgers
+-- are repaired by the latest forward-only migration, never by replaying this file.
+alter table public.workspace_members
+  add column if not exists expires_at timestamptz;
+
+create index if not exists workspace_members_active_expiry_idx
+  on public.workspace_members (workspace_id, expires_at)
+  where status = 'active' and removed_at is null;
+
 alter table public.workspace_subscriptions enable row level security;
 alter table public.workspace_subscription_events enable row level security;
 
@@ -55,7 +65,7 @@ create policy "Workspace members read subscription events"
     exists (
       select 1 from public.workspace_members wm
       where wm.workspace_id = workspace_subscription_events.workspace_id
-        and wm.user_id = auth.uid()::text
+        and wm.user_id = auth.uid()
         and wm.status = 'active'
         and wm.removed_at is null
         and (wm.expires_at is null or wm.expires_at > now())

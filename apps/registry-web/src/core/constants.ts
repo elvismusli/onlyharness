@@ -3,8 +3,8 @@ import type { RegistryItem } from "./types";
 export const apiUrl = import.meta.env.VITE_HARNESS_API_URL ?? "http://127.0.0.1:8787";
 
 export const JOB_FILTERS = ["Market research", "GTM research", "Support triage", "Payment safety", "Product strategy", "Incident response", "Data quality", "Security review", "Launch readiness", "Repo audit", "Harness building", "Directory discovery"];
-export const CLAUDE_PLUGIN_INSTALL_COMMAND = "claude plugin marketplace add elvismusli/onlyharness && claude plugin install onlyharness@onlyharness";
-export const CODEX_MCP_INSTALL_COMMAND = "codex mcp add onlyharness --url https://onlyharness.com/mcp --bearer-token-env-var HH_TOKEN";
+export const CLAUDE_PLUGIN_INSTALL_COMMAND = "claude plugin marketplace add elvismusli/onlyharness && claude plugin install superskill@superskill";
+export const CODEX_MCP_INSTALL_COMMAND = "codex mcp add superskill --url https://superskill.sh/mcp --bearer-token-env-var HH_TOKEN";
 
 export function remixRecipe(item: RegistryItem): string {
   const remixName = `my-${item.name}`;

@@ -1,11 +1,11 @@
-import { superskillInstallCommands } from "../../../core/superskill-install";
+import { superskillInstallHandoff } from "../../../core/superskill-install";
 import { superskillRuntime } from "../../../generated/superskill-runtime";
 import { CopyField } from "../components/CopyField";
+import { StatePanel } from "../components/StatePanel";
 import { PageHeading, ShellLink } from "../primitives";
 
 export function DocsPage() {
-  const claude = superskillInstallCommands("claude-code");
-  const codex = superskillInstallCommands("codex");
+  const handoff = superskillInstallHandoff();
   return (
     <main className="ss-content ss-page ss-docs-page">
       <PageHeading eyebrow="human documentation">Install and use SuperSkill</PageHeading>
@@ -13,12 +13,8 @@ export function DocsPage() {
 
       <section className="ss-doc-section" aria-labelledby="ss-doc-install">
         <h2 id="ss-doc-install">Install in your client</h2>
-        <p>Use one client path, start a fresh session, then describe the task in plain text. The shared runtime is pinned to <code>{superskillRuntime.cliPackage}@{superskillRuntime.cliVersion}</code>.</p>
-        <div className="ss-doc-command-grid">
-          <article><h3>Claude Code</h3><CopyField label="Add marketplace" value={claude.marketplaceCommand} /><CopyField label="Install plugin" value={claude.pluginCommand} /></article>
-          <article><h3>Codex CLI</h3><CopyField label="Add marketplace" value={codex.marketplaceCommand} /><CopyField label="Install plugin" value={codex.pluginCommand} /></article>
-        </div>
-        <CopyField label="Verify the exact OnlyHarness runtime" value={claude.runtimeCheckCommand} />
+        <p>The shared runtime is staged at <code>{superskillRuntime.cliPackage}@{superskillRuntime.cliVersion}</code>.</p>
+        {handoff.status === "available" ? <><CopyField label="Universal install command" value={handoff.installCommand} /><p>The installer transactionally writes the matching project-native skill root and merges one project-local <code>superskill_local</code> MCP entry into <code>.mcp.json</code> or <code>.codex/config.toml</code>. An exact capability link also writes one private pending handoff. Existing unrelated config is preserved; collisions or rollback faults fail closed. No token is stored.</p><p>Ambiguous or absent client detection fails closed; choose <code>--target</code> explicitly or use <code>--all</code> only when both adapters are intended.</p></> : <StatePanel kind="blocked" title="Install command not published" reason={handoff.reason} next="Wait until the exact npm release and official integrity are both published. Do not use @latest or an unverified substitute." />}
         <p className="ss-honest-state">Copying commands does not prove that a plugin is Installed, Detected, Loaded, or Invoked. Verify the command result in the terminal and start a new client session.</p>
       </section>
 
@@ -45,9 +41,9 @@ export function DocsPage() {
       <section className="ss-doc-section" aria-labelledby="ss-doc-help">
         <h2 id="ss-doc-help">Troubleshooting</h2>
         <ul>
-          <li>If the plugin command is unavailable, confirm Node.js, npm, and your terminal client are available.</li>
-          <li>Run the exact runtime check shown above instead of substituting another CLI version.</li>
-          <li>Start a new client session after install so the shared SuperSkill skill can be discovered.</li>
+          <li>If the install command is not published, wait for the exact runtime and official integrity pin. Local Node.js or npm changes cannot bypass this gate.</li>
+          <li>Append <code>--dry-run</code> to verify the pinned manifest and target plan without writing.</li>
+          <li>Start a new client session after install and approve the project-local MCP through the client's normal trust prompt.</li>
           <li>If a release is blocked, return to its trust report or choose a currently approved alternative.</li>
         </ul>
       </section>

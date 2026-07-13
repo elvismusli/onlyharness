@@ -1,12 +1,13 @@
 export const openapi = {
   openapi: "3.1.0",
   info: {
-    title: "OnlyHarness API",
-    version: "0.2.13",
-    description: "Search, inspect, pull and publish reusable AI-agent resources: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages."
+    title: "SuperSkill API",
+    version: "0.2.14",
+    description: "Find, verify and install reviewed AI-agent capabilities while preserving accounts, workspaces and exact release evidence."
   },
   servers: [
-    { url: "https://onlyharness.com/api", description: "Production" },
+    { url: "https://superskill.sh/api", description: "Production" },
+    { url: "https://onlyharness.com/api", description: "Legacy machine compatibility" },
     { url: "http://127.0.0.1:8787", description: "Local development" }
   ],
   paths: {
@@ -80,7 +81,7 @@ export const openapi = {
     "/resources/{id}/archive": {
       get: {
         summary: "Download hosted resource archive",
-        description: "Return a tar.gz archive hosted by OnlyHarness for resources that have been materialized into OnlyHarness storage. Does not redirect to upstream GitHub.",
+        description: "Return a tar.gz archive hosted by SuperSkill for resources materialized into its compatibility archive storage. Does not redirect to upstream GitHub.",
         parameters: [pathParam("id")],
         responses: {
           "200": {
@@ -92,6 +93,20 @@ export const openapi = {
             description: "Resource is listed but archive is not hosted yet",
             content: { "application/json": { schema: { type: "object" } } }
           }
+        }
+      }
+    },
+    "/resources/{id}/releases/{version}/archive": {
+      get: {
+        summary: "Download an exact immutable hosted resource release",
+        description: "Version-bound tar.gz archive resolver. The response bytes are verified against active durable release metadata; older active versions remain retrievable after a newer catalog version is published.",
+        parameters: [pathParam("id"), pathParam("version")],
+        responses: {
+          "200": {
+            description: "Exact resource release archive tarball",
+            content: { "application/gzip": { schema: { type: "string", format: "binary" } } }
+          },
+          "404": { $ref: "#/components/responses/NotFound" }
         }
       }
     },
@@ -753,7 +768,7 @@ export const openapi = {
     "/imports/resource-package": {
       post: {
         summary: "Publish a hosted agent resource package",
-        description: "Auth required. Temporarily fail closed with 503 PUBLISH_DISABLED while HOSTED_RESOURCE_PUBLISH_ENABLED=false. When enabled after the durable archive migration, packages bounded text files from a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle into OnlyHarness archive storage and lists it in the mixed resource catalog. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
+        description: "A confirmed user with an active superskill:managed access grant is required. Temporarily fails closed with 503 PUBLISH_DISABLED while HOSTED_RESOURCE_PUBLISH_ENABLED=false. When enabled after the durable archive migration, requires immutable semantic version and a 16-200 character idempotencyKey, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -763,6 +778,8 @@ export const openapi = {
                 type: "object",
                 properties: {
                   name: { type: "string" },
+                  version: { type: "string", pattern: "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$" },
+                  idempotencyKey: { type: "string", minLength: 16, maxLength: 200, pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]+$" },
                   title: { type: "string" },
                   summary: { type: "string" },
                   resourceType: { type: "string", enum: ["harness", "skill", "plugin", "workflow", "mcp_server", "service_endpoint", "agent_team", "subagent_pack", "command_pack", "config", "guide", "framework", "agent_runtime"] },
@@ -783,12 +800,16 @@ export const openapi = {
                     }
                   }
                 },
-                required: ["files"]
+                required: ["version", "idempotencyKey", "files"]
               }
             }
           }
         },
         responses: {
+          "200": {
+            description: "Idempotent replay of the same immutable hosted package release",
+            content: { "application/json": { schema: { type: "object" } } }
+          },
           "201": {
             description: "Hosted agent resource package",
             content: {
@@ -806,15 +827,23 @@ export const openapi = {
                     },
                     hosted: { type: "boolean" },
                     verified: { type: "boolean", const: false },
+                    resourceId: { type: "string" },
+                    version: { type: "string" },
+                    artifactDigest: { type: "string", pattern: "^[a-f0-9]{64}$" },
+                    size: { type: "integer" },
+                    trust: { type: "string", const: "unreviewed" },
+                    replay: { type: "boolean" },
                     next: { type: "string" }
                   }
                 }
               }
             }
           },
-          "400": { $ref: "#/components/responses/BadRequest" },
+          "400": { $ref: "#/components/responses/ValidationFailed" },
           "401": { $ref: "#/components/responses/Unauthorized" },
-          "413": { $ref: "#/components/responses/BadRequest" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": { $ref: "#/components/responses/Conflict" },
+          "413": { $ref: "#/components/responses/ValidationFailed" },
           "503": {
             description: "Hosted resource publishing is disabled or archive storage is unavailable. No package was published.",
             content: {
@@ -974,7 +1003,7 @@ export const openapi = {
     "/workspaces/{slug}/invites": {
       post: {
         summary: "Create a workspace invite code",
-        description: "Requires invite:write/member:write token scope or owner/admin member role. The raw code is returned once; OnlyHarness stores only a hash.",
+        description: "Requires invite:write/member:write token scope or owner/admin member role. The raw code is returned once; SuperSkill stores only a hash.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -1203,7 +1232,7 @@ export const openapi = {
     "/workspaces/{slug}/resources/approve": {
       post: {
         summary: "Approve a public marketplace resource into a workspace",
-        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is scoped to the workspace and is never an OnlyHarness Verified badge. Failed or missing security scans are blocked; warnings become approved_with_warning.",
+        description: "Adds a public resource to a workspace catalog and collection with a trust snapshot. Approval is workspace-local curation and never a SuperSkill reviewed badge. Failed or missing security scans are blocked; warnings become approved_with_warning.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -1311,7 +1340,7 @@ export const openapi = {
       },
       post: {
         summary: "Create or update a workspace collection",
-        description: "Creates a workspace collection. Collection approval is workspace-scoped curation, not OnlyHarness verification.",
+        description: "Creates a workspace collection. Collection approval is workspace-scoped curation, not SuperSkill review evidence.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("slug")],
         requestBody: {
@@ -1840,8 +1869,8 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "OnlyHarness MCP server v0.2.13. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
-        "x-mcp-server-version": "0.2.13",
+        description: "SuperSkill MCP server v0.2.14. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
+        "x-mcp-server-version": "0.2.14",
         "x-mcp-tools": ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"],
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream. Tool-level failures remain protocol-successful JSON-RPC responses but carry result.isError=true and a stable result.structuredContent.code." }
@@ -1912,12 +1941,85 @@ export const openapi = {
         responses: { "200": { description: "Public-safe capability detail" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Managed catalog is not ready" } }
       }
     },
+    "/superskill/install": {
+      get: {
+        summary: "Read the universal SuperSkill bootstrap manifest",
+        description: "Public JSON only. Returns one pinned compatibility CLI version, official npm integrity and the byte-exact universal skill digest. It never returns or executes a shell script and never activates a capability.",
+        responses: {
+          "200": { description: "Published universal bootstrap manifest", content: { "application/vnd.superskill.bootstrap+json": { schema: { $ref: "#/components/schemas/SuperSkillBootstrap" } } } },
+          "503": { description: "BOOTSTRAP_RELEASE_UNPUBLISHED until the exact CLI release and official npm integrity are pinned" }
+        }
+      },
+      head: {
+        summary: "Check universal SuperSkill bootstrap availability",
+        responses: { "200": { description: "Published bootstrap is available" }, "503": { description: "Bootstrap release is not published" } }
+      }
+    },
+    "/superskill/install/{id}/{version}/{digest}": {
+      get: {
+        summary: "Read one immutable capability install handoff",
+        description: "Binds an approved, non-revoked, currently eligible capability id, version and sha256 to the universal installer. Selected-unreviewed, stale, quarantined, revoked and digest-mismatched releases expose no install link. Installation does not bypass routing or activation consent.",
+        parameters: [pathParam("id"), pathParam("version"), pathParam("digest")],
+        responses: {
+          "200": { description: "Exact capability bootstrap manifest", content: { "application/vnd.superskill.bootstrap+json": { schema: { $ref: "#/components/schemas/SuperSkillBootstrap" } } } },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "Exact release is blocked, revoked, quarantined or no longer eligible" },
+          "503": { description: "Bootstrap CLI release is not published or catalog is unavailable" }
+        }
+      },
+      head: {
+        summary: "Check exact capability install handoff availability",
+        parameters: [pathParam("id"), pathParam("version"), pathParam("digest")],
+        responses: { "200": { description: "Exact immutable handoff is available" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Release is blocked" }, "503": { description: "Bootstrap is not published" } }
+      }
+    },
     "/recommendations": {
       post: {
         summary: "Recommend an approved managed capability",
         description: "Internal-alpha deterministic task router. Requires a per-tester SuperSkill Bearer token; task text is not persisted.",
         security: [{ bearerAuth: [] }],
         responses: { "200": { description: "Recommendation, clarification or no-safe-match decision" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "503": { description: "SuperSkill disabled or catalog unavailable" } }
+      }
+    },
+    "/superskill/handoff/decision": {
+      post: {
+        summary: "Recheck one pending exact SuperSkill handoff",
+        description: "Side-effect-free exact-release decision for the universal installer handoff. Requires a confirmed Supabase account and a current superskill:managed grant; legacy internal-alpha credentials are rejected. Returns full disclosure and client-bound consent fields, but never activates, loads or invokes the capability.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  capability: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      version: { type: "string" },
+                      artifactDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" }
+                    },
+                    required: ["id", "version", "artifactDigest"],
+                    additionalProperties: false
+                  },
+                  client: { type: "string", enum: ["claude-code", "codex"] }
+                },
+                required: ["capability", "client"],
+                additionalProperties: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Fresh exact handoff disclosure and client-bound activation consent fields" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "Exact release is revoked, quarantined or no longer eligible" },
+          "503": { description: "SuperSkill disabled, auth unavailable or catalog unavailable" }
+        }
       }
     },
     "/capabilities/{id}": {
@@ -1939,7 +2041,7 @@ export const openapi = {
     "/capabilities/{id}/releases/{version}/archive": {
       get: {
         summary: "Download an exact free managed archive",
-        description: "Internal-alpha immutable snapshot route. Never invokes checkout, entitlement or x402 helpers.",
+        description: "Confirmed-user managed immutable snapshot route. Legacy alpha remains public-GO ineligible. Never invokes checkout, entitlement or x402 helpers.",
         security: [{ bearerAuth: [] }],
         parameters: [pathParam("id"), pathParam("version")],
         responses: { "200": { description: "Complete text-only archive with canonical digest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Revoked, quarantined, paid, mutable or digest-mismatched release" } }
@@ -1948,7 +2050,7 @@ export const openapi = {
     "/events": {
       post: {
         summary: "Record a privacy-safe registry event",
-        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials, body subject and arbitrary metadata. Managed lifecycle kinds require a per-tester SuperSkill Bearer token, derive subject server-side and deduplicate by eventId.",
+        description: "Accepts whitelisted event kinds and drops prompts, paths, credentials, body subject and arbitrary metadata. Managed lifecycle kinds live-check the same confirmed Supabase user and superskill:managed grant as recommendation/archive, derive the canonical subject server-side, and accept legacy alpha only as public-GO-ineligible compatibility. An exact eventId replay is idempotent; a changed replay is a conflict.",
         requestBody: {
           required: true,
           content: {
@@ -1976,11 +2078,19 @@ export const openapi = {
           }
         },
         responses: {
+          "200": {
+            description: "Managed event recorded or exact replay accepted",
+            content: { "application/json": { schema: { type: "object", properties: { recorded: { type: "boolean" }, duplicate: { type: "boolean" } }, required: ["recorded", "duplicate"] } } }
+          },
           "202": {
-            description: "Event accepted",
+            description: "Non-managed event accepted",
             content: { "application/json": { schema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } } }
           },
-          "400": { $ref: "#/components/responses/BadRequest" }
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": { description: "EVENT_CONFLICT: eventId replay changed subject or payload" },
+          "503": { description: "Managed auth or event storage unavailable" }
         }
       }
     },
@@ -2014,6 +2124,19 @@ export const openapi = {
       BadRequest: {
         description: "Bad request",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
+      ValidationFailed: {
+        description: "Request validation failed before any durable mutation",
+        content: {
+          "application/json": {
+            schema: {
+              allOf: [
+                { $ref: "#/components/schemas/Error" },
+                { type: "object", properties: { code: { type: "string", const: "VALIDATION_FAILED" } }, required: ["error", "code"] }
+              ]
+            }
+          }
+        }
       },
       Unauthorized: {
         description: "Authorization required",
@@ -2049,6 +2172,73 @@ export const openapi = {
           ok: { type: "boolean" }
         },
         required: ["ok"]
+      },
+      SuperSkillBootstrap: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          schemaVersion: { type: "string", const: "superskill.bootstrap.v1" },
+          canonicalUrl: { type: "string", format: "uri", pattern: "^https://superskill\\.sh/api/superskill/install" },
+          installer: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              package: { type: "string", const: "onlyharness" },
+              version: { type: "string" },
+              integrity: { type: "string", pattern: "^sha512-" },
+              releaseStatus: { type: "string", const: "published" }
+            },
+            required: ["package", "version", "integrity", "releaseStatus"]
+          },
+          universalSkill: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              name: { type: "string", const: "superskill" },
+              version: { type: "string" },
+              artifactDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" }
+            },
+            required: ["name", "version", "artifactDigest"]
+          },
+          clientAdapters: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              codex: {
+                type: "object",
+                additionalProperties: false,
+                properties: { path: { type: "string", const: ".codex/config.toml" }, contractDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                required: ["path", "contractDigest"]
+              },
+              "claude-code": {
+                type: "object",
+                additionalProperties: false,
+                properties: { path: { type: "string", const: ".mcp.json" }, contractDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                required: ["path", "contractDigest"]
+              }
+            },
+            required: ["codex", "claude-code"]
+          },
+          capability: {
+            anyOf: [
+              { type: "null" },
+              {
+                type: "object",
+                additionalProperties: false,
+                properties: { id: { type: "string" }, version: { type: "string" }, artifactDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                required: ["id", "version", "artifactDigest"]
+              }
+            ]
+          },
+          activation: {
+            type: "object",
+            additionalProperties: false,
+            properties: { performed: { type: "boolean", const: false }, explicitConsentRequired: { type: "boolean", const: true } },
+            required: ["performed", "explicitConsentRequired"]
+          },
+          manifestDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" }
+        },
+        required: ["schemaVersion", "canonicalUrl", "installer", "universalSkill", "clientAdapters", "capability", "activation", "manifestDigest"]
       },
       Workspace: {
         type: "object",
@@ -2351,7 +2541,7 @@ export const openapi = {
             properties: {
               sourceChecked: { type: "boolean" },
               securityScan: { type: "string", enum: ["pass", "warn", "fail", "not_scanned"] },
-              installVerifiedAt: { type: "string", description: "OnlyHarness install verification evidence, when present." },
+              installVerifiedAt: { type: "string", description: "SuperSkill install verification evidence, when present." },
               gateVerifiedAt: { type: "string" },
               riskTier: { type: "string" }
             }

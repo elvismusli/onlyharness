@@ -242,7 +242,7 @@ function licenseStatusFor(license: string): GitHubResourceImportResult["licenseS
 
 function recommendedAction(classification: GitHubResourceImportResult["classification"], licenseStatus: GitHubResourceImportResult["licenseStatus"]): string {
   if (classification === "harness_candidate") return "Can be listed as a native package candidate; use hh publish after eval/gate for Verified, or hh publish-resource for an unverified hosted resource package.";
-  if (licenseStatus === "permissive") return "Can be listed as an upstream resource; use hh publish-resource only when you explicitly want an OnlyHarness-hosted package archive.";
+  if (licenseStatus === "permissive") return "Can be listed as an upstream resource; use hh publish-resource only when you explicitly want a SuperSkill-hosted package archive.";
   return "List as upstream-only and send users to the source URL; do not re-host files until license review passes.";
 }
 
@@ -256,7 +256,7 @@ function assertNotDenylisted(owner: string, repo: string, url: string) {
   const denylist = JSON.parse(readFileSync(denylistPath, "utf8")) as { repos?: Array<{ repo?: string; url?: string }> };
   for (const denied of denylist.repos ?? []) {
     if (denied.url === url || denied.repo?.toLowerCase() === `${owner}/${repo}`.toLowerCase()) {
-      throw new GitHubImportError(451, "DENYLISTED_REPOSITORY", "This repository is blocked by the OnlyHarness denylist.");
+      throw new GitHubImportError(451, "DENYLISTED_REPOSITORY", "This repository is blocked by the SuperSkill denylist.");
     }
   }
 }

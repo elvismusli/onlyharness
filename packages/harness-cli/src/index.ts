@@ -18,11 +18,13 @@ import {
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
 import { registerActivationCommands } from "./commands/activation.js";
 import { registerRecommendCommand } from "./commands/recommend.js";
+import { registerSuperSkillInstallCommand } from "./commands/superskill-install.js";
+import { registerSuperSkillMcpCommand } from "./mcp/superskill-server.js";
 import { scanInventory as scanManagedInventory } from "./lib/client-adapters.js";
 
 type OutputFormat = "json" | "markdown" | "text";
 
-const registryUrl = (process.env.HH_REGISTRY_URL ?? "https://onlyharness.com/api").replace(/\/$/, "");
+const registryUrl = (process.env.HH_REGISTRY_URL ?? "https://superskill.sh/api").replace(/\/$/, "");
 const MAX_PUBLISH_FILES = 120;
 const MAX_PUBLISH_FILE_BYTES = 256 * 1024;
 
@@ -412,6 +414,11 @@ type ResourcePackageImportResult = {
   };
   hosted?: boolean;
   verified?: boolean;
+  version?: string;
+  artifactDigest?: string;
+  size?: number;
+  trust?: string;
+  replay?: boolean;
   next?: string;
 };
 type WorkspaceApprovalResult = {
@@ -608,9 +615,9 @@ export function failMessage(message: string, next?: string): string {
   return next ? `${message}\nNext: ${next}` : message;
 }
 
-function fail(message: string, code: ExitCode, next?: string, json = false): never {
+function fail(message: string, code: ExitCode, next?: string, json = false, details: Record<string, unknown> = {}): never {
   const output = json
-    ? JSON.stringify({ error: message, code, next: next ?? null }, null, 2)
+    ? JSON.stringify({ error: message, code, next: next ?? null, ...details }, null, 2)
     : failMessage(message, next);
   process.stderr.write(`${output}\n`);
   process.exit(code);
@@ -620,8 +627,8 @@ const program = new Command();
 
 program
   .name("hh")
-  .description("OnlyHarness CLI — find, inspect, install and publish reusable AI-agent resources (onlyharness.com)")
-  .version("0.2.13");
+  .description("SuperSkill CLI compatibility runtime — find, inspect, install and publish reusable AI-agent capabilities (superskill.sh)")
+  .version("0.2.14");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -1118,7 +1125,7 @@ program.command("publish")
             title: result.title,
             name: result.name,
             owner: result.owner,
-            url: "https://onlyharness.com",
+            url: "https://superskill.sh",
             snapshotVersion: result.snapshotVersion,
             verified: result.verified,
             gate: result.gate,
@@ -1137,10 +1144,10 @@ program.command("publish")
         : await publishPublicMarkdown({ token, name, markdown, json: options.json });
       const title = result.title;
       if (options.json) {
-        writeStdout({ title, name: result.name, owner: result.owner, url: orgSlug ? `https://onlyharness.com/@${orgSlug}/${result.name}` : "https://onlyharness.com" });
+        writeStdout({ title, name: result.name, owner: result.owner, url: orgSlug ? `https://superskill.sh/@${orgSlug}/${result.name}` : "https://superskill.sh" });
         return;
       }
-      writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://onlyharness.com\n`);
+      writeStdout(orgSlug ? `Published ${title} to @${orgSlug}\n` : `Published ${title} — live on https://superskill.sh\n`);
     } finally {
       source.cleanup();
     }
@@ -1150,6 +1157,8 @@ program.command("publish-resource")
   .description("publish a hosted agent resource package without native harness eval/gate")
   .argument("<dir-or-git-url>", "local directory, local repo, or git URL to package")
   .option("--name <name>", "resource slug")
+  .option("--version <semver>", "immutable package release version", "0.1.0")
+  .option("--idempotency-key <key>", "stable retry key (generated deterministically when omitted)")
   .option("--title <title>", "display title")
   .option("--summary <summary>", "short summary")
   .option("--type <type>", "resource type: skill, plugin, workflow, mcp_server, command_pack, config, guide, framework, agent_runtime, subagent_pack, agent_team, service_endpoint, harness")
@@ -1172,6 +1181,8 @@ program.command("publish-resource")
       const result = await publishResourcePackage({
         token,
         name,
+        version: options.version,
+        idempotencyKey: options.idempotencyKey,
         title: options.title,
         summary: options.summary,
         resourceType: options.type,
@@ -1187,6 +1198,11 @@ program.command("publish-resource")
           name: result.resource?.upstreamRepo ?? name,
           resourceType: result.resource?.resourceType,
           archiveUrl: result.archive?.url,
+          version: result.version,
+          artifactDigest: result.artifactDigest,
+          size: result.size,
+          trust: result.trust,
+          replay: result.replay === true,
           hosted: result.hosted === true,
           verified: result.verified === true,
           workspace,
@@ -1648,6 +1664,8 @@ program.command("pack")
 
 registerRecommendCommand(program, () => registryUrl);
 registerActivationCommands(program, () => registryUrl);
+registerSuperSkillInstallCommand(program, () => registryUrl);
+registerSuperSkillMcpCommand(program, () => registryUrl);
 
 program.parseAsync(process.argv).catch((error) => {
   console.error(error instanceof Error ? error.message : error);
@@ -2099,7 +2117,7 @@ async function pullHarnessArchive(input: {
     fail(
       `Pull failed (${response.status}): ${body.error ?? "authorization required"}`,
       EXIT.AUTH,
-      input.owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+      input.owner.startsWith("@") ? "Set HH_ORG_TOKEN or pass --token <org-token>." : "Log on at https://superskill.sh, then export HH_TOKEN=<access token> and retry",
       input.json
     );
   }
@@ -2652,7 +2670,7 @@ async function publishPublicMarkdown(input: { token?: string; name: string; mark
       fail(
         `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
         EXIT.AUTH,
-        "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        "Log on at https://superskill.sh, then export HH_TOKEN=<access token> and retry",
         input.json
       );
     }
@@ -2690,7 +2708,7 @@ async function publishHarnessDir(input: { org?: string; token?: string; name?: s
       fail(
         `Publish failed (${response.status}): ${body.error ?? "authorization required"}`,
         EXIT.AUTH,
-        input.org ? "Check HH_ORG_TOKEN and org publish scope." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.org ? "Check HH_ORG_TOKEN and org publish scope." : "Log on at https://superskill.sh, then export HH_TOKEN=<access token> and retry",
         input.json
       );
     }
@@ -2711,6 +2729,8 @@ async function publishResourcePackage(input: {
   token?: string;
   workspace?: string;
   name?: string;
+  version?: string;
+  idempotencyKey?: string;
   title?: string;
   summary?: string;
   resourceType?: string;
@@ -2721,6 +2741,14 @@ async function publishResourcePackage(input: {
   const publishUrl = input.workspace
     ? `${registryUrl}/workspaces/${input.workspace}/imports/resource-package`
     : `${registryUrl}/imports/resource-package`;
+  const idempotencyKey = input.workspace
+    ? undefined
+    : input.idempotencyKey ?? `hh-${sha256Hex(JSON.stringify({
+      name: input.name ?? null,
+      version: input.version ?? "0.1.0",
+      resourceType: input.resourceType ?? null,
+      files: [...input.files].sort((left, right) => left.path.localeCompare(right.path))
+    }))}`;
   const response = await fetchRegistryResponse(publishUrl, input.json, {
     method: "POST",
     headers: {
@@ -2729,6 +2757,7 @@ async function publishResourcePackage(input: {
     },
     body: JSON.stringify({
       name: input.name,
+      ...(!input.workspace ? { version: input.version ?? "0.1.0", idempotencyKey } : {}),
       title: input.title,
       summary: input.summary,
       resourceType: input.resourceType,
@@ -2742,7 +2771,7 @@ async function publishResourcePackage(input: {
       fail(
         `Resource package publish failed (${response.status}): ${body.error ?? "authorization required"}`,
         EXIT.AUTH,
-        input.workspace ? "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>." : "Log on at https://onlyharness.com, then export HH_TOKEN=<access token> and retry",
+        input.workspace ? "Set HH_WORKSPACE_TOKEN/HH_ORG_TOKEN or pass --workspace-token <token>." : "Log on at https://superskill.sh, then export HH_TOKEN=<access token> and retry",
         input.json
       );
     }
@@ -2750,7 +2779,13 @@ async function publishResourcePackage(input: {
       fail(`Resource package publish failed (404): ${body.error ?? "workspace publishing not found"}`, EXIT.NOT_FOUND, "Ask a workspace admin to enable workspace publishing.", input.json);
     }
     const detail = body.failures?.length ? `${body.error ?? "publish rejected"}: ${body.failures.join("; ")}` : body.error ?? JSON.stringify(body);
-    fail(`Resource package publish failed (${response.status}): ${detail}`, response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION, "Check file count, file sizes, secret files and --type.", input.json);
+    fail(
+      `Resource package publish failed (${response.status}): ${body.code ? `[${body.code}] ` : ""}${detail}`,
+      response.status === 404 ? EXIT.NOT_FOUND : EXIT.VALIDATION,
+      "Check file count, file sizes, secret files and --type.",
+      input.json,
+      body.code ? { remoteCode: body.code } : {}
+    );
   }
   return body;
 }

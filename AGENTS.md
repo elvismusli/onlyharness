@@ -1,8 +1,8 @@
-# OnlyHarness Agent Guide
+# SuperSkill Agent Guide
 
 ## What This Repo Is
 
-OnlyHarness is a registry, web app, API, and CLI for reusable AI-agent resources: skills, plugins, workflows, MCP servers, runtimes, guides, directories, and native harness-format packages.
+SuperSkill is the human-facing registry and universal installer for reviewed AI-agent capabilities. The OnlyHarness names below are compatibility coordinates for existing data, APIs and clients.
 A native harness is a directory with a manifest, prompts, examples, eval cases, permissions, and gates; it is one resource type, not the whole product.
 
 ## Dev Commands
@@ -84,13 +84,13 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --jso
 
 - Source of truth: `docs/plans/2026-07-12-superskill-mvp-developer-handoff-daylight.md` and `docs/plans/superskill-mvp/`.
 - `data/superskill/curated.json` contains exact reviewed supply; candidate status is not approval. Current local Stage A data remains 12 candidates / 0 approved until real attestations exist.
-- Public showroom routes are read-only projections. Protected recommendation, exact release/archive, and managed event routes require a tester-specific `HH_SUPERSKILL_TOKEN`; never put it in browser state, URL, storage, logs, or docs examples.
+- Public showroom routes are read-only projections. Protected recommendation, exact release/archive, and managed event routes require a confirmed account Bearer credential inherited as `HH_TOKEN` plus an active server-side `superskill:managed` grant. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and cannot produce public-GO evidence; never put either credential in browser state, URLs, storage, logs, or docs examples.
 - `GET /showroom/selected` is a separate public-safe intake shelf for current candidates. Its cards must say `selected_unreviewed`, keep managed handoff blocked, and never imply approval.
 - Managed activation is explicit-consent only. Claude pins to `.claude/skills`; Codex pins to `.agents/skills`; `.codex/harnesses` is legacy detection only.
-- Runtime source of truth is `plugins/superskill/runtime.json`. `onlyharness@0.2.13` is published and clean-`npx` verified; marketplace publication and clean new-session plugin proof remain rollout gates.
+- Runtime source of truth is `plugins/superskill/runtime.json`. `onlyharness@0.2.13` is the last published clean-`npx` verified release; source stages `0.2.14` for universal one-link install and must keep `cliReleaseStatus=unpublished` plus `cliIntegrity=null` until that exact release is published and its official npm integrity is pinned. Marketplace publication and clean new-session plugin proof remain rollout gates.
 - Required local gates: `npm run check:superskill-catalog`, `npm run check:superskill-router`, `npm run check:superskill-runtime`, `npm run smoke:superskill`.
 
-HTTP API base: `https://onlyharness.com/api`
+HTTP API base: `https://superskill.sh/api` (`https://onlyharness.com/api` remains a machine-only compatibility alias).
 
 Core endpoints:
 
@@ -148,14 +148,14 @@ Core endpoints:
 | POST | `/imports/github-resource` | Read-only GitHub resource classifier; GitHub allowlist, redirect, traversal, symlink and size guardrails apply |
 | POST | `/events` | Privacy-safe event write; whitelisted fields only |
 
-MCP endpoint for compatible clients: `https://onlyharness.com/mcp`.
+MCP endpoint for compatible clients: `https://superskill.sh/mcp`.
 Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`, `search_resources`, `resource_detail`, `resource_use_instructions`, `search_docs`, `publish_markdown_to_harness`, `publish_resource_package`.
 `harness_detail` and `pull_instructions` include read-only access/payment state; they must not grant entitlement or return archive files. `pull_harness` and HTTP archive delivery are the file-returning entitlement gates.
 Resource tools are source-aware. They can list/open upstream skills, plugins, workflows and MCP servers. Hosted resource packages download through `/resources/{id}/archive`; upstream-only resources stay open-only and must not pretend to have an OnlyHarness archive.
-OpenAPI is available at `https://onlyharness.com/api/openapi.json`.
-MCP Registry metadata is available at `https://onlyharness.com/server.json` as `com.onlyharness/registry`; publishing requires domain ownership proof for `onlyharness.com`.
-OAuth protected-resource metadata is available at `https://onlyharness.com/.well-known/oauth-protected-resource`; Caddy must serve it as `application/json`.
-Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install onlyharness@onlyharness`.
+OpenAPI is available at `https://superskill.sh/api/openapi.json`.
+MCP Registry metadata is available at `https://superskill.sh/server.json`; `com.onlyharness/registry` remains a compatibility identifier.
+OAuth protected-resource metadata is available at `https://superskill.sh/.well-known/oauth-protected-resource`; it intentionally names no authorization server. Managed headless flows use a confirmed account token supplied manually through `HH_TOKEN`. `/.well-known/oauth-authorization-server` must return 404 until a single issuer owns a complete standards-valid authorization flow.
+Claude Code compatibility marketplace: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install superskill@superskill`. The one-link installer is primary.
 
 ## Conventions
 
@@ -193,8 +193,8 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 
 ## UI Rules
 
-- The web app is OnlyHarness 98: Windows 98 style windows, taskbar, bevels, pixel borders, and playful copy.
-- Avoid modern rounded cards, gradients, and generic SaaS hero layouts in the app surface.
+- The human-facing app on `superskill.sh` is the SuperSkill surface. Win98, Modern and Fans are legacy compatibility skins and must never render on the SuperSkill hostname.
+- Legacy compatibility skins may retain their historical visual language only on compatibility paths; SuperSkill uses its own tokens and layouts.
 - Auth, payments, permissions, and safety copy should be plain and honest, not playful.
 
 ## Where Things Live
@@ -202,7 +202,7 @@ Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness`, then
 | Path | Purpose |
 | --- | --- |
 | `apps/harness-api` | Fastify API, registry/search/import/MCP/OpenAPI |
-| `apps/registry-web` | React + Vite OnlyHarness 98 UI |
+| `apps/registry-web` | React + Vite SuperSkill UI plus legacy compatibility skins |
 | `packages/harness-cli` | Public `onlyharness` package and `hh` CLI |
 | `packages/harness-schema` | Harness manifest validation and risk/security reports |
 | `packages/semantic-diff` | Harness semantic diff and PR review text |

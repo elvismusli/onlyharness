@@ -1,16 +1,16 @@
 {
-  "name": "onlyharness",
+  "name": "superskill",
   "metadata": {
-    "description": "OnlyHarness tools for finding, pulling, evaluating and publishing AI-agent harnesses."
+    "description": "SuperSkill universal routing and reviewed capability tools."
   },
   "owner": {
-    "name": "OnlyHarness"
+    "name": "SuperSkill"
   },
   "plugins": [
     {
       "name": "onlyharness",
       "source": "./plugins/onlyharness",
-      "description": "Find, pull, run, eval and publish AI-agent harnesses from onlyharness.com"
+      "description": "Deprecated compatibility plugin; use superskill for the human-facing reviewed capability flow"
     },
     {
       "name": "superskill",

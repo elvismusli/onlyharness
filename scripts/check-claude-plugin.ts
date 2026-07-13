@@ -16,7 +16,7 @@ type PluginManifest = {
 };
 
 type McpConfig = {
-  mcpServers?: Record<string, { type?: string; url?: string; headers?: unknown }>;
+  mcpServers?: Record<string, { type?: string; url?: string; headers?: unknown; command?: string; args?: string[]; env?: unknown }>;
 };
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -43,14 +43,11 @@ const llms = readFileSync(llmsPath, "utf8");
 const agents = readFileSync(agentsPath, "utf8");
 const publicAgents = readFileSync(publicAgentsPath, "utf8");
 
-check(marketplace.name === "onlyharness", "Marketplace name must be onlyharness");
-check(marketplace.owner?.name === "OnlyHarness", "Marketplace owner must be OnlyHarness");
-check(Boolean(marketplace.metadata?.description?.includes("OnlyHarness")), "Marketplace description must name OnlyHarness");
-check(Array.isArray(marketplace.plugins) && marketplace.plugins.length === 2, "Marketplace must expose onlyharness and superskill plugins");
-const pluginEntry = marketplace.plugins?.find((entry) => entry.name === "onlyharness");
-check(pluginEntry?.name === "onlyharness", "Marketplace plugin entry must be onlyharness");
-check(pluginEntry.source === "./plugins/onlyharness", "Marketplace plugin source must point at ./plugins/onlyharness");
-check(Boolean(pluginEntry.description?.includes("onlyharness.com")), "Marketplace plugin description must mention onlyharness.com");
+check(marketplace.name === "superskill", "Marketplace name must be superskill");
+check(marketplace.owner?.name === "SuperSkill", "Marketplace owner must be SuperSkill");
+check(Boolean(marketplace.metadata?.description?.includes("SuperSkill")), "Marketplace description must name SuperSkill");
+check(Array.isArray(marketplace.plugins) && marketplace.plugins.length === 2, "Marketplace must expose SuperSkill and the temporary deprecated compatibility plugin");
+check(Boolean(marketplace.plugins?.find((entry) => entry.name === "onlyharness")?.description?.includes("Deprecated compatibility")), "Legacy OnlyHarness plugin must remain explicitly deprecated until cold-client migration proof exists");
 
 check(manifest.name === "onlyharness", "Plugin manifest name must be onlyharness");
 check(Boolean(manifest.description?.includes("harnesses")), "Plugin manifest description must mention harnesses");
@@ -92,33 +89,51 @@ check(!skill.includes("not published yet"), "OnlyHarness skill must not claim th
 const superskillRoot = path.join(root, "plugins/superskill");
 const superskillManifest = readJson<PluginManifest>(path.join(superskillRoot, ".claude-plugin/plugin.json"));
 const superskillMcp = readJson<McpConfig>(path.join(superskillRoot, ".mcp.json"));
-const superskillRuntime = readJson<{ schemaVersion?: string; cliPackage?: string; cliVersion?: string; activationContractVersion?: string }>(path.join(superskillRoot, "runtime.json"));
+const superskillRuntime = readJson<{ schemaVersion?: string; cliPackage?: string; cliVersion?: string; pluginVersion?: string; cliIntegrity?: string | null; cliReleaseStatus?: string; activationContractVersion?: string }>(path.join(superskillRoot, "runtime.json"));
 const superskillSkill = readFileSync(path.join(superskillRoot, "skills/superskill/SKILL.md"), "utf8");
 const superskillEntry = marketplace.plugins?.find((entry) => entry.name === "superskill");
 check(superskillEntry?.source === "./plugins/superskill", "SuperSkill marketplace source must point at ./plugins/superskill");
 check(superskillManifest.name === "superskill", "SuperSkill Claude manifest name must be superskill");
-check(superskillManifest.version === "0.1.0", "SuperSkill Claude manifest version must be 0.1.0");
-check(superskillMcp.mcpServers?.onlyharness?.url === "https://onlyharness.com/mcp", "SuperSkill must reuse the public browse-only MCP endpoint");
-check(!superskillMcp.mcpServers?.onlyharness?.headers, "SuperSkill MCP must not embed the internal token");
+check(superskillManifest.version === superskillRuntime.pluginVersion, "SuperSkill Claude manifest and runtime plugin versions must match");
+check(superskillManifest.author?.name === "SuperSkill" && superskillManifest.author.url === "https://superskill.sh", "SuperSkill manifest must use the canonical product identity");
+check(superskillMcp.mcpServers?.superskill?.url === "https://superskill.sh/mcp", "SuperSkill must use the canonical public browse-only MCP endpoint");
+check(!superskillMcp.mcpServers?.superskill?.headers, "SuperSkill MCP must not embed the internal token");
 check(superskillRuntime.schemaVersion === "superskill.runtime.v1", "SuperSkill runtime schema must be v1");
 check(superskillRuntime.cliPackage === "onlyharness" && /^\d+\.\d+\.\d+$/.test(superskillRuntime.cliVersion ?? ""), "SuperSkill runtime must pin an exact onlyharness version");
+check(
+  (superskillRuntime.cliReleaseStatus === "unpublished" && superskillRuntime.cliIntegrity === null) ||
+  (superskillRuntime.cliReleaseStatus === "published" && /^sha512-[A-Za-z0-9+/]+={0,2}$/.test(superskillRuntime.cliIntegrity ?? "")),
+  "SuperSkill runtime must fail closed before publication and pin official npm integrity after publication"
+);
 check(superskillRuntime.activationContractVersion === "superskill.activation.v1", "SuperSkill activation contract must be v1");
+check(Object.keys(superskillMcp.mcpServers ?? {}).sort().join(",") === "superskill,superskill_local", "SuperSkill plugin must expose one remote and one local MCP server");
+check(
+  superskillMcp.mcpServers?.superskill_local?.command === "npx"
+    && JSON.stringify(superskillMcp.mcpServers.superskill_local.args) === JSON.stringify(["--yes", `${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion}`, "mcp", "superskill"])
+    && !superskillMcp.mcpServers.superskill_local.env
+    && !superskillMcp.mcpServers.superskill_local.headers,
+  "Local SuperSkill MCP must use the exact pinned CLI and inherit credentials without embedding them"
+);
 for (const required of [
   `onlyharness@${superskillRuntime.cliVersion}`,
-  "--target claude-code",
-  "--target codex",
+  "superskill_local",
   "HH_SUPERSKILL_TOKEN",
-  "LOCAL_CLI_UNAVAILABLE",
+  "LOCAL_MCP_UNAVAILABLE",
   "no_safe_match",
-  "activation mark",
-  "activation finish",
-  "--confirm-keep",
-  "--confirm-remove",
+  "activation_doctor",
+  "recommend",
+  "activation_start",
+  "activation_mark_loaded",
+  "activation_mark_invoked",
+  "activation_finish",
+  "activation_keep",
+  "activation_remove",
   "agent_reported",
   ".agents/skills",
   ".codex/harnesses"
 ]) check(superskillSkill.includes(required), `SuperSkill shared skill must include ${required}`);
 check(!superskillSkill.includes("onlyharness@latest"), "SuperSkill managed commands must never use latest");
+check(!/npx[^\n]*(?:recommend|activation (?:start|mark|finish|keep|remove))/.test(superskillSkill), "SuperSkill lifecycle must use local MCP tools, not shell CLI fallback");
 
 for (const docs of [
   { name: "README.md", text: readme },
@@ -126,7 +141,7 @@ for (const docs of [
   { name: "AGENTS.md", text: agents },
   { name: "public AGENTS.md", text: publicAgents }
 ]) {
-  check(docs.text.includes("https://onlyharness.com/mcp"), `${docs.name} must mention the MCP endpoint`);
+  check(docs.text.includes("https://superskill.sh/mcp"), `${docs.name} must mention the canonical MCP endpoint`);
   check(docs.text.includes("claude plugin"), `${docs.name} must mention Claude plugin install/validation`);
 }
 

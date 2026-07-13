@@ -1,10 +1,10 @@
 {
   "name": "onlyharness",
-  "version": "0.2.13",
-  "description": "OnlyHarness CLI (hh) — find, inspect, install and publish reusable AI-agent resources from onlyharness.com",
+  "version": "0.2.14",
+  "description": "SuperSkill universal installer and compatibility CLI (hh) for reviewed AI-agent capabilities",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://onlyharness.com",
+  "homepage": "https://superskill.sh",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elvismusli/onlyharness.git",
@@ -14,6 +14,7 @@
     "ai-agents",
     "harness",
     "mcp",
+    "superskill",
     "cli",
     "agent-workflows"
   ],
@@ -27,6 +28,10 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "smol-toml": "^1.7.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && npm run bundle",
@@ -45,7 +50,7 @@
     "commander": "^14.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.8.3",
-    "yaml": "^2.8.0",
-    "viem": "^2.54.6"
+    "viem": "^2.54.6",
+    "yaml": "^2.8.0"
   }
 }

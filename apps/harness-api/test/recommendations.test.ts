@@ -40,8 +40,10 @@ test("task normalization rejects common secret forms", () => {
   ]) assert.throws(() => normalizeTask(task), RecommendationValidationError);
 });
 
-test("decision digest excludes raw task", () => {
+test("decision digest excludes raw task but binds recommendation identity", () => {
   const first = recommendCapabilities({ task: "competitor research market map", context }, [approvedCapability()], { now, recommendationId: "rec_first" });
-  const second = recommendCapabilities({ task: "market map competitor research", context }, [approvedCapability()], { now, recommendationId: "rec_second" });
+  const second = recommendCapabilities({ task: "market map competitor research", context }, [approvedCapability()], { now, recommendationId: "rec_first" });
   assert.equal(first.decisionDigest, second.decisionDigest);
+  const rebound = recommendCapabilities({ task: "market map competitor research", context }, [approvedCapability()], { now, recommendationId: "rec_second" });
+  assert.notEqual(first.decisionDigest, rebound.decisionDigest);
 });

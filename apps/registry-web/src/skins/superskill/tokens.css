@@ -233,6 +233,48 @@
 .ss-consent { border: 1px solid var(--ss-border); border-radius: var(--ss-r-card); padding: 22px; background: var(--ss-surface); }.ss-consent--t3 { border-color: color-mix(in srgb, var(--ss-fail), transparent 55%); }
 .ss-hard-confirm { display: flex; gap: 8px; margin: 16px 0; }.ss-consent-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
+/* Account and workspaces reuse the existing auth/workspace hooks. There is no
+   browser-facing token field in the SuperSkill surface. */
+.ss-account-page, .ss-workspace-page { max-width: 1040px; }
+.ss-account-card, .ss-auth-card, .ss-workspace-panel, .ss-workspace-catalog, .ss-workspace-empty, .ss-workspace-honest-state { border: 1px solid var(--ss-border); border-radius: var(--ss-r-card); padding: 26px; background: var(--ss-surface); box-shadow: var(--ss-shadow-rest); }
+.ss-account-card { max-width: 720px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px 24px; }
+.ss-account-card h2, .ss-auth-card h2, .ss-workspace-panel h2, .ss-workspace-catalog h2, .ss-workspace-empty h2 { margin: 4px 0; }
+.ss-account-card p, .ss-workspace-panel p, .ss-workspace-catalog header p, .ss-workspace-empty p, .ss-workspace-honest-state p { margin: 4px 0; color: var(--ss-muted); }
+.ss-account-state { display: inline-flex; width: fit-content; border: 1px solid currentColor; border-radius: var(--ss-r-pill); padding: 6px 11px; font: 700 10px "IBM Plex Mono", monospace; text-transform: uppercase; }
+.ss-account-state--confirmed { color: var(--ss-pass); background: color-mix(in srgb, var(--ss-pass) 9%, transparent); }
+.ss-account-state--pending { color: var(--ss-warn); background: color-mix(in srgb, var(--ss-warn) 9%, transparent); }
+.ss-account-actions { grid-column: 1 / -1; border-top: 1px solid var(--ss-border-soft); padding-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ss-auth-card { max-width: 680px; }
+.ss-auth-tabs, .ss-workspace-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--ss-border); margin: -8px 0 24px; }
+.ss-auth-tabs button, .ss-workspace-tabs button { border: 0; border-bottom: 3px solid transparent; padding: 12px 4px 10px; margin-right: 20px; background: transparent; color: var(--ss-muted); cursor: pointer; text-transform: capitalize; }
+.ss-auth-tabs button[aria-selected="true"], .ss-workspace-tabs button[aria-selected="true"] { border-bottom-color: var(--ss-action); color: var(--ss-ink); font-weight: 800; }
+.ss-auth-form, .ss-workspace-form { display: grid; gap: 16px; }
+.ss-auth-form label, .ss-workspace-form label { display: grid; gap: 7px; color: var(--ss-muted); font-size: 13px; font-weight: 700; }
+.ss-auth-form input, .ss-workspace-form input { width: 100%; min-height: 44px; border: 1px solid var(--ss-border); border-radius: 8px; padding: 10px 12px; background: var(--ss-sunken); color: var(--ss-ink); }
+.ss-auth-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ss-auth-text-button { border: 0; padding: 5px 0; background: transparent; color: var(--ss-action); cursor: pointer; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.ss-auth-text-button:disabled { cursor: not-allowed; opacity: .5; }
+.ss-auth-confirm-copy, .ss-auth-status, .ss-workspace-status { color: var(--ss-muted); font-size: 13px; }
+.ss-auth-status, .ss-workspace-status { border-left: 3px solid var(--ss-action); padding-left: 12px; }
+.ss-auth-notice { grid-column: 1 / -1; margin: 0; border: 1px solid color-mix(in srgb, var(--ss-warn), transparent 55%); border-radius: 8px; padding: 12px; color: var(--ss-warn); background: color-mix(in srgb, var(--ss-warn) 7%, transparent); }
+.ss-auth-notice--error { border-color: color-mix(in srgb, var(--ss-fail), transparent 55%); color: var(--ss-fail); background: color-mix(in srgb, var(--ss-fail) 7%, transparent); }
+.ss-workspace-connect-grid { margin-bottom: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.ss-workspace-panel .ss-button { justify-self: start; }
+.ss-workspace-empty { max-width: 680px; }
+.ss-workspace-empty .ss-link { margin-top: 18px; }
+.ss-workspace-catalog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 22px; }
+.ss-workspace-tabs { margin: 0; overflow-x: auto; }
+.ss-workspace-section { padding-top: 24px; }
+.ss-workspace-section h3 { margin: 0 0 16px; font-size: 21px; }
+.ss-workspace-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ss-workspace-list { margin: 0; padding: 0; list-style: none; }
+.ss-workspace-list li { border-top: 1px solid var(--ss-border-soft); padding: 14px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; }
+.ss-workspace-list li > div { min-width: 0; display: grid; gap: 3px; }
+.ss-workspace-list li span { color: var(--ss-muted); font: 500 11px/1.5 "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+.ss-workspace-list li > span { text-align: right; }
+.ss-workspace-setup p { max-width: 680px; color: var(--ss-muted); }
+.ss-workspace-honest-state { border-style: dashed; }
+
 .ss-footer { border-top: 2px solid var(--ss-ink); padding-block: 28px; }
 .ss-footer .ss-content { display: flex; justify-content: space-between; gap: 20px; color: var(--ss-faint); font: 500 11px "IBM Plex Mono", monospace; }
 
@@ -262,6 +304,12 @@
   .ss-raw-links { flex-direction: column; }
   .ss-trust-head { flex-direction: column-reverse; }.ss-facts { grid-template-columns: 1fr; }.ss-compat-list li { grid-template-columns: 1fr auto; }.ss-compat-list time { grid-column: 1 / -1; }
   .ss-footer .ss-content { flex-direction: column; }
+  .ss-account-card, .ss-workspace-connect-grid { grid-template-columns: 1fr; }
+  .ss-account-state { grid-column: 1; }
+  .ss-auth-actions, .ss-account-actions, .ss-workspace-catalog > header { align-items: stretch; flex-direction: column; }
+  .ss-auth-actions .ss-button { width: 100%; }
+  .ss-workspace-list li { grid-template-columns: 1fr; gap: 6px; }
+  .ss-workspace-list li > span { text-align: left; }
 }
 
 @media (max-width: 479px) {

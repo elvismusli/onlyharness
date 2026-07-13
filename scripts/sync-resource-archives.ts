@@ -1,4 +1,6 @@
 import { createWriteStream, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { once } from "node:events";
 import path from "node:path";
 import { readJsonFile, type ResourceCatalog, type SeedResource } from "./resource-catalog-shared.js";
@@ -13,7 +15,8 @@ const maxBytes = Number(process.env.RESOURCE_ARCHIVE_MAX_BYTES ?? 100_000_000);
 type ArchiveStatus = {
   id: string;
   status: "ready" | "failed" | "skipped";
-  path?: string;
+  storageKey?: string;
+  sha256?: string;
   bytes?: number;
   url?: string;
   error?: string;
@@ -54,7 +57,7 @@ async function syncArchive(resource: SeedResource): Promise<ArchiveStatus> {
   const output = path.join(archiveRoot, `${archiveKey(resource.id)}.tar.gz`);
   try {
     const existing = safeStat(output);
-    if (existing?.size) return { id: resource.id, status: "ready", path: output, bytes: existing.size };
+    if (existing?.size) return { id: resource.id, status: "ready", storageKey: path.basename(output), bytes: existing.size, sha256: fileSha256(output) };
 
     const refs = unique([
       "HEAD",
@@ -66,7 +69,7 @@ async function syncArchive(resource: SeedResource): Promise<ArchiveStatus> {
     for (const ref of refs) {
       const url = `https://codeload.github.com/${encodeURIComponent(resource.upstreamOwner)}/${encodeURIComponent(resource.upstreamRepo)}/tar.gz/${encodeGitHubRef(ref)}`;
       const result = await download(url, output);
-      if (result.ok) return { id: resource.id, status: "ready", path: output, bytes: result.bytes, url };
+      if (result.ok) return { id: resource.id, status: "ready", storageKey: path.basename(output), bytes: result.bytes, sha256: fileSha256(output), url };
       errors.push(`${ref}: ${result.error}`);
     }
     return { id: resource.id, status: "failed", error: errors.join("; ") };
@@ -140,15 +143,19 @@ function archiveKey(id: string): string {
   return Buffer.from(id, "utf8").toString("base64url");
 }
 
-function archiveInventory(): Array<{ id: string; path: string; bytes: number }> {
+function archiveInventory(): Array<{ id: string; storageKey: string; bytes: number; sha256: string }> {
   return readdirSync(archiveRoot)
     .filter((file) => file.endsWith(".tar.gz"))
     .map((file) => {
       const id = Buffer.from(file.replace(/\.tar\.gz$/, ""), "base64url").toString("utf8");
       const filePath = path.join(archiveRoot, file);
-      return { id, path: filePath, bytes: statSync(filePath).size };
+      return { id, storageKey: file, bytes: statSync(filePath).size, sha256: fileSha256(filePath) };
     })
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function fileSha256(filePath: string): string {
+  return `sha256:${createHash("sha256").update(readFileSync(filePath)).digest("hex")}`;
 }
 
 function safeStat(filePath: string): { size: number } | undefined {

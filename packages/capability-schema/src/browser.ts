@@ -198,15 +198,16 @@ const reviewHumanCasesSchema = z.array(z.object({
   });
 });
 
-const publicSafeReviewerSchema = z.object({
-  label: z.string().min(2).max(100).regex(/^[^\r\n]+$/).refine(
-    (label) => !/[^\s@]+@[^\s@]+\.[^\s@]+/.test(label.trim()),
-    "reviewer label must be public-safe and must not be an email address"
-  )
+export const publicActorIdentitySchema = z.object({
+  actorId: z.string().regex(
+    /^github-id:[1-9]\d{0,19}$/,
+    "actor ID must be an immutable numeric GitHub actor identity"
+  ),
+  label: z.string().min(1).max(39).regex(/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/)
 }).strict();
 
 const independentReviewSchema = z.object({
-  reviewer: publicSafeReviewerSchema,
+  reviewer: publicActorIdentitySchema,
   verdict: z.enum(["pass", "fail"]),
   reviewedAt: rfc3339Schema,
   caseIds: z.array(z.string().trim().min(1)).min(3).superRefine((rows, context) => {
@@ -253,15 +254,33 @@ export const reviewAttestationSchema = z.object({
     }).strict()),
     differences: z.array(z.object({ field: z.string().min(1), declared: z.string(), inferred: z.string() }).strict())
   }).strict(),
+  authorship: z.object({
+    author: publicActorIdentitySchema,
+    releaseCutter: publicActorIdentitySchema
+  }).strict(),
   compatibility: reviewCompatibilitySchema,
   humanCases: reviewHumanCasesSchema,
-  reviewer: publicSafeReviewerSchema,
+  reviewer: publicActorIdentitySchema,
   independentReview: independentReviewSchema.optional(),
   limitations: z.array(z.string().min(1)),
   reviewedAt: rfc3339Schema,
   expiresAt: rfc3339Schema,
   replacement: z.object({ ref: z.string().min(3), version: z.string().min(1), artifactDigest: digestSchema }).strict().optional()
 }).strict().superRefine((review, context) => {
+  if (review.reviewer.actorId === review.authorship.author.actorId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "reviewer actor must differ from the release author actor",
+      path: ["reviewer", "actorId"]
+    });
+  }
+  if (review.reviewer.actorId === review.authorship.releaseCutter.actorId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "reviewer actor must differ from the release cutter actor",
+      path: ["reviewer", "actorId"]
+    });
+  }
   const independentReviewRequired = capabilityRequiresIndependentReview(review.capability.id);
   if (independentReviewRequired && !review.independentReview) {
     context.addIssue({
@@ -271,11 +290,25 @@ export const reviewAttestationSchema = z.object({
     });
   }
   if (review.independentReview) {
-    if (review.independentReview.reviewer.label.trim().toLowerCase() === review.reviewer.label.trim().toLowerCase()) {
+    if (review.independentReview.reviewer.actorId === review.reviewer.actorId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "independent reviewer must differ from the primary reviewer",
-        path: ["independentReview", "reviewer", "label"]
+        path: ["independentReview", "reviewer", "actorId"]
+      });
+    }
+    if (review.independentReview.reviewer.actorId === review.authorship.author.actorId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "independent reviewer actor must differ from the release author actor",
+        path: ["independentReview", "reviewer", "actorId"]
+      });
+    }
+    if (review.independentReview.reviewer.actorId === review.authorship.releaseCutter.actorId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "independent reviewer actor must differ from the release cutter actor",
+        path: ["independentReview", "reviewer", "actorId"]
       });
     }
     const primaryCaseIds = [...new Set(review.humanCases.map((item) => item.caseId.trim()))].sort();
@@ -395,6 +428,15 @@ export const recommendationRequestSchema = z.object({
   }).strict()
 }).strict();
 
+export const exactHandoffDecisionRequestSchema = z.object({
+  capability: z.object({
+    id: capabilityIdSchema,
+    version: z.string().regex(/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/),
+    artifactDigest: digestSchema
+  }).strict(),
+  client: clientSchema
+}).strict();
+
 export const recommendationCandidateSchema = z.object({
   capability: managedCapabilitySchema,
   score: z.number().int().min(0).max(100),
@@ -462,7 +504,8 @@ export const superskillErrorCodeSchema = z.enum([
   "ARTIFACT_NOT_IMMUTABLE", "ARTIFACT_DIGEST_MISMATCH", "ACTIVATION_INVALID_TRANSITION",
   "ACTIVATION_NOT_FOUND", "CLIENT_UNSUPPORTED", "CLIENT_NOT_DETECTED", "TARGET_COLLISION",
   "MANAGED_FILE_CHANGED", "PERMISSION_BLOCKED", "CONSENT_REQUIRED", "CONSENT_STALE",
-  "LOCAL_CLI_UNAVAILABLE", "PAYMENT_NOT_SUPPORTED_IN_SUPERSKILL"
+  "LOCAL_CLI_UNAVAILABLE", "PAYMENT_NOT_SUPPORTED_IN_SUPERSKILL", "HANDOFF_INVALID",
+  "HANDOFF_NOT_FOUND", "HANDOFF_UNSAFE", "SUPERSKILL_CONFIRMED_ACCESS_REQUIRED"
 ]);
 
 export type Client = z.infer<typeof clientSchema>;
@@ -475,6 +518,7 @@ export type ManagedCapabilityIndex = z.infer<typeof managedCapabilityIndexSchema
 export type ManagedCapabilityHistory = z.infer<typeof managedCapabilityHistorySchema>;
 export type CuratedCatalog = z.infer<typeof curatedCatalogSchema>;
 export type CuratedResource = z.infer<typeof curatedResourceSchema>;
+export type PublicActorIdentity = z.infer<typeof publicActorIdentitySchema>;
 export type ReviewAttestation = z.infer<typeof reviewAttestationSchema>;
 export type RevocationTombstone = z.infer<typeof revocationTombstoneSchema>;
 export type ShowroomPreview = z.infer<typeof showroomPreviewSchema>;
@@ -483,6 +527,7 @@ export type ShowroomListResponse = z.infer<typeof showroomListResponseSchema>;
 export type SelectedShowroomCapability = z.infer<typeof selectedShowroomCapabilitySchema>;
 export type SelectedShowroomListResponse = z.infer<typeof selectedShowroomListResponseSchema>;
 export type RecommendationRequest = z.infer<typeof recommendationRequestSchema>;
+export type ExactHandoffDecisionRequest = z.infer<typeof exactHandoffDecisionRequestSchema>;
 export type RecommendationCandidate = z.infer<typeof recommendationCandidateSchema>;
 export type RecommendationResponse = z.infer<typeof recommendationResponseSchema>;
 export type ExactCapabilityRelease = z.infer<typeof exactCapabilityReleaseSchema>;

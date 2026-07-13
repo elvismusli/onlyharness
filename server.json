@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.onlyharness/registry",
-  "title": "OnlyHarness Registry",
-  "description": "Search, inspect, pull and publish reusable AI-agent resources from onlyharness.com: skills, plugins, workflows, MCP servers, command packs, guides and native harness packages.",
-  "websiteUrl": "https://onlyharness.com",
+  "title": "SuperSkill Registry",
+  "description": "Find, inspect and install reviewed reusable AI-agent capabilities from superskill.sh.",
+  "websiteUrl": "https://superskill.sh",
   "repository": {
     "url": "https://github.com/elvismusli/onlyharness",
     "source": "github"
   },
-  "version": "0.2.13",
+  "version": "0.2.14",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://onlyharness.com/mcp"
+      "url": "https://superskill.sh/mcp"
     }
   ]
 }

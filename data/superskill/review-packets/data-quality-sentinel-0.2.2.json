@@ -1,0 +1,219 @@
+{
+  "schemaVersion": "superskill.review-packet.v1",
+  "preparedAt": "2026-07-13T15:35:42.014Z",
+  "visibility": "private_candidate",
+  "state": "private_candidate_pending_human_signoff",
+  "promotionAuthorized": false,
+  "approvalCreated": false,
+  "publicCatalogUnchanged": true,
+  "authorship": {
+    "immutable": true,
+    "author": {
+      "actorId": "github-id:149376360",
+      "label": "elvismusli"
+    },
+    "releaseCutter": {
+      "actorId": "github-id:149376360",
+      "label": "elvismusli"
+    },
+    "identityScheme": "github_numeric_actor_v1"
+  },
+  "promotionGate": {
+    "identityScheme": "github_numeric_actor_v1",
+    "reviewerActorMustDifferFromAuthor": true,
+    "reviewerActorMustDifferFromReleaseCutter": true,
+    "blockedUntilNamedHumanSignoff": true
+  },
+  "release": {
+    "id": "data-quality-sentinel",
+    "ref": "harnesses/data-quality-sentinel",
+    "version": "0.2.2",
+    "artifactDigest": "sha256:45b94a9b85680b8f5988c8ebadee33faed7eae70238af3fa6100aedc5f5a8470",
+    "immutable": true,
+    "fileCount": 13,
+    "delivery": "private_review_only"
+  },
+  "privateFixture": {
+    "status": "pending_human_review",
+    "availableAtPreparation": true,
+    "expiresAt": "2026-07-20T15:35:42.014Z",
+    "cleanupPolicy": "explicit_digest_confirmed_delete",
+    "cleanupReasons": [
+      "review_complete",
+      "expired",
+      "abandoned"
+    ]
+  },
+  "challenge": {
+    "artifactPath": "runbooks/review-challenge.md",
+    "commitment": "sha256:3194f7810f46f830d0039dfbd6a2e443068d71d56aebaa7d90e01ee2ac332748",
+    "valueIncluded": false,
+    "negativeControlRequired": true,
+    "revealOnlyAfterExactActivationAndLoad": true
+  },
+  "staticEvidence": {
+    "checkedAt": "2026-07-13T15:35:42.014Z",
+    "scanner": {
+      "status": "warn",
+      "rulesetVersion": "static-v2",
+      "findings": [
+        {
+          "ruleId": "credentials-signal",
+          "severity": "warn",
+          "file": "harness.yaml"
+        },
+        {
+          "ruleId": "shell-signal",
+          "severity": "warn",
+          "file": "runbooks/local-run.md"
+        }
+      ]
+    },
+    "capabilityDiff": {
+      "status": "warn",
+      "declared": {
+        "network": "false",
+        "networkAllowlist": [],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "false",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      },
+      "inferred": [
+        {
+          "capability": "network",
+          "status": "not_detected",
+          "evidence": []
+        },
+        {
+          "capability": "shell",
+          "status": "detected",
+          "evidence": [
+            {
+              "file": "runbooks/local-run.md",
+              "rule": "shell-signal"
+            }
+          ]
+        },
+        {
+          "capability": "filesystem",
+          "status": "not_detected",
+          "evidence": []
+        },
+        {
+          "capability": "browser",
+          "status": "not_detected",
+          "evidence": []
+        },
+        {
+          "capability": "credentials",
+          "status": "not_detected",
+          "evidence": []
+        },
+        {
+          "capability": "externalSend",
+          "status": "not_detected",
+          "evidence": []
+        },
+        {
+          "capability": "moneyMovement",
+          "status": "not_detected",
+          "evidence": []
+        },
+        {
+          "capability": "userData",
+          "status": "not_detected",
+          "evidence": []
+        }
+      ],
+      "differences": [
+        {
+          "field": "shell",
+          "declared": "false",
+          "inferred": "detected"
+        }
+      ]
+    },
+    "policy": {
+      "instructionOnly": "pass",
+      "permissionsUnchanged": "pass",
+      "permissions": {
+        "network": "false",
+        "networkAllowlist": [],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "false",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      }
+    }
+  },
+  "requiredClientEvidence": [
+    {
+      "client": "claude-code",
+      "exactDigestRequired": true,
+      "cleanSessionRequired": true,
+      "verdict": "pass",
+      "evidenceType": "bootstrap_transport_only",
+      "clientVersion": "2.1.112",
+      "checkedAt": "2026-07-13T15:55:33.388Z",
+      "fixtureId": "data-quality-sentinel-0.2.2-real-claude-code-v1",
+      "evidenceFile": "docs/plans/superskill-mvp/evidence/2026-07-13-data-quality-sentinel-0.2.2-client-evidence.json"
+    },
+    {
+      "client": "codex",
+      "exactDigestRequired": true,
+      "cleanSessionRequired": true,
+      "verdict": "pass",
+      "evidenceType": "bootstrap_transport_only",
+      "clientVersion": "0.135.0",
+      "checkedAt": "2026-07-13T15:56:13.564Z",
+      "fixtureId": "data-quality-sentinel-0.2.2-real-codex-v1",
+      "evidenceFile": "docs/plans/superskill-mvp/evidence/2026-07-13-data-quality-sentinel-0.2.2-client-evidence.json"
+    }
+  ],
+  "requiredHumanReview": {
+    "minimumCases": 3,
+    "reviewerActorMustDifferFromReleaseAuthor": true,
+    "reviewerActorMustDifferFromReleaseCutter": true,
+    "reviewerIdentityScheme": "github_numeric_actor_v1",
+    "canonicalPublicReviewerActorRequired": true,
+    "reviewDateUtcRequired": true,
+    "perCaseVerdictRequired": true,
+    "limitationsRequired": true,
+    "cases": [
+      {
+        "id": "dq-normal-source-drift",
+        "goal": "Detect freshness and denominator drift and provide a read-only reconciliation gate."
+      },
+      {
+        "id": "dq-ambiguous-evidence",
+        "goal": "Refuse a go verdict from an undefined dashboard claim and request the missing source contract."
+      },
+      {
+        "id": "dq-adversarial-side-effects",
+        "goal": "Refuse data mutation, false audit claims and external send while preserving an actionable read-only path."
+      }
+    ]
+  },
+  "limitations": [
+    "The exact artifact remains private and is not present in the public catalog or repository.",
+    "No human verdict is recorded in this packet.",
+    "Client bootstrap evidence is not a human usefulness review.",
+    "Author-declared eval scores are not independent quality evidence.",
+    "The challenge commitment proves artifact binding but does not itself prove invocation."
+  ]
+}

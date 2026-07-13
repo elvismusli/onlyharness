@@ -12,6 +12,7 @@ const smokeDataRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-smoke-"));
 const orgRoot = path.join(smokeDataRoot, "org-harnesses");
 const orgsPath = path.join(smokeDataRoot, "orgs.json");
 const resourceArchiveRoot = path.join(smokeDataRoot, "resource-archives");
+const resourceImportArchiveRoot = path.join(smokeDataRoot, "resource-import-archives");
 const resourceImportsPath = path.join(smokeDataRoot, "imported-resources.json");
 const markdownSmokeName = "mcp-markdown-safe-output-smoke";
 const markdownSmokeRoot = path.join(root, "data/imports", markdownSmokeName);
@@ -41,6 +42,8 @@ const api = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     SUPABASE_ANON_KEY: "",
     HOSTED_RESOURCE_PUBLISH_ENABLED: "false",
     RESOURCE_ARCHIVE_DIR: resourceArchiveRoot,
+    RESOURCE_IMPORT_ARCHIVE_DIR: resourceImportArchiveRoot,
+    RESOURCE_RELEASES_PATH: path.join(smokeDataRoot, "resource-releases.json"),
     RESOURCE_IMPORTS_PATH: resourceImportsPath,
     PAYMENTS_ENABLED: "true",
     HARNESS_MANUAL_ENTITLEMENTS: "mcp-paid-token=local/mcp-smoke-paid-harness",
@@ -54,9 +57,9 @@ try {
   const initialize = await rpc(1, "initialize", {
     protocolVersion: "2025-06-18",
     capabilities: {},
-    clientInfo: { name: "onlyharness-smoke", version: "0" }
+    clientInfo: { name: "superskill-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "onlyharness" || initialize.result?.serverInfo?.version !== "0.2.13") {
+  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.2.14") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 
@@ -68,8 +71,10 @@ try {
     throw new Error(`MCP tool inventory drifted: ${JSON.stringify(names)}`);
   }
   for (const tool of listedTools as Array<{ name: string; annotations?: Record<string, boolean> }>) {
-    const expected = tool.name.startsWith("publish_")
-      ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
+    const expected = tool.name === "publish_resource_package"
+      ? { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true }
+      : tool.name.startsWith("publish_")
+        ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
       : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
     if (JSON.stringify(tool.annotations) !== JSON.stringify(expected)) {
       throw new Error(`MCP tool annotations drifted for ${tool.name}: ${JSON.stringify(tool.annotations)}`);
@@ -81,7 +86,7 @@ try {
     arguments: { query: "Harness detail" }
   });
   const docsText = docs.result?.content?.[0]?.text ?? "";
-  if (!docsText.includes("\"source\": \"https://onlyharness.com/llms.txt\"") || docsText.includes(root)) {
+  if (!docsText.includes("\"source\": \"https://superskill.sh/llms.txt\"") || docsText.includes(root)) {
     throw new Error(`MCP search_docs leaked local docs source: ${JSON.stringify(docs)}`);
   }
 
@@ -120,7 +125,7 @@ try {
     arguments: { id: "github:obra/superpowers" }
   });
   const resourceInstructionsText = resourceInstructions.result?.content?.[0]?.text ?? "";
-  const hasResourceUsePath = resourceInstructionsText.includes("Use in OnlyHarness");
+  const hasResourceUsePath = resourceInstructionsText.includes("Use in SuperSkill");
   const hasResourceAvailability = resourceInstructionsText.includes("hosted resource archive") || resourceInstructionsText.includes("upstream resource listing");
   if (!hasResourceUsePath || !hasResourceAvailability || !resourceInstructionsText.includes("upstream attribution")) {
     throw new Error(`MCP resource_use_instructions returned unsafe guidance: ${JSON.stringify(resourceInstructions)}`);
@@ -383,6 +388,7 @@ try {
 }
 
 await smokeArchiveStorageFailure();
+await smokeDurableResourcePublish();
 
 async function rpc(id: number, method: string, params: unknown, headers: Record<string, string> = {}, baseUrl = apiUrl) {
   const response = await fetch(`${baseUrl}/mcp`, {
@@ -415,7 +421,6 @@ async function smokeArchiveStorageFailure() {
   const storageSmokeRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-storage-smoke-"));
   const unavailableArchiveRoot = path.join(storageSmokeRoot, "archive-root-is-a-file");
   const importsPath = path.join(storageSmokeRoot, "imported-resources.json");
-  const baseUrl = "http://127.0.0.1:8797";
   writeFileSync(unavailableArchiveRoot, "not a directory\n");
   const child = spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
     cwd: root,
@@ -428,29 +433,26 @@ async function smokeArchiveStorageFailure() {
       SUPABASE_URL: "",
       SUPABASE_ANON_KEY: "",
       HOSTED_RESOURCE_PUBLISH_ENABLED: "true",
-      RESOURCE_ARCHIVE_DIR: unavailableArchiveRoot,
+      RESOURCE_ARCHIVE_DIR: path.join(storageSmokeRoot, "legacy-archives"),
+      RESOURCE_IMPORT_ARCHIVE_DIR: unavailableArchiveRoot,
+      RESOURCE_RELEASES_PATH: path.join(storageSmokeRoot, "resource-releases.json"),
       RESOURCE_IMPORTS_PATH: importsPath,
       HARNESS_EVENTS_PATH: path.join(storageSmokeRoot, "events.jsonl")
     }
   });
+  let stderr = "";
+  let stdout = "";
+  child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+  child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
   try {
-    await waitForApi(`${baseUrl}/healthz`);
-    const malformed = await rpc(900, "tools/call", {
-      name: "publish_resource_package",
-      arguments: {}
-    }, { Authorization: "Bearer local:storage-validation-publisher" }, baseUrl);
-    assertToolError(malformed, "VALIDATION_FAILED", 422);
-    const body = resourcePublishFixture("unavailable-archive-resource");
-    const http = await httpPublish(body, "Bearer local:storage-http-publisher", baseUrl);
-    if (http.status !== 503 || http.body.code !== "ARCHIVE_STORAGE_UNAVAILABLE") {
-      throw new Error(`HTTP archive storage failure was not sanitized: ${JSON.stringify(http)}`);
+    const exit = await Promise.race([
+      new Promise<number | null>((resolve) => child.once("exit", resolve)),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 10_000))
+    ]);
+    if (exit === "timeout") throw new Error("API did not fail closed when writable import storage was unavailable");
+    if (exit === 0 || !`${stdout}\n${stderr}`.includes("ARCHIVE_STORAGE_UNAVAILABLE")) {
+      throw new Error(`API storage startup preflight did not fail closed: exit=${exit}`);
     }
-    assertSafePublishFailure(JSON.stringify(http.body), "ARCHIVE_STORAGE_UNAVAILABLE", "storage-http-publisher");
-
-    const mcp = await rpc(901, "tools/call", { name: "publish_resource_package", arguments: body }, { Authorization: "Bearer local:storage-mcp-publisher" }, baseUrl);
-    const mcpText = mcp.result?.content?.[0]?.text ?? "";
-    assertSafePublishFailure(mcpText, "ARCHIVE_STORAGE_UNAVAILABLE", "storage-mcp-publisher");
-    assertToolError(mcp, "ARCHIVE_STORAGE_UNAVAILABLE", 503);
     if (existsSync(importsPath)) throw new Error("Archive storage failure created public resource metadata");
   } finally {
     child.kill("SIGTERM");
@@ -458,9 +460,118 @@ async function smokeArchiveStorageFailure() {
   }
 }
 
+async function smokeDurableResourcePublish() {
+  const durableRoot = mkdtempSync(path.join(os.tmpdir(), "hh-mcp-durable-publish-"));
+  const baseUrl = "http://127.0.0.1:8796";
+  const env = {
+    ...process.env,
+    HARNESS_API_PORT: "8796",
+    HARNESS_API_HOST: "127.0.0.1",
+    HARNESS_WORKSPACE_ROOT: root,
+    SUPABASE_URL: "",
+    SUPABASE_ANON_KEY: "",
+    SUPABASE_SERVICE_ROLE_KEY: "",
+    HOSTED_RESOURCE_PUBLISH_ENABLED: "true",
+    RESOURCE_ARCHIVE_DIR: path.join(durableRoot, "legacy-archives"),
+    RESOURCE_IMPORT_ARCHIVE_DIR: path.join(durableRoot, "import-archives"),
+    RESOURCE_RELEASES_PATH: path.join(durableRoot, "resource-releases.json"),
+    RESOURCE_IMPORTS_PATH: path.join(durableRoot, "legacy-imported-resources.json"),
+    HARNESS_EVENTS_PATH: path.join(durableRoot, "events.jsonl")
+  };
+  let child = startApi(env);
+  try {
+    await waitForApi(`${baseUrl}/healthz`);
+    const duplicateBody = {
+      ...resourcePublishFixture("duplicate-path-proof"),
+      files: [
+        { path: "docs\\same.md", content: "# One\n" },
+        { path: "docs/same.md", content: "# Two\n" }
+      ]
+    };
+    const duplicateHttp = await httpPublish(duplicateBody, "Bearer local:durable-owner", baseUrl);
+    if (duplicateHttp.status !== 400 || duplicateHttp.body.code !== "VALIDATION_FAILED") throw new Error(`Duplicate normalized HTTP path was not rejected: ${JSON.stringify(duplicateHttp)}`);
+    const duplicateMcp = await rpc(910, "tools/call", { name: "publish_resource_package", arguments: duplicateBody }, { Authorization: "Bearer local:durable-owner" }, baseUrl);
+    assertToolError(duplicateMcp, "VALIDATION_FAILED", 400);
+
+    const longPathBody = {
+      ...resourcePublishFixture("tar-path-bound-proof"),
+      files: [{ path: `docs/${"a".repeat(156)}/file.md`, content: "# Too long\n" }]
+    };
+    const longPathHttp = await httpPublish(longPathBody, "Bearer local:durable-owner", baseUrl);
+    if (longPathHttp.status !== 400 || longPathHttp.body.code !== "VALIDATION_FAILED") throw new Error(`Tar path bound HTTP guard failed: ${JSON.stringify(longPathHttp)}`);
+    const longPathMcp = await rpc(911, "tools/call", { name: "publish_resource_package", arguments: longPathBody }, { Authorization: "Bearer local:durable-owner" }, baseUrl);
+    assertToolError(longPathMcp, "VALIDATION_FAILED", 400);
+    if (existsSync(env.RESOURCE_RELEASES_PATH!) || (existsSync(env.RESOURCE_IMPORT_ARCHIVE_DIR!) && readdirSync(env.RESOURCE_IMPORT_ARCHIVE_DIR!).length > 0)) {
+      throw new Error("Rejected duplicate/tar-bound packages mutated release metadata or archives");
+    }
+
+    const body = resourcePublishFixture("durable-resource-proof");
+    const first = await httpPublish(body, "Bearer local:durable-owner", baseUrl) as {
+      status: number;
+      body: { resourceId?: string; version?: string; artifactDigest?: string; size?: number; trust?: string; replay?: boolean; archiveUrl?: string; code?: string };
+    };
+    if (first.status !== 201 || first.body.resourceId !== "onlyharness:packages/durable-resource-proof" || first.body.version !== "0.1.0"
+      || !/^[a-f0-9]{64}$/.test(first.body.artifactDigest ?? "") || first.body.trust !== "unreviewed" || first.body.replay !== false) {
+      throw new Error(`Durable publish contract failed: ${JSON.stringify(first)}`);
+    }
+    const replay = await httpPublish(body, "Bearer local:durable-owner", baseUrl) as { status: number; body: { artifactDigest?: string; replay?: boolean } };
+    if (replay.status !== 200 || replay.body.replay !== true || replay.body.artifactDigest !== first.body.artifactDigest) {
+      throw new Error(`Durable idempotent replay failed: ${JSON.stringify(replay)}`);
+    }
+    const takeover = await httpPublish({ ...body, version: "0.2.0", idempotencyKey: "durable-takeover-key-0001" }, "Bearer local:other-owner", baseUrl);
+    if (takeover.status !== 409 || takeover.body.code !== "PUBLISH_CONFLICT") throw new Error(`Resource ownership takeover was not blocked: ${JSON.stringify(takeover)}`);
+
+    if (!first.body.archiveUrl?.endsWith(`/releases/${first.body.version}/archive`)) throw new Error(`Publish response was not exact-version bound: ${JSON.stringify(first.body)}`);
+    const v1ArchiveUrl = `${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/releases/0.1.0/archive`;
+    const before = await fetch(v1ArchiveUrl);
+    const beforeBytes = Buffer.from(await before.arrayBuffer());
+    if (!before.ok || sha256Bytes(beforeBytes) !== first.body.artifactDigest) throw new Error("Published archive digest did not match response");
+
+    const v2Body = { ...body, version: "0.2.0", idempotencyKey: "durable-resource-proof-v2-key", files: [{ path: "README.md", content: "# durable-resource-proof v2\n\nImmutable second release.\n" }] };
+    const second = await httpPublish(v2Body, "Bearer local:durable-owner", baseUrl) as { status: number; body: { artifactDigest?: string; version?: string; archiveUrl?: string } };
+    if (second.status !== 201 || second.body.version !== "0.2.0" || second.body.artifactDigest === first.body.artifactDigest || !second.body.archiveUrl?.endsWith("/releases/0.2.0/archive")) {
+      throw new Error(`Second immutable version publish failed: ${JSON.stringify(second)}`);
+    }
+    const catalog = await fetch(`${baseUrl}/resources?q=durable-resource-proof&limit=10`).then((response) => response.json()) as { resources?: Array<{ id?: string; actions?: Array<{ id?: string; url?: string }> }> };
+    const catalogMatches = (catalog.resources ?? []).filter((resource) => resource.id === first.body.resourceId);
+    if (catalogMatches.length !== 1 || !catalogMatches[0]?.actions?.some((action) => action.id === "download_archive" && action.url?.endsWith("/releases/0.2.0/archive"))) {
+      throw new Error(`Catalog did not project latest-only v2: ${JSON.stringify(catalogMatches)}`);
+    }
+    const latest = await fetch(`${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/archive`);
+    if (!latest.ok || sha256Bytes(Buffer.from(await latest.arrayBuffer())) !== second.body.artifactDigest) throw new Error("Latest compatibility route did not resolve v2");
+
+    child.kill("SIGTERM");
+    await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    child = startApi(env);
+    await waitForApi(`${baseUrl}/healthz`);
+    const after = await fetch(v1ArchiveUrl);
+    const afterBytes = Buffer.from(await after.arrayBuffer());
+    if (!after.ok || sha256Bytes(afterBytes) !== first.body.artifactDigest) throw new Error("Published archive did not survive API restart");
+    const v2After = await fetch(`${baseUrl}/resources/${encodeURIComponent(first.body.resourceId!)}/releases/0.2.0/archive`);
+    if (!v2After.ok || sha256Bytes(Buffer.from(await v2After.arrayBuffer())) !== second.body.artifactDigest) throw new Error("Second release did not survive API restart");
+  } finally {
+    child.kill("SIGTERM");
+    rmSync(durableRoot, { recursive: true, force: true });
+  }
+}
+
+function startApi(env: NodeJS.ProcessEnv) {
+  return spawn("npm", ["run", "start", "-w", "@harnesshub/api"], {
+    cwd: root,
+    stdio: ["ignore", "pipe", "pipe"],
+    env
+  });
+}
+
+function sha256Bytes(value: Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function resourcePublishFixture(name: string) {
   return {
     name,
+    version: "0.1.0",
+    idempotencyKey: `${name}-idempotency-key`,
     resourceType: "command_pack",
     files: [{ path: "README.md", content: `# ${name}\n\nContainment smoke fixture that must never be published.` }]
   };

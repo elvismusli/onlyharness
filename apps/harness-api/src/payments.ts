@@ -205,7 +205,7 @@ export type PurchaseReceipt = {
 
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const checkoutBaseUrl = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://onlyharness.com/checkout";
+const checkoutBaseUrl = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://superskill.sh/checkout";
 const localPaymentStorePath = process.env.HARNESS_LOCAL_PAYMENTS_PATH ? path.resolve(process.env.HARNESS_LOCAL_PAYMENTS_PATH) : undefined;
 
 export async function requireArchivePaymentAccess(input: PaymentAccessInput): Promise<PaymentAccessResult> {
@@ -522,7 +522,7 @@ function checkoutUrl(input: PaymentAccessInput): string {
   try {
     url = new URL(checkoutBaseUrl);
   } catch {
-    url = new URL("https://onlyharness.com/checkout");
+    url = new URL("https://superskill.sh/checkout");
   }
   url.searchParams.set("owner", input.owner);
   url.searchParams.set("repo", input.repo);
@@ -1292,7 +1292,7 @@ function x402Requirement(input: PaymentAccessInput): X402PaymentRequirements | u
 }
 
 function x402ResourceUrl(input: PaymentAccessInput): string {
-  const base = (process.env.HARNESS_PUBLIC_API_URL ?? "https://onlyharness.com/api").replace(/\/$/, "");
+  const base = (process.env.HARNESS_PUBLIC_API_URL ?? "https://superskill.sh/api").replace(/\/$/, "");
   return `${base}/repos/${input.owner}/${input.repo}/archive?version=${encodeURIComponent(input.version)}`;
 }
 

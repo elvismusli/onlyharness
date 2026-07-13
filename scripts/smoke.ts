@@ -120,7 +120,7 @@ try {
     throw new Error(`/resources did not return source-aware superpowers seed: ${JSON.stringify(resources)}`);
   }
   const resourceDetail = await fetch("http://127.0.0.1:8799/resources/github%3Aobra%2Fsuperpowers").then((response) => response.json()) as { id?: string; mirror?: { status?: string; url?: string }; actions?: Array<{ id?: string; url?: string }> };
-  if (resourceDetail.id !== "github:obra/superpowers" || !resourceDetail.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("onlyharness.com/#/resources/github%3Aobra%2Fsuperpowers")) || !resourceDetail.actions?.some((action) => action.id === "open_upstream" && action.url?.includes("github.com/obra/superpowers"))) {
+  if (resourceDetail.id !== "github:obra/superpowers" || !resourceDetail.actions?.some((action) => action.id === "open_onlyharness" && action.url?.includes("superskill.sh/#/resources/github%3Aobra%2Fsuperpowers")) || !resourceDetail.actions?.some((action) => action.id === "open_upstream" && action.url?.includes("github.com/obra/superpowers"))) {
     throw new Error(`/resources/{id} did not return resource detail: ${JSON.stringify(resourceDetail)}`);
   }
   if (resourceDetail.mirror?.status === "ready" && !resourceDetail.actions?.some((action) => action.id === "download_archive" && action.url?.includes("/api/resources/github%3Aobra%2Fsuperpowers/archive"))) {
@@ -186,7 +186,7 @@ try {
   }
   const remix = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/remixes", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-remix-user" },
     body: JSON.stringify({ name: "smoke-deep-market-remix", title: "Smoke Deep Market Remix" })
   }).then(async (response) => ({
     status: response.status,
@@ -233,7 +233,7 @@ try {
   }
   const duplicateRemix = await fetch("http://127.0.0.1:8799/repos/harnesses/deep-market-researcher/remixes", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-remix-user" },
     body: JSON.stringify({ name: "smoke-deep-market-remix" })
   }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string } }));
   if (duplicateRemix.status !== 409 || duplicateRemix.body.code !== "NAME_EXISTS") {
@@ -241,7 +241,7 @@ try {
   }
   const directoryRemix = await fetch("http://127.0.0.1:8799/repos/directories/verified-agent-catalog-2026-07/remixes", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-remix-user" },
     body: JSON.stringify({ name: "smoke-directory-remix" })
   }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; files?: unknown[] } }));
   if (directoryRemix.status !== 409 || directoryRemix.body.code !== "DIRECTORY_LINK_ONLY" || directoryRemix.body.files) {
@@ -249,7 +249,7 @@ try {
   }
   const paidRemix = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/remixes", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-remix-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:smoke-remix-user" },
     body: JSON.stringify({ name: "smoke-paid-remix" })
   }).then(async (response) => ({ status: response.status, body: await response.json() as { code?: string; files?: unknown[] } }));
   if (paidRemix.status !== 402 || paidRemix.body.code !== "PAYMENT_REQUIRED" || paidRemix.body.files) {
@@ -302,14 +302,14 @@ try {
   }
   const profile = await fetch("http://127.0.0.1:8799/me/storefront", {
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-creator-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ handle: "@Smoke-Creator", display_name: "Smoke Creator", bio: "Local smoke storefront" })
   }).then((response) => response.json()) as { user_id?: string; handle?: string; referral_code?: string };
   if (profile.user_id !== "local-dev" || profile.handle !== "smoke-creator" || profile.referral_code !== "ref_smoke_creator") {
     throw new Error(`Storefront profile upsert failed: ${JSON.stringify(profile)}`);
   }
   const meProfile = await fetch("http://127.0.0.1:8799/me/storefront", {
-    headers: { Authorization: "Bearer smoke-creator-token" }
+    headers: { Authorization: "Bearer local:local-dev" }
   }).then((response) => response.json()) as { handle?: string; referral_code?: string };
   if (meProfile.handle !== profile.handle || meProfile.referral_code !== profile.referral_code) {
     throw new Error(`Storefront profile read failed: ${JSON.stringify(meProfile)}`);
@@ -338,23 +338,25 @@ try {
   }
   const communityCodeBefore = await fetch("http://127.0.0.1:8799/community/invite-code", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ harness: "local/smoke-paid-harness", version: "0.1.0" })
   });
   if (communityCodeBefore.status !== 402) throw new Error(`Community invite code before entitlement should be 402, got ${communityCodeBefore.status}`);
   const unpaidBuyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
-    headers: { Authorization: "Bearer smoke-buyer-token" }
+    headers: { Authorization: "Bearer local:local-dev" }
   });
   if (unpaidBuyerArchive.status !== 402) throw new Error(`Buyer token should not pull before checkout webhook, got ${unpaidBuyerArchive.status}`);
   const checkout = await fetch("http://127.0.0.1:8799/billing/checkout", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ owner: "local", repo: "smoke-paid-harness", version: "0.1.0", ref: profile.referral_code })
   }).then((response) => response.json()) as { provider_ref?: string; checkout_url?: string; status?: string };
   if (!checkout.provider_ref || checkout.status !== "pending" || !checkout.checkout_url?.includes(`ref=${profile.referral_code}`)) {
     throw new Error(`Checkout session failed: ${JSON.stringify(checkout)}`);
   }
-  const pendingReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(checkout.provider_ref)}`).then((response) => response.json()) as {
+  const pendingReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(checkout.provider_ref)}`, {
+    headers: { Authorization: "Bearer local:local-dev" }
+  }).then((response) => response.json()) as {
     status?: string;
     owner?: string;
     repo?: string;
@@ -384,7 +386,9 @@ try {
     body: JSON.stringify({ provider: "manual", provider_ref: checkout.provider_ref, status: "paid" })
   }).then((response) => response.json()) as { ok?: boolean; status?: string };
   if (!webhook.ok || webhook.status !== "paid") throw new Error(`Payment webhook failed: ${JSON.stringify(webhook)}`);
-  const paidReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(checkout.provider_ref)}`).then((response) => response.json()) as {
+  const paidReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(checkout.provider_ref)}`, {
+    headers: { Authorization: "Bearer local:local-dev" }
+  }).then((response) => response.json()) as {
     status?: string;
     entitlement?: { granted?: boolean; kind?: string; expires_at?: string | null };
   };
@@ -400,7 +404,7 @@ try {
     throw new Error(`Payment webhook should be idempotent: ${JSON.stringify(idempotentWebhook)}`);
   }
   const buyerArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-paid-harness/archive?version=0.1.0", {
-    headers: { Authorization: "Bearer smoke-buyer-token" }
+    headers: { Authorization: "Bearer local:local-dev" }
   }).then((response) => response.json()) as { version?: string; files?: unknown[] };
   if (buyerArchive.version !== "0.1.0" || !buyerArchive.files?.length) throw new Error(`Checkout/webhook entitlement failed: ${JSON.stringify(buyerArchive)}`);
   const entitlementAfter = await fetch("http://127.0.0.1:8799/entitlements/check?subject=user:local-dev&harness=local/smoke-paid-harness&version=0.1.0", {
@@ -411,7 +415,7 @@ try {
   }
   const communityCode = await fetch("http://127.0.0.1:8799/community/invite-code", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ harness: "local/smoke-paid-harness", version: "0.1.0", ttl_seconds: 120 })
   }).then((response) => response.json()) as { ok?: boolean; code?: string; owner?: string; repo?: string; version?: string; subject_id?: string };
   if (!communityCode.ok || !communityCode.code?.startsWith("ohc_") || communityCode.owner !== "local" || communityCode.repo !== "smoke-paid-harness" || communityCode.version !== "0.1.0" || communityCode.subject_id !== "local-dev") {
@@ -443,7 +447,7 @@ try {
   if (paidArchive.version !== "0.1.0" || !paidArchive.files?.length) throw new Error(`Paid archive entitlement failed: ${JSON.stringify(paidArchive)}`);
   const escrowCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
   }).then((response) => response.json()) as { provider_ref?: string; status?: string };
   if (!escrowCheckout.provider_ref || escrowCheckout.status !== "pending") throw new Error(`Escrow checkout failed: ${JSON.stringify(escrowCheckout)}`);
@@ -454,7 +458,7 @@ try {
   }).then((response) => response.json()) as { ok?: boolean; status?: string; escrow_expires_at?: string };
   if (!escrowWebhook.ok || escrowWebhook.status !== "reserved" || !escrowWebhook.escrow_expires_at) throw new Error(`Escrow webhook should reserve: ${JSON.stringify(escrowWebhook)}`);
   const escrowReservedReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(escrowCheckout.provider_ref)}`, {
-    headers: { Authorization: "Bearer smoke-buyer-token" }
+    headers: { Authorization: "Bearer local:local-dev" }
   }).then((response) => response.json()) as { status?: string; entitlement?: { granted?: boolean; kind?: string }; escrow?: { expires_at?: string } };
   if (escrowReservedReceipt.status !== "reserved" || escrowReservedReceipt.entitlement?.granted !== true || escrowReservedReceipt.entitlement.kind !== "escrow_reserved" || !escrowReservedReceipt.escrow?.expires_at) {
     throw new Error(`Escrow reserved receipt invalid: ${JSON.stringify(escrowReservedReceipt)}`);
@@ -466,7 +470,7 @@ try {
     throw new Error(`Escrow reserved entitlement must not unlock community gates before capture: ${JSON.stringify(escrowEntitlementBeforeCapture)}`);
   }
   const escrowReservedArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-escrow-harness/archive?version=0.1.0", {
-    headers: { Authorization: "Bearer smoke-buyer-token" }
+    headers: { Authorization: "Bearer local:local-dev" }
   }).then((response) => response.json()) as { version?: string; files?: unknown[] };
   if (escrowReservedArchive.version !== "0.1.0" || !escrowReservedArchive.files?.length) throw new Error(`Escrow reserve should allow archive pull: ${JSON.stringify(escrowReservedArchive)}`);
   const escrowReceiptPath = path.join(smokeDataRoot, "escrow-pass-receipt.json");
@@ -475,14 +479,14 @@ try {
   });
   const escrowCapture = await fetch("http://127.0.0.1:8799/billing/escrow/receipt", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ provider_ref: escrowCheckout.provider_ref, receipt: JSON.parse(readFileSync(escrowReceiptPath, "utf8")) })
   }).then((response) => response.json()) as { ok?: boolean; status?: string; reason?: string; receipt_hash?: string };
   if (!escrowCapture.ok || escrowCapture.status !== "captured" || escrowCapture.reason !== "receipt_passed" || !escrowCapture.receipt_hash) {
     throw new Error(`Escrow capture failed: ${JSON.stringify(escrowCapture)}`);
   }
   const escrowCapturedReceipt = await fetch(`http://127.0.0.1:8799/billing/receipt?provider_ref=${encodeURIComponent(escrowCheckout.provider_ref)}`, {
-    headers: { Authorization: "Bearer smoke-buyer-token" }
+    headers: { Authorization: "Bearer local:local-dev" }
   }).then((response) => response.json()) as { status?: string; entitlement?: { granted?: boolean; kind?: string }; escrow?: { receipt_hash?: string } };
   if (escrowCapturedReceipt.status !== "captured" || escrowCapturedReceipt.entitlement?.kind !== "one_time" || escrowCapturedReceipt.escrow?.receipt_hash !== escrowCapture.receipt_hash) {
     throw new Error(`Escrow captured receipt invalid: ${JSON.stringify(escrowCapturedReceipt)}`);
@@ -548,7 +552,7 @@ try {
   }
   const escrowFailCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
   }).then((response) => response.json()) as { provider_ref?: string };
   if (!escrowFailCheckout.provider_ref) throw new Error(`Escrow fail checkout failed: ${JSON.stringify(escrowFailCheckout)}`);
@@ -576,7 +580,7 @@ try {
   writeFileSync(path.join(escrowRoot, ".harnesshub/results.json"), originalEscrowResults);
   const escrowRefund = await fetch("http://127.0.0.1:8799/billing/escrow/receipt", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ provider_ref: escrowFailCheckout.provider_ref, receipt: JSON.parse(readFileSync(escrowFailReceiptPath, "utf8")) })
   }).then((response) => response.json()) as { ok?: boolean; status?: string; reason?: string };
   if (!escrowRefund.ok || escrowRefund.status !== "refunded" || escrowRefund.reason !== "receipt_failed") {
@@ -584,7 +588,7 @@ try {
   }
   const escrowTimeoutCheckout = await fetch("http://127.0.0.1:8799/billing/checkout", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ owner: "local", repo: "smoke-escrow-harness", version: "0.1.0" })
   }).then((response) => response.json()) as { provider_ref?: string };
   if (!escrowTimeoutCheckout.provider_ref) throw new Error(`Escrow timeout checkout failed: ${JSON.stringify(escrowTimeoutCheckout)}`);
@@ -604,7 +608,7 @@ try {
   writeFileSync(paymentStatePath, `${JSON.stringify(timeoutState, null, 2)}\n`);
   const escrowTimeout = await fetch("http://127.0.0.1:8799/billing/escrow/timeout", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer smoke-buyer-token" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ provider_ref: escrowTimeoutCheckout.provider_ref })
   }).then((response) => response.json()) as { ok?: boolean; status?: string; reason?: string };
   if (!escrowTimeout.ok || escrowTimeout.status !== "refunded" || escrowTimeout.reason !== "timeout") {
@@ -642,7 +646,7 @@ try {
   }
   const imported = await fetch("http://127.0.0.1:8799/imports/markdown-to-harness", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer local:local-dev" },
     body: JSON.stringify({ name: "smoke-imported-harness", markdown: "# Smoke Imported Harness\n\nResearch, synthesize, critique and produce a memo.\n\nLicense: MIT" })
   }).then((response) => response.json()) as { item?: { name: string }; snapshotVersion?: string; warnings?: string[]; next?: string };
   if (imported.item?.name !== "smoke-imported-harness") throw new Error(`Import endpoint failed: ${JSON.stringify(imported)}`);

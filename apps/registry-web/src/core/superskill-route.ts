@@ -6,6 +6,8 @@ export type SuperSkillRoute =
   | { name: "landing" }
   | { name: "docs" }
   | { name: "agent-guide" }
+  | { name: "account" }
+  | { name: "workspaces" }
   | { name: "capability"; capabilityId: string }
   | { name: "selected"; owner: string; skill: string }
   | { name: "install"; capabilityId?: string }
@@ -19,6 +21,8 @@ export function parseSuperSkillRoute(hash: string): SuperSkillRoute {
   if (parts.some((part) => part === null) || parts[0] !== "superskill") return { name: "not-found" };
   if (parts.length === 2 && parts[1] === "docs") return { name: "docs" };
   if (parts.length === 2 && parts[1] === "agent-guide") return { name: "agent-guide" };
+  if (parts.length === 2 && parts[1] === "account") return { name: "account" };
+  if (parts.length === 2 && parts[1] === "workspaces") return { name: "workspaces" };
   if (parts.length === 2 && parts[1] === "install") return { name: "install" };
   if (parts.length === 4 && parts[1] === "selected" && validSlug(parts[2]) && validSlug(parts[3])) {
     return { name: "selected", owner: parts[2]!, skill: parts[3]! };
@@ -37,6 +41,10 @@ export function buildSuperSkillRoute(route: Exclude<SuperSkillRoute, { name: "no
       return "#/superskill/docs";
     case "agent-guide":
       return "#/superskill/agent-guide";
+    case "account":
+      return "#/superskill/account";
+    case "workspaces":
+      return "#/superskill/workspaces";
     case "capability":
       return `#/superskill/c/${assertSlug(route.capabilityId)}`;
     case "selected":

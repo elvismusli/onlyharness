@@ -306,7 +306,7 @@ function primaryActionLabel(item: ResourceItem): string {
     case "copy_mcp_config":
       return "📋 Copy config";
     case "open_onlyharness":
-      return "Use in OnlyHarness";
+      return "Use in SuperSkill";
     case "import_github":
       return "＋ Add from GitHub";
     case "open_mirror":

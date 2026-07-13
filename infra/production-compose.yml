@@ -13,8 +13,8 @@ services:
       SUPABASE_URL: ${VITE_SUPABASE_URL}
       SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      HARNESS_PUBLIC_API_URL: ${HARNESS_PUBLIC_API_URL:-https://onlyharness.com/api}
-      HARNESS_CHECKOUT_BASE_URL: ${HARNESS_CHECKOUT_BASE_URL:-https://onlyharness.com/checkout}
+      HARNESS_PUBLIC_API_URL: ${HARNESS_PUBLIC_API_URL:-https://superskill.sh/api}
+      HARNESS_CHECKOUT_BASE_URL: ${HARNESS_CHECKOUT_BASE_URL:-https://superskill.sh/checkout}
       PAYMENTS_ENABLED: ${PAYMENTS_ENABLED:-false}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-manual}
       X402_ENABLED: ${X402_ENABLED:-false}
@@ -34,13 +34,17 @@ services:
       SUPERSKILL_TOKEN_HASHES: ${SUPERSKILL_TOKEN_HASHES:-}
       SUPERSKILL_TELEMETRY_SALT: ${SUPERSKILL_TELEMETRY_SALT:-}
       SUPERSKILL_TELEMETRY_ENABLED: ${SUPERSKILL_TELEMETRY_ENABLED:-true}
+      SUPERSKILL_SUBJECT_SALT: ${SUPERSKILL_SUBJECT_SALT:-}
       COMMUNITY_INVITE_SECRET: ${COMMUNITY_INVITE_SECRET:-}
       HARNESS_WEBHOOK_TOKEN: ${HARNESS_WEBHOOK_TOKEN:?HARNESS_WEBHOOK_TOKEN is required}
       HOSTED_RESOURCE_PUBLISH_ENABLED: ${HOSTED_RESOURCE_PUBLISH_ENABLED:-false}
       RESOURCE_ARCHIVE_DIR: ${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}
+      RESOURCE_IMPORT_ARCHIVE_DIR: ${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}
+      RESOURCE_IMPORT_READ_ENABLED: ${RESOURCE_IMPORT_READ_ENABLED:-true}
     volumes:
       - onlyharness_data:/app/data
       - ${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:ro
+      - ${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:rw
     expose:
       - "8787"
 
@@ -49,8 +53,8 @@ services:
       context: ..
       dockerfile: infra/web.Dockerfile
       args:
-        VITE_HARNESS_API_URL: ${VITE_HARNESS_API_URL:-https://onlyharness.com/api}
-        VITE_DEFAULT_SKIN: ${VITE_DEFAULT_SKIN:-win98}
+        VITE_HARNESS_API_URL: ${VITE_HARNESS_API_URL:-https://superskill.sh/api}
+        VITE_DEFAULT_SKIN: ${VITE_DEFAULT_SKIN:-superskill}
         VITE_ENABLE_SKIN_SWITCHER: ${VITE_ENABLE_SKIN_SWITCHER:-false}
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}

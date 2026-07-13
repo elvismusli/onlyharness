@@ -61,7 +61,7 @@ test("openHarness pushes a harness surface onto the stack", async () => {
   expect(get().activeId).toBe("harness:acme/widget");
 });
 
-test("openResource shows copyable OnlyHarness-first resource use rows", async () => {
+test("openResource shows copyable SuperSkill-first resource use rows", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) }));
 
   const get = renderStore();
@@ -72,8 +72,8 @@ test("openResource shows copyable OnlyHarness-first resource use rows", async ()
     upstreamOwner: "obra",
     upstreamRepo: "superpowers",
     actions: [
-      { id: "open_onlyharness", label: "Use in OnlyHarness", url: "https://onlyharness.com/#/resources/github%3Aobra%2Fsuperpowers" },
-      { id: "download_archive", label: "Download archive", url: "https://onlyharness.com/api/resources/github%3Aobra%2Fsuperpowers/archive" },
+      { id: "open_onlyharness", label: "Use in SuperSkill", url: "https://superskill.sh/#/resources/github%3Aobra%2Fsuperpowers" },
+      { id: "download_archive", label: "Download archive", url: "https://superskill.sh/api/resources/github%3Aobra%2Fsuperpowers/archive" },
       { id: "open_upstream", label: "Open upstream", url: "https://github.com/obra/superpowers" }
     ]
   } as ResourceItem;
@@ -86,7 +86,7 @@ test("openResource shows copyable OnlyHarness-first resource use rows", async ()
     const dialog = get().dialog;
     expect(dialog?.title).toBe("Use superpowers");
     expect(dialog?.resourceUse?.rows.map((row) => row.label)).toEqual([
-      "OnlyHarness page",
+      "SuperSkill page",
       "CLI detail",
       "CLI open",
       "Hosted archive",

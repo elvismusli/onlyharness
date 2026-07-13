@@ -30,28 +30,33 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.c
 
 ## SuperSkill internal alpha
 
-Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor require a tester-specific `HH_SUPERSKILL_TOKEN`; the CLI sends it only in the Authorization header and never writes it to project state or telemetry.
+Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor use the signed-in account credential from `HH_TOKEN`; the CLI sends it only in the Authorization header and never writes it to project state or telemetry. `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility only.
 
 ```bash
-export HH_SUPERSKILL_TOKEN=<tester-specific-opaque-token>
-hh recommend "market research" --target codex --json
-hh activation start market-research --version 0.2.0 --digest sha256:<64-hex> --recommendation rec_<id> --decision-digest sha256:<64-hex> --recommendation-expires-at <rfc3339> --activation-request req_<random-id> --target codex --mode temporary --consent explicit --json
-hh activation mark act_<id> --state loaded --json
-hh activation mark act_<id> --state invoked --json
-hh activation finish act_<id> --outcome success --evidence agent_reported --json
-hh activation keep act_<id> --confirm-keep --json
-hh activation remove --marker .agents/skills/superskill-market-research/.superskill-managed.json --confirm-remove --json
+export HH_TOKEN=<signed-in-account-token>
+# Recovery diagnostics only; the installed skill uses superskill_local MCP tools.
+hh activation doctor --target codex --live --json
 ```
 
 Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex pins under `.agents/skills`. Temporary activation writes only project-local `.onlyharness`. Copy/detection/pin never implies loaded or invoked. Pinned reuse always rechecks the exact remote release and revocation state; offline reuse is blocked. Remove is marker/digest-owned and works offline.
+
+Universal bootstrap (available only after the exact CLI release and official npm integrity are published):
+
+```bash
+npx --yes onlyharness@0.2.14 superskill install https://superskill.sh/api/superskill/install --auto
+```
+
+Approved capability pages bind the same command to one immutable URL containing capability id, version and sha256. Exactly one detected client transactionally writes its project-native shared skill and merges the `superskill_local` project MCP entry into `.codex/config.toml` or `.mcp.json`; an exact link also records a private pending handoff. Existing unrelated config is preserved, conflicting entries fail before writes, rollback restores byte-exact originals, and no token is stored. Both/none fail with `CLIENT_AMBIGUOUS`/`CLIENT_NOT_DETECTED`. Use `--target codex|claude-code`, explicit `--all`, or `--dry-run`. Nothing is activated and routing/activation consent remain separate.
+
+After starting a fresh trusted client session, use the eight `superskill_local` MCP tools. `recommend` first discloses or explicitly dismisses a pending exact handoff; otherwise it routes the consented privacy-safe task summary. `activation_start` acknowledges an exact handoff only after `ready`, and the remaining mark/finish/keep/remove tools own lifecycle state. The CLI `superskill handoff` command is diagnostic compatibility only and must not replace the MCP lifecycle. `HH_SUPERSKILL_TOKEN` remains legacy internal-alpha compatibility only.
 
 Internal plugin install commands (after the prepared CLI version is published and verified):
 
 ```bash
 claude plugin marketplace add elvismusli/onlyharness
-claude plugin install superskill@onlyharness
+claude plugin install superskill@superskill
 codex plugin marketplace add elvismusli/onlyharness --ref main
-codex plugin add superskill@onlyharness
+codex plugin add superskill@superskill
 ```
 
 Plugin install/refresh may require a new task or session. It does not prove a copied command, temporary capability, or pinned skill is loaded.
@@ -68,7 +73,7 @@ hh resources detail github:obra/superpowers --json
 
 ## Registry
 
-By default `hh` talks to `https://onlyharness.com/api`.
+By default `hh` talks to `https://superskill.sh/api`. `https://onlyharness.com/api` remains a machine-compatibility alias for already installed clients.
 
 ```bash
 HH_REGISTRY_URL=http://127.0.0.1:8799 hh doctor
@@ -82,7 +87,7 @@ Workspace resource catalogs use `HH_WORKSPACE_TOKEN`, with `HH_ORG_TOKEN` as a c
 
 ## Publishing
 
-Publishing needs an OnlyHarness access token.
+Publishing needs a SuperSkill account access token; the `onlyharness` package name remains a compatibility coordinate.
 
 ```bash
 HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
@@ -103,7 +108,7 @@ Verified harness badge.
 - `hh search <terms> --json` prints machine-readable registry results.
 - `hh resources search <terms> --json` searches the mixed source-aware catalog: skills, plugins, workflows, MCP servers, configs, guides, runtimes, directories and native harness-format packages.
 - `hh resources detail github:obra/superpowers --json` prints provenance, sourceCheckedAt, GitHub popularity, availability, license status and actions. Source checked is not Verified install.
-- `hh resources open github:obra/superpowers` opens the OnlyHarness resource page. Hosted resources expose an OnlyHarness archive URL; upstream GitHub remains attribution/source, not the primary use path.
+- `hh resources open github:obra/superpowers` opens the SuperSkill resource page. Hosted resources use the SuperSkill archive endpoint; legacy OnlyHarness URLs remain machine-only compatibility aliases. Upstream GitHub remains attribution/source, not the primary use path.
 - `hh resources import https://github.com/acme/agent-skills --json` classifies a GitHub repo through the guarded read-only server path before adding/listing it.
 - `hh resources search <terms> --workspace acme --json` searches a token-gated workspace catalog.
 - `hh resources detail @acme/name --json` reads a workspace-private resource detail payload with `HH_WORKSPACE_TOKEN` or legacy `HH_ORG_TOKEN`.

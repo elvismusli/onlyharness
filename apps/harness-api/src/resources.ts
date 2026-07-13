@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import path from "node:path";
 import type { RegistryItem } from "./registry.js";
 import { workspaceRoot } from "./registry.js";
+import { readActiveReleaseResourcesSync, resourceArchivePathForRead } from "./resource-releases.js";
 
 export type ResourceType =
   | "harness"
@@ -192,14 +193,15 @@ let importedCatalogCache: { mtimeMs: number; catalog: ResourceCatalogFile } | un
 export function readResourceCatalog(): ResourceCatalogFile {
   const seed = readSeedResourceCatalog();
   const imported = readImportedResourceCatalog();
-  if (!imported.resources.length) return seed;
-  const resources = dedupeResources([...imported.resources, ...seed.resources]);
+  const activeReleases = readActiveReleaseResourcesSync();
+  if (!imported.resources.length && !activeReleases.length) return seed;
+  const resources = dedupeResources([...activeReleases, ...imported.resources, ...seed.resources]);
   return {
     generatedAt: maxIso(seed.generatedAt, imported.generatedAt),
     source: {
       catalog: `${seed.source.catalog}+${path.relative(workspaceRoot, importedCatalogPath)}`,
       sourceCheckedAt: maxIso(seed.source.sourceCheckedAt, imported.source.sourceCheckedAt),
-      externalSeedCount: seed.source.externalSeedCount + imported.resources.length
+      externalSeedCount: seed.source.externalSeedCount + imported.resources.length + activeReleases.length
     },
     resources
   };
@@ -260,8 +262,8 @@ function readImportedResourceCatalog(): ResourceCatalogFile {
 }
 
 export function searchResources(query: ResourceQuery, registryItems: RegistryItem[]): ResourceSearchResult {
-  const external = readResourceCatalog().resources;
-  const internal = resourcesFromRegistryCatalog(registryItems);
+  const external = readResourceCatalog().resources.map(withRuntimeArchiveAction);
+  const internal = resourcesFromRegistryCatalog(registryItems).map(withRuntimeArchiveAction);
   let resources = dedupeResources([...external, ...internal]);
 
   if (query.q) {
@@ -308,12 +310,25 @@ export function resourceDetail(id: string, registryItems: RegistryItem[]): Resou
   const decoded = decodeURIComponent(id);
   const external = readResourceCatalog().resources;
   const internal = resourcesFromRegistryCatalog(registryItems);
-  return dedupeResources([...external, ...internal]).find((resource) => resource.id === decoded);
+  const resource = dedupeResources([...external, ...internal]).find((candidate) => candidate.id === decoded);
+  return resource ? withRuntimeArchiveAction(resource) : undefined;
 }
 
-export function resourceArchivePath(id: string): string | undefined {
-  const archivePath = path.join(archiveRoot, `${resourceArchiveKey(id)}.tar.gz`);
-  return existsSync(archivePath) ? archivePath : undefined;
+function withRuntimeArchiveAction(resource: Resource): Resource {
+  const openActions = resource.actions.filter((action) => action.id === "open_onlyharness" || action.id === "open_mirror" || action.id === "open_upstream");
+  const existingDownload = resource.actions.find((action) => action.id === "download_archive");
+  const otherActions = resource.actions.filter((action) => action.id !== "open_onlyharness" && action.id !== "open_mirror" && action.id !== "open_upstream" && action.id !== "download_archive");
+  const archive = resourceArchivePathForRead(resource.id);
+  const actions: ResourceAction[] = archive
+    ? [...openActions, existingDownload ?? { id: "download_archive", label: "Download from SuperSkill", url: `https://superskill.sh/api/resources/${encodeURIComponent(resource.id)}/archive` }, ...otherActions]
+    : [...openActions, ...otherActions];
+  return actions.length === resource.actions.length && actions.every((action, index) => action === resource.actions[index])
+    ? resource
+    : { ...resource, actions };
+}
+
+export function resourceArchivePath(id: string, version?: string): string | undefined {
+  return resourceArchivePathForRead(id, version);
 }
 
 export function resourceArchiveKey(id: string): string {
@@ -345,7 +360,7 @@ export function resourcesFromRegistryCatalog(items: RegistryItem[]): Resource[] 
       summary: item.summary,
       resourceType: isDirectory ? "directory" : "harness",
       sourcePlatform: "manual",
-      canonicalUrl: item.forgeUrl ?? `https://onlyharness.com/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`,
+      canonicalUrl: item.forgeUrl ?? `https://superskill.sh/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`,
       upstreamId: `${item.owner}/${item.name}`,
       upstreamOwner: item.owner,
       upstreamRepo: item.name,
@@ -358,7 +373,7 @@ export function resourcesFromRegistryCatalog(items: RegistryItem[]): Resource[] 
       installability: isDirectory ? "open_only" : "installable",
       tags: item.tags,
       worksWith,
-      upstreamPopularity: { sourceLabel: "OnlyHarness registry" },
+      upstreamPopularity: { sourceLabel: "SuperSkill registry" },
       onlyHarnessSignals,
       trust: {
         sourceChecked: true,
@@ -371,11 +386,11 @@ export function resourcesFromRegistryCatalog(items: RegistryItem[]): Resource[] 
         ]
         : [
           { id: "install", label: "Install", command: `hh install ${item.owner}/${item.name}`, target: "cli" },
-          { id: "open_upstream", label: "Open source", url: item.forgeUrl ?? `https://onlyharness.com/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}` }
+          { id: "open_upstream", label: "Open source", url: item.forgeUrl ?? `https://superskill.sh/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}` }
         ],
       source: {
         platform: "manual",
-        url: item.forgeUrl ?? `https://onlyharness.com/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`,
+        url: item.forgeUrl ?? `https://superskill.sh/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}`,
         checkedAt: sourceCheckedAt,
         checkedBy: "manual_research"
       }

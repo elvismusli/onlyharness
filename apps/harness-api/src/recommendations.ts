@@ -27,6 +27,57 @@ export type RecommendationOptions = {
   recommendationId?: string;
 };
 
+export function exactHandoffDecision(
+  capability: ManagedCapability,
+  client: Client,
+  options: RecommendationOptions = {}
+): RecommendationResponse {
+  const now = options.now ?? new Date();
+  const expiresAt = new Date(now.getTime() + 15 * 60_000).toISOString();
+  const recommendationId = options.recommendationId ?? `rec_${randomBytes(12).toString("base64url")}`;
+  const added = permissionLabels(capability.permissions);
+  const selected: RecommendationCandidate = {
+    capability,
+    score: 100,
+    why: [
+      { code: "CLIENT_VERIFIED", text: `The exact linked release is compatibility-smoked for ${client}`, points: 40 },
+      { code: "TRUST_CHECKS_PASS", text: "The exact linked release still passes mandatory trust checks", points: 40 },
+      { code: "CURRENT_REVIEW", text: "The exact linked release review evidence is still current", points: 20 }
+    ],
+    limitations: capability.trust.limitations,
+    permissionDelta: {
+      status: "partial",
+      added,
+      unchanged: [],
+      unknownBecause: "The universal handoff does not inspect unmanaged skills or the client sandbox policy"
+    },
+    consent: "required"
+  };
+  const decisionDigest = digestCanonicalJson({
+    recommendationId,
+    selected: {
+      id: capability.id,
+      ref: capability.release.ref,
+      version: capability.release.version,
+      artifactDigest: capability.release.artifactDigest,
+      client,
+      permissions: capability.permissions,
+      trustChecks: capability.trust.checks,
+      limitations: capability.trust.limitations
+    },
+    expiresAt
+  });
+  return {
+    recommendationId,
+    decisionDigest,
+    decision: "recommend",
+    confidence: 1,
+    selected,
+    alternatives: [],
+    expiresAt
+  };
+}
+
 export function normalizeTask(task: string): { phrase: string; tokens: string[] } {
   const phrase = task.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
   if (phrase.length < 3 || phrase.length > 500 || SECRET_PATTERNS.some((pattern) => pattern.test(phrase))) {
@@ -66,6 +117,7 @@ export function recommendCapabilities(
   const selected = decision === "no_safe_match" ? undefined : top;
   const alternatives = scored.slice(selected ? 1 : 0, selected ? 3 : 2);
   const decisionDigest = digestCanonicalJson({
+    recommendationId,
     selected: selected ? {
       id: selected.capability.id,
       ref: selected.capability.release.ref,

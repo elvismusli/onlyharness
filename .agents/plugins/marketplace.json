@@ -1,6 +1,6 @@
 {
-  "name": "onlyharness",
-  "interface": { "displayName": "OnlyHarness internal" },
+  "name": "superskill",
+  "interface": { "displayName": "SuperSkill" },
   "plugins": [
     {
       "name": "superskill",

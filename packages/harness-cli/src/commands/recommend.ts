@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Command } from "commander";
-import { resolveProjectState } from "../lib/activation-store.js";
+import { resolveProjectRoot } from "../lib/activation-store.js";
 import { scanInventory } from "../lib/client-adapters.js";
 import { recommendCapability, sendManagedEvent } from "../lib/superskill-client.js";
 import type { RecommendationCandidate, SuperSkillClient } from "../lib/superskill-types.js";
@@ -15,8 +15,8 @@ export function registerRecommendCommand(program: Command, registry: () => strin
     .option("--json", "print JSON", false)
     .action(async (parts: string[], options) => runManagedAction(Boolean(options.json), async () => {
       const client = parseClient(options.target);
-      const state = resolveProjectState(options.projectDir);
-      const inventory = scanInventory(client, state.projectRoot);
+      const projectRoot = resolveProjectRoot(options.projectDir);
+      const inventory = scanInventory(client, projectRoot);
       const response = await recommendCapability({ registry: registry(), task: parts.join(" "), client, inventory });
       if (response.selected) {
         const ref = response.selected.capability.release.ref.split("/");
@@ -30,7 +30,7 @@ export function registerRecommendCommand(program: Command, registry: () => strin
           client: client === "codex" ? "superskill-codex" : "superskill-claude",
           recommendationId: response.recommendationId,
           mode: "temporary"
-        }, state });
+        } });
       }
       const next = response.decision === "recommend" && response.selected ? [activationCommand(response.selected, response, client)] : [];
       if (options.json) process.stdout.write(`${JSON.stringify({ ...response, client, next }, null, 2)}\n`);

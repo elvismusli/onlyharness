@@ -5,6 +5,9 @@ type RuntimeContract = {
   schemaVersion: "superskill.runtime.v1";
   cliPackage: string;
   cliVersion: string;
+  pluginVersion: string;
+  cliIntegrity: string | null;
+  cliReleaseStatus: "published" | "unpublished";
   activationContractVersion: string;
 };
 
@@ -17,6 +20,11 @@ if (
   source.schemaVersion !== "superskill.runtime.v1" ||
   source.cliPackage !== "onlyharness" ||
   !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(source.cliVersion) ||
+  !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(source.pluginVersion) ||
+  !(source.cliIntegrity === null || /^sha512-[A-Za-z0-9+/]+={0,2}$/.test(source.cliIntegrity)) ||
+  (source.cliReleaseStatus !== "published" && source.cliReleaseStatus !== "unpublished") ||
+  (source.cliReleaseStatus === "published" && source.cliIntegrity === null) ||
+  (source.cliReleaseStatus === "unpublished" && source.cliIntegrity !== null) ||
   source.activationContractVersion !== "superskill.activation.v1"
 ) {
   throw new Error("plugins/superskill/runtime.json is not a supported concrete runtime contract");
@@ -26,6 +34,9 @@ const generated = `// generated from plugins/superskill/runtime.json; do not edi
 export const superskillRuntime = {
   cliPackage: ${JSON.stringify(source.cliPackage)},
   cliVersion: ${JSON.stringify(source.cliVersion)},
+  pluginVersion: ${JSON.stringify(source.pluginVersion)},
+  cliIntegrity: ${JSON.stringify(source.cliIntegrity)},
+  cliReleaseStatus: ${JSON.stringify(source.cliReleaseStatus)},
   activationContractVersion: ${JSON.stringify(source.activationContractVersion)}
 } as const;
 `;

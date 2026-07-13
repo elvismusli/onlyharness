@@ -635,7 +635,7 @@ export function approveWorkspacePublicResource(slugValue: string, workspaceName:
 
   const now = new Date().toISOString();
   const approvalState: WorkspaceApprovalState = scan === "warn" ? "approved_with_warning" : "approved";
-  const canonicalUrl = `https://onlyharness.com/#/workspaces/${encodeURIComponent(slug)}/resources/${encodeURIComponent(name)}`;
+  const canonicalUrl = `https://superskill.sh/#/workspaces/${encodeURIComponent(slug)}/resources/${encodeURIComponent(name)}`;
   const riskSnapshot = {
     sourceResourceId: publicResource.id,
     sourceCheckedAt: publicResource.sourceCheckedAt,

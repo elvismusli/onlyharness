@@ -176,6 +176,27 @@ test("managed local event writer is idempotent by event id", async () => {
   assert.equal(readFileSync(file, "utf8").trim().split("\n").length, 1);
 });
 
+test("managed local event writer rejects event id replay with a different subject or payload", async () => {
+  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "superskill-events-conflict-")), "events.jsonl");
+  const input = {
+    kind: "activation_ready",
+    eventId: "evt_abcdef12",
+    activationId: "act_abcdef12",
+    subject: "user:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    client: "superskill-codex"
+  };
+  assert.deepEqual(await recordManagedEvent(input, { localPath: file }), { recorded: true, duplicate: false });
+  assert.deepEqual(
+    await recordManagedEvent({ ...input, subject: "user:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, { localPath: file }),
+    { recorded: false, duplicate: false, conflict: true }
+  );
+  assert.deepEqual(
+    await recordManagedEvent({ ...input, kind: "activation_loaded" }, { localPath: file }),
+    { recorded: false, duplicate: false, conflict: true }
+  );
+  assert.equal(readFileSync(file, "utf8").trim().split("\n").length, 1);
+});
+
 test("managed telemetry off writes nothing", async () => {
   const file = path.join(mkdtempSync(path.join(os.tmpdir(), "superskill-events-off-")), "events.jsonl");
   const result = await recordManagedEvent({ kind: "recommended", eventId: "evt_abcdef12", subject: "pilot:abcdef12", client: "hh" }, { localPath: file, telemetryEnabled: false });

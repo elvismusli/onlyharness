@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "superskill.bootstrap-contract.v1",
+  "installer": {
+    "package": "onlyharness",
+    "version": "0.2.14",
+    "integrity": null,
+    "releaseStatus": "unpublished"
+  },
+  "universalSkill": {
+    "name": "superskill",
+    "version": "0.2.0",
+    "artifactDigest": "sha256:53df05eb16572c18d26b6bbf39970006aa2105800b1c0e75acc6bbaa9dea55cd"
+  },
+  "clientAdapters": {
+    "codex": {
+      "path": ".codex/config.toml",
+      "contractDigest": "sha256:d1ea682613f0562be6bdb9ccae853033a53decc8e6a52369e6023085985da784"
+    },
+    "claude-code": {
+      "path": ".mcp.json",
+      "contractDigest": "sha256:8c3903dd717d5028fbf69e6d26705e850a7f459dbf40dbdcb7f1fdb51095df0b"
+    }
+  }
+}

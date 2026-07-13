@@ -1,8 +1,12 @@
 {
   "mcpServers": {
-    "onlyharness": {
+    "superskill": {
       "type": "http",
-      "url": "https://onlyharness.com/mcp"
+      "url": "https://superskill.sh/mcp"
+    },
+    "superskill_local": {
+      "command": "npx",
+      "args": ["--yes", "onlyharness@0.2.14", "mcp", "superskill"]
     }
   }
 }

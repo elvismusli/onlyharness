@@ -86,6 +86,7 @@ function useHarnessStore() {
      same auth path as `/workspaces/{slug}/...`. */
   const workspace = useWorkspace({
     accessToken: auth.accessToken,
+    principalKey: auth.user?.id,
     requireUser: auth.requireUser,
     onFlash: flashMsg
   });
@@ -224,7 +225,7 @@ function useHarnessStore() {
 
   function openResource(item: ResourceItem) {
     const onlyHarnessUrl = item.actions?.find((action) => action.id === "open_onlyharness" && "url" in action)?.url
-      ?? `https://onlyharness.com/#/resources/${encodeURIComponent(item.id)}`;
+      ?? `https://superskill.sh/#/resources/${encodeURIComponent(item.id)}`;
     const archiveUrl = item.actions?.find((action) => action.id === "download_archive" && "url" in action)?.url;
     const upstreamUrl = item.actions?.find((action) => action.id === "open_upstream" && "url" in action)?.url ?? item.canonicalUrl;
     const cliDetail = `npx onlyharness@latest resources detail ${item.id} --json`;
@@ -234,20 +235,20 @@ function useHarnessStore() {
       title: `Use ${item.title}`,
       icon: "🌐",
       body: [
-        "Use this resource from OnlyHarness.",
-        `OnlyHarness: ${onlyHarnessUrl}`,
-        archiveUrl ? `Download from OnlyHarness: ${archiveUrl}` : "Download from OnlyHarness: not hosted yet",
+        "Use this resource from SuperSkill.",
+        `SuperSkill: ${onlyHarnessUrl}`,
+        archiveUrl ? `Download from SuperSkill: ${archiveUrl}` : "Download from SuperSkill: not hosted yet",
         `CLI detail: ${cliDetail}`,
         `CLI open: ${cliOpen}`,
         `Upstream attribution: ${upstreamUrl}`
       ].join("\n"),
       resourceUse: {
-        note: "Use the OnlyHarness page and CLI first; upstream stays attribution/source.",
+        note: "Use the SuperSkill page and CLI first; upstream stays attribution/source.",
         rows: [
           {
-            label: "OnlyHarness page",
+            label: "SuperSkill page",
             value: onlyHarnessUrl,
-            copyLabel: "OnlyHarness URL copied",
+            copyLabel: "SuperSkill URL copied",
             copyTag: `resource:page:${item.id}`
           },
           {
@@ -292,7 +293,7 @@ function useHarnessStore() {
         client: "registry-web"
       })
     }).catch(() => undefined);
-    flashMsg(`Using ${item.title} from OnlyHarness`);
+    flashMsg(`Using ${item.title} from SuperSkill`);
   }
 
   function openStorefront(handle: string) {

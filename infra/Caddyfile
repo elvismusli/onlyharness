@@ -1,16 +1,8 @@
 {
-	email admin@onlyharness.com
+	email admin@superskill.sh
 }
 
-www.superskill.sh {
-	redir https://superskill.sh{uri} permanent
-
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-}
-
-onlyharness.com, www.onlyharness.com, superskill.sh {
-	encode zstd gzip
-
+(superskill_machine_routes) {
 	handle /api/* {
 		uri strip_prefix /api
 		reverse_proxy api:8787
@@ -27,9 +19,8 @@ onlyharness.com, www.onlyharness.com, superskill.sh {
 	}
 
 	handle /.well-known/oauth-authorization-server {
-		root * /srv/web
-		header Content-Type application/json
-		file_server
+		header Cache-Control "no-store"
+		respond 404
 	}
 
 	handle /.well-known/mcp-registry-auth {
@@ -38,9 +29,39 @@ onlyharness.com, www.onlyharness.com, superskill.sh {
 		file_server
 	}
 
+	# Existing MCP Registry coordinates and installed clients may still fetch
+	# this machine-readable file from onlyharness.com during compatibility.
+	handle /server.json {
+		root * /srv/web
+		header Content-Type application/json
+		file_server
+	}
+}
+
+www.superskill.sh {
+	redir https://superskill.sh{uri} permanent
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+}
+
+superskill.sh {
+	encode zstd gzip
+	import superskill_machine_routes
+
 	handle {
 		root * /srv/web
 		try_files {path} /index.html
 		file_server
+	}
+}
+
+onlyharness.com, www.onlyharness.com {
+	encode zstd gzip
+	import superskill_machine_routes
+
+	# Only machine compatibility endpoints stay on the legacy origin. Human
+	# pages move permanently to the single SuperSkill product surface.
+	handle {
+		redir https://superskill.sh{uri} permanent
 	}
 }

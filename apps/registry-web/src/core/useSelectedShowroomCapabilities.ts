@@ -37,7 +37,7 @@ export function useSelectedShowroomCapabilities(options: { limit?: number; job?:
           status: "error",
           code: error.code ?? "SELECTED_SHOWROOM_UNAVAILABLE",
           reason: error.message || "The selected shelf is unavailable.",
-          next: error.next ?? "Retry, or browse the classic OnlyHarness catalog."
+          next: error.next ?? "Retry, or browse the SuperSkill resource catalog."
         });
       });
     return () => controller.abort();

@@ -35,6 +35,8 @@ import {
   isSkinSwitcherEnabled,
   resolveConfiguredDefaultSkin,
   resolveHostnameDefaultSkin,
+  resolveInitialSkinChoice,
+  resolveRequestedSkinChoice,
   SkinProvider,
   useSkin
 } from "./SkinProvider";
@@ -99,6 +101,23 @@ test("SuperSkill hostnames resolve to the Daylight skin without changing the Onl
   expect(resolveHostnameDefaultSkin("WWW.SUPERSKILL.SH")).toBe("superskill");
   expect(resolveHostnameDefaultSkin("onlyharness.com")).toBeNull();
   expect(resolveHostnameDefaultSkin("localhost")).toBeNull();
+});
+
+test("SuperSkill hostname cannot be overridden by a legacy query or stored skin", () => {
+  expect(resolveInitialSkinChoice({
+    hostname: "superskill.sh",
+    querySkin: "win98",
+    storedSkin: "modern",
+    configuredDefault: "win98"
+  })).toBe("superskill");
+  expect(resolveInitialSkinChoice({
+    hostname: "www.superskill.sh",
+    querySkin: "modern",
+    storedSkin: "win98"
+  })).toBe("superskill");
+  expect(resolveRequestedSkinChoice("superskill.sh", "modern")).toBe("superskill");
+  expect(resolveRequestedSkinChoice("www.superskill.sh", "win98")).toBe("superskill");
+  expect(resolveRequestedSkinChoice("localhost", "modern")).toBe("modern");
 });
 
 test("uses the SuperSkill product title when the Daylight skin is active", () => {

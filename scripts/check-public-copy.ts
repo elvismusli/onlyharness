@@ -34,7 +34,7 @@ for (const [file, text] of Object.entries(docs)) {
   }
 }
 
-check(docs["README.md"].includes("create local remix drafts"), "README must describe remix as local drafts");
+check(docs["README.md"].includes("old OnlyHarness UI and host are compatibility-only"), "README must describe the legacy product as compatibility-only");
 check(docs["README.md"].includes("Server-side remix is a local draft flow with a real fork graph row"), "README must describe the server-side remix fork graph");
 check(docs["apps/registry-web/public/llms.txt"].includes("Creates only a free unverified `local/{name}` copy"), "llms.txt must keep remix draft scope explicit");
 check(docs["AGENTS.md"].includes("server-side fork graph for local remix drafts"), "AGENTS.md must scope the fork graph to local remix drafts");
@@ -55,6 +55,7 @@ for (const forbidden of ["2,140", "12.8k", "240 verified", "0 unchecked", "Outco
   check(!superskillTextCopy.includes(forbidden), `SuperSkill UI must not contain unsupported claim: ${forbidden}`);
 }
 check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser source must not reference the internal CLI token");
+check(!superskillCopy.includes("https://onlyharness.com"), "SuperSkill browser source must use the canonical superskill.sh origin");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("localStorage"), "Task prompt must not persist task text");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("fetch("), "Task prompt must hand off locally instead of calling recommendation transport");
 check(docs["apps/registry-web/src/skins/superskill/pages/InstallHandoff.tsx"].includes("Copying a command only copies text"), "Install handoff must not turn copy into lifecycle state");
@@ -67,6 +68,11 @@ check(docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.
 check(!docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("Client handoff"), "Selected skill cards must not expose managed client handoff");
 check(docs["README.md"].includes("selected_unreviewed") && docs["README.md"].includes("cannot be recommended or activated"), "README must separate selected discovery from approved managed use");
 check(docs["README.md"].includes("12 exact immutable **candidates**") && docs["README.md"].includes("published and verified through a clean `npx` install"), "README must keep current SuperSkill supply and published CLI state honest");
+for (const file of ["AGENTS.md", "apps/registry-web/public/AGENTS.md"] as const) {
+  check(!docs[file].includes("The web app is OnlyHarness 98"), `${file} must not identify the SuperSkill human surface as OnlyHarness`);
+  check(!docs[file].includes("plugins/onlyharness"), `${file} must not recommend the stale legacy plugin validation path`);
+  check(docs[file].includes("Win98, Modern and Fans are legacy compatibility skins"), `${file} must scope legacy skins away from superskill.sh`);
+}
 
 console.log("Public copy check passed: remix/fork language stays honest");
 

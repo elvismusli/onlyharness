@@ -2,7 +2,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, unlinkSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, unlinkSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { canonicalArtifactDigest } from "@harnesshub/capability-schema/node";
@@ -86,7 +86,7 @@ before(async () => {
         }
         response.end(JSON.stringify({
           recommendationId: "rec_abcdefgh1234",
-          decisionDigest: computeDecisionDigest(capability, input.context.client, expiresAt),
+          decisionDigest: computeDecisionDigest(capability, input.context.client, expiresAt, "rec_abcdefgh1234"),
           decision: "recommend",
           confidence: 0.9,
           selected: {
@@ -123,11 +123,13 @@ before(async () => {
   if (!address || typeof address === "string") throw new Error("server did not bind");
   registry = `http://127.0.0.1:${address.port}`;
   process.env.HH_SUPERSKILL_TOKEN = "fixture-secret-token";
+  process.env.HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY = "1";
   process.env.HH_SUPERSKILL_DOCTOR_SKIP_NPM_VIEW = "1";
 });
 
 after(async () => {
   delete process.env.HH_SUPERSKILL_TOKEN;
+  delete process.env.HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY;
   delete process.env.HH_SUPERSKILL_DOCTOR_SKIP_NPM_VIEW;
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
@@ -137,7 +139,7 @@ for (const client of ["claude-code", "codex"] as const) {
     const project = mkdtempSync(path.join(os.tmpdir(), `superskill-${client}-`));
     try {
       execFileSync("git", ["init", "-q"], { cwd: project });
-      const decisionDigest = computeDecisionDigest(capability, client, expiresAt);
+      const decisionDigest = computeDecisionDigest(capability, client, expiresAt, "rec_abcdefgh1234");
       const requestId = `req_${client.replace("-", "")}_abcdefgh`;
       const input = {
         registry,
@@ -232,6 +234,31 @@ test("token remains in Authorization only and never enters event or project stat
   assert.ok(requestBodies.every((body) => !body.includes("fixture-secret-token")));
 });
 
+test("managed registry allowlist rejects credential exfiltration origins before fetch or state", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-untrusted-registry-"));
+  try {
+    for (const untrusted of ["https://attacker.invalid/api", "https://superskill.sh.attacker.invalid/api", "https://user:pass@superskill.sh/api", "https://superskill.sh/api?redirect=evil"]) {
+      await assert.rejects(() => startActivation({
+        registry: untrusted,
+        projectDir: project,
+        capabilityId: capability.id,
+        version: seedVersion,
+        digest: artifactDigest,
+        recommendationId: "rec_abcdefgh1234",
+        decisionDigest: computeDecisionDigest(capability, "codex", expiresAt, "rec_abcdefgh1234"),
+        recommendationExpiresAt: expiresAt,
+        activationRequestId: `req_untrusted_${Buffer.from(untrusted).toString("base64url").slice(0, 16)}`,
+        client: "codex",
+        mode: "temporary",
+        consent: "explicit"
+      }), (error: unknown) => error instanceof SuperSkillCliError && error.reasonCode === "REGISTRY_ORIGIN_UNTRUSTED");
+    }
+    assert.equal(existsSync(path.join(project, ".onlyharness")), false);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test("recommend CLI preserves managed JSON/exit contracts and validates secrets before network", async () => {
   const project = mkdtempSync(path.join(os.tmpdir(), "superskill-recommend-"));
   try {
@@ -244,7 +271,7 @@ test("recommend CLI preserves managed JSON/exit contracts and validates secrets 
     assert.match(body.next[0]!, /--target codex --mode temporary --consent explicit/);
 
     const noMatch = await runCli(["recommend", "no", "match", "please", "--target", "claude-code", "--project-dir", project, "--json"]);
-    assert.equal(noMatch.code, 3);
+    assert.equal(noMatch.code, 3, noMatch.stderr);
     assert.equal(JSON.parse(noMatch.stdout).decision, "no_safe_match");
 
     const before = requestBodies.length;
@@ -268,7 +295,7 @@ test("concurrent starts use one verified cache without corrupting either activat
       version: capability.release.version,
       digest: capability.release.artifactDigest,
       recommendationId: "rec_abcdefgh1234",
-      decisionDigest: computeDecisionDigest(capability, "codex" as const, expiresAt),
+      decisionDigest: computeDecisionDigest(capability, "codex" as const, expiresAt, "rec_abcdefgh1234"),
       recommendationExpiresAt: expiresAt,
       client: "codex" as const,
       mode: "temporary",
@@ -300,7 +327,7 @@ for (const client of ["claude-code", "codex"] as const) {
         version: capability.release.version,
         digest: capability.release.artifactDigest,
         recommendationId: "rec_abcdefgh1234",
-        decisionDigest: computeDecisionDigest(capability, client, expiresAt),
+        decisionDigest: computeDecisionDigest(capability, client, expiresAt, "rec_abcdefgh1234"),
         recommendationExpiresAt: expiresAt,
         activationRequestId: `req_symlink_${client.replace("-", "")}`,
         client,
@@ -355,7 +382,7 @@ async function runCli(args: string[]): Promise<{ code: number | null; stdout: st
   const hh = path.resolve(import.meta.dirname, "../dist/hh.mjs");
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [hh, ...args], {
-      env: { ...process.env, HH_REGISTRY_URL: registry, HH_SUPERSKILL_TOKEN: "fixture-secret-token" },
+      env: { ...process.env, HH_REGISTRY_URL: registry, HH_SUPERSKILL_TOKEN: "fixture-secret-token", HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY: "1" },
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";

@@ -393,7 +393,7 @@ function resourceFromRow(row: ParsedCatalogRow, summaryMap: Record<string, strin
       riskTier: "UNKNOWN"
     },
     actions: [
-      { id: "open_onlyharness", label: "Use in OnlyHarness", url: onlyHarnessResourceUrl(id) },
+      { id: "open_onlyharness", label: "Use in SuperSkill", url: onlyHarnessResourceUrl(id) },
       { id: "open_upstream", label: "Use upstream", url: row.url },
       { id: "claim", label: "Claim as creator", proofRequired: true }
     ],
@@ -409,11 +409,11 @@ function resourceFromRow(row: ParsedCatalogRow, summaryMap: Record<string, strin
 }
 
 export function onlyHarnessResourceUrl(id: string): string {
-  return `https://onlyharness.com/#/resources/${encodeURIComponent(id)}`;
+  return `https://superskill.sh/#/resources/${encodeURIComponent(id)}`;
 }
 
 export function onlyHarnessResourceArchiveUrl(id: string): string {
-  return `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive`;
+  return `https://superskill.sh/api/resources/${encodeURIComponent(id)}/archive`;
 }
 
 function tagsForRow(row: ParsedCatalogRow, resourceType: ResourceType): string[] {

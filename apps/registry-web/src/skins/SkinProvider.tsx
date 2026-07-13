@@ -35,25 +35,43 @@ export function resolveHostnameDefaultSkin(hostname: string | null | undefined):
   return normalized === "superskill.sh" || normalized === "www.superskill.sh" ? "superskill" : null;
 }
 
+export function resolveRequestedSkinChoice(hostname: string | null | undefined, requested: SkinId): SkinId {
+  return resolveHostnameDefaultSkin(hostname) ?? requested;
+}
+
+export function resolveInitialSkinChoice(input: {
+  hostname?: string | null;
+  querySkin?: string | null;
+  storedSkin?: string | null;
+  configuredDefault?: string | null;
+}): SkinId {
+  // A product hostname is an isolation boundary, not a theme preference. This
+  // prevents legacy `?skin=` links or saved OnlyHarness state from switching
+  // superskill.sh back to a different product surface.
+  const fromHostname = resolveHostnameDefaultSkin(input.hostname);
+  if (fromHostname) return fromHostname;
+  return asSkinId(input.querySkin)
+    ?? asSkinId(input.storedSkin)
+    ?? resolveConfiguredDefaultSkin(input.configuredDefault);
+}
+
 /**
- * Resolve the initial skin by precedence: `?skin=` URL param, a product-specific
- * hostname, `localStorage["oh:skin"]`, then the configured default. Unknown ids
- * are ignored so stale values fall through rather than rendering nothing.
+ * Resolve the initial product surface. A product hostname is authoritative;
+ * legacy query/storage preferences only apply on non-product development hosts.
  */
 function resolveInitialSkin(): SkinId {
-  const fromQuery = asSkinId(new URLSearchParams(window.location.search).get(QUERY_KEY));
-  if (fromQuery) return fromQuery;
-  const fromHostname = resolveHostnameDefaultSkin(window.location.hostname);
-  if (fromHostname) return fromHostname;
   let stored: string | null = null;
   try {
     stored = window.localStorage.getItem(STORAGE_KEY);
   } catch {
     stored = null;
   }
-  const fromStorage = asSkinId(stored);
-  if (fromStorage) return fromStorage;
-  return resolveConfiguredDefaultSkin(import.meta.env.VITE_DEFAULT_SKIN);
+  return resolveInitialSkinChoice({
+    hostname: window.location.hostname,
+    querySkin: new URLSearchParams(window.location.search).get(QUERY_KEY),
+    storedSkin: stored,
+    configuredDefault: import.meta.env.VITE_DEFAULT_SKIN
+  });
 }
 
 /**
@@ -72,6 +90,11 @@ export function SkinProvider() {
     () => ({
       skin,
       setSkin: (id: SkinId) => {
+        const resolved = resolveRequestedSkinChoice(window.location.hostname, id);
+        if (resolved !== id) {
+          setSkinState(resolved);
+          return;
+        }
         try {
           window.localStorage.setItem(STORAGE_KEY, id);
         } catch {
@@ -96,7 +119,10 @@ export function SkinProvider() {
       </Suspense>
       {/* One global switcher for every skin: fixed position, same viewport spot
           on all skins, styled outside any `.skin-*` scope (skin-switcher.css). */}
-      {isSkinSwitcherEnabled(import.meta.env.VITE_ENABLE_SKIN_SWITCHER) ? <GlobalSkinSwitcher /> : null}
+      {resolveHostnameDefaultSkin(window.location.hostname) === null
+        && isSkinSwitcherEnabled(import.meta.env.VITE_ENABLE_SKIN_SWITCHER)
+        ? <GlobalSkinSwitcher />
+        : null}
     </SkinContext.Provider>
   );
 }

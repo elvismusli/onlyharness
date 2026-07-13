@@ -287,7 +287,7 @@ before(async () => {
         raw += chunk;
       });
       request.on("end", () => {
-        const body = JSON.parse(raw || "{}") as { name?: string; title?: string; resourceType?: string; files?: Array<{ path?: string; content?: string; truncated?: boolean }> };
+        const body = JSON.parse(raw || "{}") as { name?: string; version?: string; idempotencyKey?: string; title?: string; resourceType?: string; files?: Array<{ path?: string; content?: string; truncated?: boolean }> };
         resourcePackagePublishPaths = (body.files ?? []).map((file) => file.path ?? "");
         if (!resourcePackagePublishPaths.includes("README.md") || !resourcePackagePublishPaths.includes("scripts/run.sh")) {
           response.statusCode = 400;
@@ -297,6 +297,16 @@ before(async () => {
         if (resourcePackagePublishPaths.some((item) => item.includes(".env") || item.includes("dist/"))) {
           response.statusCode = 400;
           response.end(JSON.stringify({ error: "unsafe resource package files", paths: resourcePackagePublishPaths }));
+          return;
+        }
+        if (body.version !== "0.1.0" || !body.idempotencyKey?.startsWith("hh-")) {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "missing immutable release contract" }));
+          return;
+        }
+        if (body.name === "validation-error") {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "package validation failed", code: "VALIDATION_FAILED" }));
           return;
         }
         const name = body.name ?? "agent-tool";
@@ -309,9 +319,14 @@ before(async () => {
             resourceType: body.resourceType ?? "command_pack"
           },
           archive: {
-            url: `https://onlyharness.com/api/resources/${encodeURIComponent(`onlyharness:packages/${name}`)}/archive`,
+            url: `https://onlyharness.com/api/resources/${encodeURIComponent(`onlyharness:packages/${name}`)}/releases/${body.version}/archive`,
             fileName: `onlyharness-${name}.tar.gz`
           },
+          version: body.version,
+          artifactDigest: "a".repeat(64),
+          size: 128,
+          trust: "unreviewed",
+          replay: false,
           hosted: true,
           verified: false,
           next: "not verified"
@@ -1294,7 +1309,24 @@ test("publish-resource sends a hosted agent package with scripts and skips unsaf
     assert.equal(body.resourceType, "command_pack");
     assert.equal(body.hosted, true);
     assert.equal(body.verified, false);
-    assert.match(body.archiveUrl ?? "", /onlyharness%3Apackages%2Fagent-tool\/archive/);
+    assert.match(body.archiveUrl ?? "", /onlyharness%3Apackages%2Fagent-tool\/releases\/0\.1\.0\/archive/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publish-resource preserves stable HTTP validation code in CLI JSON", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "hh-resource-validation-"));
+  try {
+    await mkdir(path.join(root, "scripts"), { recursive: true });
+    await writeFile(path.join(root, "README.md"), "# Invalid fixture\n");
+    await writeFile(path.join(root, "scripts/run.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    const result = await runCli(["publish-resource", root, "--name", "validation-error", "--token", "publish-token", "--json"], { HH_REGISTRY_URL: registryUrl });
+    assert.equal(result.status, 3);
+    const body = JSON.parse(result.stderr) as { code?: number; remoteCode?: string; error?: string };
+    assert.equal(body.code, 3);
+    assert.equal(body.remoteCode, "VALIDATION_FAILED");
+    assert.match(body.error ?? "", /\[VALIDATION_FAILED\]/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

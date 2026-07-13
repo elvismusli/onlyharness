@@ -1,12 +1,12 @@
 {
   "name": "superskill",
-  "version": "0.1.0",
-  "description": "Find and temporarily activate a reviewed AI capability for the current task.",
+  "version": "0.2.0",
+  "description": "Install once from a pinned link, then find and consent to an exact reviewed capability.",
   "author": {
-    "name": "OnlyHarness",
-    "url": "https://onlyharness.com"
+    "name": "SuperSkill",
+    "url": "https://superskill.sh"
   },
-  "homepage": "https://onlyharness.com",
+  "homepage": "https://superskill.sh",
   "repository": "https://github.com/elvismusli/onlyharness",
   "license": "MIT",
   "keywords": ["skills", "agent-tools", "trust", "routing"],
@@ -16,10 +16,10 @@
     "displayName": "SuperSkill",
     "shortDescription": "Choose and activate a reviewed capability for a task",
     "longDescription": "SuperSkill maps a task to an exact reviewed instruction resource, shows permissions and limitations, then activates it temporarily or pins it with explicit consent.",
-    "developerName": "OnlyHarness",
+    "developerName": "SuperSkill",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Read", "Write"],
-    "websiteURL": "https://onlyharness.com",
+    "websiteURL": "https://superskill.sh",
     "defaultPrompt": [
       "Find the best reviewed capability for this task.",
       "Use SuperSkill to help with this task."

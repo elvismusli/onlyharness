@@ -17,6 +17,13 @@ const qaEmail = process.env.ONLYHARNESS_QA_EMAIL;
 const qaPassword = process.env.ONLYHARNESS_QA_PASSWORD;
 const expectEmailConfirmation = process.env.SMOKE_EXPECT_EMAIL_CONFIRMATION === "1";
 const authRateLimitOk = process.env.SMOKE_AUTH_RATE_LIMIT_OK === "1";
+const apiHost = new URL(apiUrl).hostname;
+const localComposeApi = apiHost === "127.0.0.1" || apiHost === "localhost" || apiHost === "::1";
+const emailRedirectTo = process.env.SMOKE_EMAIL_REDIRECT_TO ?? "https://superskill.sh";
+
+if (authRateLimitOk && !localComposeApi) {
+  throw new Error("SMOKE_AUTH_RATE_LIMIT_OK is allowed only for the local compose smoke and cannot produce production GO evidence");
+}
 
 if (qaEmail && qaPassword) {
   const login = await supabase.auth.signInWithPassword({ email: qaEmail, password: qaPassword });
@@ -55,7 +62,7 @@ if (qaEmail && qaPassword) {
   if (!thread.ok) throw new Error(`Persistent QA thread failed with ${thread.status}: ${await thread.text()}`);
 
   await supabase.auth.signOut();
-  console.log(`Production persistent QA auth smoke passed: ${qaEmail}`);
+  console.log("Production persistent QA auth smoke passed");
   process.exit(0);
 }
 
@@ -64,13 +71,13 @@ const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
   password,
   options: {
     data: { display_name: "OnlyHarness QA" },
-    emailRedirectTo: "https://onlyharness.com"
+    emailRedirectTo
   }
 });
 
 if (signUpError) {
   if (authRateLimitOk && /rate limit/i.test(signUpError.message)) {
-    console.warn(`Production auth confirmation smoke skipped: Supabase signup rate limited (${signUpError.message})`);
+    console.warn("Local compose auth confirmation smoke skipped: Supabase signup rate limited");
     process.exit(0);
   }
   throw new Error(`Supabase signUp failed: ${signUpError.message}`);
@@ -84,7 +91,7 @@ if (expectEmailConfirmation) {
   if (!login.error) {
     throw new Error("Expected unconfirmed user sign-in to fail before email confirmation");
   }
-  console.log(`Production auth confirmation smoke passed: signup requires email confirmation for ${email}`);
+  console.log(`Production auth confirmation smoke passed: signup requires email confirmation (run ${suffix})`);
   process.exit(0);
 }
 

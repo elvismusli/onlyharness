@@ -25,7 +25,7 @@ import {
 } from "@harnesshub/capability-schema/browser";
 import { ManagedCatalog } from "../apps/harness-api/src/capabilities.js";
 import { MANAGED_EVENT_KINDS, recordManagedEvent } from "../apps/harness-api/src/events.js";
-import { buildManagedArchive } from "../apps/harness-api/src/managed-archive.js";
+import { buildManagedArchive, type ManagedArchivePayload } from "../apps/harness-api/src/managed-archive.js";
 import { registerSuperskillRoutes, superskillAuthFromHeader } from "../apps/harness-api/src/routes/superskill.js";
 import {
   claudeCompatibilitySessionEligible,
@@ -34,6 +34,7 @@ import {
   inspectExactActivationEventChain
 } from "./superskill-exact-evidence.js";
 import { deriveCuratedSmokeTask } from "./superskill-smoke-task.js";
+import { loadPrivateReviewFixtureForSmoke, type LoadedPrivateReviewFixture } from "./prepare-superskill-review-fixture.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const cliFile = path.join(root, "packages/harness-cli/dist/hh.mjs");
@@ -59,15 +60,30 @@ if (realClientFilter && !realClientSessionsRequested) {
 if (smokeArguments.evidenceOut && (!realClientSessionsRequested || realClientFilter)) {
   throw new Error("--evidence-out requires unfiltered --real-client-sessions so both clients are evidenced");
 }
+if (smokeArguments.privateFixture
+  && (!smokeArguments.capabilityId || !smokeArguments.version || !smokeArguments.digest)) {
+  throw new Error("--private-fixture requires --capability-id, --version and --digest");
+}
 const originalIndex = managedCapabilityIndexSchema.parse(JSON.parse(readFileSync(indexFile, "utf8")));
 const requestedCapabilityId = smokeArguments.capabilityId ?? defaultExpected.id;
 assertCapabilityId(requestedCapabilityId);
-const exactCandidate = originalIndex.capabilities.find((capability) => capability.id === requestedCapabilityId);
-assert.ok(exactCandidate, `Missing ${requestedCapabilityId} from checked-in SuperSkill index`);
-assert.equal(exactCandidate.trust.status, "candidate", "Bootstrap smoke must begin from the honest checked-in candidate state");
+const publicCandidate = originalIndex.capabilities.find((capability) => capability.id === requestedCapabilityId);
+assert.ok(publicCandidate, `Missing ${requestedCapabilityId} from checked-in SuperSkill index`);
+assert.equal(publicCandidate.trust.status, "candidate", "Bootstrap smoke must begin from the honest checked-in candidate state");
+const privateFixture = smokeArguments.privateFixture
+  ? loadPrivateReviewFixtureForSmoke({
+      id: requestedCapabilityId,
+      from: publicCandidate.release.version,
+      to: smokeArguments.version!,
+      expectedDigest: smokeArguments.digest!
+    })
+  : undefined;
+const exactCandidate = privateFixture ? privateCapability(publicCandidate, privateFixture) : publicCandidate;
 const expected = resolveExpectedTuple(exactCandidate, smokeArguments);
-const taskSummary = resolveTaskSummary(expected, smokeArguments.taskSummary);
-const exactSnapshotFile = path.join(root, "data/harness-versions", expected.ref, `${expected.version}.json`);
+const taskSummary = resolveTaskSummary(expected, smokeArguments.taskSummary, publicCandidate, Boolean(privateFixture));
+const exactSnapshotFile = privateFixture
+  ? path.join(root, ".onlyharness/private-review-fixtures", expected.id, `${expected.version}.json`)
+  : path.join(root, "data/harness-versions", expected.ref, `${expected.version}.json`);
 assert.ok(existsSync(exactSnapshotFile), `Missing immutable snapshot for ${expected.ref}@${expected.version}`);
 const evidenceDirectory = path.join(root, "docs/plans/superskill-mvp/evidence");
 const evidenceOutFile = smokeArguments.evidenceOut
@@ -89,7 +105,8 @@ assert.ok(existsSync(cliFile), "Build packages/harness-cli/dist/hh.mjs before ru
 assert.equal((JSON.parse(readFileSync(cliPackageFile, "utf8")) as { version?: string }).version, cliVersion);
 
 assertExactTuple(exactCandidate);
-const exactArchive = buildManagedArchive(exactCandidate);
+const exactArchiveBuilder = privateFixture ? privateArchiveBuilder(privateFixture) : buildManagedArchive;
+const exactArchive = exactArchiveBuilder(exactCandidate);
 assert.equal(exactArchive.artifactDigest, expected.artifactDigest);
 assert.ok(exactArchive.totalFileCount > 0, "Exact archive must contain at least one file");
 assert.equal(exactArchive.files.length, exactArchive.totalFileCount);
@@ -124,7 +141,7 @@ await app.register(async (managed) => {
     enabled: true,
     tokenHashes: [tokenHash],
     telemetrySalt,
-    archiveBuilder: buildManagedArchive
+    archiveBuilder: exactArchiveBuilder
   });
   managed.post("/events", async (request, reply) => {
     const authorization = Array.isArray(request.headers.authorization) ? request.headers.authorization[0] : request.headers.authorization;
@@ -187,6 +204,18 @@ try {
     humanReviewEvidence: false,
     sourceTruthUnchanged: true,
     release: expected,
+    fixtureInput: privateFixture ? {
+      mode: "private_ignored_snapshot",
+      visibility: "private_candidate",
+      status: privateFixture.snapshot.status,
+      expiresAt: privateFixture.snapshot.expiresAt,
+      packetBound: true,
+      publicTruthMutation: false,
+      privatePathIncluded: false
+    } : {
+      mode: "public_catalog_snapshot",
+      publicTruthMutation: false
+    },
     archive: {
       totalFileCount: exactArchive.totalFileCount,
       complete: exactArchive.files.length === exactArchive.totalFileCount,
@@ -217,6 +246,7 @@ try {
   assert.equal(publicJson.includes(taskSummary), false);
   assert.equal(publicJson.includes(root), false);
   assert.equal(publicJson.includes(temporaryRoot), false);
+  if (privateFixture) assert.equal(publicJson.includes(privateChallengeValue(privateFixture)), false);
   assert.equal(/\/(?:Users|home|private|tmp)\//.test(publicJson), false);
   process.stdout.write(`${publicJson}\n`);
   if (evidenceOutFile) {
@@ -896,6 +926,57 @@ function eligibleBootstrapOverlay(
   return managedCapabilityIndexSchema.parse(result);
 }
 
+function privateCapability(publicCandidate: ManagedCapability, fixture: LoadedPrivateReviewFixture): ManagedCapability {
+  const capability = structuredClone(publicCandidate);
+  capability.release.version = fixture.snapshot.version;
+  capability.release.artifactDigest = fixture.snapshot.artifactDigest;
+  capability.release.publishedAt = fixture.snapshot.createdAt;
+  const contextFiles = fixture.snapshot.files.filter((file) => file.path === "README.md" || /^(agents|prompts|runbooks)\/.+\.md$/i.test(file.path));
+  const bytes = contextFiles.reduce((sum, file) => sum + Buffer.byteLength(file.content, "utf8"), 0);
+  capability.contextCost = {
+    approxTokens: Math.round(bytes / 4),
+    files: contextFiles.length,
+    bytes,
+    status: "estimated"
+  };
+  capability.trust.reviewedAt = fixture.snapshot.createdAt;
+  capability.trust.limitations = [
+    "Private candidate is available only inside the controlled review smoke.",
+    "Human sign-off remains pending and this overlay cannot authorize promotion."
+  ];
+  return capability;
+}
+
+function privateArchiveBuilder(fixture: LoadedPrivateReviewFixture): (capability: ManagedCapability) => ManagedArchivePayload {
+  return (capability) => {
+    assert.equal(capability.id, fixture.snapshot.repo);
+    assert.equal(capability.release.ref, `harnesses/${fixture.snapshot.repo}`);
+    assert.equal(capability.release.version, fixture.snapshot.version);
+    assert.equal(capability.release.artifactDigest, fixture.snapshot.artifactDigest);
+    assert.equal(capability.release.delivery, "free_archive");
+    assert.equal(fixture.snapshot.totalFileCount, fixture.snapshot.files.length);
+    assert.equal(fixture.snapshot.archiveTruncated, false);
+    assert.ok(fixture.snapshot.files.every((file) => file.truncated !== true));
+    return {
+      owner: "harnesses",
+      repo: fixture.snapshot.repo,
+      version: fixture.snapshot.version,
+      snapshot: true,
+      artifactDigest: fixture.snapshot.artifactDigest,
+      totalFileCount: fixture.snapshot.files.length,
+      archiveTruncated: false,
+      files: fixture.snapshot.files.map((file) => ({ path: file.path, content: file.content, truncated: false }))
+    };
+  };
+}
+
+function privateChallengeValue(fixture: LoadedPrivateReviewFixture): string {
+  const content = fixture.snapshot.files.find((file) => file.path === "runbooks/review-challenge.md")?.content ?? "";
+  const match = /^review_challenge: (OHSC_[A-Za-z0-9_-]{43})$/m.exec(content);
+  assert.ok(match, "Private review challenge is unavailable");
+  return match[1];
+}
+
 function assertExactTuple(capability: ManagedCapability): void {
   assert.equal(capability.id, expected.id);
   assert.equal(capability.release.ref, expected.ref);
@@ -973,13 +1054,17 @@ function redact(value: string): string {
 }
 
 function sourceTruthHashes(): Record<string, string> {
-  return {
+  const hashes = {
     curated: hashFile(curatedFile),
     index: hashFile(indexFile),
     history: hashFile(historyFile),
     reviews: hashTree(reviewsRoot),
     exactReleaseSnapshot: hashFile(exactSnapshotFile)
   };
+  return privateFixture ? {
+    ...hashes,
+    privateReviewPacket: hashFile(path.join(root, "data/superskill/review-packets", `${expected.id}-${expected.version}.json`))
+  } : hashes;
 }
 
 function hashFile(file: string): string {
@@ -1031,6 +1116,7 @@ function stringValue(value: unknown): string | undefined {
 
 type SmokeArguments = {
   realClientSessions: boolean;
+  privateFixture: boolean;
   realClient?: Client;
   evidenceOut?: string;
   capabilityId?: string;
@@ -1048,7 +1134,7 @@ type ExpectedTuple = {
 };
 
 function parseArguments(args: string[]): SmokeArguments {
-  const parsed: SmokeArguments = { realClientSessions: false };
+  const parsed: SmokeArguments = { realClientSessions: false, privateFixture: false };
   const seen = new Set<string>();
   const values = new Set([
     "--real-client",
@@ -1065,6 +1151,10 @@ function parseArguments(args: string[]): SmokeArguments {
     seen.add(argument);
     if (argument === "--real-client-sessions") {
       parsed.realClientSessions = true;
+      continue;
+    }
+    if (argument === "--private-fixture") {
+      parsed.privateFixture = true;
       continue;
     }
     if (!values.has(argument)) throw new Error(`Unknown argument: ${argument}`);
@@ -1113,7 +1203,12 @@ function resolveExpectedTuple(candidate: ManagedCapability, args: SmokeArguments
   return expected;
 }
 
-function resolveTaskSummary(expected: ExpectedTuple, explicit: string | undefined): string {
+function resolveTaskSummary(
+  expected: ExpectedTuple,
+  explicit: string | undefined,
+  publicCandidate: ManagedCapability,
+  privateMode: boolean
+): string {
   const curated = JSON.parse(readFileSync(curatedFile, "utf8")) as {
     resources?: Array<{
       id?: unknown;
@@ -1128,8 +1223,8 @@ function resolveTaskSummary(expected: ExpectedTuple, explicit: string | undefine
   assert.equal(matches.length, 1, `Expected exactly one curated source row for ${expected.id}`);
   const resource = matches[0]!;
   assert.equal(resource.ref, expected.ref, `Curated ref mismatch for ${expected.id}`);
-  assert.equal(resource.version, expected.version, `Curated version mismatch for ${expected.id}`);
-  assert.equal(resource.expectedDigest, expected.artifactDigest, `Curated digest mismatch for ${expected.id}`);
+  assert.equal(resource.version, privateMode ? publicCandidate.release.version : expected.version, `Curated version mismatch for ${expected.id}`);
+  assert.equal(resource.expectedDigest, privateMode ? publicCandidate.release.artifactDigest : expected.artifactDigest, `Curated digest mismatch for ${expected.id}`);
   assert.equal(resource.status, "candidate", `Curated ${expected.id} must remain candidate during bootstrap smoke`);
   if (explicit !== undefined) return validateTaskSummary(explicit);
   if (expected.id === defaultExpected.id) return defaultTaskSummary;

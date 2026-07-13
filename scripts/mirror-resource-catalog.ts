@@ -347,8 +347,8 @@ function publicMirrorError(record: MirrorRecord): string | undefined {
 function actionsForMirror(resource: SeedResource, mirror: ResourceMirror): ResourceAction[] {
   const rest = resource.actions.filter((action) => action.id !== "open_onlyharness" && action.id !== "open_mirror" && action.id !== "open_upstream" && action.id !== "download_archive");
   const actions: ResourceAction[] = [
-    { id: "open_onlyharness", label: "Use in OnlyHarness", url: onlyHarnessResourceUrl(resource.id) },
-    ...(localArchiveExists(resource.id) ? [{ id: "download_archive" as const, label: "Download from OnlyHarness", url: onlyHarnessResourceArchiveUrl(resource.id) }] : []),
+    { id: "open_onlyharness", label: "Use in SuperSkill", url: onlyHarnessResourceUrl(resource.id) },
+    ...(localArchiveExists(resource.id) ? [{ id: "download_archive" as const, label: "Download from SuperSkill", url: onlyHarnessResourceArchiveUrl(resource.id) }] : []),
     { id: "open_upstream", label: "Open upstream source", url: resource.canonicalUrl }
   ];
   return [...actions, ...rest];
@@ -357,38 +357,19 @@ function actionsForMirror(resource: SeedResource, mirror: ResourceMirror): Resou
 function upstreamActions(resource: SeedResource): ResourceAction[] {
   const rest = resource.actions.filter((action) => action.id !== "open_onlyharness" && action.id !== "open_mirror" && action.id !== "open_upstream" && action.id !== "download_archive");
   const actions: ResourceAction[] = [
-    { id: "open_onlyharness", label: "Use in OnlyHarness", url: onlyHarnessResourceUrl(resource.id) },
-    ...(localArchiveExists(resource.id) ? [{ id: "download_archive" as const, label: "Download from OnlyHarness", url: onlyHarnessResourceArchiveUrl(resource.id) }] : []),
+    { id: "open_onlyharness", label: "Use in SuperSkill", url: onlyHarnessResourceUrl(resource.id) },
+    ...(localArchiveExists(resource.id) ? [{ id: "download_archive" as const, label: "Download from SuperSkill", url: onlyHarnessResourceArchiveUrl(resource.id) }] : []),
     { id: "open_upstream", label: "Use upstream", url: resource.canonicalUrl },
   ];
   return [...actions, ...rest];
 }
 
 function localArchiveExists(id: string): boolean {
-  if (existsSync(path.join(archiveRoot(), `${Buffer.from(id, "utf8").toString("base64url")}.tar.gz`))) return true;
-  const manifest = readArchiveManifest();
-  return manifest.has(id);
+  return existsSync(path.join(archiveRoot(), `${Buffer.from(id, "utf8").toString("base64url")}.tar.gz`));
 }
 
 function archiveRoot(): string {
   return process.env.RESOURCE_ARCHIVE_DIR ? path.resolve(process.env.RESOURCE_ARCHIVE_DIR) : path.join(root, "data/resources/archives");
-}
-
-function readArchiveManifest(): Set<string> {
-  const manifestPath = path.join(archiveRoot(), "archives.json");
-  if (!existsSync(manifestPath)) return new Set();
-  try {
-    const data = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-      archives?: Array<{ id?: string }>;
-      results?: Array<{ id?: string; status?: string }>;
-    };
-    return new Set([
-      ...(data.archives ?? []).map((archive) => archive.id).filter(Boolean),
-      ...(data.results ?? []).filter((result) => result.status === "ready").map((result) => result.id).filter(Boolean)
-    ] as string[]);
-  } catch {
-    return new Set();
-  }
 }
 
 function isGitHubMirrorCandidate(resource: SeedResource): boolean {

@@ -27,28 +27,30 @@ test("the single global CTA opens generic install without requesting capability 
   expect(ctas[0]).toHaveAttribute("href", "#/superskill/install");
   fireEvent.click(ctas[0]!);
   await waitFor(() => expect(window.location.hash).toBe("#/superskill/install"));
-  expect(await screen.findByRole("heading", { level: 1, name: "Continue in your existing agent" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { level: 1, name: "Universal installer not available yet" })).toBeTruthy();
   expect(fetchMock).not.toHaveBeenCalled();
   expect(screen.queryByText("Activated")).toBeNull();
   expect(screen.queryByText("Installed")).toBeNull();
 });
 
-test("generic install supports a direct reload and exposes both shared client paths", async () => {
+test("generic install supports a direct reload and blocks command copy while the runtime is unpublished", async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   window.history.replaceState(null, "", "/?skin=superskill#/superskill/install");
   render(<SuperskillSkin />);
-  expect(await screen.findByRole("heading", { level: 1, name: "Continue in your existing agent" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Claude Code" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
-  expect(screen.getByDisplayValue("codex plugin add superskill@onlyharness")).toBeTruthy();
+  expect(await screen.findByRole("heading", { level: 1, name: "Universal installer not available yet" })).toBeTruthy();
+  expect(screen.getByText(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")} release has not been published`))).toBeTruthy();
+  expect(screen.queryByDisplayValue(/superskill install/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Claude Code" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Codex CLI" })).toBeNull();
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("browser docs stay HTML-first while preserving raw machine-readable links", () => {
   render(<DocsPage />);
   expect(screen.getByRole("heading", { level: 1, name: "Install and use SuperSkill" })).toBeTruthy();
-  expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")}`))).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Install command not published" })).toBeTruthy();
+  expect(screen.queryByDisplayValue(/superskill install/)).toBeNull();
   expect(screen.getByRole("link", { name: "Raw llms.txt" })).toHaveAttribute("href", "/llms.txt");
   expect(screen.getByRole("link", { name: "Raw AGENTS.md" })).toHaveAttribute("href", "/AGENTS.md");
 });
@@ -57,6 +59,8 @@ test("agent guide keeps selected candidates separate from approved exact release
   render(<AgentGuidePage />);
   expect(screen.getByRole("heading", { level: 1, name: "Use SuperSkill from an agent" })).toBeTruthy();
   expect(screen.getByText("selected_unreviewed")).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Bootstrap unavailable" })).toBeTruthy();
+  expect(screen.queryByDisplayValue(/superskill install/)).toBeNull();
   expect(screen.getByText(/cannot support a trust claim, managed recommendation, or activation/i)).toBeTruthy();
   expect(screen.getByRole("link", { name: "Raw AGENTS.md" })).toHaveAttribute("href", "/AGENTS.md");
 });
@@ -74,7 +78,8 @@ test("landing renders a real public DTO and does not send task content", async (
   expect(await screen.findByText("Selected · review pending")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Task"), { target: { value: "prepare a market map" } });
   fireEvent.click(screen.getByRole("button", { name: "Continue in client" }));
-  expect(await screen.findAllByDisplayValue("prepare a market map")).toHaveLength(2);
+  expect(await screen.findAllByDisplayValue("prepare a market map")).toHaveLength(1);
+  expect(screen.getByRole("heading", { name: "Universal installer not available yet" })).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledTimes(2);
   expect(fetchMock.mock.calls.every((call) => !("body" in call[1]))).toBe(true);
 });
@@ -145,14 +150,13 @@ test("stale public evidence blocks client handoff without calling it quarantine"
   expect(screen.queryByText(/Release quarantined/i)).toBeNull();
 });
 
-test("install handoff exposes exact runtime for both clients", async () => {
+test("install handoff keeps an approved capability blocked until the exact runtime is published", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(showroomFixture()), { status: 200 })));
   render(<InstallHandoff capabilityId="market-research" />);
-  await screen.findByRole("heading", { level: 1, name: "Continue in your existing agent" });
-  expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")}`))).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
-  await waitFor(() => expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")}`))).toBeTruthy());
-  expect(screen.getByDisplayValue("codex plugin add superskill@onlyharness")).toBeTruthy();
+  await screen.findByRole("heading", { level: 1, name: "Universal installer not available yet" });
+  expect(screen.queryByDisplayValue(/superskill install/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Codex CLI" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Claude Code" })).toBeNull();
 });
 
 test("capability-specific install keeps the exact release gate fail closed", async () => {

@@ -25,6 +25,7 @@ data/orgs/*
 data/resources/archives/*.tar.gz
 .tmp/
 .harnesshub-smoke-diff.json
+.onlyharness/private-review-fixtures/
 apps/registry-web/.vite
 coverage
 supabase/.temp

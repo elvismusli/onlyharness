@@ -5,9 +5,19 @@ import test from "node:test";
 import type { CuratedResource, ReviewAttestation } from "@harnesshub/capability-schema/browser";
 import { parseManifestText } from "@harnesshub/schema";
 import { recomputeCapabilityDiff, scanHarnessFiles } from "../apps/harness-api/src/security-scan.js";
-import { assertManagedInstructionOnly, buildSuperskillIndex, validateApprovalEvidence, verifyAttestationAgainstSnapshot } from "./build-superskill-catalog.js";
+import {
+  assertManagedInstructionOnly,
+  buildSuperskillIndex,
+  validateApprovalEvidence as validateApprovalEvidenceBase,
+  validatePromotionActorGate,
+  verifyAttestationAgainstSnapshot
+} from "./build-superskill-catalog.js";
 
 const approvedResource = { id: "fixture", status: "approved" } as CuratedResource;
+const promotionAuthorship = {
+  author: { actorId: "github-id:149376360", label: "elvismusli" },
+  releaseCutter: { actorId: "github-id:149376360", label: "elvismusli" }
+} as const;
 const instructionManifest = (promptfooConfig = "evals/promptfooconfig.yaml", command = "npx promptfoo eval") => ({
   evals: { promptfoo_config: promptfooConfig, command }
 });
@@ -45,6 +55,7 @@ function approvalReview(): ReviewAttestation {
       inferred: [],
       differences: []
     },
+    authorship: promotionAuthorship,
     compatibility: [
       { client: "claude-code", clientVersion: "2.1.112", os: "darwin", verdict: "pass", checkedAt: "2026-07-12T09:00:00.000Z", fixtureId: "claude-clean" },
       { client: "codex", clientVersion: "0.135.0", os: "darwin", verdict: "pass", checkedAt: "2026-07-12T09:00:00.000Z", fixtureId: "codex-clean" }
@@ -54,11 +65,20 @@ function approvalReview(): ReviewAttestation {
       { caseId: "case-2", verdict: "pass", limitationCodes: [] },
       { caseId: "case-3", verdict: "partial", limitationCodes: ["SCOPE"] }
     ],
-    reviewer: { label: "Internal alpha reviewer 1" },
+    reviewer: { actorId: "github-id:200000001", label: "reviewer-one" },
     limitations: ["Scope is limited to the reviewed market-research workflow"],
     reviewedAt: "2026-07-12T10:00:00.000Z",
     expiresAt: "2026-12-01T10:00:00.000Z"
   };
+}
+
+function validateApprovalEvidence(
+  resource: CuratedResource,
+  review: ReviewAttestation | undefined,
+  now: Date,
+  context: { evalCommand?: string } = {}
+): void {
+  validateApprovalEvidenceBase(resource, review, now, { ...context, expectedAuthorship: promotionAuthorship });
 }
 
 test("managed catalog builds deterministic candidate-only exact releases", () => {
@@ -232,13 +252,55 @@ test("approval evidence rejects duplicate clients and duplicate human case IDs",
   }, now), /unique human case IDs/);
 });
 
+test("promotion actor gate fails closed for missing, spoofed, drifted or matching identities", () => {
+  const now = new Date("2026-07-13T00:00:00.000Z");
+  const review = approvalReview();
+  assert.throws(
+    () => validateApprovalEvidenceBase(approvedResource, review, now),
+    /requires immutable promotion authorship/
+  );
+  assert.throws(() => validatePromotionActorGate(approvedResource, {
+    ...review,
+    reviewer: { actorId: "team:generic-reviewer", label: "generic-reviewer" }
+  } as ReviewAttestation, promotionAuthorship), /canonical public actor identities/);
+  assert.throws(() => validatePromotionActorGate(approvedResource, {
+    ...review,
+    authorship: {
+      ...review.authorship,
+      author: { actorId: "github-id:300000001", label: "another-author" }
+    }
+  }, promotionAuthorship), /promotion authorship drift/);
+  assert.throws(() => validatePromotionActorGate(approvedResource, {
+    ...review,
+    reviewer: { ...review.authorship.author, label: "renamed-elvis" }
+  }, promotionAuthorship), /reviewer actor must differ from release author actor/);
+  const distinctAuthorship = {
+    author: { actorId: "github-id:300000002", label: "source-author" },
+    releaseCutter: { actorId: "github-id:300000003", label: "release-cutter" }
+  } as const;
+  assert.throws(() => validatePromotionActorGate(approvedResource, {
+    ...review,
+    authorship: distinctAuthorship,
+    reviewer: distinctAuthorship.releaseCutter
+  }, distinctAuthorship), /reviewer actor must differ from release cutter actor/);
+  assert.throws(() => validatePromotionActorGate(approvedResource, {
+    ...review,
+    independentReview: {
+      reviewer: review.authorship.author,
+      verdict: "pass",
+      reviewedAt: review.reviewedAt,
+      caseIds: review.humanCases.map((item) => item.caseId)
+    }
+  }, promotionAuthorship), /independent reviewer actor must differ from release author actor/);
+});
+
 test("high-stakes approval requires a fresh distinct independent pass over every human case", () => {
   const now = new Date("2026-07-13T00:00:00.000Z");
   const resource = { ...approvedResource, id: "finance-payment-safety-reviewer" } as CuratedResource;
   const review = approvalReview();
   assert.throws(() => validateApprovalEvidence(resource, review, now), /requires an independent reviewer pass/);
   const independentReview = {
-    reviewer: { label: "Independent safety reviewer 2" },
+    reviewer: { actorId: "github-id:200000002", label: "independent-reviewer" },
     verdict: "pass" as const,
     reviewedAt: "2026-07-12T09:30:00.000Z",
     caseIds: review.humanCases.map((item) => item.caseId)
@@ -254,8 +316,8 @@ test("high-stakes approval requires a fresh distinct independent pass over every
   }, now), /requires a distinct independent reviewer/);
   assert.throws(() => validateApprovalEvidence(resource, {
     ...review,
-    independentReview: { ...independentReview, reviewer: { label: "Reviewer reviewer@example.com" } }
-  }, now), /independent reviewer label must be public-safe/);
+    independentReview: { ...independentReview, reviewer: { actorId: "team:generic", label: "generic" } }
+  }, now), /canonical independent reviewer actor identity/);
   assert.throws(() => validateApprovalEvidence(resource, {
     ...review,
     independentReview: { ...independentReview, caseIds: independentReview.caseIds.slice(0, 2) }
@@ -309,8 +371,8 @@ test("approval evidence rejects private reviewer labels and undocumented warning
   const review = approvalReview();
   assert.throws(() => validateApprovalEvidence(approvedResource, {
     ...review,
-    reviewer: { label: "Reviewer reviewer@example.com" }
-  }, now), /reviewer label must be public-safe/);
+    reviewer: { actorId: "team:generic", label: "generic" }
+  } as ReviewAttestation, now), /canonical public actor identities/);
   assert.throws(() => validateApprovalEvidence(approvedResource, {
     ...review,
     scanner: { ...review.scanner, status: "warn" }

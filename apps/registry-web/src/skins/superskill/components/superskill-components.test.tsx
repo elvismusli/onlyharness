@@ -30,6 +30,8 @@ test("mobile navigation exposes every destination and restores focus on Escape",
   expect(screen.getByRole("link", { name: "Showroom" })).toHaveAttribute("href", "#/superskill");
   expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "#/superskill/docs");
   expect(screen.getByRole("link", { name: "Agent guide" })).toHaveAttribute("href", "#/superskill/agent-guide");
+  expect(screen.getByRole("link", { name: "Workspaces" })).toHaveAttribute("href", "#/superskill/workspaces");
+  expect(screen.getByRole("link", { name: "Account" })).toHaveAttribute("href", "#/superskill/account");
   expect(screen.getByRole("link", { name: "Get SuperSkill" })).toHaveAttribute("href", "#/superskill/install");
   fireEvent.keyDown(document, { key: "Escape" });
   expect(menu).toHaveAttribute("aria-expanded", "false");

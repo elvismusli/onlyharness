@@ -1,11 +1,11 @@
-import { superskillInstallCommands } from "../../../core/superskill-install";
+import { superskillInstallHandoff } from "../../../core/superskill-install";
 import { superskillRuntime } from "../../../generated/superskill-runtime";
 import { CopyField } from "../components/CopyField";
+import { StatePanel } from "../components/StatePanel";
 import { PageHeading, ShellLink } from "../primitives";
 
 export function AgentGuidePage() {
-  const claude = superskillInstallCommands("claude-code");
-  const codex = superskillInstallCommands("codex");
+  const handoff = superskillInstallHandoff();
   return (
     <main className="ss-content ss-page ss-docs-page">
       <PageHeading eyebrow="agent-first contract">Use SuperSkill from an agent</PageHeading>
@@ -13,18 +13,14 @@ export function AgentGuidePage() {
 
       <section className="ss-doc-section" aria-labelledby="ss-agent-bootstrap">
         <h2 id="ss-agent-bootstrap">Bootstrap the shared skill</h2>
-        <div className="ss-doc-command-grid">
-          <article><h3>Claude Code</h3><CopyField label="Marketplace" value={claude.marketplaceCommand} /><CopyField label="Plugin" value={claude.pluginCommand} /></article>
-          <article><h3>Codex CLI</h3><CopyField label="Marketplace" value={codex.marketplaceCommand} /><CopyField label="Plugin" value={codex.pluginCommand} /></article>
-        </div>
-        <CopyField label={`Verify ${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion}`} value={claude.runtimeCheckCommand} />
+        {handoff.status === "available" ? <><CopyField label={`Install with ${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion}`} value={handoff.installCommand} /><p>The exact URL is public and immutable for a capability tuple. It contains no task, repository path, credential, or user identity. The installer binds the universal skill and project-local MCP adapter to the same manifest digest; no token is stored.</p></> : <StatePanel kind="blocked" title="Bootstrap unavailable" reason={handoff.reason} next="Do not invent a command, use @latest, or bypass the missing official integrity pin." />}
       </section>
 
       <section className="ss-doc-section" aria-labelledby="ss-agent-loop">
         <h2 id="ss-agent-loop">Required agent loop</h2>
         <ol>
           <li>Take the task as local client input; do not place its text in a URL, log, analytics event, or public request.</li>
-          <li>Search for task fit, then inspect exact release trust, permissions, compatibility, and limitations.</li>
+          <li>Use the project-local <code>superskill_local</code> MCP to route task fit, then inspect exact release trust, permissions, compatibility, and limitations.</li>
           <li>Return an honest no-match when no approved release satisfies the task and evidence requirements.</li>
           <li>Show the permission delta and request explicit user consent before managed activation.</li>
           <li>Report Installed, Detected, Loaded, Invoked, and outcome evidence only from the corresponding observed lifecycle step.</li>

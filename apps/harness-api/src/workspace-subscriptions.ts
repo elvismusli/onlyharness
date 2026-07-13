@@ -542,7 +542,7 @@ function webhookResultStatus(status: WorkspaceSubscriptionStatus, previous: Work
 }
 
 function workspaceSubscriptionCheckoutUrl(slug: string, policyId: string, subscriptionRef: string): string {
-  const base = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://onlyharness.com/checkout";
+  const base = process.env.HARNESS_CHECKOUT_BASE_URL ?? "https://superskill.sh/checkout";
   const url = new URL(base);
   url.searchParams.set("workspace", slug);
   url.searchParams.set("policy_id", policyId);

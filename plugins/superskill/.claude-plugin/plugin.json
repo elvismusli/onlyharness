@@ -1,9 +1,9 @@
 {
   "name": "superskill",
-  "description": "Find and temporarily activate a reviewed AI capability for the current task.",
-  "version": "0.1.0",
+  "description": "Install once from a pinned link, then find and consent to an exact reviewed capability.",
+  "version": "0.2.0",
   "author": {
-    "name": "OnlyHarness",
-    "url": "https://onlyharness.com"
+    "name": "SuperSkill",
+    "url": "https://superskill.sh"
   }
 }

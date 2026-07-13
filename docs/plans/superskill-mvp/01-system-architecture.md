@@ -305,17 +305,25 @@ Feature flags:
 SUPERSKILL_ENABLED=false
 SUPERSKILL_TOKEN_HASHES=<comma-separated SHA-256 token hashes>
 SUPERSKILL_TELEMETRY_SALT=<rotatable server secret>
+SUPERSKILL_SUBJECT_SALT=<stable random secret, minimum 32 bytes>
 SUPERSKILL_REVOCATIONS_PATH=<persistent mounted path>
 ```
 
 Rules:
 
 - disabled → managed endpoints unavailable, legacy healthy;
-- internal alpha → each tester receives a distinct opaque `HH_SUPERSKILL_TOKEN`;
-- managed routes require `Authorization: Bearer <token>` and compare only token hash;
-- server derives a stable pilot subject with HMAC; raw token, client ID and subject from
-  request body are never stored;
-- public recommendation mode добавляется позднее без schema change.
+- user flow → remote MCP and managed routes receive the confirmed Supabase user Bearer
+  from an explicitly allowlisted client environment variable;
+- every request live-verifies the user, `email_confirmed_at`, and one active,
+  non-expired, non-revoked `superskill:managed` grant;
+- server derives one stable `user:<HMAC>` subject with `SUPERSKILL_SUBJECT_SALT`; the same
+  subject owns hosted releases and correlates recommendation/activation events;
+- internal alpha compatibility → each tester may still receive a distinct opaque
+  `HH_SUPERSKILL_TOKEN`, but those responses are marked public-GO ineligible;
+- raw token, provider user payload, email and client-supplied subject/scope are never
+  returned or stored in managed telemetry;
+- grant create/revoke is an operator-only control plane; application requests cannot
+  self-grant a scope and revocation is effective on the next request.
 
 Exception: `/showroom/capabilities*` is an intentionally public, cached, public-safe
 read projection. It accepts no task/context, exposes no archive/activation controls and

@@ -40,7 +40,7 @@ export function Landing() {
 
       <section className="ss-content ss-catalog ss-selected-shelf">
         <SectionHeading eyebrow="selected · review pending">{selectedTotal === undefined ? "Skills selected for exact review" : `${selectedTotal} skills selected for exact review`}</SectionHeading>
-        <p>These resources already exist in classic OnlyHarness. They are visible here as selected review candidates, with managed install disabled until an exact release is approved.</p>
+        <p>These resources are visible as selected review candidates. Managed install stays disabled until an exact release passes the full SuperSkill approval gate.</p>
         {selected.state.status === "loading" || selected.state.status === "idle" ? <StatePanel kind="loading" title="Loading selected skills" reason="Reading the public review queue." /> : null}
         {selected.state.status === "error" ? <StatePanel kind="error" title="Selected shelf unavailable" reason={selected.state.reason} next={selected.state.next} onRetry={selected.refresh} /> : null}
         {selected.state.status === "empty" ? <StatePanel kind="empty" title="No selected skills yet" reason="Nothing is being presented as selected without a checked-in catalog record." /> : null}

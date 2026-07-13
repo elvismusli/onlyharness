@@ -25,6 +25,7 @@ COPY --from=build /app/package.json /app/package-lock.json /app/tsconfig.base.js
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps ./apps
 COPY --from=build /app/packages ./packages
+COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/seed-harnesses ./seed-harnesses
 COPY --from=build /app/templates ./templates
 COPY --from=build /app/data ./data

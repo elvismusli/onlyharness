@@ -40,22 +40,33 @@ test("resource seed has stable ids, English summaries and expected key categorie
 
   assert.equal(new Set(generated.resources.map((resource) => resource.id)).size, generated.resources.length);
   assert.equal(Object.keys(summaries).length, EXPECTED_RESOURCE_COUNT);
+  assert.ok(Object.values(summaries).every((summary) => !/onlyharness/i.test(summary)), "source summaries must use the SuperSkill human brand");
   assert.ok(generated.resources.every((resource) => !hasCyrillic(resource.summary)));
+  assert.ok(generated.resources.every((resource) => !/onlyharness/i.test(resource.summary)), "public resource summaries must not expose the legacy human brand");
   assert.ok(generated.resources.every((resource) => resource.installability === "open_only"));
   assert.ok(generated.resources.every((resource) => resource.sourceCheckedAt === "2026-07-05"));
   assert.ok(generated.resources.every((resource) => resource.sourceCheckStatus === "active"));
   assert.ok(generated.resources.every((resource) => resource.actions.some((action) => action.id === "open_onlyharness")));
   assert.ok(generated.resources.every((resource) => resource.actions.some((action) => action.id === "open_upstream")));
   assert.ok(generated.resources.every((resource) => {
-    if (resource.mirror?.status !== "ready") return true;
-    return resource.actions.some((action) => action.id === "download_archive" && action.label === "Download from OnlyHarness" && action.url?.startsWith("https://onlyharness.com/api/resources/"));
-  }));
-  assert.ok(generated.resources.every((resource) => {
-    if (!existsSync(path.join(root, "data/resources/archives", `${Buffer.from(resource.id, "utf8").toString("base64url")}.tar.gz`))) return true;
-    return resource.actions.some((action) => action.id === "download_archive" && action.label === "Download from OnlyHarness" && action.url?.startsWith("https://onlyharness.com/api/resources/"));
+    const archiveExists = existsSync(path.join(root, "data/resources/archives", `${Buffer.from(resource.id, "utf8").toString("base64url")}.tar.gz`));
+    const action = resource.actions.find((candidate) => candidate.id === "download_archive");
+    return archiveExists
+      ? action?.label === "Download from SuperSkill" && action.url?.startsWith("https://superskill.sh/api/resources/")
+      : !action;
   }));
   assert.ok(generated.resources.every((resource) => !resource.actions.some((action) => action.id === "convert_to_harness")));
   assert.equal(generated.resources.filter((resource) => resource.resourceType === "mcp_server").length, 24);
   assert.equal(generated.resources.find((resource) => resource.id === "github:obra/superpowers")?.resourceType, "skill");
   assert.equal(generated.resources.find((resource) => resource.id === "github:punkpeye/awesome-mcp-servers")?.resourceType, "directory");
+});
+
+test("resource archive inventory is portable and never stands in for missing files", () => {
+  const inventoryText = readFileSync(path.join(root, "data/resources/archives/archives.json"), "utf8");
+  assert.doesNotMatch(inventoryText, /(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)/);
+  const inventory = JSON.parse(inventoryText) as { archives?: Array<{ storageKey?: string; sha256?: string }> };
+  for (const archive of inventory.archives ?? []) {
+    assert.match(archive.storageKey ?? "", /^[A-Za-z0-9_-]+\.tar\.gz$/);
+    assert.match(archive.sha256 ?? "", /^sha256:[a-f0-9]{64}$/);
+  }
 });

@@ -127,7 +127,7 @@ async function telegramRequest<T = unknown>(token: string, method: string, body:
 function readConfig(): BotConfig {
   const telegramToken = requiredEnv("TELEGRAM_BOT_TOKEN");
   const orgToken = requiredEnv("HH_ORG_TOKEN");
-  const apiBase = process.env.HH_API_BASE ?? "https://onlyharness.com/api";
+  const apiBase = process.env.HH_API_BASE ?? "https://superskill.sh/api";
   const dryRun = process.env.TELEGRAM_BOT_DRY_RUN === "true";
   const staticInviteLink = process.env.TELEGRAM_INVITE_LINK?.trim();
   const channelId = process.env.TELEGRAM_CHANNEL_ID?.trim();

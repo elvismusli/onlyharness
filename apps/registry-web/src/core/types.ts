@@ -403,6 +403,14 @@ export type WorkspaceCatalog = {
   audit: WorkspaceAuditEntry[];
 };
 
+export type WorkspaceSetupBundle = {
+  version: string;
+  generatedAt: string;
+  target: "codex" | "claude-code" | string;
+  resources: Array<{ id: string; title: string; source: "workspace_private" | "workspace_approved"; hostedArchive: boolean }>;
+  configs: Array<{ path: string; content: string }>;
+};
+
 export const DETAIL_TABS = ["Overview", "Install", "Trust", "Try sample", "Thread", "Files", "Versions"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 

@@ -7,6 +7,8 @@ describe("SuperSkill hash routes", () => {
     { name: "landing" },
     { name: "docs" },
     { name: "agent-guide" },
+    { name: "account" },
+    { name: "workspaces" },
     { name: "capability", capabilityId: "market-research" },
     { name: "selected", owner: "harnesses", skill: "deep-market-researcher" },
     { name: "install", capabilityId: "market-research" },
@@ -28,6 +30,10 @@ describe("SuperSkill hash routes", () => {
     expect(buildSuperSkillRoute({ name: "docs" })).toBe("#/superskill/docs");
     expect(parseSuperSkillRoute("#/superskill/agent-guide")).toEqual({ name: "agent-guide" });
     expect(buildSuperSkillRoute({ name: "agent-guide" })).toBe("#/superskill/agent-guide");
+    expect(parseSuperSkillRoute("#/superskill/account")).toEqual({ name: "account" });
+    expect(buildSuperSkillRoute({ name: "account" })).toBe("#/superskill/account");
+    expect(parseSuperSkillRoute("#/superskill/workspaces")).toEqual({ name: "workspaces" });
+    expect(buildSuperSkillRoute({ name: "workspaces" })).toBe("#/superskill/workspaces");
   });
 
   test("selected skill detail stays inside the SuperSkill route namespace", () => {

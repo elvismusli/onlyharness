@@ -5,12 +5,14 @@ import { StatePanel } from "./components/StatePanel";
 import { SuperSkillHeader } from "./components/SuperSkillHeader";
 import { ShellLink } from "./primitives";
 import { AgentGuidePage } from "./pages/AgentGuidePage";
+import { AccountPage } from "./pages/AccountPage";
 import { CategoryPage } from "./pages/CategoryPage";
 import { DocsPage } from "./pages/DocsPage";
 import { InstallHandoff } from "./pages/InstallHandoff";
 import { Landing } from "./pages/Landing";
 import { SelectedSkillPage } from "./pages/SelectedSkillPage";
 import { TrustPage } from "./pages/TrustPage";
+import { WorkspacesPage } from "./pages/WorkspacesPage";
 import { useReveal } from "./useReveal";
 import "./tokens.css";
 import "./motion.css";
@@ -29,7 +31,7 @@ export function SuperskillSkin() {
     <div className="skin-superskill" data-skin="superskill">
       <SuperSkillHeader route={route} />
       {renderRoute(route)}
-      <footer className="ss-footer"><div className="ss-content"><strong>SuperSkill by OnlyHarness</strong><span>Evidence over badges · exact release trust · explicit consent</span></div></footer>
+      <footer className="ss-footer"><div className="ss-content"><strong>SuperSkill</strong><span>Evidence over badges · exact release trust · explicit consent</span></div></footer>
     </div>
   );
 }
@@ -39,6 +41,8 @@ function renderRoute(route: ReturnType<typeof useSuperSkillRoute>) {
     case "landing": return <Landing />;
     case "docs": return <DocsPage />;
     case "agent-guide": return <AgentGuidePage />;
+    case "account": return <AccountPage />;
+    case "workspaces": return <WorkspacesPage />;
     case "capability": return <TrustPage capabilityId={route.capabilityId} />;
     case "selected": return <SelectedSkillPage owner={route.owner} skill={route.skill} />;
     case "install": return <main className="ss-content ss-page"><InstallHandoff capabilityId={route.capabilityId} /></main>;

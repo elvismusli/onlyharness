@@ -7,6 +7,7 @@ import {
   managedCapabilityHistorySchema,
   managedCapabilityIndexSchema,
   hasReviewWarningLimitation,
+  publicActorIdentitySchema,
   reviewAttestationSchema,
   reviewWarningLimitationCodes,
   type CuratedResource,
@@ -77,7 +78,10 @@ function buildCapability(resource: CuratedResource, now: Date): ManagedCapabilit
   const snapshotFiles = snapshot.files.map((file) => ({ path: file.path, content: file.content }));
   const snapshotScan = scanHarnessFiles(snapshotFiles, { networkAllowlist: permissions.networkAllowlist, scannedAt: snapshot.createdAt });
   const snapshotDiff = recomputeCapabilityDiff(snapshotFiles, permissions);
-  validateApprovalEvidence(resource, review, now, { evalCommand: manifest.evals.command });
+  validateApprovalEvidence(resource, review, now, {
+    evalCommand: manifest.evals.command,
+    expectedAuthorship: resource.status === "approved" ? loadPromotionAuthorship(resource) : undefined
+  });
   if (review) verifyAttestationAgainstSnapshot(resource, review, snapshotScan, snapshotDiff, {
     url: manifest.source.upstream_url,
     license: manifest.source.upstream_license
@@ -182,10 +186,11 @@ export function validateApprovalEvidence(
   resource: CuratedResource,
   review: ReviewAttestation | undefined,
   now: Date,
-  context: { evalCommand?: string } = {}
+  context: { evalCommand?: string; expectedAuthorship?: ReviewAttestation["authorship"] } = {}
 ): void {
   if (resource.status !== "approved") return;
   if (!review) throw new Error(`Approved capability requires a review: ${resource.id}`);
+  validatePromotionActorGate(resource, review, context.expectedAuthorship);
   if (review.scanner.status === "fail" || review.capabilityDiff.status === "fail") throw new Error(`Approved capability has failing review evidence: ${resource.id}`);
   const nowMs = now.getTime();
   const reviewedAtMs = Date.parse(review.reviewedAt);
@@ -209,17 +214,14 @@ export function validateApprovalEvidence(
   if (new Set(review.humanCases.map((item) => item.caseId.trim())).size !== review.humanCases.length) {
     throw new Error(`Approved capability requires unique human case IDs: ${resource.id}`);
   }
-  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(review.reviewer.label.trim())) {
-    throw new Error(`Approved capability reviewer label must be public-safe: ${resource.id}`);
-  }
   if (capabilityRequiresIndependentReview(resource.id)) {
     const independent = review.independentReview;
     if (!independent) throw new Error(`Approved high-stakes capability requires an independent reviewer pass: ${resource.id}`);
     if (independent.verdict !== "pass") throw new Error(`Approved high-stakes capability requires a passing independent review: ${resource.id}`);
-    if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(independent.reviewer.label.trim())) {
-      throw new Error(`Approved high-stakes capability independent reviewer label must be public-safe: ${resource.id}`);
+    if (!publicActorIdentitySchema.safeParse(independent.reviewer).success) {
+      throw new Error(`Approved high-stakes capability independent reviewer identity must be canonical and public: ${resource.id}`);
     }
-    if (independent.reviewer.label.trim().toLowerCase() === review.reviewer.label.trim().toLowerCase()) {
+    if (independent.reviewer.actorId === review.reviewer.actorId) {
       throw new Error(`Approved high-stakes capability requires a distinct independent reviewer: ${resource.id}`);
     }
     const independentReviewedAtMs = Date.parse(independent.reviewedAt);
@@ -255,6 +257,71 @@ export function validateApprovalEvidence(
       throw new Error(`Approved capability requires fresh ${client} compatibility evidence: ${resource.id}`);
     }
   }
+}
+
+export function validatePromotionActorGate(
+  resource: Pick<CuratedResource, "id">,
+  review: ReviewAttestation,
+  expectedAuthorship: ReviewAttestation["authorship"] | undefined
+): void {
+  if (!expectedAuthorship) throw new Error(`Approved capability requires immutable promotion authorship: ${resource.id}`);
+  const author = publicActorIdentitySchema.safeParse(review.authorship?.author);
+  const releaseCutter = publicActorIdentitySchema.safeParse(review.authorship?.releaseCutter);
+  const reviewer = publicActorIdentitySchema.safeParse(review.reviewer);
+  const expectedAuthor = publicActorIdentitySchema.safeParse(expectedAuthorship.author);
+  const expectedReleaseCutter = publicActorIdentitySchema.safeParse(expectedAuthorship.releaseCutter);
+  if (!author.success || !releaseCutter.success || !reviewer.success
+    || !expectedAuthor.success || !expectedReleaseCutter.success) {
+    throw new Error(`Approved capability requires canonical public actor identities: ${resource.id}`);
+  }
+  if (JSON.stringify(review.authorship) !== JSON.stringify(expectedAuthorship)) {
+    throw new Error(`Approved capability promotion authorship drift: ${resource.id}`);
+  }
+  if (reviewer.data.actorId === author.data.actorId) {
+    throw new Error(`Approved capability reviewer actor must differ from release author actor: ${resource.id}`);
+  }
+  if (reviewer.data.actorId === releaseCutter.data.actorId) {
+    throw new Error(`Approved capability reviewer actor must differ from release cutter actor: ${resource.id}`);
+  }
+  if (review.independentReview) {
+    const independentReviewer = publicActorIdentitySchema.safeParse(review.independentReview.reviewer);
+    if (!independentReviewer.success) {
+      throw new Error(`Approved capability requires a canonical independent reviewer actor identity: ${resource.id}`);
+    }
+    if (independentReviewer.data.actorId === author.data.actorId) {
+      throw new Error(`Approved capability independent reviewer actor must differ from release author actor: ${resource.id}`);
+    }
+    if (independentReviewer.data.actorId === releaseCutter.data.actorId) {
+      throw new Error(`Approved capability independent reviewer actor must differ from release cutter actor: ${resource.id}`);
+    }
+  }
+}
+
+function loadPromotionAuthorship(resource: CuratedResource): ReviewAttestation["authorship"] {
+  const packetPath = path.join(root, "data/superskill/review-packets", `${resource.id}-${resource.version}.json`);
+  const packetText = readFileSync(packetPath, "utf8");
+  if (/OHSC_[A-Za-z0-9_-]{43}|\/(?:Users|home|private|tmp)\//.test(packetText)) {
+    throw new Error(`Approved capability promotion packet is not public-safe: ${resource.id}`);
+  }
+  const packet = JSON.parse(packetText) as Record<string, any>;
+  if (packet.schemaVersion !== "superskill.review-packet.v1"
+    || packet.release?.id !== resource.id
+    || packet.release?.ref !== resource.ref
+    || packet.release?.version !== resource.version
+    || packet.release?.artifactDigest !== resource.expectedDigest
+    || packet.authorship?.immutable !== true
+    || packet.authorship?.identityScheme !== "github_numeric_actor_v1"
+    || packet.promotionGate?.identityScheme !== "github_numeric_actor_v1"
+    || packet.promotionGate?.reviewerActorMustDifferFromAuthor !== true
+    || packet.promotionGate?.reviewerActorMustDifferFromReleaseCutter !== true) {
+    throw new Error(`Approved capability promotion packet binding is invalid: ${resource.id}`);
+  }
+  const author = publicActorIdentitySchema.safeParse(packet.authorship.author);
+  const releaseCutter = publicActorIdentitySchema.safeParse(packet.authorship.releaseCutter);
+  if (!author.success || !releaseCutter.success) {
+    throw new Error(`Approved capability promotion packet actor identities are invalid: ${resource.id}`);
+  }
+  return { author: author.data, releaseCutter: releaseCutter.data };
 }
 
 function hasWarningLimitation(review: ReviewAttestation, code: string): boolean {

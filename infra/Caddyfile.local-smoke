@@ -21,9 +21,8 @@
 	}
 
 	handle /.well-known/oauth-authorization-server {
-		root * /srv/web
-		header Content-Type application/json
-		file_server
+		header Cache-Control "no-store"
+		respond 404
 	}
 
 	handle /.well-known/mcp-registry-auth {

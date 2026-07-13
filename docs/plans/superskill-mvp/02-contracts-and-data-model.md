@@ -239,6 +239,10 @@ type ReviewAttestation = {
     }>;
     differences: Array<{ field: string; declared: string; inferred: string }>;
   };
+  authorship: {
+    author: { actorId: `github-id:${number}`; label: string };
+    releaseCutter: { actorId: `github-id:${number}`; label: string };
+  };
   compatibility: Array<{
     client: Client;
     clientVersion: string;
@@ -252,9 +256,9 @@ type ReviewAttestation = {
     verdict: "pass" | "partial" | "fail";
     limitationCodes: string[];
   }>;
-  reviewer: { label: string };
+  reviewer: { actorId: `github-id:${number}`; label: string };
   independentReview?: {
-    reviewer: { label: string };
+    reviewer: { actorId: `github-id:${number}`; label: string };
     verdict: "pass" | "fail";
     reviewedAt: string;
     caseIds: string[];
@@ -285,11 +289,19 @@ Validation rules:
   activation never executes it;
 - `not_detected` means only “no static signal”; it never proves declared `false` and
   public copy keeps declared value separate from scanner observation;
-- reviewer contains a public-safe team label, not email/user ID, including an email
-  embedded inside a longer label;
+- author, release cutter and reviewer use immutable public numeric `github-id:<digits>`
+  actor IDs; the current GitHub handle is a mutable display label only, and generic,
+  handle-as-ID, zero-padded or non-numeric identities fail;
+- approved catalog generation loads immutable author/cutter identities from the exact
+  review packet, requires attestation authorship to match it byte-for-byte, and rejects a
+  reviewer actor matching either actor ID;
+- private-review cleanup journals bind the complete original public packet by SHA-256 of
+  canonical UTF-8 JSON: object keys sorted recursively, array order preserved and no
+  whitespace; every resume transition revalidates this digest before deleting or advancing;
 - support, incident, security and finance high-stakes review-only capabilities require a
-  second passing `independentReview`; its public-safe reviewer label must differ from the
-  primary reviewer and its unique `caseIds` must cover every human case exactly once;
+  second passing `independentReview`; its canonical actor ID must differ from the primary
+  reviewer, author and release cutter, and its unique `caseIds` must cover every human
+  case exactly once;
 - independent high-stakes review uses the same 180-day freshness window, cannot be
   future-dated and remains separate from the stronger `independent_eval` outcome claim;
 - `reviewedAt` and mandatory evidence cannot be future-dated beyond five minutes of clock
@@ -372,16 +384,26 @@ Any mismatch returns `ARTIFACT_DIGEST_MISMATCH` and blocks cache promotion.
 
 Base URL remains `/api` through Caddy. Fastify route paths omit `/api` internally.
 
-Internal-alpha auth for every managed execution route:
+Production user auth for every managed execution route:
 
 ```http
-Authorization: Bearer ${HH_SUPERSKILL_TOKEN}
+Authorization: Bearer ${HH_TOKEN}
 ```
 
-Each tester gets a different opaque token. Server compares SHA-256 with
-`SUPERSKILL_TOKEN_HASHES`, derives telemetry subject server-side using HMAC and never
-logs/stores the raw token. Missing token returns `401 SUPERSKILL_AUTH_REQUIRED`; invalid
-token returns `403 INTERNAL_ALPHA_DENIED`. Legacy routes keep their current auth.
+The server live-verifies the Supabase access token and `email_confirmed_at`, then reads an
+operator-controlled `superskill_access_grants` row for `superskill:managed`. The grant must
+be active, unexpired and not revoked. The server derives one `user:<64-hex HMAC>` subject
+with `SUPERSKILL_SUBJECT_SALT`; request body/header claims cannot choose identity or scope.
+
+Missing credentials return `401 SUPERSKILL_AUTH_REQUIRED`; invalid/expired credentials
+return `401 SUPERSKILL_AUTH_INVALID`; unconfirmed users return
+`403 SUPERSKILL_EMAIL_UNCONFIRMED`; missing/expired/revoked grants return
+`403 SUPERSKILL_ACCESS_DENIED`; provider/config failures return
+`503 SUPERSKILL_AUTH_UNAVAILABLE`.
+
+Legacy internal-alpha `HH_SUPERSKILL_TOKEN` hashes remain accepted for a bounded migration
+window. Such responses are explicitly marked `legacy-alpha` and public-GO ineligible.
+They cannot be used as user-only launch evidence.
 
 Public showroom routes below are the only exception. They are read-only projections and
 cannot recommend, download or activate.
@@ -553,7 +575,8 @@ For quarantine/revoke:
 
 ### 5.4 GET `/capabilities/:id/releases/:version/archive`
 
-This is the only managed activation download route. It requires internal Bearer auth and
+This is the only managed activation download route. It requires confirmed-user managed
+Bearer auth (or public-GO-ineligible legacy alpha compatibility) and
 rechecks ID/version/digest, revoke overlay, snapshot completeness, `delivery=free_archive`
 and current `pricing.model=free` before reading files.
 
@@ -604,25 +627,29 @@ type ManagedEventInput = {
 };
 ```
 
-Unknown fields are discarded. Invalid enum/ID rejects the event with 400. Duplicate
-`eventId` returns 200 `{ recorded:false, duplicate:true }`.
+Unknown fields are discarded. Invalid enum/ID rejects the event with 400. An exact replay
+of the same `eventId`, subject and payload returns 200
+`{ recorded:false, duplicate:true }`. Reusing an ID with a different subject or payload
+returns `409 EVENT_CONFLICT` and never appends a second logical transition.
 
 `subject` is never accepted from request body. Server derives it from the authenticated
-user or internal tester token using a rotatable HMAC salt. Body attempts to set
+confirmed user or internal tester token using a server-side HMAC salt. Body attempts to set
 `subject`, email or arbitrary identity are discarded and tested.
 
 ## 6. CLI contracts
 
-Network commands `recommend`, `activation start`, `activation keep` and live `doctor`
-require `HH_SUPERSKILL_TOKEN`; the value is sent only in the Authorization header and
-never written to local state/events. `mark`, `finish` and `remove` remain local/offline;
-events queue best-effort. Plugin releases read a checked-in concrete runtime contract:
+Network commands and both MCP transports use the confirmed user's `HH_TOKEN` from an
+explicitly inherited environment variable. The value is sent only in the Authorization
+header and is never embedded in plugin manifests, tool arguments, local state or events.
+`HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility only. `mark`, `finish` and
+`remove` remain local/offline; events queue best-effort. Plugin releases read a checked-in
+concrete runtime contract:
 
 ```json
 {
   "schemaVersion": "superskill.runtime.v1",
   "cliPackage": "onlyharness",
-  "cliVersion": "0.2.12",
+  "cliVersion": "0.2.13",
   "activationContractVersion": "superskill.activation.v1"
 }
 ```
@@ -919,8 +946,13 @@ No foreign-key recommendation/activation tables in MVP.
 | Code | Layer | Meaning |
 |---|---|---|
 | `SUPERSKILL_DISABLED` | API | Feature off |
-| `SUPERSKILL_AUTH_REQUIRED` | API/CLI | Missing internal Bearer token |
-| `INTERNAL_ALPHA_DENIED` | API | Client not allowlisted |
+| `SUPERSKILL_AUTH_REQUIRED` | API/CLI | Missing managed Bearer credential |
+| `SUPERSKILL_AUTH_INVALID` | API/CLI | Invalid or expired user credential |
+| `SUPERSKILL_EMAIL_UNCONFIRMED` | API/CLI | User email is not confirmed |
+| `SUPERSKILL_ACCESS_DENIED` | API/CLI | Managed grant is missing, expired or revoked |
+| `SUPERSKILL_AUTH_UNAVAILABLE` | API/CLI | Auth/grant infrastructure unavailable |
+| `INTERNAL_ALPHA_DENIED` | API | Legacy alpha tester not allowlisted |
+| `EVENT_CONFLICT` | API/CLI | Event ID replay changed subject or payload |
 | `CATALOG_NOT_READY` | API | Managed index invalid/missing |
 | `TASK_INVALID` | API/CLI | Empty, oversized or secret-like task |
 | `CAPABILITY_NOT_FOUND` | API/CLI | No managed ID/release |

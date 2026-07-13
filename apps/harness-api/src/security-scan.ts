@@ -32,7 +32,7 @@ export type RecomputedCapabilityDiff = {
 
 const TEXT_EXTENSIONS = new Set([".md", ".txt", ".yaml", ".yml", ".json", ".js", ".ts", ".mjs", ".cjs", ".sh", ".py"]);
 const MAX_SCAN_BYTES = 256 * 1024;
-const DEFAULT_ALLOWED_HOSTS = new Set(["onlyharness.com", "www.onlyharness.com", "github.com", "raw.githubusercontent.com"]);
+const DEFAULT_ALLOWED_HOSTS = new Set(["superskill.sh", "www.superskill.sh", "onlyharness.com", "www.onlyharness.com", "github.com", "raw.githubusercontent.com"]);
 
 type CapabilityKey = "network" | "shell" | "filesystem" | "browser" | "credentials" | "externalSend" | "moneyMovement" | "userData";
 type StaticRule = { id: string; severity: "warn" | "fail"; pattern: RegExp; capability?: CapabilityKey; observation?: true };

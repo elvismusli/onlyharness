@@ -1,8 +1,8 @@
-# OnlyHarness
+# SuperSkill
 
-[onlyharness.com](https://onlyharness.com) is a friendly hub for reusable AI-agent resources: browse skills, plugins, workflows, MCP servers, runtimes, guides and native harness-format packages, try examples, read the thread, create local remix drafts, and use a CLI-ready trust layer.
+[superskill.sh](https://superskill.sh) is the single human-facing product for finding and installing reviewed AI-agent capabilities. It preserves existing registrations and workspaces, exposes one universal install link for Codex and Claude Code, and keeps exact release, trust, revocation and consent gates explicit.
 
-The UI ships as **OnlyHarness 98** — a deliberately playful Windows 98 / MS Paint / WordArt desktop (per `design_handoff_harness_hub_98`): every surface is a window, harnesses open as draggable windows with a taskbar, auth is a Log On dialog, and the share card is `harness_flex.exe`. Design decisions live in [docs/plans/2026-07-04-win98-redesign-design.md](docs/plans/2026-07-04-win98-redesign-design.md). Internal package names still use `@harnesshub/*`, except the public CLI workspace/package is `onlyharness`.
+The old OnlyHarness UI and host are compatibility-only: human routes redirect to SuperSkill, while old API/MCP coordinates, npm/package names, database identifiers and immutable archive URLs remain available for installed clients and data continuity. Internal package names still use `@harnesshub/*`; the published compatibility CLI package remains `onlyharness`.
 
 ## What is a native harness package?
 
@@ -15,10 +15,10 @@ A native harness package is the strict, verified package format inside the broad
 
 ## Live MVP
 
-- App: [https://onlyharness.com](https://onlyharness.com)
-- SuperSkill Daylight: [https://superskill.sh](https://superskill.sh) (host-selected Daylight skin; the canonical API remains OnlyHarness)
-- API health: [https://onlyharness.com/api/healthz](https://onlyharness.com/api/healthz)
-- Registry API: [https://onlyharness.com/api/registry](https://onlyharness.com/api/registry)
+- App: [https://superskill.sh](https://superskill.sh)
+- API health: [https://superskill.sh/api/healthz](https://superskill.sh/api/healthz)
+- Registry API: [https://superskill.sh/api/registry](https://superskill.sh/api/registry)
+- Universal installer manifest: [https://superskill.sh/api/superskill/install](https://superskill.sh/api/superskill/install)
 
 Supabase auth is enabled for signup/login, stars, local remix drafts, thread posts, and authenticated publish.
 
@@ -29,8 +29,8 @@ Supabase auth is enabled for signup/login, stars, local remix drafts, thread pos
 - Harness detail opens as its own window with Overview, Install, Trust, Try sample, Thread, Files, and Versions tabs plus a plain-tone trust panel; Versions is backed by archive snapshot history.
 - Authenticated quick publish flow (`New Resource Wizard`) that imports markdown into a small unverified scaffold.
 - Share card window (`harness_flex.exe`), Wild West awards, Paint heat chart, and a paperclip mascot that opens the wizard.
-- CLI package `onlyharness` with `hh search`, `hh resources search/detail/open/import`, `hh suggest`, `hh pull`, `hh run`, `hh publish`, `hh publish-resource`, `hh doctor`, `hh audit-setup`, `hh benchmark`, `hh extract`, `hh setup @org`, `hh validate`, `hh inspect`, `hh risk`, `hh diff`, `hh eval`, `hh gate`, `hh pin`, `hh outdated`, `hh update`, `hh import-md`, and `hh annotate-pr` (`HH_REGISTRY_URL` targets any registry, default `https://onlyharness.com/api`).
-- Agent-friendly discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), [`/server.json`](https://onlyharness.com/server.json), and `/mcp` document the HTTP/MCP surfaces so an AI agent can find and pull a harness without a browser.
+- CLI package `onlyharness` with `hh` compatibility commands plus `superskill install`; `HH_REGISTRY_URL` targets another registry, default `https://superskill.sh/api`.
+- Agent-friendly discovery: [`/llms.txt`](https://superskill.sh/llms.txt), [`/api/openapi.json`](https://superskill.sh/api/openapi.json), [`/server.json`](https://superskill.sh/server.json), and [`/mcp`](https://superskill.sh/mcp).
 - Local bounty flow: create/claim/deliver/accept work-state over the existing `gate_escrow` rail; `paid` is set only after a matching escrow purchase captures against the delivered gate receipt.
 - Semantic PR review and quality gate sidecar API.
 - Docker production stack with system Caddy deployment mode for shared VPS hosts.
@@ -44,7 +44,7 @@ flowchart LR
   API --> Imports["Imported harnesses"]
   Web --> Supabase["Supabase Auth + RLS tables"]
   API --> SupabaseAuth["Supabase token verification"]
-  Caddy["System Caddy / onlyharness.com"] --> Web
+  Caddy["System Caddy / superskill.sh"] --> Web
   CLI["hh CLI"] --> Schema["Schema, eval, gate, diff"]
 ```
 
@@ -128,9 +128,9 @@ SuperSkill is the task-first managed capability layer built on OnlyHarness. The 
 
 - Public, read-only: `GET /api/showroom/capabilities` and `GET /api/showroom/capabilities/{id}`. These routes never recommend, download, or activate files.
 - Selected shelf: `GET /api/showroom/selected` exposes the current reviewed-intake candidates as `selected_unreviewed` cards. They can fill the Daylight catalog, but cannot be recommended or activated until exact-release approval evidence exists.
-- Internal Bearer only: `/api/recommendations`, `/api/capabilities/{id}`, exact release/archive routes, and managed lifecycle events. `HH_SUPERSKILL_TOKEN` belongs only in the CLI process environment.
-- Managed CLI release: `onlyharness@0.2.13` is published and verified through a clean `npx` install. Use that exact version for the SuperSkill activation contract.
-- Web: the isolated Daylight skin is available with `VITE_DEFAULT_SKIN=superskill`; legacy skins remain query-selectable. Production stays on the safe configured default until approved showroom data and live smoke exist.
+- Confirmed-user Bearer: `/api/recommendations`, `/api/capabilities/{id}`, exact release/archive routes, hosted proof publish and managed lifecycle events use one confirmed Supabase user credential plus an active server-side `superskill:managed` grant. Headless clients inherit `HH_TOKEN` explicitly. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility only and cannot produce public-GO evidence.
+- Managed CLI release: `onlyharness@0.2.13` is published and verified through a clean `npx` install. Source now prepares `onlyharness@0.2.14` for the one-link universal installer; `/api/superskill/install` fails closed with `BOOTSTRAP_RELEASE_UNPUBLISHED` until that exact package is published and its official npm integrity is pinned in `plugins/superskill/runtime.json`.
+- Web: the SuperSkill product surface is hostname-locked on `superskill.sh`; legacy query or stored skin state cannot switch it.
 
 ```bash
 npm run build:superskill-catalog
@@ -140,14 +140,14 @@ npm run smoke:superskill
 npm run superskill:pilot-report
 ```
 
-Plugin sources live under `plugins/superskill` with one shared skill for Claude Code and Codex. Marketplace publication and clean new-session plugin proof remain separate rollout actions.
+Plugin sources live under `plugins/superskill` with one byte-identical shared skill for Claude Code and Codex. A capability handoff uses one immutable `https://superskill.sh/api/superskill/install/{id}/{version}/{sha256}` URL; the pinned local installer selects exactly one unambiguous client, while routing and activation consent remain separate. Marketplace publication and clean new-session plugin proof remain separate rollout actions.
 
 ## For agents
 
-- Discovery: [`/llms.txt`](https://onlyharness.com/llms.txt), [`/AGENTS.md`](https://onlyharness.com/AGENTS.md), [`/api/openapi.json`](https://onlyharness.com/api/openapi.json), MCP Registry metadata at [`/server.json`](https://onlyharness.com/server.json), OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://onlyharness.com/.well-known/oauth-protected-resource), and authorization-server metadata at [`/.well-known/oauth-authorization-server`](https://onlyharness.com/.well-known/oauth-authorization-server).
-- MCP v0.2.13: `https://onlyharness.com/mcp` with the exact inventory `search_harnesses`, `harness_detail`, `search_resources`, `resource_detail`, `resource_use_instructions`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`, and `publish_resource_package`. `harness_detail`/`pull_instructions` expose read-only access/payment state; only `pull_harness`/archive delivery returns native harness files after entitlement. Tool results use `structuredContent`; logical failures set `isError: true` with stable machine codes and sanitized details.
-- Public hosted resource-package publishing is temporarily fail-closed: after authentication, HTTP/MCP returns `503 PUBLISH_DISABLED` while `HOSTED_RESOURCE_PUBLISH_ENABLED=false`. It stays off until ownership, immutability, idempotency and durable writable import storage pass production migration gates.
-- Registry publish: `server.json` is remote-only (`com.onlyharness/registry`) and ready for MCP Registry domain auth; publish still requires a DNS/HTTP ownership proof for `onlyharness.com`.
+- Discovery: [`/llms.txt`](https://superskill.sh/llms.txt), [`/AGENTS.md`](https://superskill.sh/AGENTS.md), [`/api/openapi.json`](https://superskill.sh/api/openapi.json), MCP Registry metadata at [`/server.json`](https://superskill.sh/server.json), and OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://superskill.sh/.well-known/oauth-protected-resource). SuperSkill does not advertise a vanity authorization server: managed headless flows receive a confirmed account token manually through `HH_TOKEN`, and `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid flow.
+- MCP v0.2.14: `https://superskill.sh/mcp` with the exact inventory `search_harnesses`, `harness_detail`, `search_resources`, `resource_detail`, `resource_use_instructions`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`, and `publish_resource_package`. Tool results use `structuredContent`; logical failures set `isError: true` with stable machine codes and sanitized details.
+- Public hosted resource-package publishing is temporarily fail-closed: after authentication, HTTP/MCP returns `503 PUBLISH_DISABLED` while `HOSTED_RESOURCE_PUBLISH_ENABLED=false`. It stays off until ownership, immutability, idempotency and durable writable import storage pass production migration gates. Once enabled, all pre-mutation HTTP/MCP package validation failures use the stable public code `VALIDATION_FAILED`; internal path/tar guard names are not separate public contracts.
+- Registry publish: `server.json` is remote-only at canonical `https://superskill.sh/mcp`; `com.onlyharness/registry` remains the compatibility identifier. Publication still requires MCP Registry authorization/publication proof for `superskill.sh`, the exact published runtime pin, and a clean client proof; `onlyharness.com` is compatibility-only.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`. Org auth/bundles/audit read Supabase service-role tables first and keep `HARNESS_ORGS_PATH`/`HARNESS_ORG_AUDIT_PATH` as the local smoke fallback.
 - Team workspace UI/API: Network Neighborhood uses `GET /api/orgs/{slug}/workspace` with the same org token and returns org-private cards, sanitized audit rows, and a permission/risk summary.
 - Workspace resource catalogs: `GET /api/workspaces/{slug}/workspace`, `GET/PUT /api/workspaces/{slug}/setup-bundle`, `GET /api/workspaces/{slug}/resources`, `GET /api/workspaces/{slug}/resources/{id}`, `GET /api/workspaces/{slug}/resources/{id}/archive`, `POST /api/workspaces/{slug}/imports/resource-package`, `POST /api/workspaces/{slug}/resources/approve`, and `/api/workspaces/{slug}/collections...` are gated by `WORKSPACES_ENABLED=true`. API/web reads accept either an active, non-expired workspace member session or `HH_WORKSPACE_TOKEN`; CLI stays token-based for now, with `HH_ORG_TOKEN` as a migration fallback. `hh workspace setup acme --target claude-code` installs workspace-hosted packages and writes instructions for approved public resources without pretending those have workspace archives. `GET/POST /api/workspaces/{slug}/members`, `POST /api/workspaces/{slug}/invites`, `POST /api/workspaces/{slug}/join`, and `DELETE /api/workspaces/{slug}/members/{userId}` manage membership through `member:write`/`invite:write`; `POST /members` accepts optional `expiresAt`, and expired or removed members cannot use private install/archive paths. Raw invite codes are returned once and only hashed values are stored. Workspace gates add `GET/PUT /api/workspaces/{slug}/join-policies`, `POST /api/workspaces/{slug}/join-code`, read-only `POST /api/workspaces/{slug}/join-code/verify`, and explicit `POST /api/workspaces/{slug}/join-grants` for Telegram/Discord/entitlement checks with `gate:verify`/`gate:write` scopes. Active `paid_subscription` join policies require `WORKSPACE_SUBSCRIPTIONS_ENABLED=true`; `POST /subscriptions/checkout` creates an incomplete receipt only, the signed `POST /webhooks/workspace-subscriptions` activates/renews/graces/cancels access idempotently, does not restore removed/suspended members, and `POST /subscriptions/sweep` expires ended access without charging money. Use `hh resources approve onlyharness:harnesses/deep-market-researcher --workspace acme --collection approved` to add a scanned public listing to a workspace collection as local curation, not OnlyHarness verification; `not_scanned` and failed resources are rejected for installable approval.
@@ -175,8 +175,8 @@ Plugin sources live under `plugins/superskill` with one shared skill for Claude 
 - Bot gates can call `GET /api/entitlements/check?subject=user:<id>&harness=owner/name` with an org token that has `entitlements:read`; this returns a decision only, never archive files.
 - Safer community gates use short-lived signed codes: the buyer calls `POST /api/community/invite-code` after entitlement, then the Telegram/Discord bot calls `POST /api/community/verify-code` with a scoped org token before granting access. `COMMUNITY_INVITE_SECRET` must be configured on the API.
 - Registry items include `installConfirms`; only authenticated `kind=install&client=claude-code` events count toward the `works in Claude Code: N confirms` badge.
-- Claude Code plugin: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install onlyharness@onlyharness`.
-- Codex MCP setup: `codex mcp add onlyharness --url https://onlyharness.com/mcp --bearer-token-env-var HH_TOKEN`.
+- Claude Code compatibility marketplace: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install superskill@superskill`. The one-link installer is the primary path.
+- Codex MCP setup: `codex mcp add superskill --url https://superskill.sh/mcp --bearer-token-env-var HH_TOKEN`.
 - Local validation: `npm run check:mcp-registry && npm run check:plugin`; when Claude CLI is installed, also run `claude plugin validate . && claude plugin validate plugins/onlyharness`.
 
 Create local env from the examples:
@@ -194,8 +194,8 @@ The current VPS uses a shared system Caddy on ports `80/443`. OnlyHarness runs b
 SSH_TARGET=hetzner-root DEPLOY_MODE=system-caddy scripts/deploy-production.sh
 ```
 
-`scripts/deploy-production.sh` runs public smoke by default after containers reload: `/api/healthz`, `/server.json`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/checkout`, and `/mcp`. Override `PUBLIC_BASE_URL` for a non-default hostname or set `RUN_DEPLOY_SMOKE=0` only for a deliberately partial deploy.
-For authenticated production smoke without creating throwaway users, set `ONLYHARNESS_QA_EMAIL` and `ONLYHARNESS_QA_PASSWORD` in the ignored production env and run `scripts/smoke-production-auth.ts` against `https://onlyharness.com/api`.
+`scripts/deploy-production.sh` runs public smoke by default after containers reload: `/api/healthz`, `/server.json`, `/.well-known/oauth-protected-resource`, the intentional 404 at `/.well-known/oauth-authorization-server`, `/checkout`, and `/mcp`. Override `PUBLIC_BASE_URL` for a non-default hostname or set `RUN_DEPLOY_SMOKE=0` only for a deliberately partial deploy.
+For authenticated production smoke without creating throwaway users, set the compatibility QA credentials in the ignored production env and run `scripts/smoke-production-auth.ts` against `https://superskill.sh/api`.
 
 Deployment artifacts:
 
@@ -214,7 +214,7 @@ scripts/smoke-production-compose.sh
 set -a
 . infra/production.env
 set +a
-SMOKE_API_URL=https://onlyharness.com/api SMOKE_EXPECT_EMAIL_CONFIRMATION=1 npm run smoke:prod-auth
+SMOKE_API_URL=https://superskill.sh/api SMOKE_EXPECT_EMAIL_CONFIRMATION=1 npm run smoke:prod-auth
 ```
 
 ## Verification

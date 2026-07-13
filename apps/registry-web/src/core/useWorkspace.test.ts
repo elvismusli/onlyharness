@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 test("workspaceHeadersForOwner uses workspace token first, then user session auth", () => {
-  const { result, rerender } = renderHook(({ accessToken }: { accessToken?: string }) => useWorkspace({ accessToken }), {
+  const { result, rerender } = renderHook(({ accessToken }: { accessToken?: string }) => useWorkspace({ accessToken, principalKey: "user-1" }), {
     initialProps: { accessToken: "member-jwt" }
   });
 
@@ -54,7 +54,7 @@ test("loadWorkspace reads the resource-first workspace catalog and members", asy
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt" }));
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", principalKey: "user-1" }));
 
   await act(async () => {
     await result.current.loadWorkspace();
@@ -65,6 +65,76 @@ test("loadWorkspace reads the resource-first workspace catalog and members", asy
   expect(result.current.workspaceStatus).toContain("Loaded 0 workspace resources");
   expect(localStorage.getItem("hh:workspaceSlug")).toBe("acme");
 });
+
+test("private workspace state is bound to one principal and clears on deny or slug change", async () => {
+  let denied = false;
+  const fetchMock = vi.fn(async (url: string) => {
+    if (denied) return responseJson({ error: "membership expired" }, 403);
+    if (url.endsWith("/workspace")) {
+      return responseJson({
+        workspace: { slug: "acme", name: "Private Acme", type: "team", visibility: "private", plan: "team" },
+        resources: [{ id: "@acme/private" }],
+        items: [],
+        collections: [],
+        permissions: { totalResources: 1, hostedArchives: 0, unscanned: 0, riskTiers: {} },
+        audit: []
+      });
+    }
+    if (url.includes("/members")) return responseJson({ members: [{ user_id: "private-member", role: "member", status: "active", source: "direct" }] });
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const { result, rerender } = renderHook(
+    ({ accessToken, principalKey }: { accessToken: string; principalKey: string }) => useWorkspace({ accessToken, principalKey }),
+    { initialProps: { accessToken: "member-a", principalKey: "user-a" } }
+  );
+
+  await act(async () => { await result.current.loadWorkspace(); });
+  expect(result.current.workspaceCatalog?.workspace.name).toBe("Private Acme");
+  expect(result.current.workspaceMembers[0]?.user_id).toBe("private-member");
+
+  rerender({ accessToken: "member-b", principalKey: "user-b" });
+  expect(result.current.workspaceCatalog).toBeUndefined();
+  expect(result.current.workspaceMembers).toEqual([]);
+
+  denied = true;
+  await act(async () => { await result.current.loadWorkspace(); });
+  expect(result.current.workspaceCatalog).toBeUndefined();
+  expect(result.current.workspaceMembers).toEqual([]);
+
+  denied = false;
+  await act(async () => { await result.current.loadWorkspace(); });
+  expect(result.current.workspaceCatalog?.workspace.slug).toBe("acme");
+  act(() => { result.current.setWorkspaceSlug("other"); });
+  expect(result.current.workspaceCatalog).toBeUndefined();
+  expect(result.current.workspaceMembers).toEqual([]);
+});
+
+for (const kind of ["invite", "gate"] as const) {
+  test(`late ${kind} response from principal A never becomes visible to principal B`, async () => {
+    let resolveResponse!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; })));
+    const { result, rerender } = renderHook(
+      ({ accessToken, principalKey }: { accessToken: string; principalKey: string }) => useWorkspace({ accessToken, principalKey }),
+      { initialProps: { accessToken: "member-a", principalKey: "user-a" } }
+    );
+
+    let request!: Promise<void>;
+    await act(async () => {
+      request = kind === "invite" ? result.current.createWorkspaceInvite() : result.current.createWorkspaceJoinCode();
+      await Promise.resolve();
+    });
+    await act(async () => { rerender({ accessToken: "member-b", principalKey: "user-b" }); });
+    resolveResponse(responseJson(kind === "invite"
+      ? { code: "ohwi_principal_a", invite: { role: "member", usesCount: 0, createdAt: "2026-07-14T00:00:00.000Z" } }
+      : { code: "ohwj_principal_a", source: "telegram" }));
+    await act(async () => { await request; });
+
+    expect(result.current.workspaceInviteCode).toBe("");
+    expect(result.current.workspaceGateCode).toBe("");
+  });
+}
 
 test("createWorkspaceInvite returns the raw code once and stores it in memory", async () => {
   const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -116,7 +186,7 @@ test("joinWorkspace uses the signed-in user session, not the automation token", 
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", requireUser: vi.fn(() => true) }));
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", principalKey: "user-1", requireUser: vi.fn(() => true) }));
   act(() => {
     result.current.setWorkspaceToken("workspace-token");
     result.current.setWorkspaceJoinCode("ohwi_join");
@@ -177,7 +247,7 @@ test("createWorkspaceSubscriptionCheckout creates a receipt without claiming acc
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", onFlash }));
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", principalKey: "user-1", onFlash }));
 
   await act(async () => {
     await result.current.loadWorkspace();
@@ -272,7 +342,7 @@ test("removeWorkspaceCollectionItem deletes an approval item and reloads the wor
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", onFlash }));
+  const { result } = renderHook(() => useWorkspace({ accessToken: "member-jwt", principalKey: "user-1", onFlash }));
 
   await act(async () => {
     await result.current.removeWorkspaceCollectionItem("approved", "approved:item-1");
@@ -283,10 +353,10 @@ test("removeWorkspaceCollectionItem deletes an approval item and reloads the wor
   expect(onFlash).toHaveBeenCalledWith("Workspace collection item removed");
 });
 
-function responseJson(body: unknown): Response {
+function responseJson(body: unknown, status = 200): Response {
   return {
-    ok: true,
-    status: 200,
+    ok: status >= 200 && status < 300,
+    status,
     json: async () => body
   } as Response;
 }

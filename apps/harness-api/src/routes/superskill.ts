@@ -1,9 +1,19 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { capabilityIdSchema, clientSchema, recommendationRequestSchema, type ManagedCapability } from "@harnesshub/capability-schema/browser";
+import { capabilityIdSchema, clientSchema, exactHandoffDecisionRequestSchema, recommendationRequestSchema, type ManagedCapability } from "@harnesshub/capability-schema/browser";
 import { ManagedCatalog, ManagedCatalogError } from "../capabilities.js";
 import { buildManagedArchive, ManagedArchiveError, type ManagedArchivePayload } from "../managed-archive.js";
-import { digestCanonicalJson, recommendCapabilities, RecommendationValidationError } from "../recommendations.js";
+import { digestCanonicalJson, exactHandoffDecision, recommendCapabilities, RecommendationValidationError } from "../recommendations.js";
+import {
+  createSupabaseSuperskillAccessResolver,
+  SUPERSKILL_MANAGED_SCOPE,
+  type SuperskillAccessResolver
+} from "../superskill/access.js";
+import {
+  buildSuperSkillBootstrapManifest,
+  loadSuperSkillBootstrapContract,
+  type SuperSkillBootstrapContract
+} from "../superskill/bootstrap.js";
 import { evaluateManagedEligibility } from "../trust-policy.js";
 
 export type SuperskillRouteOptions = {
@@ -13,9 +23,27 @@ export type SuperskillRouteOptions = {
   telemetrySalt?: string;
   now?: () => Date;
   archiveBuilder?: (capability: ManagedCapability) => ManagedArchivePayload;
+  accessResolver?: SuperskillAccessResolver;
+  bootstrapContract?: SuperSkillBootstrapContract;
 };
 
 export type SuperskillAuth = { ok: true; subject: string } | { ok: false; status: 401 | 403; reasonCode: "SUPERSKILL_AUTH_REQUIRED" | "INTERNAL_ALPHA_DENIED" };
+
+export type SuperskillManagedAuth = {
+  ok: true;
+  subject: string;
+  evidence: "confirmed_user" | "legacy_alpha";
+  publicGoEligible: boolean;
+} | {
+  ok: false;
+  status: 401 | 403 | 503;
+  reasonCode:
+    | "SUPERSKILL_AUTH_REQUIRED"
+    | "SUPERSKILL_AUTH_INVALID"
+    | "SUPERSKILL_EMAIL_UNCONFIRMED"
+    | "SUPERSKILL_ACCESS_DENIED"
+    | "SUPERSKILL_AUTH_UNAVAILABLE";
+};
 
 export function superskillAuthFromHeader(authorization: string | undefined, options: Pick<SuperskillRouteOptions, "tokenHashes" | "telemetrySalt"> = {}): SuperskillAuth {
   const match = authorization?.match(/^Bearer\s+([^\s]+)$/i);
@@ -35,7 +63,34 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
   const enabled = options.enabled ?? process.env.SUPERSKILL_ENABLED === "true";
   const now = options.now ?? (() => new Date());
   const archiveBuilder = options.archiveBuilder ?? buildManagedArchive;
+  const accessResolver = options.accessResolver ?? createSupabaseSuperskillAccessResolver();
+  const bootstrapContract = options.bootstrapContract ?? loadSuperSkillBootstrapContract();
   const cacheControl = "public, max-age=60, stale-while-revalidate=300";
+
+  app.get("/superskill/install", async (_request, reply) => {
+    if (bootstrapContract.installer.releaseStatus !== "published") return reply.code(503).send({ error: "SuperSkill bootstrap release is not published", code: "BOOTSTRAP_RELEASE_UNPUBLISHED" });
+    reply.header("Cache-Control", cacheControl);
+    secureBootstrapReply(reply);
+    return buildSuperSkillBootstrapManifest(bootstrapContract);
+  });
+
+  app.get("/superskill/install/:id/:version/:digest", async (request, reply) => {
+    if (bootstrapContract.installer.releaseStatus !== "published") return reply.code(503).send({ error: "SuperSkill bootstrap release is not published", code: "BOOTSTRAP_RELEASE_UNPUBLISHED" });
+    const { id, version, digest } = request.params as { id: string; version: string; digest: string };
+    if (!capabilityIdSchema.safeParse(id).success || !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(version) || !/^[a-f0-9]{64}$/.test(digest)) return capabilityNotFound(reply);
+    try {
+      const capability = catalog.exact(id, version);
+      if (!capability || capability.release.artifactDigest !== `sha256:${digest}` || capability.trust.status === "candidate") return capabilityNotFound(reply);
+      if (capability.trust.status === "revoked") return reply.code(409).send({ error: "Capability release is revoked", code: "CAPABILITY_REVOKED" });
+      if (capability.trust.status === "quarantined") return reply.code(409).send({ error: "Capability release is quarantined", code: "CAPABILITY_QUARANTINED" });
+      if (capability.trust.status !== "approved" || !eligibleForBothClients(capability, now())) return reply.code(409).send({ error: "Capability release is not eligible for install handoff", code: "PERMISSION_BLOCKED" });
+      reply.header("Cache-Control", "no-store");
+      secureBootstrapReply(reply);
+      return buildSuperSkillBootstrapManifest(bootstrapContract, capability);
+    } catch (error) {
+      return catalogFailure(reply, error);
+    }
+  });
 
   app.get("/showroom/selected", async (request, reply) => {
     const query = request.query as { limit?: string | number; job?: string };
@@ -77,7 +132,7 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
   });
 
   app.post("/recommendations", async (request, reply) => {
-    const auth = requireManagedAccess(request, reply, enabled, options);
+    const auth = await requireManagedAccess(request, reply, enabled, options, accessResolver, now());
     if (!auth) return;
     const parsed = recommendationRequestSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Task or recommendation context is invalid", code: "TASK_INVALID" });
@@ -89,8 +144,38 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
     }
   });
 
+  app.post("/superskill/handoff/decision", async (request, reply) => {
+    const requestNow = now();
+    const auth = await requireManagedAccess(request, reply, enabled, options, accessResolver, requestNow);
+    if (!auth) return;
+    if (auth.evidence !== "confirmed_user" || !auth.publicGoEligible) {
+      return reply.code(403).send({
+        error: "A confirmed account with an active SuperSkill grant is required for exact handoff",
+        code: "SUPERSKILL_CONFIRMED_ACCESS_REQUIRED"
+      });
+    }
+    const parsed = exactHandoffDecisionRequestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Exact SuperSkill handoff is invalid", code: "HANDOFF_INVALID" });
+    const { capability: tuple, client } = parsed.data;
+    try {
+      const capability = catalog.exact(tuple.id, tuple.version);
+      if (!capability || capability.trust.status === "candidate" || capability.release.artifactDigest !== tuple.artifactDigest) return capabilityNotFound(reply);
+      if (capability.trust.status === "revoked") return reply.code(409).send({ error: "Capability release is revoked", code: "CAPABILITY_REVOKED" });
+      if (capability.trust.status === "quarantined") return reply.code(409).send({ error: "Capability release is quarantined", code: "CAPABILITY_QUARANTINED" });
+      if (capability.trust.status !== "approved" || !evaluateManagedEligibility(capability, client, requestNow).eligible) {
+        return reply.code(409).send({ error: "Capability release evidence is no longer eligible for activation", code: "PERMISSION_BLOCKED" });
+      }
+      const decisionNow = new Date(Math.floor(requestNow.getTime() / 60_000) * 60_000);
+      const recommendationId = exactHandoffRecommendationId(auth.subject, tuple, client, decisionNow);
+      reply.header("Cache-Control", "no-store");
+      return exactHandoffDecision(capability, client, { now: decisionNow, recommendationId });
+    } catch (error) {
+      return catalogFailure(reply, error);
+    }
+  });
+
   app.get("/capabilities/:id", async (request, reply) => {
-    if (!requireManagedAccess(request, reply, enabled, options)) return;
+    if (!await requireManagedAccess(request, reply, enabled, options, accessResolver, now())) return;
     const { id } = request.params as { id: string };
     if (!capabilityIdSchema.safeParse(id).success) return capabilityNotFound(reply);
     try {
@@ -103,7 +188,7 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
   });
 
   app.get("/capabilities/:id/releases/:version", async (request, reply) => {
-    if (!requireManagedAccess(request, reply, enabled, options)) return;
+    if (!await requireManagedAccess(request, reply, enabled, options, accessResolver, now())) return;
     const { id, version } = request.params as { id: string; version: string };
     if (!capabilityIdSchema.safeParse(id).success || !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(version)) return capabilityNotFound(reply);
     try {
@@ -126,7 +211,7 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
   });
 
   app.get("/capabilities/:id/releases/:version/archive", async (request, reply) => {
-    if (!requireManagedAccess(request, reply, enabled, options)) return;
+    if (!await requireManagedAccess(request, reply, enabled, options, accessResolver, now())) return;
     const { id, version } = request.params as { id: string; version: string };
     if (!capabilityIdSchema.safeParse(id).success || !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(version)) return capabilityNotFound(reply);
     try {
@@ -144,6 +229,15 @@ export async function registerSuperskillRoutes(app: FastifyInstance, options: Su
   });
 }
 
+function exactHandoffRecommendationId(
+  subject: string,
+  tuple: { id: string; version: string; artifactDigest: string },
+  client: string,
+  issuedAt: Date
+): string {
+  return `rec_${createHash("sha256").update(JSON.stringify({ subject, tuple, client, issuedAt: issuedAt.toISOString() })).digest("base64url").slice(0, 24)}`;
+}
+
 function eligibleForBothClients(capability: ManagedCapability, now: Date): boolean {
   return evaluateManagedEligibility(capability, "claude-code", now).eligible
     && evaluateManagedEligibility(capability, "codex", now).eligible;
@@ -152,6 +246,7 @@ function eligibleForBothClients(capability: ManagedCapability, now: Date): boole
 export function verifyDecisionConsent(input: {
   capability: ManagedCapability;
   client: string;
+  recommendationId: string;
   expiresAt: string;
   decisionDigest: string;
   now?: Date;
@@ -159,6 +254,7 @@ export function verifyDecisionConsent(input: {
   const client = clientSchema.safeParse(input.client);
   if (!client.success || Date.parse(input.expiresAt) <= (input.now ?? new Date()).getTime()) return false;
   const expected = digestCanonicalJson({
+    recommendationId: input.recommendationId,
     selected: {
       id: input.capability.id,
       ref: input.capability.release.ref,
@@ -174,18 +270,62 @@ export function verifyDecisionConsent(input: {
   return safeHashEqual(expected.replace(/^sha256:/, ""), input.decisionDigest.replace(/^sha256:/, ""));
 }
 
-function requireManagedAccess(request: FastifyRequest, reply: FastifyReply, enabled: boolean, options: SuperskillRouteOptions): SuperskillAuth & { ok: true } | undefined {
+async function requireManagedAccess(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  enabled: boolean,
+  options: SuperskillRouteOptions,
+  accessResolver: SuperskillAccessResolver,
+  now: Date
+): Promise<SuperskillManagedAuth & { ok: true } | undefined> {
   if (!enabled) {
     void reply.code(503).send({ error: "SuperSkill managed routes are disabled", code: "SUPERSKILL_DISABLED" });
     return undefined;
   }
   const value = Array.isArray(request.headers.authorization) ? request.headers.authorization[0] : request.headers.authorization;
-  const auth = superskillAuthFromHeader(value, options);
+  const auth = await resolveManagedAccess(value, options, accessResolver, now);
   if (!auth.ok) {
-    void reply.code(auth.status).send({ error: auth.status === 401 ? "SuperSkill Bearer token is required" : "Internal alpha access denied", code: auth.reasonCode });
+    if (auth.status === 401) reply.header("WWW-Authenticate", 'Bearer realm="superskill"');
+    void reply.code(auth.status).send({ error: managedAccessError(auth.reasonCode), code: auth.reasonCode });
     return undefined;
   }
+  reply.header("X-OnlyHarness-SuperSkill-Auth", auth.evidence === "confirmed_user" ? "confirmed-user" : "legacy-alpha");
+  reply.header("X-OnlyHarness-SuperSkill-Public-GO", auth.publicGoEligible ? "eligible" : "ineligible");
   return auth;
+}
+
+export async function resolveManagedAccess(
+  authorization: string | undefined,
+  options: Pick<SuperskillRouteOptions, "tokenHashes" | "telemetrySalt">,
+  accessResolver: SuperskillAccessResolver,
+  now = new Date()
+): Promise<SuperskillManagedAuth> {
+  if (!authorization) return { ok: false, status: 401, reasonCode: "SUPERSKILL_AUTH_REQUIRED" };
+  const legacy = superskillAuthFromHeader(authorization, options);
+  if (legacy.ok) {
+    return {
+      ok: true,
+      subject: legacy.subject,
+      evidence: "legacy_alpha",
+      publicGoEligible: false
+    };
+  }
+  const resolved = await accessResolver({ authorization, requiredScope: SUPERSKILL_MANAGED_SCOPE, now });
+  if (!resolved.ok) return { ok: false, status: resolved.status, reasonCode: resolved.code };
+  return {
+    ok: true,
+    subject: resolved.principal.subject,
+    evidence: resolved.principal.evidence,
+    publicGoEligible: resolved.principal.publicGoEligible
+  };
+}
+
+function managedAccessError(code: Exclude<SuperskillManagedAuth, { ok: true }>["reasonCode"]): string {
+  if (code === "SUPERSKILL_AUTH_REQUIRED") return "SuperSkill Bearer credential is required";
+  if (code === "SUPERSKILL_AUTH_INVALID") return "SuperSkill Bearer credential is invalid or expired";
+  if (code === "SUPERSKILL_EMAIL_UNCONFIRMED") return "A confirmed account is required for SuperSkill managed access";
+  if (code === "SUPERSKILL_AUTH_UNAVAILABLE") return "SuperSkill authentication is temporarily unavailable";
+  return "SuperSkill managed access is not granted";
 }
 
 function catalogFailure(reply: FastifyReply, error: unknown) {
@@ -200,6 +340,12 @@ function capabilityNotFound(reply: FastifyReply) {
 
 function publicNotFound(reply: FastifyReply) {
   return reply.code(404).send({ error: "Showroom capability not found" });
+}
+
+function secureBootstrapReply(reply: FastifyReply): void {
+  reply.type("application/vnd.superskill.bootstrap+json; charset=utf-8");
+  reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox");
+  reply.header("X-Content-Type-Options", "nosniff");
 }
 
 function parseTokenHashes(value: string | undefined): string[] {

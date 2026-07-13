@@ -178,7 +178,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
   });
   return {
     owner,
-    ownerLabel: owner === "harnesses" ? "onlyharness" : owner === "directories" ? "directory shelf" : owner.startsWith("@") ? owner : "local",
+    ownerLabel: owner === "harnesses" ? "SuperSkill" : owner === "directories" ? "directory shelf" : owner.startsWith("@") ? owner : "local",
     name: validation.manifest.name,
     title: validation.manifest.title,
     summary: validation.manifest.summary,

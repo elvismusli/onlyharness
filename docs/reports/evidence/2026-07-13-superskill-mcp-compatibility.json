@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "superskill.mcp-compatibility-evidence.v1",
+  "observedAt": "2026-07-13T16:51:52.246Z",
+  "status": "fail",
+  "goDecision": "batch_d_no_go",
+  "blockerCode": "PROBE_REAL_CLIENT_FLOW_FAILED",
+  "invalidSchema": {
+    "code": "PROBE_PLUGIN_SCHEMA_INVALID",
+    "serverStartCount": 0,
+    "stateDiffCount": 0
+  },
+  "versions": {
+    "codex": {
+      "expected": "0.144.3",
+      "exact": true
+    },
+    "claudeCode": {
+      "expected": "2.1.112",
+      "exact": true
+    }
+  },
+  "localSupabase": {
+    "confirmedQaUser": true,
+    "actualBearerUsed": true,
+    "operatorGrantRpcUsed": true,
+    "grantCleanupZeroRows": true,
+    "auditCleanupZeroIdentityRows": true
+  },
+  "remoteMcp": {
+    "anonymousCode": "AUTH_REQUIRED",
+    "authenticatedCode": "PUBLISH_DISABLED"
+  },
+  "localStdio": {
+    "anonymousCode": "SUPERSKILL_AUTH_REQUIRED"
+  },
+  "clients": [
+    {
+      "client": "codex",
+      "expectedVersion": "0.144.3",
+      "exactVersion": true,
+      "processStatus": 1,
+      "diagnosticCode": "PROBE_CLIENT_MCP_START_FAILED",
+      "pluginLoaded": false,
+      "remotePublishCode": "PROBE_CLIENT_REMOTE_CALL_MISSING",
+      "localRecommendCode": "PROBE_CLIENT_LOCAL_CALL_MISSING",
+      "localRecommendDecision": "missing",
+      "rootCode": "PROBE_CLIENT_ROOT_CALL_MISSING",
+      "rootMode": "missing",
+      "rootCanonicalMatch": false,
+      "deniedMutationCode": "PROBE_CLIENT_DENIAL_MISSING",
+      "workspaceDiffCount": 1,
+      "stateDiffCount": 1,
+      "toolCalls": [],
+      "isolatedEnvironment": true,
+      "shellToolDisabled": true
+    }
+  ],
+  "safety": {
+    "rawArtifactCount": 6,
+    "credentialMaterialRecorded": false,
+    "providerIdentityRecorded": false,
+    "rawMachineLocationRecorded": false,
+    "taskTextRecorded": false
+  }
+}

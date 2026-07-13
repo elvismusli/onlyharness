@@ -6,7 +6,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
-export const MCP_SERVER_VERSION = "0.2.13";
+export const MCP_SERVER_VERSION = "0.2.14";
 export const MCP_TOOL_NAMES = [
   "search_harnesses",
   "harness_detail",
@@ -51,6 +51,11 @@ const publishToolAnnotations = {
   openWorldHint: true
 } as const;
 
+const idempotentPublishToolAnnotations = {
+  ...publishToolAnnotations,
+  idempotentHint: true
+} as const;
+
 const searchHarnessesInputSchema = z.object({
   query: z.string().default("").describe("Search terms such as market research, support triage or finance safety."),
   limit: z.number().int().min(1).max(20).default(10)
@@ -89,6 +94,8 @@ type PublishMarkdownInput = {
 
 type PublishResourcePackageInput = {
   name?: string;
+  version: string;
+  idempotencyKey: string;
   title?: string;
   summary?: string;
   resourceType?: string;
@@ -109,6 +116,8 @@ const publishMarkdownInputSchema = z.object({
 
 const publishResourcePackageInputSchema = z.object({
   name: z.string().optional(),
+  version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/),
+  idempotencyKey: z.string().min(16).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]+$/),
   title: z.string().optional(),
   summary: z.string().optional(),
   resourceType: z.string().optional(),
@@ -152,13 +161,13 @@ type BuildMcpServerOptions = {
 let docsCache: { source: string; text: string; loadedAt: number } | undefined;
 
 export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
-  const server = new McpServer({ name: "onlyharness", version: MCP_SERVER_VERSION });
+  const server = new McpServer({ name: "superskill", version: MCP_SERVER_VERSION });
 
   server.registerTool(
     "search_harnesses",
     {
       title: "Search harnesses",
-      description: "Search the OnlyHarness registry by task, job, title, summary or tag.",
+      description: "Search the SuperSkill registry by task, job, title, summary or tag.",
       annotations: readOnlyToolAnnotations,
       inputSchema: searchHarnessesInputSchema.shape
     },
@@ -217,7 +226,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "resource_use_instructions",
     {
       title: "Resource use instructions",
-      description: "Return the best safe next action for a mixed resource. Hosted packages expose OnlyHarness archive URLs; upstream-only resources stay open-only.",
+      description: "Return the best safe next action for a mixed resource. Hosted packages expose SuperSkill archive URLs; upstream-only resources stay open-only.",
       annotations: readOnlyToolAnnotations,
       inputSchema: resourceIdInputSchema.shape
     },
@@ -269,7 +278,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
   server.registerTool(
     "search_docs",
     {
-      title: "Search OnlyHarness docs",
+      title: "Search SuperSkill docs",
       description: "Search /llms.txt and agent guidance for API, CLI, MCP and safety instructions.",
       annotations: readOnlyToolAnnotations,
       inputSchema: searchDocsInputSchema.shape
@@ -295,7 +304,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "publish_markdown_to_harness",
     {
       title: "Publish markdown to harness",
-      description: "Convert markdown into an unverified harness scaffold. Requires an OnlyHarness Bearer token.",
+      description: "Convert markdown into an unverified harness scaffold. Requires a SuperSkill Bearer token.",
       annotations: publishToolAnnotations,
       inputSchema: publishMarkdownInputSchema.shape
     },
@@ -305,7 +314,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         return mcpError({
           code: "AUTH_REQUIRED",
           status: 401,
-          details: { resource_metadata: "https://onlyharness.com/.well-known/oauth-protected-resource" }
+          details: { resource_metadata: "https://superskill.sh/.well-known/oauth-protected-resource" }
         });
       }
       return mcpCall(() => options.publishMarkdown({ name, markdown }, authorization), true);
@@ -316,8 +325,8 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
     "publish_resource_package",
     {
       title: "Publish agent resource package",
-      description: "Publish a hosted OnlyHarness resource package for a skill, plugin, workflow, MCP server, command pack, scripts, docs or source bundle. Requires a Bearer token. Does not grant a Verified harness badge.",
-      annotations: publishToolAnnotations,
+      description: "Publish an immutable canonical hosted package release. Requires a confirmed-user Bearer with active superskill:managed scope, semantic version and idempotency key. Returns unreviewed trust; never grants a Verified badge.",
+      annotations: idempotentPublishToolAnnotations,
       inputSchema: publishResourcePackageInputSchema.shape
     },
     async (input, extra) => {
@@ -326,7 +335,7 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
         return mcpError({
           code: "AUTH_REQUIRED",
           status: 401,
-          details: { resource_metadata: "https://onlyharness.com/.well-known/oauth-protected-resource" }
+          details: { resource_metadata: "https://superskill.sh/.well-known/oauth-protected-resource" }
         });
       }
       return mcpCall(() => options.publishResourcePackage(input, authorization), true);
@@ -349,17 +358,17 @@ function resourceInstructions(resource: resources.Resource): string[] {
   } else if (mcp && "command" in mcp && mcp.command) {
     lines.push(`Copy MCP config or command: ${mcp.command}`);
   } else if (onlyHarness && "url" in onlyHarness) {
-    lines.push(`Use in OnlyHarness: ${onlyHarness.url}`);
+    lines.push(`Use in SuperSkill: ${onlyHarness.url}`);
   } else if (mirror && "url" in mirror) {
-    lines.push(`Use via OnlyHarness mirror: ${mirror.url}`);
+    lines.push(`Use via SuperSkill mirror: ${mirror.url}`);
   } else if (open && "url" in open) {
     lines.push(`Use upstream: ${open.url}`);
   }
   if (resource.installability === "open_only") {
-    lines.push("This is an upstream resource listing in OnlyHarness. Use the OnlyHarness resource page first; upstream author/source remains authoritative.");
+    lines.push("This is an upstream resource listing in SuperSkill. Use the SuperSkill resource page first; upstream author/source remains authoritative.");
   }
   if (archive && "url" in archive) {
-    lines.push(`Download hosted resource archive from OnlyHarness: ${archive.url}`);
+    lines.push(`Download hosted resource archive from SuperSkill: ${archive.url}`);
   }
   if (open && "url" in open) {
     lines.push(`Upstream source: ${open.url}`);
@@ -483,7 +492,7 @@ function publicMessage(code: McpErrorCode): string {
     PUBLISH_DISABLED: "Hosted resource publishing is temporarily disabled.",
     PAYMENT_REQUIRED: "Payment or entitlement is required for this resource.",
     DIRECTORY_LINK_ONLY: "This directory resource is link-only and has no downloadable archive.",
-    RESOURCE_ARCHIVE_NOT_HOSTED: "This resource is listed but its archive is not hosted by OnlyHarness.",
+    RESOURCE_ARCHIVE_NOT_HOSTED: "This resource is listed but its archive is not hosted by SuperSkill.",
     HOSTED_EXECUTION_NOT_AVAILABLE: "Hosted execution is not available.",
     SERVICE_UNAVAILABLE: "The required service is temporarily unavailable.",
     INTERNAL_ERROR: "The tool could not complete because of an internal error."
@@ -542,7 +551,7 @@ async function loadDocs(): Promise<{ source: string; text: string }> {
   if (docsCache && now - docsCache.loadedAt < 5 * 60_000) return docsCache;
 
   const source = process.env.DOCS_URL ?? path.join(registry.workspaceRoot, "apps/registry-web/public/llms.txt");
-  const publicSource = source.startsWith("http://") || source.startsWith("https://") ? source : "https://onlyharness.com/llms.txt";
+  const publicSource = source.startsWith("http://") || source.startsWith("https://") ? source : "https://superskill.sh/llms.txt";
   let text = "";
   if (source.startsWith("http://") || source.startsWith("https://")) {
     const response = await fetch(source);
@@ -553,7 +562,7 @@ async function loadDocs(): Promise<{ source: string; text: string }> {
   }
 
   if (!text) {
-    text = "# OnlyHarness\n\nDocs are temporarily unavailable. Use `hh doctor`, `hh search`, and `/api/registry` as fallbacks.\n";
+    text = "# SuperSkill\n\nDocs are temporarily unavailable. Use `hh doctor`, `hh search`, and `/api/registry` as fallbacks.\n";
   }
 
   docsCache = { source: publicSource, text, loadedAt: now };

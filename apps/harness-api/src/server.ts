@@ -13,7 +13,7 @@ import { buildMcpServer, MCP_TOOL_NAMES, mcpError, mcpToolCallPreflight, type Mc
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, createWorkspaceJoinCode, verifyCommunityInviteCode, verifyWorkspaceJoinCode } from "./community.js";
 import { openapi } from "./openapi.js";
-import { fetchLastVerificationAt, MANAGED_EVENT_KINDS, recordEvent, recordManagedEvent, sanitizeEvent } from "./events.js";
+import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { classifyGitHubResource, GitHubImportError, type GitHubResourceImportRequest } from "./github-import.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
 import { checkEntitlement, createCheckoutSession, hostedExecutionUnavailableBody, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
@@ -22,20 +22,24 @@ import { fetchCountersMap, HEAT_SIGNAL_THRESHOLD } from "./social.js";
 import { fetchMyStorefront, fetchStorefrontByHandle, resolveCheckoutAttribution, upsertHarnessCreator, upsertStorefrontProfile } from "./storefront.js";
 import * as registry from "./registry.js";
 import * as resources from "./resources.js";
+import * as resourceReleases from "./resource-releases.js";
 import * as workspaceSubscriptions from "./workspace-subscriptions.js";
 import * as workspaces from "./workspaces.js";
-import { registerSuperskillRoutes, superskillAuthFromHeader } from "./routes/superskill.js";
+import { registerSuperskillRoutes, resolveManagedAccess } from "./routes/superskill.js";
+import { handleManagedEventRequest } from "./routes/superskill-events.js";
+import { createSupabaseSuperskillAccessResolver, fetchSupabaseAuthIdentity, normalizeSupabaseOrigin, supabaseAuthTimeoutMs, superskillUserSubject } from "./superskill/access.js";
 
 const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
-const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+const supabaseUrl = normalizeSupabaseOrigin(process.env.SUPABASE_URL);
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseRestKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey;
+const supabaseAuthTimeout = supabaseAuthTimeoutMs(process.env.SUPABASE_AUTH_TIMEOUT_MS);
 const webhookToken = process.env.HARNESS_WEBHOOK_TOKEN;
 const corsOrigins = parseCsv(process.env.HARNESS_CORS_ORIGINS);
 const orgsEnabled = process.env.ORGS_ENABLED === "true";
 const workspacesEnabled = process.env.WORKSPACES_ENABLED === "true";
 const hostedResourcePublishEnabled = process.env.HOSTED_RESOURCE_PUBLISH_ENABLED === "true";
-const resourceMetadataUrl = "https://onlyharness.com/.well-known/oauth-protected-resource";
+const resourceMetadataUrl = "https://superskill.sh/.well-known/oauth-protected-resource";
 
 type ImportRequest = {
   name?: string;
@@ -53,6 +57,8 @@ type HarnessDirPublishRequest = {
 
 type ResourcePackageImportRequest = {
   name?: string;
+  version?: string;
+  idempotencyKey?: string;
   title?: string;
   summary?: string;
   resourceType?: string;
@@ -274,13 +280,13 @@ type ThreadItem = {
   at: string;
 };
 
-type AuthUser = { id: string; email?: string };
+type AuthUser = { id: string; email?: string; subject?: string; confirmed?: boolean };
 
 type AuthResult = {
   user?: AuthUser;
   status?: number;
   error?: string;
-  code?: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_UNAVAILABLE";
+  code?: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_UNAVAILABLE" | "FORBIDDEN";
 };
 
 type ArchiveClientResponse = {
@@ -310,13 +316,14 @@ type DirectoryLinkOnlyBody = {
 };
 
 const app = Fastify({ logger: true });
+const superskillAccessResolver = createSupabaseSuperskillAccessResolver();
 await app.register(cors, {
   origin: (origin, callback) => {
     if (!origin || isAllowedOrigin(origin)) return callback(null, true);
     return callback(null, false);
   }
 });
-await registerSuperskillRoutes(app);
+await registerSuperskillRoutes(app, { accessResolver: superskillAccessResolver });
 
 app.get("/healthz", async () => ({ ok: true }));
 
@@ -350,27 +357,44 @@ app.get("/resources/:id/archive", async (request, reply) => {
   const registryItems = registry.scanRegistry(counters);
   const resource = resources.resourceDetail(id, registryItems);
   if (!resource) return reply.code(404).send({ error: "Resource not found" });
-  const archivePath = resources.resourceArchivePath(resource.id);
+  return sendPublicResourceArchive(resource, undefined, reply);
+});
+
+app.get("/resources/:id/releases/:version/archive", async (request, reply) => {
+  const { id, version } = request.params as { id: string; version: string };
+  if (!resourceReleases.isReleaseSemver(version)) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND" });
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  const resource = resources.resourceDetail(id, registryItems);
+  if (!resource) return reply.code(404).send({ error: "Resource not found" });
+  return sendPublicResourceArchive(resource, version, reply);
+});
+
+async function sendPublicResourceArchive(resource: resources.Resource, version: string | undefined, reply: FastifyReply) {
+  const archivePath = resources.resourceArchivePath(resource.id, version);
   if (!archivePath) {
+    if (version) return reply.code(404).send({ error: "Resource release not found", code: "RESOURCE_RELEASE_NOT_FOUND", id: resource.id, version });
     return reply.code(409).send({
       error: "Resource archive not hosted",
       code: "RESOURCE_ARCHIVE_NOT_HOSTED",
       id: resource.id,
-      next: "This resource is listed in OnlyHarness, but its files are not hosted by OnlyHarness yet."
+      next: "This resource is listed in SuperSkill, but its files are not hosted by SuperSkill yet."
     });
   }
   await recordEvent({
     kind: "pull",
     owner: resource.upstreamOwner,
     repo: resource.upstreamRepo ?? resource.title,
+    version,
     target: "resource-archive",
     client: "api"
   });
   return reply
     .header("content-type", "application/gzip")
     .header("content-disposition", `attachment; filename="${resources.resourceArchiveFileName(resource)}"`)
+    .header("x-onlyharness-resource-version", version ?? "latest")
     .send(createReadStream(archivePath));
-});
+}
 
 app.get("/workspaces/:slug/workspace", async (request, reply) => {
   if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace layer is not enabled" });
@@ -487,7 +511,7 @@ app.post("/workspaces/:slug/invites", async (request, reply) => {
   const result = await workspaces.createWorkspaceInvite(auth.workspace.slug, { ...body, createdBy: auth.userId });
   if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "invite_created", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: result.invite.id, via: auth.via });
-  return reply.code(201).send({ workspace: publicWorkspace(auth.workspace), invite: publicWorkspaceInvite(result.invite), code: result.code, next: "Show this invite code once. Only a hash is stored by OnlyHarness." });
+  return reply.code(201).send({ workspace: publicWorkspace(auth.workspace), invite: publicWorkspaceInvite(result.invite), code: result.code, next: "Show this invite code once. Only a hash is stored by SuperSkill." });
 });
 
 app.get("/workspaces/:slug/join-policies", async (request, reply) => {
@@ -721,7 +745,7 @@ app.post("/workspaces/:slug/resources/approve", async (request, reply) => {
     resource: result.resource,
     approvalState: result.approvalState,
     verified: false,
-    next: "Workspace approval is a local recommendation. It is not an OnlyHarness Verified badge."
+    next: "Workspace approval is local curation. It is not a SuperSkill reviewed badge."
   });
 });
 
@@ -755,7 +779,7 @@ app.get("/workspaces/:slug/resources/:id/archive", async (request, reply) => {
       error: "Workspace resource archive not hosted",
       code: "RESOURCE_ARCHIVE_NOT_HOSTED",
       id: resource.id,
-      next: "This workspace resource is listed in OnlyHarness, but its files are not hosted by OnlyHarness yet."
+      next: "This workspace resource is listed in SuperSkill, but its files are not hosted by SuperSkill yet."
     });
   }
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_archive_read", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: resource.id, via: auth.via });
@@ -848,7 +872,7 @@ app.post("/workspaces/:slug/collections/:collection/items", async (request, repl
     resource: result.resource,
     approvalState: result.approvalState,
     verified: false,
-    next: "Workspace approval is a local recommendation. It is not an OnlyHarness Verified badge."
+    next: "Workspace approval is local curation. It is not a SuperSkill reviewed badge."
   });
 });
 
@@ -1560,7 +1584,9 @@ async function preflightMcpToolCall(body: unknown, authorization: string | undef
       ? "AUTH_REQUIRED"
       : auth.code === "AUTH_INVALID"
         ? "AUTH_INVALID"
-        : "SERVICE_UNAVAILABLE";
+        : auth.code === "FORBIDDEN"
+          ? "FORBIDDEN"
+          : "SERVICE_UNAVAILABLE";
     return mcpError({
       code,
       status: auth.status ?? (code === "SERVICE_UNAVAILABLE" ? 503 : 401),
@@ -1616,7 +1642,7 @@ app.post("/imports/resource-package", async (request, reply) => {
     if ("failures" in result && Array.isArray(result.failures)) payload.failures = result.failures;
     return reply.code(result.status ?? 500).send(payload);
   }
-  return reply.code(201).send(result);
+  return reply.code("replay" in result && result.replay ? 200 : 201).send(result);
 });
 
 app.post("/imports/github-resource", async (request, reply) => {
@@ -1635,30 +1661,12 @@ app.post("/imports/github-resource", async (request, reply) => {
 app.post("/events", async (request, reply) => {
   const authorization = headerValue(request.headers.authorization);
   const body = request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
-  const kind = String(body.kind ?? "");
-  if ((MANAGED_EVENT_KINDS as readonly string[]).includes(kind)) {
-    if (process.env.SUPERSKILL_ENABLED !== "true") return reply.code(503).send({ error: "SuperSkill managed routes are disabled", code: "SUPERSKILL_DISABLED" });
-    const managedAuth = superskillAuthFromHeader(authorization);
-    if (!managedAuth.ok) return reply.code(managedAuth.status).send({ error: managedAuth.status === 401 ? "SuperSkill Bearer token is required" : "Internal alpha access denied", code: managedAuth.reasonCode });
-    const result = await recordManagedEvent({
-      kind,
-      eventId: typeof body.eventId === "string" ? body.eventId : undefined,
-      owner: typeof body.owner === "string" ? body.owner : undefined,
-      repo: typeof body.repo === "string" ? body.repo : undefined,
-      version: typeof body.version === "string" ? body.version : undefined,
-      target: typeof body.target === "string" ? body.target : undefined,
-      client: typeof body.client === "string" ? body.client : undefined,
-      recommendationId: typeof body.recommendationId === "string" ? body.recommendationId : undefined,
-      activationId: typeof body.activationId === "string" ? body.activationId : undefined,
-      mode: typeof body.mode === "string" ? body.mode : undefined,
-      evidence: typeof body.evidence === "string" ? body.evidence : undefined,
-      outcome: typeof body.outcome === "string" ? body.outcome : undefined,
-      reasonCode: typeof body.reasonCode === "string" ? body.reasonCode : undefined,
-      subject: managedAuth.subject
-    });
-    if (!result.recorded && !result.duplicate && process.env.SUPERSKILL_TELEMETRY_ENABLED !== "false") return reply.code(400).send({ error: "Invalid managed event" });
-    return reply.code(200).send(result);
+  const managed = await handleManagedEventRequest(authorization, body, { accessResolver: superskillAccessResolver });
+  if (managed) {
+    for (const [name, value] of Object.entries(managed.headers ?? {})) reply.header(name, value);
+    return reply.code(managed.status).send(managed.body);
   }
+  const kind = String(body.kind ?? "");
   const auth = authorization ? await userFromAuthorization(authorization) : {};
   const event = sanitizeEvent({
     kind,
@@ -1729,6 +1737,14 @@ app.post("/internal/eval-result", async (request, reply) => {
 
 const port = Number(process.env.HARNESS_API_PORT ?? 8787);
 const host = process.env.HARNESS_API_HOST ?? "127.0.0.1";
+const releaseReconcile = await resourceReleases.reconcileResourceReleases();
+if (releaseReconcile.store === "unavailable") {
+  app.log.error({ operation: "resource_release_reconcile", code: "RELEASE_STORE_UNAVAILABLE" }, "Resource release metadata reconciliation unavailable");
+  if (hostedResourcePublishEnabled) throw new Error("RELEASE_STORE_UNAVAILABLE");
+}
+if (hostedResourcePublishEnabled && !resourceReleases.probeResourceImportArchiveStorage().ok) {
+  throw new Error("ARCHIVE_STORAGE_UNAVAILABLE");
+}
 await app.listen({ port, host });
 
 function parseEntitlementSubject(value: string | undefined): EntitlementSubject | undefined {
@@ -1859,16 +1875,28 @@ async function authenticatePublicResourcePublish(authorization: string | undefin
   if (!authorization) {
     return { status: 401, error: "Sign in required", code: "AUTH_REQUIRED" };
   }
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if ((!supabaseUrl || !supabaseAnonKey) && process.env.NODE_ENV !== "production") {
     const local = authorization.match(/^Bearer\s+local:([A-Za-z0-9._:-]{2,80})$/);
     if (!local) return { status: 401, error: "Invalid or expired session", code: "AUTH_INVALID" };
-    return { user: { id: local[1] } };
+    return { user: { id: local[1], confirmed: true, subject: superskillUserSubject(local[1], process.env.SUPERSKILL_SUBJECT_SALT ?? "onlyharness-local-dev-subject") } };
   }
-  const result = await userFromAuthorization(authorization);
-  if (result.user) return result;
+  const managed = await resolveManagedAccess(authorization, {}, superskillAccessResolver, new Date());
+  if (managed.ok) {
+    if (managed.evidence !== "confirmed_user" || !managed.publicGoEligible || !/^user:[a-f0-9]{64}$/.test(managed.subject)) {
+      return { status: 403, error: "Confirmed managed user access is required", code: "FORBIDDEN" };
+    }
+    return { user: { id: managed.subject, subject: managed.subject, confirmed: true } };
+  }
   return {
-    ...result,
-    code: result.status === 401 ? "AUTH_INVALID" : "AUTH_UNAVAILABLE"
+    status: managed.status,
+    error: managed.reasonCode === "SUPERSKILL_EMAIL_UNCONFIRMED"
+      ? "Email confirmation required"
+      : managed.reasonCode === "SUPERSKILL_ACCESS_DENIED"
+        ? "Managed publication access is not granted"
+        : managed.reasonCode === "SUPERSKILL_AUTH_UNAVAILABLE"
+          ? "Authentication service unavailable"
+          : "Invalid or expired session",
+    code: managed.status === 503 ? "AUTH_UNAVAILABLE" : managed.status === 403 ? "FORBIDDEN" : "AUTH_INVALID"
   };
 }
 
@@ -1894,30 +1922,30 @@ function publicResourcePublishDisabled() {
 
 async function userFromAuthorization(authorization: string | undefined): Promise<AuthResult> {
   if (!supabaseUrl || !supabaseAnonKey) {
+    if (process.env.NODE_ENV === "production") {
+      return { status: 503, error: "Authentication service unavailable", code: "AUTH_UNAVAILABLE" };
+    }
+    if (!authorization) return { status: 401, error: "Sign in required", code: "AUTH_REQUIRED" };
     const local = authorization?.match(/^Bearer\s+local:([A-Za-z0-9._:-]{2,80})$/);
-    return { user: { id: local?.[1] ?? "local-dev" } };
+    if (!local) return { status: 401, error: "Invalid or expired session", code: "AUTH_INVALID" };
+    return { user: { id: local[1], confirmed: true } };
   }
   if (!authorization?.startsWith("Bearer ")) {
-    return { status: 401, error: "Sign in required" };
+    return { status: 401, error: "Sign in required", code: "AUTH_REQUIRED" };
   }
-  try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        apikey: supabaseAnonKey,
-        authorization
-      }
-    });
-    if (!response.ok) {
-      return { status: 401, error: "Invalid or expired session" };
-    }
-    const user = await response.json() as { id?: string; email?: string };
-    if (!user.id) {
-      return { status: 401, error: "Invalid session user" };
-    }
-    return { user: { id: user.id, email: user.email } };
-  } catch {
-    return { status: 503, error: "Auth provider unavailable" };
+  const identity = await fetchSupabaseAuthIdentity({
+    supabaseUrl,
+    anonKey: supabaseAnonKey,
+    authorization,
+    timeoutMs: supabaseAuthTimeout
+  });
+  if (!identity.ok) {
+    return identity.kind === "invalid"
+      ? { status: 401, error: "Invalid or expired session", code: "AUTH_INVALID" }
+      : { status: 503, error: "Authentication service unavailable", code: "AUTH_UNAVAILABLE" };
   }
+  const confirmedAt = typeof identity.user.emailConfirmedAt === "string" ? Date.parse(identity.user.emailConfirmedAt) : Number.NaN;
+  return { user: { id: identity.user.id, email: identity.user.email, confirmed: Number.isFinite(confirmedAt) && confirmedAt <= Date.now() } };
 }
 
 const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorization) => {
@@ -1986,7 +2014,7 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
     command,
     localCommand,
     npmStatus: "published",
-    archiveUrl: `https://onlyharness.com/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
+    archiveUrl: `https://superskill.sh/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
     contextCost: detail.contextCost,
     access: detail.access,
     payment: detail.access.payment,
@@ -2591,41 +2619,63 @@ async function importVerifiedHarnessDir(body: HarnessDirPublishRequest, user: Au
 
 async function importResourcePackage(body: ResourcePackageImportRequest, user: AuthUser, options: ResourcePackageImportOptions = {}) {
   const files = Array.isArray(body.files) ? body.files : [];
-  if (!files.length) return { status: 400, error: "files are required" };
-  if (files.length > 120) return { status: 400, error: "too many files" };
+  if (!files.length) return { status: 400, error: "files are required", code: "VALIDATION_FAILED" };
+  if (files.length > 120) return { status: 400, error: "too many files", code: "VALIDATION_FAILED" };
 
   const temp = path.join(registry.workspaceRoot, "data", `.resource-package-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const safeFiles: Array<{ path: string; content: string }> = [];
   try {
     for (const file of files) {
       const safe = safeResourcePackageFile(file);
-      if (!safe.ok) return { status: safe.status, error: safe.error, code: safe.code };
-      const target = path.join(temp, safe.path);
-      mkdirSync(path.dirname(target), { recursive: true });
-      writeFileSync(target, safe.content);
+      if (!safe.ok) return { status: safe.status, error: safe.error, code: "VALIDATION_FAILED" };
       safeFiles.push({ path: safe.path, content: safe.content });
+    }
+    const canonicalValidation = resourceReleases.validateCanonicalResourceFiles(safeFiles);
+    if (!canonicalValidation.ok) return { status: 400, error: canonicalValidation.error, code: "VALIDATION_FAILED" };
+    for (const file of safeFiles) {
+      const target = path.join(temp, file.path);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, file.content);
     }
 
     const readme = safeFiles.find((file) => /(^|\/)readme\.md$/i.test(file.path));
     const requested = body.name ?? body.title ?? (readme ? firstHeading(readme.content) : undefined);
-    if (!requested) return { status: 400, error: "name or title is required" };
+    if (!requested) return { status: 400, error: "name or title is required", code: "VALIDATION_FAILED" };
     const name = slugify(requested);
-    if (!safePublicHarnessName(name)) return { status: 400, error: "name is not publishable" };
+    if (!safePublicHarnessName(name)) return { status: 400, error: "name is not publishable", code: "VALIDATION_FAILED" };
 
     const resourceType = normalizeResourceType(body.resourceType, safeFiles.map((file) => file.path));
     const title = cleanTitle(body.title) ?? (readme ? firstHeading(readme.content) : undefined) ?? titleizeName(name);
-    const summary = cleanSummary(body.summary) ?? `Hosted ${resourceType.replace(/_/g, " ")} package published to OnlyHarness.`;
+    const summary = cleanSummary(body.summary) ?? `Hosted ${resourceType.replace(/_/g, " ")} package published to SuperSkill.`;
     const worksWith = normalizeWorksWith(body.worksWith, resourceType);
     const sourceUrl = cleanPublicUrl(body.sourceUrl);
-    if (body.sourceUrl && !sourceUrl) return { status: 400, error: "sourceUrl must be a public http(s) URL without credentials" };
+    if (body.sourceUrl && !sourceUrl) return { status: 400, error: "sourceUrl must be a public http(s) URL without credentials", code: "VALIDATION_FAILED" };
 
     const workspaceSlug = options.workspaceSlug ? workspaces.cleanWorkspaceSlug(options.workspaceSlug) : undefined;
     const id = workspaceSlug ? workspaces.workspaceResourceId(workspaceSlug, name) : `onlyharness:packages/${name}`;
-    let archivePath: string;
+    const version = workspaceSlug ? undefined : body.version;
+    const idempotencyKey = workspaceSlug ? undefined : body.idempotencyKey;
+    if (!workspaceSlug && !resourceReleases.isReleaseSemver(version)) {
+      return { status: 400, error: "version must be valid semantic version", code: "VALIDATION_FAILED" };
+    }
+    if (!workspaceSlug && !resourceReleases.isValidIdempotencyKey(idempotencyKey)) {
+      return { status: 400, error: "idempotencyKey must be 16-200 safe characters", code: "VALIDATION_FAILED" };
+    }
+    if (!workspaceSlug) {
+      const existingCatalogEntry = resources.readResourceCatalog().resources.some((resource) => resource.id === id);
+      if (existingCatalogEntry && !resourceReleases.resourceReleaseOwnerSubject(id)) {
+        return {
+          status: 409,
+          error: "Existing hosted resource ownership has not completed durable migration",
+          code: "PUBLISH_CONFLICT",
+          next: "Choose a new resource name or ask an operator to complete the legacy ownership inventory."
+        };
+      }
+    }
     let archiveTemp: string | undefined;
-    try {
-      const archiveRoot = workspaceSlug ? workspaces.workspaceResourceArchiveRoot(workspaceSlug) : resources.resourceArchiveRoot();
-      archivePath = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.tar.gz`);
+    if (workspaceSlug) try {
+      const archiveRoot = workspaces.workspaceResourceArchiveRoot(workspaceSlug);
+      const archivePath = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.tar.gz`);
       archiveTemp = path.join(archiveRoot, `${resources.resourceArchiveKey(id)}.${Date.now()}.tmp`);
       const tar = spawnSync("tar", ["-czf", archiveTemp, "-C", temp, "."], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
       if (tar.status !== 0) {
@@ -2643,11 +2693,12 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
     const now = new Date().toISOString();
     const signals = { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 };
     const canonicalUrl = workspaceSlug
-      ? `https://onlyharness.com/#/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}`
-      : `https://onlyharness.com/#/resources/${encodeURIComponent(id)}`;
+      ? `https://superskill.sh/#/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}`
+      : `https://superskill.sh/#/resources/${encodeURIComponent(id)}`;
     const archiveUrl = workspaceSlug
-      ? `https://onlyharness.com/api/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}/archive`
-      : `https://onlyharness.com/api/resources/${encodeURIComponent(id)}/archive`;
+      ? `https://superskill.sh/api/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}/archive`
+      : `https://superskill.sh/api/resources/${encodeURIComponent(id)}/releases/${encodeURIComponent(version!)}/archive`;
+    const tags = dedupeStrings([resourceType, "hosted", "agent-resource", ...(body.tags ?? [])]);
     const base: Omit<resources.Resource, "popularityScore" | "popularityBreakdown"> = {
       id,
       identity: { scheme: "onlyharness", key: workspaceSlug ? `workspaces/${workspaceSlug}/packages/${name}` : `packages/${name}` },
@@ -2659,20 +2710,20 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
       upstreamId: workspaceSlug ? `@${workspaceSlug}/${name}` : `packages/${name}`,
       upstreamOwner: workspaceSlug ? `@${workspaceSlug}` : "onlyharness",
       upstreamRepo: name,
-      creatorName: options.workspaceName ?? user.email ?? "OnlyHarness user",
+      creatorName: options.workspaceName ?? "SuperSkill publisher",
       licenseStatus: "unknown",
       sourceCheckedAt: now,
       sourceCheckMethod: "manual_research",
       sourceCheckStatus: "active",
       lastSeenAt: now,
       installability: "importable",
-      tags: dedupeStrings([resourceType, "hosted", "agent-resource", ...(body.tags ?? [])]),
+      tags,
       worksWith,
-      upstreamPopularity: { sourceLabel: "OnlyHarness hosted resource package" },
+      upstreamPopularity: { sourceLabel: "SuperSkill hosted resource package" },
       onlyHarnessSignals: signals,
       trust: { sourceChecked: true, securityScan: "not_scanned", riskTier: "UNKNOWN" },
       actions: [
-        { id: "open_onlyharness", label: "Use in OnlyHarness", url: canonicalUrl },
+        { id: "open_onlyharness", label: "Use in SuperSkill", url: canonicalUrl },
         { id: "download_archive", label: "Download archive", url: archiveUrl },
         ...(sourceUrl ? [{ id: "open_upstream" as const, label: "Open source", url: sourceUrl }] : [])
       ],
@@ -2696,28 +2747,63 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
         riskPenalty: score.riskPenalty
       }
     };
-    if (workspaceSlug) workspaces.upsertWorkspaceResource(workspaceSlug, resource);
-    else resources.upsertImportedResource(resource);
-    await recordEvent({ kind: "applied", owner: workspaceSlug ? `@${workspaceSlug}` : "onlyharness", repo: name, subject: eventSubject(user.id), target: workspaceSlug ? "workspace_resource_package" : "resource_package", client: "api" });
-    appendState({
-      type: workspaceSlug ? "workspace_resource_package_import" : "resource_package_import",
-      id,
-      name,
-      resourceType,
-      archive: archivePath,
-      files: safeFiles.length,
-      userId: user.id,
-      workspace: workspaceSlug,
-      actor: options.actorLabel,
-      sourceUrl,
-      at: now
-    });
+    let release: resourceReleases.ResourceRelease | undefined;
+    let replay = false;
+    if (workspaceSlug) {
+      workspaces.upsertWorkspaceResource(workspaceSlug, resource);
+    } else {
+      const payloadDigest = resourceReleases.canonicalPayloadDigest({
+        name,
+        version: version!,
+        resourceType,
+        title,
+        summary,
+        sourceUrl,
+        worksWith,
+        tags,
+        files: safeFiles
+      });
+      const committed = await resourceReleases.commitResourceRelease({
+        resource,
+        version: version!,
+        idempotencyKey: idempotencyKey!,
+        ownerSubject: user.subject!,
+        payloadDigest,
+        files: safeFiles
+      });
+      if (!committed.ok) return committed;
+      release = committed.release;
+      replay = committed.replay;
+    }
+    if (workspaceSlug || !replay) {
+      await recordEvent({ kind: "applied", owner: workspaceSlug ? `@${workspaceSlug}` : "onlyharness", repo: name, subject: workspaceSlug ? eventSubject(user.id) : user.subject, target: workspaceSlug ? "workspace_resource_package" : "resource_package", client: "api" });
+      appendState({
+        type: workspaceSlug ? "workspace_resource_package_import" : "resource_package_import",
+        id,
+        name,
+        resourceType,
+        archiveStorageKey: workspaceSlug ? resources.resourceArchiveKey(id) : release?.storageKey,
+        files: safeFiles.length,
+        subject: workspaceSlug ? eventSubject(user.id) : user.subject,
+        workspace: workspaceSlug,
+        actor: options.actorLabel,
+        sourceUrl,
+        at: now
+      });
+    }
     return {
       resource,
+      resourceId: id,
+      version: release?.version,
+      artifactDigest: release?.artifactDigest,
+      size: release?.archiveSize,
+      trust: release?.trust ?? "unreviewed",
+      replay,
       archive: {
         url: archiveUrl,
         fileName: resources.resourceArchiveFileName(resource)
       },
+      archiveUrl,
       hosted: true,
       verified: false,
       next: workspaceSlug

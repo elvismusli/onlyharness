@@ -4,6 +4,7 @@ import {
   activationExecutionStateSchema,
   capabilityRequiresIndependentReview,
   clientSchema,
+  exactHandoffDecisionRequestSchema,
   managedStatusSchema,
   reviewAttestationSchema,
   reviewWarningLimitationCodes,
@@ -11,6 +12,17 @@ import {
   selectedShowroomListResponseSchema,
   superskillErrorCodeSchema
 } from "../src/browser.js";
+
+test("exact handoff decision accepts only an immutable tuple and one supported client", () => {
+  const request = {
+    capability: { id: "market-research", version: "0.2.0", artifactDigest: `sha256:${"a".repeat(64)}` },
+    client: "codex"
+  };
+  assert.equal(exactHandoffDecisionRequestSchema.safeParse(request).success, true);
+  assert.equal(exactHandoffDecisionRequestSchema.safeParse({ ...request, projectPath: "/private/repo" }).success, false);
+  assert.equal(exactHandoffDecisionRequestSchema.safeParse({ ...request, client: "cursor" }).success, false);
+  assert.equal(exactHandoffDecisionRequestSchema.safeParse({ ...request, capability: { ...request.capability, artifactDigest: "latest" } }).success, false);
+});
 
 function validReviewAttestation() {
   return {
@@ -45,6 +57,10 @@ function validReviewAttestation() {
       inferred: [],
       differences: []
     },
+    authorship: {
+      author: { actorId: "github-id:149376360", label: "elvismusli" },
+      releaseCutter: { actorId: "github-id:149376360", label: "elvismusli" }
+    },
     compatibility: [
       { client: "claude-code", clientVersion: "2.1.112", os: "darwin", verdict: "pass", checkedAt: "2026-07-12T00:00:00.000Z", fixtureId: "claude-clean" },
       { client: "codex", clientVersion: "0.135.0", os: "darwin", verdict: "pass", checkedAt: "2026-07-12T00:00:00.000Z", fixtureId: "codex-clean" }
@@ -54,7 +70,7 @@ function validReviewAttestation() {
       { caseId: "case-2", verdict: "pass", limitationCodes: [] },
       { caseId: "case-3", verdict: "partial", limitationCodes: ["SCOPE"] }
     ],
-    reviewer: { label: "Internal alpha reviewer 1" },
+    reviewer: { actorId: "github-id:200000001", label: "reviewer-one" },
     limitations: ["Scope is limited to the reviewed market-research workflow"],
     reviewedAt: "2026-07-12T00:01:00.000Z",
     expiresAt: "2026-12-01T00:01:00.000Z"
@@ -148,7 +164,27 @@ test("review attestation requires exact client coverage, unique cases, and a pub
   }).success, false);
   assert.equal(reviewAttestationSchema.safeParse({
     ...review,
-    reviewer: { label: "Reviewer reviewer@example.com" }
+    reviewer: { actorId: "github-id:200000003", label: "reviewer@example.com" }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...review,
+    reviewer: { actorId: "team:generic-reviewer", label: "generic-reviewer" }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...review,
+    reviewer: { actorId: "github:reviewer-one", label: "reviewer-one" }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...review,
+    reviewer: { actorId: "github-id:000123", label: "reviewer-one" }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...review,
+    reviewer: { actorId: "github-id:not-digits", label: "reviewer-one" }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...review,
+    reviewer: { ...review.authorship.author, label: "renamed-elvis" }
   }).success, false);
 });
 
@@ -167,7 +203,7 @@ test("high-stakes review attestation requires a distinct independent pass over e
   };
   assert.equal(reviewAttestationSchema.safeParse(highStakesReview).success, false);
   const independentReview = {
-    reviewer: { label: "Independent safety reviewer 2" },
+    reviewer: { actorId: "github-id:200000002", label: "independent-reviewer" },
     verdict: "pass" as const,
     reviewedAt: "2026-07-12T00:00:30.000Z",
     caseIds: review.humanCases.map((item) => item.caseId)
@@ -179,7 +215,11 @@ test("high-stakes review attestation requires a distinct independent pass over e
   }).success, false);
   assert.equal(reviewAttestationSchema.safeParse({
     ...highStakesReview,
-    independentReview: { ...independentReview, reviewer: { label: "Reviewer reviewer@example.com" } }
+    independentReview: { ...independentReview, reviewer: review.authorship.author }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...highStakesReview,
+    independentReview: { ...independentReview, reviewer: { actorId: "github-id:200000003", label: "reviewer@example.com" } }
   }).success, false);
   assert.equal(reviewAttestationSchema.safeParse({
     ...highStakesReview,

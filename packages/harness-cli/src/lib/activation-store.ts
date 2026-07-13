@@ -21,7 +21,7 @@ import { SuperSkillCliError } from "./superskill-types.js";
 
 export type ProjectState = { projectRoot: string; stateRoot: string };
 
-export function resolveProjectState(projectDir?: string): ProjectState {
+export function resolveProjectRoot(projectDir?: string): string {
   const explicit = projectDir ? path.resolve(projectDir) : undefined;
   let root = explicit;
   if (!root) {
@@ -34,7 +34,23 @@ export function resolveProjectState(projectDir?: string): ProjectState {
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new SuperSkillCliError(`Project directory does not exist: ${root}`, 3, "PROJECT_ROOT_INVALID", "Pass an existing directory with --project-dir.");
   }
-  const projectRoot = realpathSync(root);
+  return realpathSync(root);
+}
+
+export function inspectProjectState(projectDir?: string): ProjectState | undefined {
+  const projectRoot = resolveProjectRoot(projectDir);
+  const override = process.env.ONLYHARNESS_STATE_DIR;
+  const requestedStateRoot = override ? path.resolve(override) : path.join(projectRoot, ".onlyharness");
+  if (!existsSync(requestedStateRoot)) return undefined;
+  assertNotSymlink(requestedStateRoot, "state root");
+  if (!lstatSync(requestedStateRoot).isDirectory()) throw unsafeManagedPath("state root is not a directory");
+  const stateRoot = realpathSync(requestedStateRoot);
+  assertCanonicalDirectory(stateRoot, "state root");
+  return { projectRoot, stateRoot };
+}
+
+export function resolveProjectState(projectDir?: string): ProjectState {
+  const projectRoot = resolveProjectRoot(projectDir);
   const override = process.env.ONLYHARNESS_STATE_DIR;
   const requestedStateRoot = override ? path.resolve(override) : path.join(projectRoot, ".onlyharness");
   if (!override && path.relative(projectRoot, requestedStateRoot).startsWith("..")) {

@@ -22,11 +22,14 @@ import {
   assertSafeStatePath,
   clearRemovalIntent,
   findActivationByRequest,
+  inspectProjectState,
   listActivations,
   readActivation,
   readActivationPlan,
   readRemovalIntent,
   resolveProjectState,
+  resolveProjectRoot,
+  queueEvent,
   withProjectLock,
   writeActivation,
   writeActivationPlan,
@@ -34,6 +37,7 @@ import {
   type ProjectState
 } from "../lib/activation-store.js";
 import { clientAdapter, readPinnedMarker, safeCapabilitySlug, scanInventory } from "../lib/client-adapters.js";
+import { acknowledgePendingSuperSkillHandoff } from "../lib/superskill-handoff.js";
 import {
   computeDecisionDigest,
   fetchExactRelease,
@@ -150,7 +154,7 @@ export function registerActivationCommands(program: Command, registry: RegistryS
   activation.command("doctor")
     .description("inspect managed client inventory and optionally recheck exact releases")
     .requiredOption("--target <target>", "claude-code|codex")
-    .option("--live", "recheck managed exact releases (requires HH_SUPERSKILL_TOKEN)", false)
+    .option("--live", "recheck managed exact releases (uses HH_TOKEN; legacy HH_SUPERSKILL_TOKEN is compatibility only)", false)
     .option("--project-dir <path>")
     .option("--json", "print JSON", false)
     .action(async (options) => runManagedAction(Boolean(options.json), async () => {
@@ -173,6 +177,7 @@ export async function startActivation(input: {
   mode: string;
   consent: string;
   fromPinned?: string;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   if (input.consent !== "explicit") throw consentRequired("Activation requires --consent explicit after disclosure.");
   if (!REQUEST_ID_RE.test(input.activationRequestId)) throw invalid("Activation request ID must start with req_ and contain at least 8 URL-safe random characters.", "ACTIVATION_REQUEST_INVALID");
@@ -187,14 +192,34 @@ export async function startActivation(input: {
   if (!Number.isFinite(expiry) || expiry <= Date.now()) throw staleConsent();
   requireSuperSkillToken();
 
+  // Fail closed on the complete live tuple and in-memory archive before creating
+  // project state. A stale/revoked/digest-mismatched/path-unsafe decision must
+  // leave no local activation record or cache behind.
+  const exact = await fetchExactRelease({ registry: input.registry, capabilityId: input.capabilityId, version: input.version, signal: input.signal });
+  const capability = exact.capability;
+  assertExactCapability(capability, input.capabilityId, input.version, input.digest, input.client);
+  if (!exact.activationAllowed || !exact.archive) throw blockedRelease(exact.blockCode, exact.replacement);
+  if (exact.archive.artifactDigest !== input.digest) throw new SuperSkillCliError("Exact release archive digest changed after consent.", 3, "ARTIFACT_DIGEST_MISMATCH", "Request a new recommendation; do not download this release.");
+  if (computeDecisionDigest(capability, input.client, input.recommendationExpiresAt!, input.recommendationId) !== input.decisionDigest) throw staleConsent();
+  const archive = await fetchManagedArchive({ registry: input.registry, archiveUrl: exact.archive.url, signal: input.signal });
+  validateManagedArchive(archive, { version: input.version, digest: input.digest });
+
+  assertRequestActive(input.signal);
   const state = resolveProjectState(input.projectDir);
   return withProjectLock(state, `request-${input.activationRequestId}`, async () => {
+    assertRequestActive(input.signal);
     const tuple = { id: input.capabilityId!, ref: "", version: input.version!, artifactDigest: input.digest! };
     const existing = findActivationByRequest(state, input.activationRequestId);
     if (existing) {
       assertSameRequest(existing, { ...tuple, ref: existing.capability.ref }, input.client, input.recommendationId);
       if (existing.executionState === "failed") throw new SuperSkillCliError("The activation request previously failed.", 3, "ACTIVATION_FAILED", "Create a new request ID after resolving the failure.");
-      if (["ready", "loaded", "invoked", "outcome_success", "outcome_failed", "outcome_unknown"].includes(existing.executionState)) return startResult(state, existing);
+      if (["ready", "loaded", "invoked", "outcome_success", "outcome_failed", "outcome_unknown"].includes(existing.executionState)) {
+        const cacheRoot = path.join(state.stateRoot, "cache", "sha256", input.digest!.slice("sha256:".length));
+        assertSafeStatePath(state, cacheRoot);
+        verifyCache(cacheRoot, archive.files, input.digest!);
+        acknowledgePendingSuperSkillHandoff(state.projectRoot, tuple);
+        return startResult(state, existing);
+      }
     }
     const now = new Date().toISOString();
     const record: ActivationRecord = existing ?? {
@@ -211,27 +236,21 @@ export async function startActivation(input: {
       createdAt: now,
       updatedAt: now
     };
+    assertRequestActive(input.signal);
     writeActivation(state, record);
-    await emitForRecord(input.registry, state, record, "recommendation_accepted");
-    await emitForRecord(input.registry, state, record, "activation_started");
     const staging = path.join(state.stateRoot, "staging", record.activationId);
     try {
+      assertRequestActive(input.signal);
       assertSafeStatePath(state, staging);
       rmSync(staging, { recursive: true, force: true });
-      const exact = await fetchExactRelease({ registry: input.registry, capabilityId: input.capabilityId!, version: input.version! });
-      const capability = exact.capability;
-      assertExactCapability(capability, input.capabilityId!, input.version!, input.digest!, input.client);
-      if (!exact.activationAllowed || !exact.archive) throw blockedRelease(exact.blockCode, exact.replacement);
-      if (exact.archive.artifactDigest !== input.digest) throw new SuperSkillCliError("Exact release archive digest changed after consent.", 3, "ARTIFACT_DIGEST_MISMATCH", "Request a new recommendation; do not download this release.");
-      if (computeDecisionDigest(capability, input.client, input.recommendationExpiresAt!) !== input.decisionDigest) throw staleConsent();
       record.capability.ref = capability.release.ref;
       record.executionState = "downloading";
+      assertRequestActive(input.signal);
       writeActivation(state, record);
-      const archive = await fetchManagedArchive({ registry: input.registry, archiveUrl: exact.archive.url });
-      validateManagedArchive(archive, { version: input.version!, digest: input.digest! });
       mkdirSync(staging, { recursive: true, mode: 0o700 });
       assertSafeStatePath(state, staging);
       for (const file of archive.files) {
+        assertRequestActive(input.signal);
         const target = path.join(staging, file.path);
         assertSafePathUnder(staging, target, "managed staging file");
         mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
@@ -244,6 +263,7 @@ export async function startActivation(input: {
       if (validation.manifest.version !== input.version) throw invalid("Native manifest version does not match the consented release.", "ARTIFACT_DIGEST_MISMATCH");
       const plan = buildActivationPlan(staging, validation.manifest as unknown as HarnessPlanManifest);
       record.executionState = "digest_verified";
+      assertRequestActive(input.signal);
       writeActivation(state, record);
       const cacheRoot = path.join(state.stateRoot, "cache", "sha256", input.digest!.slice("sha256:".length));
       await withProjectLock(state, `cache-${input.digest!.slice("sha256:".length)}`, async () => {
@@ -265,15 +285,23 @@ export async function startActivation(input: {
       });
       writeActivationPlan(state, record.activationId, relocatePlan(plan, staging, cacheRoot));
       record.executionState = "ready";
+      assertRequestActive(input.signal);
       writeActivation(state, record);
-      await emitForRecord(input.registry, state, record, "activation_ready");
-      void flushManagedEvents(input.registry, state);
+      acknowledgePendingSuperSkillHandoff(state.projectRoot, record.capability);
+      queueLifecycleEvents(state, record, ["recommendation_accepted", "activation_started", "activation_ready"]);
+      void flushManagedEvents(input.registry, state).catch(() => undefined);
       return startResult(state, record);
     } catch (error) {
       rmSync(staging, { recursive: true, force: true });
+      if (error instanceof SuperSkillCliError && error.reasonCode === "REQUEST_CANCELLED") {
+        rmSync(path.join(state.stateRoot, "activations", `${record.activationId}.json`), { force: true });
+        rmSync(path.join(state.stateRoot, "activation-plans", `${record.activationId}.json`), { force: true });
+        throw error;
+      }
       record.executionState = "failed";
       writeActivation(state, record);
-      await emitForRecord(input.registry, state, record, "activation_failed", { reasonCode: error instanceof SuperSkillCliError ? error.reasonCode : "ACTIVATION_FAILED" });
+      queueEvent(state, managedEvent(record, "activation_failed", { reasonCode: error instanceof SuperSkillCliError ? error.reasonCode : "ACTIVATION_FAILED" }));
+      void flushManagedEvents(input.registry, state).catch(() => undefined);
       throw error;
     }
   });
@@ -286,17 +314,24 @@ async function startFromPinned(input: {
   client: SuperSkillClient;
   consent: string;
   fromPinned?: string;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
   requireSuperSkillToken();
-  const state = resolveProjectState(input.projectDir);
+  const projectRoot = resolveProjectRoot(input.projectDir);
   const markerRelative = safeRelativeMarker(input.fromPinned!);
-  const markerFile = path.resolve(state.projectRoot, markerRelative);
-  assertInside(state.projectRoot, markerFile);
-  assertSafePathUnder(state.projectRoot, markerFile, "pinned marker");
+  const markerFile = path.resolve(projectRoot, markerRelative);
+  assertInside(projectRoot, markerFile);
+  assertSafePathUnder(projectRoot, markerFile, "pinned marker");
   const marker = readPinnedMarker(markerFile)!;
   if (marker.client !== input.client) throw invalid("Pinned skill belongs to a different client.", "CLIENT_UNSUPPORTED");
-  const expectedMarker = clientAdapter(marker.client).markerPath(state.projectRoot, marker.capabilityId);
+  const expectedMarker = clientAdapter(marker.client).markerPath(projectRoot, marker.capabilityId);
   if (path.resolve(expectedMarker) !== markerFile) throw invalid("Pinned marker is outside the target-native managed path.", "MANAGED_FILE_CHANGED");
+  const exact = await fetchExactRelease({ registry: input.registry, capabilityId: marker.capabilityId, version: marker.version, signal: input.signal });
+  assertExactCapability(exact.capability, marker.capabilityId, marker.version, marker.artifactDigest, input.client);
+  if (!exact.activationAllowed) throw blockedRelease(exact.blockCode, exact.replacement);
+  verifyPinnedPackage(path.dirname(markerFile), marker);
+  assertRequestActive(input.signal);
+  const state = resolveProjectState(projectRoot);
   return withProjectLock(state, `request-${input.activationRequestId}`, async () => {
     const existing = findActivationByRequest(state, input.activationRequestId);
     const tuple = { id: marker.capabilityId, ref: marker.ref, version: marker.version, artifactDigest: marker.artifactDigest };
@@ -306,10 +341,6 @@ async function startFromPinned(input: {
       if (existing.executionState === "failed") throw new SuperSkillCliError("The pinned activation request previously failed.", 3, "ACTIVATION_FAILED", "Create a new request ID after resolving the failure.");
       return startResult(state, existing);
     }
-    const exact = await fetchExactRelease({ registry: input.registry, capabilityId: marker.capabilityId, version: marker.version });
-    assertExactCapability(exact.capability, marker.capabilityId, marker.version, marker.artifactDigest, input.client);
-    if (!exact.activationAllowed) throw blockedRelease(exact.blockCode, exact.replacement);
-    verifyPinnedPackage(path.dirname(markerFile), marker);
     const now = new Date().toISOString();
     const record: ActivationRecord = {
       schemaVersion: "superskill.activation.v1",
@@ -327,14 +358,23 @@ async function startFromPinned(input: {
     };
     writeActivationPlan(state, record.activationId, {
         root: path.dirname(markerFile),
-        files: [{ path: "SKILL.md", purpose: "agent_prompt" }],
+        files: Object.keys(marker.managedFiles).sort().map((file) => ({
+          path: safeArtifactRelative(file),
+          purpose: file === "SKILL.md" ? "agent_prompt" as const : "runbook" as const
+        })),
         stages: [{ id: "pinned-use", agent: "superskill-pinned", promptPath: "SKILL.md" }]
       });
     writeActivation(state, record);
-    await emitForRecord(input.registry, state, record, "activation_started");
-    await emitForRecord(input.registry, state, record, "activation_ready");
+    queueLifecycleEvents(state, record, ["activation_started", "activation_ready"]);
+    void flushManagedEvents(input.registry, state).catch(() => undefined);
     return startResult(state, record);
   });
+}
+
+function assertRequestActive(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new SuperSkillCliError("SuperSkill request was cancelled.", 3, "REQUEST_CANCELLED", "No local activation state was created. Retry with fresh consent if the task is still wanted.");
+  }
 }
 
 export async function markActivation(registry: string, projectDir: string | undefined, activationId: string, next: string, reason?: string): Promise<Record<string, unknown>> {
@@ -398,7 +438,7 @@ export async function finishActivation(
   });
 }
 
-export async function keepActivation(registry: string, projectDir: string | undefined, activationId: string, confirmed: boolean): Promise<{
+export async function keepActivation(registry: string, projectDir: string | undefined, activationId: string, confirmed: boolean, signal?: AbortSignal): Promise<{
   executionState: ExecutionState;
   pinState: "pinned";
   client: SuperSkillClient;
@@ -406,9 +446,11 @@ export async function keepActivation(registry: string, projectDir: string | unde
   doctor: { status: "detected_on_disk" };
 }> {
   if (!confirmed) throw consentRequired("Keeping a managed skill requires --confirm-keep after a completed outcome.");
+  assertRequestActive(signal);
   requireSuperSkillToken();
   const state = resolveProjectState(projectDir);
   return withProjectLock(state, `activation-${activationId}`, async () => {
+    assertRequestActive(signal);
     const record = readActivation(state, activationId);
     if (!isOutcomeState(record.executionState)) throw invalid("Only a completed outcome can be pinned.", "ACTIVATION_INVALID_TRANSITION");
     if (record.mode === "pinned" && record.pinState === "pinned" && record.sourceMarkerPath) {
@@ -430,7 +472,8 @@ export async function keepActivation(registry: string, projectDir: string | unde
     }
     const plan = readActivationPlan(state, record.activationId);
     assertTemporaryPlanRoot(state, record, plan);
-    const exact = await fetchExactRelease({ registry, capabilityId: record.capability.id, version: record.capability.version });
+    const exact = await fetchExactRelease({ registry, capabilityId: record.capability.id, version: record.capability.version, signal });
+    assertRequestActive(signal);
     assertExactCapability(exact.capability, record.capability.id, record.capability.version, record.capability.artifactDigest, record.client);
     if (!exact.activationAllowed) throw blockedRelease(exact.blockCode, exact.replacement);
     const adapter = clientAdapter(record.client);
@@ -450,6 +493,7 @@ export async function keepActivation(registry: string, projectDir: string | unde
       }
       verifyPinnedPackage(targetRoot, adopt);
       const markerText = readFileSync(markerFile);
+      assertRequestActive(signal);
       record.pinState = "pinned";
       record.pinned = { markerPath: markerRelative, markerDigest: sha256Digest(markerText), packageDigest: adopt.packageDigest };
       writeActivation(state, record);
@@ -461,9 +505,12 @@ export async function keepActivation(registry: string, projectDir: string | unde
     assertSafePathUnder(state.projectRoot, targetRoot, "pinned skill root");
     const staging = `${targetRoot}.tmp-${process.pid}-${randomBytes(5).toString("hex")}`;
     assertSafePathUnder(state.projectRoot, staging, "pinned staging root");
+    assertRequestActive(signal);
     rmSync(staging, { recursive: true, force: true });
     mkdirSync(path.join(staging, "references", "resource"), { recursive: true, mode: 0o700 });
     assertSafePathUnder(state.projectRoot, staging, "pinned staging root");
+    let renamed = false;
+    let activationWritten = false;
     try {
       const managedFiles: Record<string, string> = {};
       for (const planFile of plan.files) {
@@ -509,16 +556,21 @@ export async function keepActivation(registry: string, projectDir: string | unde
       assertSafePathUnder(staging, stagedMarker, "pinned marker");
       assertSafePathUnder(state.projectRoot, staging, "pinned staging root");
       assertSafePathUnder(state.projectRoot, targetRoot, "pinned skill root");
+      assertRequestActive(signal);
       renameSync(staging, targetRoot);
+      renamed = true;
       assertSafePathUnder(state.projectRoot, targetRoot, "pinned skill root");
       assertSafePathUnder(state.projectRoot, markerFile, "pinned marker");
       record.pinState = "pinned";
       record.pinned = { markerPath: markerRelative, markerDigest: sha256Digest(Buffer.from(markerText)), packageDigest: pkgDigest };
+      assertRequestActive(signal);
       writeActivation(state, record);
+      activationWritten = true;
       await emitForRecord(registry, state, record, "activation_pinned");
       return keepResult(record, Object.keys(managedFiles));
     } catch (error) {
       rmSync(staging, { recursive: true, force: true });
+      if (renamed && !activationWritten) rmSync(targetRoot, { recursive: true, force: true });
       throw error;
     }
   });
@@ -578,6 +630,9 @@ export async function removeActivation(projectDir: string | undefined, markerInp
     writeRemovalIntent(state, { markerPath: markerRelative, activationId: record.activationId });
     for (const entry of existing) unlinkSync(entry.file);
     unlinkSync(markerFile);
+    for (const directory of [...new Set(existing.map((entry) => path.dirname(entry.file)))].sort((a, b) => b.length - a.length)) {
+      removeEmptyDirectories(directory, root);
+    }
     removeEmptyDirectories(root, clientAdapter(marker.client).pinnedRoot(state.projectRoot));
     record.pinState = "removed";
     writeActivation(state, record);
@@ -590,26 +645,48 @@ export async function removeActivation(projectDir: string | undefined, markerInp
   });
 }
 
-export async function activationDoctor(registry: string, projectDir: string | undefined, client: SuperSkillClient, live: boolean): Promise<{
+export async function removeActivationById(projectDir: string | undefined, activationId: string, confirmed: boolean): Promise<{
+  pinState: "removed";
+  marker: string;
+  removedFiles: string[];
+  alreadyRemoved: boolean;
+}> {
+  if (!confirmed) throw consentRequired("Removing a managed skill requires explicit remove confirmation.");
+  if (!/^act_[A-Za-z0-9_-]{8,120}$/.test(activationId)) {
+    throw invalid("A valid activation ID is required for managed removal.", "ACTIVATION_NOT_FOUND");
+  }
+  const state = resolveProjectState(projectDir);
+  const record = readActivation(state, activationId);
+  const marker = record.pinned?.markerPath ?? record.sourceMarkerPath;
+  if (!marker || record.pinState === "none") {
+    throw invalid("The activation does not own a managed pin.", "ACTIVATION_NOT_FOUND");
+  }
+  return removeActivation(state.projectRoot, marker, true);
+}
+
+export async function activationDoctor(registry: string, projectDir: string | undefined, client: SuperSkillClient, live: boolean, signal?: AbortSignal): Promise<{
   status: "healthy" | "attention";
   client: SuperSkillClient;
   plugin: ReturnType<ReturnType<typeof clientAdapter>["pluginDoctor"]>;
   inventory: ReturnType<typeof scanInventory>;
   managed: Array<Record<string, unknown>>;
 }> {
-  const state = resolveProjectState(projectDir);
+  const projectRoot = resolveProjectRoot(projectDir);
+  const state = inspectProjectState(projectRoot);
   const adapter = clientAdapter(client);
-  const inventory = scanInventory(client, state.projectRoot);
-  const plugin = adapter.pluginDoctor(state.projectRoot);
+  const inventory = scanInventory(client, projectRoot);
+  const plugin = adapter.pluginDoctor(projectRoot);
   const managed: Array<Record<string, unknown>> = [];
-  for (const record of listActivations(state).filter((item) => item.client === client && item.pinState === "pinned" && item.pinned)) {
+  const activationDir = state ? path.join(state.stateRoot, "activations") : undefined;
+  const records = state && activationDir && existsSync(activationDir) ? listActivations(state) : [];
+  for (const record of records.filter((item) => item.client === client && item.pinState === "pinned" && item.pinned)) {
     let status: "detected_on_disk" | "changed" | "approved" | "permission_blocked" | "quarantined" | "revoked" | "unavailable" = "detected_on_disk";
     let next: string | undefined;
     try {
-      const marker = readPinnedMarker(path.resolve(state.projectRoot, record.pinned!.markerPath))!;
-      verifyPinnedPackage(path.dirname(path.resolve(state.projectRoot, record.pinned!.markerPath)), marker);
+      const marker = readPinnedMarker(path.resolve(projectRoot, record.pinned!.markerPath))!;
+      verifyPinnedPackage(path.dirname(path.resolve(projectRoot, record.pinned!.markerPath)), marker);
       if (live) {
-        const exact = await fetchExactRelease({ registry, capabilityId: marker.capabilityId, version: marker.version });
+        const exact = await fetchExactRelease({ registry, capabilityId: marker.capabilityId, version: marker.version, signal });
         status = exact.activationAllowed ? "approved"
           : exact.blockCode === "CAPABILITY_REVOKED" ? "revoked"
           : exact.blockCode === "CAPABILITY_QUARANTINED" ? "quarantined"
@@ -619,6 +696,7 @@ export async function activationDoctor(registry: string, projectDir: string | un
           : "Remove this pin and request an approved replacement.";
       }
     } catch (error) {
+      if (error instanceof SuperSkillCliError && (error.reasonCode === "REQUEST_CANCELLED" || error.reasonCode === "REQUEST_TIMEOUT")) throw error;
       if (error instanceof SuperSkillCliError && error.reasonCode === "MANAGED_FILE_CHANGED") status = "changed";
       else status = "unavailable";
       next = error instanceof Error ? error.message : String(error);
@@ -678,8 +756,11 @@ function verifyCache(cacheRoot: string, files: Array<{ path: string; content: st
 }
 
 function assertExactCapability(capability: ManagedCapability, id: string, version: string, digest: string, client: SuperSkillClient): void {
-  if (capability.id !== id || capability.release.version !== version || capability.release.artifactDigest !== digest) {
+  if (capability.id !== id || capability.release.version !== version) {
     throw new SuperSkillCliError("Exact managed release changed after consent.", 3, "CONSENT_STALE", "Request a new recommendation and review the disclosure again.");
+  }
+  if (capability.release.artifactDigest !== digest) {
+    throw new SuperSkillCliError("Exact managed artifact digest changed after consent.", 3, "ARTIFACT_DIGEST_MISMATCH", "Request a new recommendation; do not use this artifact.");
   }
   if (capability.release.delivery !== "free_archive") throw new SuperSkillCliError("Paid delivery is not supported by SuperSkill MVP.", 3, "PAYMENT_NOT_SUPPORTED_IN_SUPERSKILL", "Use the legacy explicit checkout/install flow outside SuperSkill.");
   if (capability.trust.status !== "approved") throw blockedRelease(capability.trust.status === "revoked" ? "CAPABILITY_REVOKED" : "CAPABILITY_QUARANTINED");
@@ -782,11 +863,11 @@ ${JSON.stringify(capability.permissions, null, 2)}
 
 ${limitations}
 
-Never print or persist \`HH_SUPERSKILL_TOKEN\`. Never auto-update or fall back to an unscanned resource.
+Never print or persist \`HH_TOKEN\` or legacy \`HH_SUPERSKILL_TOKEN\`. Never auto-update or fall back to an unscanned resource.
 `;
 }
 
-function verifyPinnedPackage(root: string, marker: ManagedPinnedMarker): void {
+export function verifyPinnedPackage(root: string, marker: ManagedPinnedMarker): void {
   if (marker.cliPackage !== SUPERSKILL_RUNTIME.cliPackage || marker.cliVersion !== SUPERSKILL_RUNTIME.cliVersion) {
     throw changedFile("Pinned runtime contract differs from this CLI. Remove and create a fresh pin; in-place update is unsupported.");
   }
@@ -802,6 +883,10 @@ function verifyPinnedPackage(root: string, marker: ManagedPinnedMarker): void {
 
 async function emitForRecord(registry: string, state: ProjectState, record: ActivationRecord, kind: ManagedEvent["kind"], extra: Partial<ManagedEvent> = {}): Promise<void> {
   await sendManagedEvent({ registry, state, event: managedEvent(record, kind, extra) });
+}
+
+function queueLifecycleEvents(state: ProjectState, record: ActivationRecord, kinds: ManagedEvent["kind"][]): void {
+  for (const kind of kinds) queueEvent(state, managedEvent(record, kind));
 }
 
 function managedEvent(record: ActivationRecord, kind: ManagedEvent["kind"], extra: Partial<ManagedEvent> = {}): ManagedEvent {

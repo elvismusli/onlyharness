@@ -22,9 +22,9 @@ export type InventorySummary = {
 };
 
 export function requireSuperSkillToken(): string {
-  const token = process.env.HH_SUPERSKILL_TOKEN;
+  const token = process.env.HH_TOKEN ?? process.env.HH_SUPERSKILL_TOKEN;
   if (!token) {
-    throw new SuperSkillCliError("SuperSkill internal-alpha token is required.", 2, "SUPERSKILL_AUTH_REQUIRED", "Set HH_SUPERSKILL_TOKEN for this terminal session; do not store it in the project.");
+    throw new SuperSkillCliError("SuperSkill account token is required.", 2, "SUPERSKILL_AUTH_REQUIRED", "Sign in at https://superskill.sh, export HH_TOKEN for this terminal session, and do not store it in the project. HH_SUPERSKILL_TOKEN is legacy compatibility only.");
   }
   return token;
 }
@@ -53,6 +53,7 @@ export async function recommendCapability(input: {
   task: string;
   client: SuperSkillClient;
   inventory: InventorySummary;
+  signal?: AbortSignal;
 }): Promise<RecommendationResponse> {
   const token = requireSuperSkillToken();
   const task = validateTask(input.task);
@@ -76,7 +77,7 @@ export async function recommendCapability(input: {
         }
       }
     })
-  });
+  }, input.signal);
   return parseManagedResponse(recommendationResponseSchema.safeParse(response), "recommendation");
 }
 
@@ -84,18 +85,36 @@ export async function fetchExactRelease(input: {
   registry: string;
   capabilityId: string;
   version: string;
+  signal?: AbortSignal;
 }): Promise<ExactReleaseResponse> {
   const token = requireSuperSkillToken();
   const response = await managedJson<unknown>(
     `${cleanRegistry(input.registry)}/capabilities/${encodeURIComponent(input.capabilityId)}/releases/${encodeURIComponent(input.version)}`,
-    token
+    token,
+    {},
+    input.signal
   );
   return parseManagedResponse(exactCapabilityReleaseSchema.safeParse(response), "exact release");
+}
+
+export async function fetchExactHandoffDecision(input: {
+  registry: string;
+  capability: { id: string; version: string; artifactDigest: string };
+  client: SuperSkillClient;
+  signal?: AbortSignal;
+}): Promise<RecommendationResponse> {
+  const token = requireSuperSkillToken();
+  const response = await managedJson<unknown>(`${cleanRegistry(input.registry)}/superskill/handoff/decision`, token, {
+    method: "POST",
+    body: JSON.stringify({ capability: input.capability, client: input.client })
+  }, input.signal);
+  return parseManagedResponse(recommendationResponseSchema.safeParse(response), "exact handoff decision");
 }
 
 export async function fetchManagedArchive(input: {
   registry: string;
   archiveUrl: string;
+  signal?: AbortSignal;
 }): Promise<ManagedArchive> {
   const token = requireSuperSkillToken();
   const registry = new URL(`${cleanRegistry(input.registry)}/`);
@@ -103,11 +122,17 @@ export async function fetchManagedArchive(input: {
   if (archive.origin !== registry.origin || !archive.pathname.includes("/capabilities/")) {
     throw new SuperSkillCliError("Managed archive URL is outside the configured registry.", 3, "ARTIFACT_NOT_IMMUTABLE", "Do not send the internal token to another origin.");
   }
-  return managedJson<ManagedArchive>(archive.toString(), token);
+  return managedJson<ManagedArchive>(archive.toString(), token, {}, input.signal);
 }
 
-export function computeDecisionDigest(capability: ManagedCapability, client: SuperSkillClient, expiresAt: string): string {
+export function computeDecisionDigest(
+  capability: ManagedCapability,
+  client: SuperSkillClient,
+  expiresAt: string,
+  recommendationId: string
+): string {
   const contract = {
+    recommendationId,
     selected: {
       id: capability.id,
       ref: capability.release.ref,
@@ -160,12 +185,17 @@ export async function flushManagedEvents(registry: string, state: ProjectState):
   return { sent, pending: remaining.length };
 }
 
-async function managedJson<T>(url: string, token: string, init: RequestInit = {}): Promise<T> {
+async function managedJson<T>(url: string, token: string, init: RequestInit = {}, externalSignal?: AbortSignal): Promise<T> {
+  const requestedUrl = new URL(url).toString();
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), managedTimeoutMs());
+  const signal = externalSignal ? AbortSignal.any([externalSignal, timeout.signal]) : timeout.signal;
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(requestedUrl, {
       ...init,
       redirect: "error",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -173,7 +203,14 @@ async function managedJson<T>(url: string, token: string, init: RequestInit = {}
       }
     });
   } catch (error) {
+    if (externalSignal?.aborted) throw cancelled();
+    if (timeout.signal.aborted) throw timedOut();
     throw new SuperSkillCliError(`SuperSkill request failed: ${safeError(error)}.`, 1, "NETWORK_FAILED", "Check HH_REGISTRY_URL and network access, then retry the same request ID.");
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (response.url && response.url !== requestedUrl) {
+    throw new SuperSkillCliError("SuperSkill response came from an unexpected URL.", 3, "REGISTRY_ORIGIN_UNTRUSTED", "Use only the canonical https://superskill.sh/api registry.");
   }
   let body: unknown;
   try { body = await response.json(); } catch { body = {}; }
@@ -187,7 +224,40 @@ async function managedJson<T>(url: string, token: string, init: RequestInit = {}
 }
 
 function cleanRegistry(value: string): string {
-  return value.replace(/\/$/, "");
+  let url: URL;
+  try { url = new URL(value); } catch { throw untrustedRegistry(); }
+  if (url.username || url.password || url.search || url.hash) throw untrustedRegistry();
+  const pathname = url.pathname.replace(/\/$/, "") || "/";
+  const canonical = url.protocol === "https:"
+    && ((url.hostname === "superskill.sh" || url.hostname === "onlyharness.com") && !url.port && pathname === "/api");
+  const insecureTest = process.env.NODE_ENV !== "production"
+    && process.env.HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY === "1"
+    && url.protocol === "http:"
+    && url.hostname === "127.0.0.1"
+    && Boolean(url.port)
+    && pathname === "/";
+  if (!canonical && !insecureTest) throw untrustedRegistry();
+  return pathname === "/" ? url.origin : `${url.origin}${pathname}`;
+}
+
+function managedTimeoutMs(): number {
+  if (process.env.NODE_ENV !== "production" && process.env.HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY === "1") {
+    const configured = Number(process.env.HH_SUPERSKILL_TEST_TIMEOUT_MS);
+    if (Number.isInteger(configured) && configured >= 10 && configured <= 15_000) return configured;
+  }
+  return 15_000;
+}
+
+function untrustedRegistry(): SuperSkillCliError {
+  return new SuperSkillCliError("Managed registry origin is not trusted.", 3, "REGISTRY_ORIGIN_UNTRUSTED", "Use https://superskill.sh/api. The legacy https://onlyharness.com/api alias is compatibility-only.");
+}
+
+function cancelled(): SuperSkillCliError {
+  return new SuperSkillCliError("SuperSkill request was cancelled.", 3, "REQUEST_CANCELLED", "No managed network result was accepted. Retry with fresh consent if the task is still wanted.");
+}
+
+function timedOut(): SuperSkillCliError {
+  return new SuperSkillCliError("SuperSkill request timed out.", 1, "REQUEST_TIMEOUT", "No managed network result was accepted. Check service health and retry the same request ID.");
 }
 
 function statusReason(status: number): string {
@@ -199,7 +269,8 @@ function statusReason(status: number): string {
 }
 
 function defaultNext(reason: string): string {
-  if (reason === "SUPERSKILL_AUTH_REQUIRED" || reason === "INTERNAL_ALPHA_DENIED") return "Check the tester-specific HH_SUPERSKILL_TOKEN.";
+  if (reason === "SUPERSKILL_AUTH_REQUIRED" || reason === "SUPERSKILL_AUTH_INVALID") return "Sign in at https://superskill.sh and export HH_TOKEN for this terminal session.";
+  if (reason === "SUPERSKILL_CONFIRMED_ACCESS_REQUIRED" || reason === "SUPERSKILL_ACCESS_DENIED" || reason === "INTERNAL_ALPHA_DENIED") return "Use a confirmed SuperSkill account with an active managed-access grant; HH_SUPERSKILL_TOKEN is legacy compatibility only.";
   if (reason === "CAPABILITY_REVOKED" || reason === "CAPABILITY_QUARANTINED") return "Request a fresh recommendation or use the approved replacement.";
   if (reason === "PERMISSION_BLOCKED") return "Request a fresh recommendation after the exact release evidence or permissions are reviewed.";
   return "Retry after checking the managed API status.";

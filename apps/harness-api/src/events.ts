@@ -116,7 +116,14 @@ export async function recordEvent(input: EventInput | EventRecord): Promise<bool
   return true;
 }
 
-export async function recordManagedEvent(input: EventInput, options: { localPath?: string; telemetryEnabled?: boolean } = {}): Promise<{ recorded: boolean; duplicate: boolean }> {
+export type ManagedEventWriteResult =
+  | { recorded: true; duplicate: false }
+  | { recorded: false; duplicate: true }
+  | { recorded: false; duplicate: false; conflict: true }
+  | { recorded: false; duplicate: false; unavailable: true }
+  | { recorded: false; duplicate: false };
+
+export async function recordManagedEvent(input: EventInput, options: { localPath?: string; telemetryEnabled?: boolean } = {}): Promise<ManagedEventWriteResult> {
   const event = sanitizeEvent(input);
   if (!event || !("eventId" in event)) return { recorded: false, duplicate: false };
   if (options.telemetryEnabled === false || process.env.SUPERSKILL_TELEMETRY_ENABLED === "false") return { recorded: false, duplicate: false };
@@ -134,14 +141,25 @@ export async function recordManagedEvent(input: EventInput, options: { localPath
       });
       if (response.ok) {
         const rows = await response.json().catch(() => []) as unknown[];
-        return { recorded: rows.length > 0, duplicate: rows.length === 0 };
+        if (rows.length > 0) return { recorded: true, duplicate: false };
+        const existing = await fetchManagedEventById(event.eventId);
+        if (!existing) return { recorded: false, duplicate: false, unavailable: true };
+        return sameManagedDatabaseRow(existing, managedDatabaseRow(event))
+          ? { recorded: false, duplicate: true }
+          : { recorded: false, duplicate: false, conflict: true };
       }
     } catch {
-      // Fall through to the idempotent local store.
+      return { recorded: false, duplicate: false, unavailable: true };
     }
+    return { recorded: false, duplicate: false, unavailable: true };
   }
   const target = path.resolve(options.localPath ?? localEventsPath);
-  if (localEventExists(target, event.eventId)) return { recorded: false, duplicate: true };
+  const existing = localEventById(target, event.eventId);
+  if (existing) {
+    return sameManagedEvent(existing, event)
+      ? { recorded: false, duplicate: true }
+      : { recorded: false, duplicate: false, conflict: true };
+  }
   mkdirSync(path.dirname(target), { recursive: true });
   appendFileSync(target, `${JSON.stringify({ ...event, at: new Date().toISOString() })}\n`);
   return { recorded: true, duplicate: false };
@@ -208,17 +226,20 @@ function isEventRecord(input: EventInput | EventRecord): input is EventRecord {
     && typeof input.subject === "string";
 }
 
-function localEventExists(file: string, eventId: string): boolean {
-  if (!existsSync(file)) return false;
+function localEventById(file: string, eventId: string): ManagedEventRecord | undefined {
+  if (!existsSync(file)) return undefined;
   for (const line of readFileSync(file, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
-      if ((JSON.parse(line) as { eventId?: string; event_id?: string }).eventId === eventId || (JSON.parse(line) as { event_id?: string }).event_id === eventId) return true;
+      const parsed = JSON.parse(line) as EventInput & { event_id?: string };
+      if (parsed.eventId !== eventId && parsed.event_id !== eventId) continue;
+      const sanitized = sanitizeEvent(parsed);
+      return sanitized && "eventId" in sanitized ? sanitized : undefined;
     } catch {
       // Corrupt lines do not erase later valid append-only rows.
     }
   }
-  return false;
+  return undefined;
 }
 
 function managedDatabaseRow(event: ManagedEventRecord) {
@@ -238,6 +259,47 @@ function managedDatabaseRow(event: ManagedEventRecord) {
     outcome: event.outcome,
     reason_code: event.reasonCode
   };
+}
+
+type ManagedDatabaseRow = ReturnType<typeof managedDatabaseRow>;
+
+async function fetchManagedEventById(eventId: string): Promise<ManagedDatabaseRow | undefined> {
+  if (!supabaseUrl || !supabaseRestKey) return undefined;
+  const query = new URLSearchParams({
+    select: "kind,owner,repo,version,subject,target,client,event_id,recommendation_id,activation_id,mode,evidence,outcome,reason_code",
+    event_id: `eq.${eventId}`,
+    limit: "2"
+  });
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/events?${query.toString()}`, {
+      headers: {
+        apikey: supabaseRestKey,
+        authorization: `Bearer ${supabaseRestKey}`
+      }
+    });
+    if (!response.ok) return undefined;
+    const rows = await response.json() as unknown[];
+    return rows.length === 1 && isManagedDatabaseRow(rows[0]) ? rows[0] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameManagedEvent(left: ManagedEventRecord, right: ManagedEventRecord): boolean {
+  return sameManagedDatabaseRow(managedDatabaseRow(left), managedDatabaseRow(right));
+}
+
+function sameManagedDatabaseRow(left: ManagedDatabaseRow, right: ManagedDatabaseRow): boolean {
+  return (Object.keys(right) as Array<keyof ManagedDatabaseRow>).every((key) => left[key] === right[key]);
+}
+
+function isManagedDatabaseRow(value: unknown): value is ManagedDatabaseRow {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<ManagedDatabaseRow>;
+  return typeof row.kind === "string"
+    && typeof row.subject === "string"
+    && typeof row.client === "string"
+    && typeof row.event_id === "string";
 }
 
 async function fetchSupabaseLastVerificationAt(owner: string, repo: string): Promise<string | undefined> {
