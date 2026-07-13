@@ -249,7 +249,10 @@ candidate source
 
 - reviewer не является автоматическим generator того же artifact;
 - high-stakes review-only resources дополнительно проверяет второй человек/agent pass;
-- attestation хранит reviewer label и timestamp.
+- attestation хранит primary и independent public-safe reviewer labels, timestamps,
+  passing independent verdict и exact covered case IDs;
+- support, incident, security и finance approval fail closed без второго pass, с тем же
+  reviewer label или без покрытия всех human cases.
 
 Никакого four-eyes approval UI в MVP.
 

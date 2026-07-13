@@ -232,6 +232,40 @@ test("approval evidence rejects duplicate clients and duplicate human case IDs",
   }, now), /unique human case IDs/);
 });
 
+test("high-stakes approval requires a fresh distinct independent pass over every human case", () => {
+  const now = new Date("2026-07-13T00:00:00.000Z");
+  const resource = { ...approvedResource, id: "finance-payment-safety-reviewer" } as CuratedResource;
+  const review = approvalReview();
+  assert.throws(() => validateApprovalEvidence(resource, review, now), /requires an independent reviewer pass/);
+  const independentReview = {
+    reviewer: { label: "Independent safety reviewer 2" },
+    verdict: "pass" as const,
+    reviewedAt: "2026-07-12T09:30:00.000Z",
+    caseIds: review.humanCases.map((item) => item.caseId)
+  };
+  assert.doesNotThrow(() => validateApprovalEvidence(resource, { ...review, independentReview }, now));
+  assert.throws(() => validateApprovalEvidence(resource, {
+    ...review,
+    independentReview: { ...independentReview, verdict: "fail" }
+  }, now), /requires a passing independent review/);
+  assert.throws(() => validateApprovalEvidence(resource, {
+    ...review,
+    independentReview: { ...independentReview, reviewer: review.reviewer }
+  }, now), /requires a distinct independent reviewer/);
+  assert.throws(() => validateApprovalEvidence(resource, {
+    ...review,
+    independentReview: { ...independentReview, reviewer: { label: "Reviewer reviewer@example.com" } }
+  }, now), /independent reviewer label must be public-safe/);
+  assert.throws(() => validateApprovalEvidence(resource, {
+    ...review,
+    independentReview: { ...independentReview, caseIds: independentReview.caseIds.slice(0, 2) }
+  }, now), /must cover every human case exactly once/);
+  assert.throws(() => validateApprovalEvidence(resource, {
+    ...review,
+    independentReview: { ...independentReview, reviewedAt: "2026-07-13T01:00:00.000Z" }
+  }, now), /independent review is future-dated/);
+});
+
 test("approval evidence rejects future timestamps, stale reviews, and excessive expiry", () => {
   const now = new Date("2026-07-13T00:00:00.000Z");
   const review = approvalReview();

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   activationExecutionStateSchema,
+  capabilityRequiresIndependentReview,
   clientSchema,
   managedStatusSchema,
   reviewAttestationSchema,
@@ -148,6 +149,41 @@ test("review attestation requires exact client coverage, unique cases, and a pub
   assert.equal(reviewAttestationSchema.safeParse({
     ...review,
     reviewer: { label: "Reviewer reviewer@example.com" }
+  }).success, false);
+});
+
+test("high-stakes review attestation requires a distinct independent pass over every case", () => {
+  const review = validReviewAttestation();
+  assert.deepEqual([
+    "support-triage-agent",
+    "incident-rca-commander",
+    "security-permission-auditor",
+    "finance-payment-safety-reviewer"
+  ].map(capabilityRequiresIndependentReview), [true, true, true, true]);
+  assert.equal(capabilityRequiresIndependentReview("launch-readiness-reviewer"), false);
+  const highStakesReview = {
+    ...review,
+    capability: { ...review.capability, id: "finance-payment-safety-reviewer" }
+  };
+  assert.equal(reviewAttestationSchema.safeParse(highStakesReview).success, false);
+  const independentReview = {
+    reviewer: { label: "Independent safety reviewer 2" },
+    verdict: "pass" as const,
+    reviewedAt: "2026-07-12T00:00:30.000Z",
+    caseIds: review.humanCases.map((item) => item.caseId)
+  };
+  assert.equal(reviewAttestationSchema.safeParse({ ...highStakesReview, independentReview }).success, true);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...highStakesReview,
+    independentReview: { ...independentReview, reviewer: review.reviewer }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...highStakesReview,
+    independentReview: { ...independentReview, reviewer: { label: "Reviewer reviewer@example.com" } }
+  }).success, false);
+  assert.equal(reviewAttestationSchema.safeParse({
+    ...highStakesReview,
+    independentReview: { ...independentReview, caseIds: independentReview.caseIds.slice(0, 2) }
   }).success, false);
 });
 

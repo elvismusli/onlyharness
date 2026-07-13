@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
@@ -11,6 +11,28 @@ import {
 
 const activationId = "act_exact_release";
 const row = (kind: string, id = activationId) => ({ activationId: id, kind });
+const evidenceDirectory = path.resolve(import.meta.dirname, "../docs/plans/superskill-mvp/evidence");
+const curatedFile = path.resolve(import.meta.dirname, "../data/superskill/curated.json");
+
+type CuratedResourceRecord = {
+  id: string;
+  ref: string;
+  version: string;
+  expectedDigest: string;
+  jobs?: Array<{ intents?: unknown; outcomes?: unknown }>;
+};
+
+const secretLikePatterns = [
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+  /\bsk-[A-Za-z0-9_-]{16,}\b/,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+  /\b(?:api[_-]?key|access[_-]?token|token|private[_-]?key|password|secret)\s*[:=]\s*\S{8,}/i,
+  /"(?:apiKey|accessToken|token|privateKey|password|secret)"\s*:\s*"[^"]+"/i
+];
+const pathLikePatterns = [
+  /\/(?:Users|home|private|var|tmp)\//,
+  /\b[A-Za-z]:\\\\(?:Users|Documents|Projects)\\\\/i
+];
 
 test("accepts one exact ordered activation event chain", () => {
   const evidence = inspectExactActivationEventChain(EXACT_ACTIVATION_EVENT_CHAIN.map((kind) => row(kind)), activationId);
@@ -184,53 +206,106 @@ test("rejects echo, failed, composed, stitched and missing-skill Codex evidence"
   assert.equal(inspectCodexActivationToolTrace(exact.slice(1).join("\n"), input).valid, false);
 });
 
-test("checked-in exact-release client evidence is sanitized and non-promotional", () => {
-  const evidenceFile = path.resolve(
-    import.meta.dirname,
-    "../docs/plans/superskill-mvp/evidence/2026-07-13-deep-market-researcher-0.2.1-client-evidence.json"
-  );
-  const text = readFileSync(evidenceFile, "utf8");
-  const evidence = JSON.parse(text) as Record<string, any>;
-  assert.equal(evidence.bootstrapOnly, true);
-  assert.equal(evidence.promotionAuthorized, false);
-  assert.equal(evidence.attestationCreated, false);
-  assert.equal(evidence.humanReviewEvidence, false);
-  assert.equal(evidence.realClientSessions?.allEligible, true);
-  assert.deepEqual(evidence.release, {
-    id: "deep-market-researcher",
-    ref: "harnesses/deep-market-researcher",
-    version: "0.2.1",
-    artifactDigest: "sha256:9ebad5b23017dc95b758a77361080f026832538903735cdcb7d9a669f204927e"
-  });
-  assert.deepEqual(evidence.clients.map((client: Record<string, unknown>) => client.client).sort(), ["claude-code", "codex"]);
-  for (const client of evidence.clients) {
-    assert.equal(client.realClientSession, "passed");
-    assert.equal(client.compatibilitySessionEligible, true);
-    assert.match(client.realClientEvidence.environmentHandling, /empty temporary npm user\/global configs/);
-    assert.deepEqual(client.realClientEvidence.eventEvidence, {
-      valid: true,
-      ordered: true,
-      unique: true,
-      kinds: [...EXACT_ACTIVATION_EVENT_CHAIN]
-    });
-    if (client.client === "codex") {
-      assert.deepEqual(client.realClientEvidence.codexToolEvidence, {
+test("all checked-in current release evidence is exact, sanitized and non-promotional", () => {
+  const curated = JSON.parse(readFileSync(curatedFile, "utf8")) as { resources?: CuratedResourceRecord[] };
+  const currentResources = curated.resources ?? [];
+  assert.equal(currentResources.length, 12, "Expected all 12 current curated resources");
+  assert.equal(new Set(currentResources.map((resource) => resource.id)).size, currentResources.length, "Current resource ids must be unique");
+
+  const checkedInEvidenceFiles = readdirSync(evidenceDirectory)
+    .filter((name) => name.endsWith("-client-evidence.json"))
+    .sort();
+
+  for (const resource of currentResources) {
+    const escapedId = resource.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedVersion = resource.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matchingEvidenceFiles = checkedInEvidenceFiles.filter((name) => new RegExp(
+      `^\\d{4}-\\d{2}-\\d{2}-${escapedId}-${escapedVersion}-client-evidence\\.json$`
+    ).test(name));
+    assert.equal(matchingEvidenceFiles.length, 1, `Expected one exact current evidence file for ${resource.id}@${resource.version}`);
+    const evidenceFileName = matchingEvidenceFiles[0];
+    const text = readFileSync(path.join(evidenceDirectory, evidenceFileName), "utf8");
+    const evidence = JSON.parse(text) as Record<string, any>;
+    assert.equal(evidence.schemaVersion, "superskill.exact-release-bootstrap-smoke.v1", evidenceFileName);
+    assert.equal(evidence.bootstrapOnly, true, evidenceFileName);
+    assert.equal(evidence.promotionAuthorized, false, evidenceFileName);
+    assert.equal(evidence.attestationCreated, false, evidenceFileName);
+    assert.equal(evidence.humanReviewEvidence, false, evidenceFileName);
+    assert.equal(evidence.sourceTruthUnchanged, true, evidenceFileName);
+    assert.deepEqual(evidence.release, {
+      id: resource.id,
+      ref: resource.ref,
+      version: resource.version,
+      artifactDigest: resource.expectedDigest
+    }, evidenceFileName);
+    assert.deepEqual(evidence.realClientSessions, {
+      requested: true,
+      filter: "both",
+      allEligible: true,
+      attemptPolicy: "one bounded fresh session per client; failures stay ineligible"
+    }, evidenceFileName);
+    assert.deepEqual(
+      evidence.clients.map((client: Record<string, unknown>) => client.client).sort(),
+      ["claude-code", "codex"],
+      evidenceFileName
+    );
+
+    for (const client of evidence.clients) {
+      assert.equal(client.realClientSession, "passed", `${evidenceFileName}:${client.client}`);
+      assert.equal(client.compatibilitySessionEligible, true, `${evidenceFileName}:${client.client}`);
+      assert.equal(client.realClientEvidence.status, "passed", `${evidenceFileName}:${client.client}`);
+      assert.equal(client.realClientEvidence.compatibilitySessionEligible, true, `${evidenceFileName}:${client.client}`);
+      assert.equal(client.realClientEvidence.publicOutputSanitized, true, `${evidenceFileName}:${client.client}`);
+      assert.match(client.realClientEvidence.environmentHandling, /empty temporary npm user\/global configs/);
+
+      const clientActivationId = `act_${resource.id}_${client.client}`;
+      const inspectedLifecycle = inspectExactActivationEventChain(
+        client.realClientEvidence.lifecycle.map((kind: string) => ({ activationId: clientActivationId, kind })),
+        clientActivationId
+      );
+      assert.deepEqual(inspectedLifecycle, {
         valid: true,
-        commandExecutions: 5,
-        rejectedExecutions: 0,
-        executionShapes: ["skillLoad", "startFromPinned", "loaded", "invoked", "finishUnknown"],
-        failureReasons: [],
-        skillLoadObserved: true,
-        requiredOperations: {
-          startFromPinned: true,
-          loaded: true,
-          invoked: true,
-          finishUnknown: true
-        }
-      });
+        ordered: true,
+        unique: true,
+        kinds: [...EXACT_ACTIVATION_EVENT_CHAIN]
+      }, `${evidenceFileName}:${client.client}`);
+      assert.deepEqual(client.realClientEvidence.eventEvidence, inspectedLifecycle, `${evidenceFileName}:${client.client}`);
+      assert.deepEqual(client.realClientEvidence.outcome, { value: "unknown", evidence: "unknown" }, `${evidenceFileName}:${client.client}`);
+      assert.deepEqual(client.outcome, { value: "unknown", evidence: "unknown" }, `${evidenceFileName}:${client.client}`);
+
+      if (client.client === "codex") {
+        assert.deepEqual(client.realClientEvidence.codexToolEvidence, {
+          valid: true,
+          commandExecutions: 5,
+          rejectedExecutions: 0,
+          executionShapes: ["skillLoad", "startFromPinned", "loaded", "invoked", "finishUnknown"],
+          failureReasons: [],
+          skillLoadObserved: true,
+          requiredOperations: {
+            startFromPinned: true,
+            loaded: true,
+            invoked: true,
+            finishUnknown: true
+          }
+        }, evidenceFileName);
+      }
     }
+
+    assert.deepEqual(evidence.privacy, {
+      tokenPersistedInProjectOrEvents: false,
+      taskPersistedInProjectOrEvents: false,
+      absolutePathIncludedInPublicReportOrEvents: false
+    }, evidenceFileName);
+    assert.doesNotMatch(text, /bootstrap_[A-Za-z0-9_-]{16,}/, evidenceFileName);
+    for (const pattern of [...secretLikePatterns, ...pathLikePatterns]) assert.doesNotMatch(text, pattern, evidenceFileName);
+
+    const firstIntent = resource.jobs?.[0]?.intents;
+    const smokeTask = resource.id === "deep-market-researcher"
+      ? "competitor research market map source-backed comparison"
+      : Array.isArray(firstIntent) && typeof firstIntent[0] === "string"
+        ? firstIntent[0].trim().replace(/\s+/g, " ")
+        : undefined;
+    assert.ok(smokeTask, `Missing smoke task contract for ${resource.id}`);
+    assert.equal(text.includes(smokeTask), false, `${evidenceFileName}: task summary leaked`);
   }
-  assert.doesNotMatch(text, /\/(?:Users|home|private|tmp)\//);
-  assert.doesNotMatch(text, /bootstrap_[A-Za-z0-9_-]{16,}/);
-  assert.equal(text.includes("competitor research market map source-backed comparison"), false);
 });

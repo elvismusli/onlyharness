@@ -43,6 +43,7 @@ type SnapshotFile = { path: string; content: string; truncated?: boolean };
 type ReleaseCutArgs = { id: string; from: string; to: string; write: boolean };
 type ReleaseCutResult = {
   files: SnapshotFile[];
+  removedFiles: string[];
   artifactDigest: string;
   scanner: ReturnType<typeof scanHarnessFiles>;
   capabilityDiff: ReturnType<typeof recomputeCapabilityDiff>;
@@ -82,7 +83,7 @@ export function buildReleaseCut(
   snapshotFiles: SnapshotFile[]
 ): ReleaseCutResult {
   const workflowCount = snapshotFiles.filter((file) => file.path === workflowPath).length;
-  if (workflowCount !== 1) throw new Error(`Release cut requires exactly one ${workflowPath}: ${resource.id}`);
+  if (workflowCount > 1) throw new Error(`Release cut allows at most one ${workflowPath}: ${resource.id}`);
   if (snapshotFiles.some((file) => file.truncated)) throw new Error(`Release cut source is truncated: ${resource.id}`);
   const manifestFiles = snapshotFiles.filter((file) => file.path === "harness.yaml");
   if (manifestFiles.length !== 1) throw new Error(`Release cut requires exactly one harness.yaml: ${resource.id}`);
@@ -110,7 +111,13 @@ export function buildReleaseCut(
   const capabilityDiff = recomputeCapabilityDiff(files, permissions);
   if (capabilityDiff.status === "fail") throw new Error(`Prepared release capability diff failed: ${resource.id}@${to}`);
   const artifactDigest = canonicalArtifactDigest({ files, totalFileCount: files.length, archiveTruncated: false });
-  return { files, artifactDigest, scanner, capabilityDiff };
+  return {
+    files,
+    removedFiles: workflowCount === 1 ? [workflowPath] : [],
+    artifactDigest,
+    scanner,
+    capabilityDiff
+  };
 }
 
 export function runReleaseCut(args: ReleaseCutArgs): Record<string, unknown> {
@@ -152,7 +159,9 @@ function runReleaseCutUnlocked(args: ReleaseCutArgs): Record<string, unknown> {
   }
   const sourceReleases = readSourceReleases();
   const sourceRelease = sourceReleases.resources.find((item) => item.id === args.id);
-  if (!sourceRelease || sourceRelease.version !== args.from || sourceRelease.includeCiWorkflow !== true) {
+  const sourceIncludesCiWorkflow = oldSnapshot.files.some((file) => file.path === workflowPath);
+  if (!sourceRelease || sourceRelease.version !== args.from
+    || sourceRelease.includeCiWorkflow !== sourceIncludesCiWorkflow) {
     throw new Error(`Source generator state does not match release source: ${args.id}@${args.from}`);
   }
   const prepared = buildReleaseCut(resource, args.from, args.to, oldSnapshot.files);
@@ -163,7 +172,7 @@ function runReleaseCutUnlocked(args: ReleaseCutArgs): Record<string, unknown> {
     to: args.to,
     artifactDigest: prepared.artifactDigest,
     fileCount: prepared.files.length,
-    removedFiles: [workflowPath],
+    removedFiles: prepared.removedFiles,
     scanner: prepared.scanner.verdict,
     capabilityDiff: prepared.capabilityDiff.status,
     status: "candidate",
@@ -192,7 +201,7 @@ function runReleaseCutUnlocked(args: ReleaseCutArgs): Record<string, unknown> {
     sourceRelease.includeCiWorkflow = false;
     writeJsonAtomic(sourceReleasePath, sourceReleases);
     writeFileAtomic(sourceManifestPath, prepared.files.find((file) => file.path === "harness.yaml")!.content);
-    unlinkSync(sourceWorkflowPath);
+    if (prepared.removedFiles.includes(workflowPath)) unlinkSync(sourceWorkflowPath);
     writeJsonAtomic(snapshotPath, {
       owner: "harnesses",
       repo: args.id,

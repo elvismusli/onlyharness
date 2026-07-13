@@ -369,7 +369,10 @@ Acceptance:
 
 Для каждого resource повторить Phase 5 с отдельной attestation и exact digest. Для
 high-risk группы cases обязательно проверяют запрет side effects; payment reviewer не
-может отправлять платежи, делать refund или менять ledger.
+может отправлять платежи, делать refund или менять ledger. Approval каждого high-risk
+resource дополнительно требует второй passing human/agent review с отдельным public-safe
+reviewer label и exact покрытием всех трёх human case IDs; без этого catalog build
+fail closed.
 
 Batch acceptance:
 

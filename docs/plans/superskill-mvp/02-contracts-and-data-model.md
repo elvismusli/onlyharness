@@ -253,6 +253,12 @@ type ReviewAttestation = {
     limitationCodes: string[];
   }>;
   reviewer: { label: string };
+  independentReview?: {
+    reviewer: { label: string };
+    verdict: "pass" | "fail";
+    reviewedAt: string;
+    caseIds: string[];
+  };
   limitations: string[];
   reviewedAt: string;
   expiresAt: string;
@@ -281,6 +287,11 @@ Validation rules:
   public copy keeps declared value separate from scanner observation;
 - reviewer contains a public-safe team label, not email/user ID, including an email
   embedded inside a longer label;
+- support, incident, security and finance high-stakes review-only capabilities require a
+  second passing `independentReview`; its public-safe reviewer label must differ from the
+  primary reviewer and its unique `caseIds` must cover every human case exactly once;
+- independent high-stakes review uses the same 180-day freshness window, cannot be
+  future-dated and remains separate from the stronger `independent_eval` outcome claim;
 - `reviewedAt` and mandatory evidence cannot be future-dated beyond five minutes of clock
   skew; human review is valid at most 180 days; `expiresAt` must be after `reviewedAt` and
   no later than 180 days after it;

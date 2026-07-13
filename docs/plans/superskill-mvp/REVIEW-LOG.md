@@ -213,3 +213,27 @@ All durable reports remain non-promotional:
 `humanReviewEvidence=false`, and `sourceTruthUnchanged=true`. No review attestation,
 preview, approval or managed activation was created. Status: **pre-review prepared;
 human sign-off pending**.
+
+## Independent implementation audit follow-up
+
+An independent agent audit on 2026-07-13 found three pre-approval implementation gaps;
+none authorized approval or changed current candidate truth:
+
+- high-stakes review attestations could previously pass with only one reviewer even
+  though the canonical policy requires a second independent human/agent pass;
+- the release cutter required the CI workflow on every cut and therefore rejected a
+  repeat cut from an already sanitized `0.2.1` candidate;
+- checked-in exact client evidence regression coverage was hardcoded to only
+  `deep-market-researcher` instead of all 12 current candidates.
+
+The trust gate now requires a passing, fresh, public-safe independent review for support,
+incident, security and finance resources. Its reviewer must differ from the primary
+reviewer and cover every human case ID exactly once. The four high-stakes packets now
+contain a separate pending sign-off block. Repeat candidate cuts accept either exactly
+one workflow to remove or an already sanitized source with none, while rejecting
+generator-state mismatch and duplicate workflows. Exact-evidence checks are data-driven
+from the current curated catalog and validate all 12 reports, both clients, lifecycle,
+non-promotional flags and privacy boundaries.
+
+These are automated code/policy corrections only. All 12 resources remain candidates;
+human and independent high-stakes sign-offs are still pending.

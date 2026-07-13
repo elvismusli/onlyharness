@@ -8,6 +8,7 @@ import {
   buildReleaseCut,
   parseReleaseCutArgs,
   recoverReleaseCutJournal,
+  runReleaseCut,
   writeReleaseCutJournal
 } from "./prepare-superskill-release.js";
 
@@ -34,16 +35,41 @@ test("release cut removes only executable workflow and produces the expected imm
   const result = buildReleaseCut({ id: "founder-decision-memo" }, "0.2.0", "0.2.1", snapshot.files);
   assert.equal(result.artifactDigest, "sha256:0bc35e1b235de5fb5b4ae5875a8a5cec3ed608e7c062dabe9547dec795958017");
   assert.equal(result.files.length, snapshot.files.length - 1);
+  assert.deepEqual(result.removedFiles, [".gitea/workflows/harness-ci.yml"]);
   assert.equal(result.files.some((file) => file.path === ".gitea/workflows/harness-ci.yml"), false);
   assert.equal(result.files.find((file) => file.path === "harness.yaml")?.content.includes("version: 0.2.1"), true);
   assert.notEqual(result.capabilityDiff.status, "fail");
 });
 
-test("release cut rejects missing workflow, tuple drift and additional executable content", () => {
+test("repeat release cut accepts an already sanitized snapshot without claiming a removal", () => {
+  const snapshot = JSON.parse(readFileSync(path.join(root, "data/harness-versions/harnesses/founder-decision-memo/0.2.1.json"), "utf8")) as {
+    files: Array<{ path: string; content: string; truncated?: boolean }>;
+  };
+  const result = buildReleaseCut({ id: "founder-decision-memo" }, "0.2.1", "0.2.2", snapshot.files);
+  assert.equal(result.files.length, snapshot.files.length);
+  assert.deepEqual(result.removedFiles, []);
+  assert.equal(result.files.some((file) => file.path === ".gitea/workflows/harness-ci.yml"), false);
+  assert.equal(result.files.find((file) => file.path === "harness.yaml")?.content.includes("version: 0.2.2"), true);
+  assert.notEqual(result.capabilityDiff.status, "fail");
+});
+
+test("current candidate supports a real repeat release-cut dry-run without writing", () => {
+  const target = path.join(root, "data/harness-versions/harnesses/founder-decision-memo/0.2.2.json");
+  assert.equal(existsSync(target), false);
+  const result = runReleaseCut({ id: "founder-decision-memo", from: "0.2.1", to: "0.2.2", write: false });
+  assert.equal(result.write, false);
+  assert.deepEqual(result.removedFiles, []);
+  assert.equal(result.fileCount, 12);
+  assert.equal(existsSync(target), false);
+});
+
+test("release cut rejects duplicate workflow, tuple drift and additional executable content", () => {
   const snapshot = JSON.parse(readFileSync(path.join(root, "data/harness-versions/harnesses/founder-decision-memo/0.2.0.json"), "utf8")) as {
     files: Array<{ path: string; content: string; truncated?: boolean }>;
   };
-  assert.throws(() => buildReleaseCut({ id: "founder-decision-memo" }, "0.2.0", "0.2.1", snapshot.files.filter((file) => file.path !== ".gitea/workflows/harness-ci.yml")), /exactly one/);
+  const workflow = snapshot.files.find((file) => file.path === ".gitea/workflows/harness-ci.yml");
+  assert.ok(workflow);
+  assert.throws(() => buildReleaseCut({ id: "founder-decision-memo" }, "0.2.0", "0.2.1", [...snapshot.files, workflow]), /at most one/);
   assert.throws(() => buildReleaseCut({ id: "wrong-id" }, "0.2.0", "0.2.1", snapshot.files), /tuple mismatch/);
   assert.throws(() => buildReleaseCut({ id: "founder-decision-memo" }, "0.2.0", "0.2.1", [...snapshot.files, { path: "run.sh", content: "echo unsafe" }]), /instruction-only/);
 });

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   curatedCatalogSchema,
+  capabilityRequiresIndependentReview,
   managedCapabilityHistorySchema,
   managedCapabilityIndexSchema,
   hasReviewWarningLimitation,
@@ -211,6 +212,30 @@ export function validateApprovalEvidence(
   if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(review.reviewer.label.trim())) {
     throw new Error(`Approved capability reviewer label must be public-safe: ${resource.id}`);
   }
+  if (capabilityRequiresIndependentReview(resource.id)) {
+    const independent = review.independentReview;
+    if (!independent) throw new Error(`Approved high-stakes capability requires an independent reviewer pass: ${resource.id}`);
+    if (independent.verdict !== "pass") throw new Error(`Approved high-stakes capability requires a passing independent review: ${resource.id}`);
+    if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(independent.reviewer.label.trim())) {
+      throw new Error(`Approved high-stakes capability independent reviewer label must be public-safe: ${resource.id}`);
+    }
+    if (independent.reviewer.label.trim().toLowerCase() === review.reviewer.label.trim().toLowerCase()) {
+      throw new Error(`Approved high-stakes capability requires a distinct independent reviewer: ${resource.id}`);
+    }
+    const independentReviewedAtMs = Date.parse(independent.reviewedAt);
+    if (independentReviewedAtMs > nowMs + approvalClockSkewMs || independentReviewedAtMs > reviewedAtMs + approvalClockSkewMs) {
+      throw new Error(`Approved high-stakes capability independent review is future-dated: ${resource.id}`);
+    }
+    if (nowMs - independentReviewedAtMs > humanReviewFreshnessMs) {
+      throw new Error(`Approved high-stakes capability independent review is stale: ${resource.id}`);
+    }
+    const humanCaseIds = [...new Set(review.humanCases.map((item) => item.caseId.trim()))].sort();
+    const independentCaseIds = [...new Set(independent.caseIds.map((caseId) => caseId.trim()))].sort();
+    if (independentCaseIds.length !== independent.caseIds.length
+      || JSON.stringify(independentCaseIds) !== JSON.stringify(humanCaseIds)) {
+      throw new Error(`Approved high-stakes capability independent review must cover every human case exactly once: ${resource.id}`);
+    }
+  }
   if (review.scanner.status === "warn" && !hasWarningLimitation(review, reviewWarningLimitationCodes.scanner)) {
     throw new Error(`Approved capability scanner warning requires ${reviewWarningLimitationCodes.scanner} limitation: ${resource.id}`);
   }
@@ -238,6 +263,9 @@ function hasWarningLimitation(review: ReviewAttestation, code: string): boolean 
 
 function buildChecks(resource: CuratedResource, checkedAt: string, review?: ReviewAttestation): TrustCheck[] {
   const expiresAt = review?.expiresAt;
+  const independentReviewSummary = review?.independentReview?.verdict === "pass"
+    ? "; independent high-stakes reviewer pass recorded"
+    : "";
   return [
     check("schema", "pass", "static_checked", checkedAt, "Native manifest schema validated"),
     check("artifact_digest", "pass", "static_checked", checkedAt, "Immutable artifact digest matches curated release"),
@@ -246,7 +274,7 @@ function buildChecks(resource: CuratedResource, checkedAt: string, review?: Revi
     check("capability_diff", review ? review.capabilityDiff.status : "not_run", "static_checked", review?.reviewedAt ?? checkedAt, review ? "Declared and inferred capabilities compared" : "Capability diff not run", expiresAt),
     check("claude_code_activation", review?.compatibility.some((item) => item.client === "claude-code" && item.verdict === "pass") ? "pass" : "not_run", "compatibility_smoked", review?.compatibility.find((item) => item.client === "claude-code")?.checkedAt ?? checkedAt, "Claude Code exact-release activation smoke", expiresAt),
     check("codex_activation", review?.compatibility.some((item) => item.client === "codex" && item.verdict === "pass") ? "pass" : "not_run", "compatibility_smoked", review?.compatibility.find((item) => item.client === "codex")?.checkedAt ?? checkedAt, "Codex exact-release activation smoke", expiresAt),
-    check("human_review", review && review.humanCases.length >= 3 && !review.humanCases.some((item) => item.verdict === "fail") ? (review.humanCases.some((item) => item.verdict === "partial") ? "warn" : "pass") : "not_run", "human_reviewed", review?.reviewedAt ?? checkedAt, review ? `${review.humanCases.length} reviewed task cases` : "Human task review not run", expiresAt),
+    check("human_review", review && review.humanCases.length >= 3 && !review.humanCases.some((item) => item.verdict === "fail") ? (review.humanCases.some((item) => item.verdict === "partial") ? "warn" : "pass") : "not_run", "human_reviewed", review?.reviewedAt ?? checkedAt, review ? `${review.humanCases.length} reviewed task cases${independentReviewSummary}` : "Human task review not run", expiresAt),
     check("independent_eval", "not_run", "independently_evaluated", review?.reviewedAt ?? checkedAt, "Independent outcome evaluation not run")
   ];
 }

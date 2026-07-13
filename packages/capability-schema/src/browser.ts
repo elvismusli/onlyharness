@@ -4,6 +4,16 @@ export const capabilityIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 export const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const rfc3339Schema = z.string().datetime({ offset: true });
 export const clientSchema = z.enum(["claude-code", "codex"]);
+export const independentReviewRequiredCapabilityIds = [
+  "support-triage-agent",
+  "incident-rca-commander",
+  "security-permission-auditor",
+  "finance-payment-safety-reviewer"
+] as const;
+
+export function capabilityRequiresIndependentReview(capabilityId: string): boolean {
+  return (independentReviewRequiredCapabilityIds as readonly string[]).includes(capabilityId);
+}
 export const managedStatusSchema = z.enum(["candidate", "approved", "quarantined", "revoked"]);
 export const evidenceLevelSchema = z.enum([
   "author_declared",
@@ -188,6 +198,32 @@ const reviewHumanCasesSchema = z.array(z.object({
   });
 });
 
+const publicSafeReviewerSchema = z.object({
+  label: z.string().min(2).max(100).regex(/^[^\r\n]+$/).refine(
+    (label) => !/[^\s@]+@[^\s@]+\.[^\s@]+/.test(label.trim()),
+    "reviewer label must be public-safe and must not be an email address"
+  )
+}).strict();
+
+const independentReviewSchema = z.object({
+  reviewer: publicSafeReviewerSchema,
+  verdict: z.enum(["pass", "fail"]),
+  reviewedAt: rfc3339Schema,
+  caseIds: z.array(z.string().trim().min(1)).min(3).superRefine((rows, context) => {
+    const seen = new Set<string>();
+    rows.forEach((caseId, index) => {
+      if (seen.has(caseId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "independent review case IDs must be unique",
+          path: [index]
+        });
+      }
+      seen.add(caseId);
+    });
+  })
+}).strict();
+
 export const reviewAttestationSchema = z.object({
   schemaVersion: z.literal("superskill.review.v1"),
   capability: z.object({
@@ -219,17 +255,39 @@ export const reviewAttestationSchema = z.object({
   }).strict(),
   compatibility: reviewCompatibilitySchema,
   humanCases: reviewHumanCasesSchema,
-  reviewer: z.object({
-    label: z.string().min(2).max(100).regex(/^[^\r\n]+$/).refine(
-      (label) => !/[^\s@]+@[^\s@]+\.[^\s@]+/.test(label.trim()),
-      "reviewer label must be public-safe and must not be an email address"
-    )
-  }).strict(),
+  reviewer: publicSafeReviewerSchema,
+  independentReview: independentReviewSchema.optional(),
   limitations: z.array(z.string().min(1)),
   reviewedAt: rfc3339Schema,
   expiresAt: rfc3339Schema,
   replacement: z.object({ ref: z.string().min(3), version: z.string().min(1), artifactDigest: digestSchema }).strict().optional()
 }).strict().superRefine((review, context) => {
+  const independentReviewRequired = capabilityRequiresIndependentReview(review.capability.id);
+  if (independentReviewRequired && !review.independentReview) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "high-stakes capability requires an independent review",
+      path: ["independentReview"]
+    });
+  }
+  if (review.independentReview) {
+    if (review.independentReview.reviewer.label.trim().toLowerCase() === review.reviewer.label.trim().toLowerCase()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "independent reviewer must differ from the primary reviewer",
+        path: ["independentReview", "reviewer", "label"]
+      });
+    }
+    const primaryCaseIds = [...new Set(review.humanCases.map((item) => item.caseId.trim()))].sort();
+    const independentCaseIds = [...new Set(review.independentReview.caseIds)].sort();
+    if (JSON.stringify(primaryCaseIds) !== JSON.stringify(independentCaseIds)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "independent review must cover every human case exactly once",
+        path: ["independentReview", "caseIds"]
+      });
+    }
+  }
   const missingCodes = [
     ...(review.scanner.status === "warn" ? [reviewWarningLimitationCodes.scanner] : []),
     ...(review.capabilityDiff.status === "warn" ? [reviewWarningLimitationCodes.capabilityDiff] : [])

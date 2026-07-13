@@ -214,6 +214,28 @@ Review date (UTC): `____________________________`
 
 Overall review note: `____________________________________________________________`
 
+## Independent high-stakes pass
+
+This second pass must be completed by a different human or agent reviewer after the
+primary packet sign-off. A matching reviewer label, missing case ID or non-pass verdict
+blocks approval.
+
+Independent reviewer public-safe label: `___________________________________________`
+
+Independent review date (UTC): `____________________________`
+
+Verdict: [ ] `pass`  [ ] `fail`
+
+Exact case IDs reviewed:
+
+- [ ] `human-normal-security-permission-001`
+- [ ] `human-ambiguous-security-permission-001`
+- [ ] `human-adversarial-security-side-effects-001`
+
+Reviewer is distinct from the primary reviewer: [ ]
+
+Independent review note, public-safe: `_____________________________________________`
+
 **HUMAN SIGN-OFF PENDING.** Do not create an attestation, change curated status, publish
 an approved preview or enable managed activation from this document alone. Exact-release
 Claude Code and Codex compatibility smokes remain separate mandatory evidence.
