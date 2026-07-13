@@ -83,6 +83,8 @@ canonical-domain пункты из таблицы закрыты deploy-ем `3b
 - exact-release evidence hardening и повторный production deploy: `7290c5fe4c68975a9a075489ff46e9a4f4da261c`;
 - low-risk candidate pre-review tooling/batch и production deploy:
   `a554bd8` (`Prepare low-risk SuperSkill review batch`);
+- research/data candidate pre-review batch и production deploy:
+  `fcc1032` (`Prepare research SuperSkill review batch`);
 - `apps/registry-web/**` не содержит dirty changes;
 - generic install route, CTA и optional `capabilityId` уже закоммичены;
 - этот exact commit задеплоен стандартным production script из clean temporary worktree;
@@ -90,7 +92,7 @@ canonical-domain пункты из таблицы закрыты deploy-ем `3b
   heading/actions remediation и отсутствие horizontal overflow;
 - `www.superskill.sh` отвечает `301` на apex с сохранением path/query и HSTS;
 - public showroom отвечает `0 approved / 12 selected_unreviewed`;
-- текущие незакоммиченные изменения включают отдельный research/data candidate batch в
+- текущие незакоммиченные изменения включают отдельный operational/high-risk candidate batch в
   `data/superskill`, immutable snapshots и `seed-harnesses`; пользовательские
   docs/research/output changes остаются unrelated и не должны попадать в batch commit.
 
@@ -411,6 +413,19 @@ Batch acceptance:
   invalid positional experiment отвергнуты; переход на canonical single-line
   `/skill <arguments>` positional prompt дал два последовательных diagnostic pass и
   финальный dual-client pass.
+- operational/high-risk batch подготовлен как четыре отдельных immutable `0.2.1`
+  release cuts: `support-triage-agent`, `incident-rca-commander`,
+  `security-permission-auditor`, `finance-payment-safety-reviewer`; все 12 selected
+  resources теперь имеют отдельный sanitized current `0.2.1` tuple, а `0.2.0` history
+  сохранён;
+- все четыре прошли generic exact-release smoke и финальные clean Claude Code `2.1.112`
+  / Codex CLI `0.135.0` lifecycle sessions без исполнения capability task и с
+  `unknown/unknown` outcome;
+- human-case packets для operational batch оставляют reviewer/date/verdict пустыми и
+  требуют отсутствие external send, remediation или production mutation; finance
+  отдельно запрещает charge/refund/provider call/ledger mutation/withdrawal;
+- весь supply остаётся `candidate / selected_unreviewed`; attestation, preview, approval
+  и managed activation не создавались. Следующий gate — реальный человеческий review.
 
 ## 6. Тесты и verification gates
 
@@ -502,7 +517,8 @@ npm run smoke
 1. UX и canonical-domain baseline shipped commit
    `3bdb523f9cde57ba5025539cde58eaee74e7fea2`; evidence hardening и повторный deploy
    shipped commit `7290c5fe4c68975a9a075489ff46e9a4f4da261c`; low-risk pre-review tooling и четыре
-   candidate cuts shipped commit `a554bd8`.
+   candidate cuts shipped commit `a554bd8`; research/data pre-review batch shipped
+   commit `fcc1032`.
 2. Pre-review tooling/release-cut commits могут публиковать только immutable candidate
    tuples и пустые review packets; они не должны создавать attestation, preview или
    activation handoff.
@@ -562,10 +578,14 @@ Deploy:
   outputs; verdict/reviewer/date поля намеренно пусты, packet не является attestation;
 - `npm run check`, `npm run build`, два последовательных `npm run smoke:superskill` и
   `npm run smoke` прошли.
+- все 12 selected resources подготовлены как immutable current `0.2.1` candidate cuts с
+  сохранёнными `0.2.0` snapshots, dual-client evidence и отдельными human-case packets;
+  human sign-off по-прежнему отсутствует.
 
 Не выполнено и не должно имитироваться:
 
-- `0.2.1` остаётся `candidate`; managed activation для него fail closed;
-- три case outputs подготовлены, но ещё не проверены и не подписаны человеком;
+- все 12 current `0.2.1` остаются `candidate`; managed activation для них fail closed;
+- по три case outputs на resource подготовлены, но ещё не проверены и не подписаны
+  человеком;
 - review attestation и смена `status` на `approved` запрещены до получения этого
   evidence. Текущая ожидаемая production матрица остаётся `0 approved / 12 selected`.

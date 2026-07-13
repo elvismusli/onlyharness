@@ -3,7 +3,7 @@ name: finance-payment-safety-reviewer
 title: Finance Payment Safety Reviewer
 summary: Reviews payment, card and ledger changes with provider evidence,
   idempotency and reconciliation gates.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/finance-payment-safety-reviewer

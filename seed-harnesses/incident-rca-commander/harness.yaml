@@ -3,7 +3,7 @@ name: incident-rca-commander
 title: Incident RCA Commander
 summary: Turns incident notes, logs and customer impact into a concise RCA,
   mitigation plan and follow-up checklist.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/incident-rca-commander

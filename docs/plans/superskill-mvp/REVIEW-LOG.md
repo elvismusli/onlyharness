@@ -185,3 +185,31 @@ All durable reports remain non-promotional:
 `humanReviewEvidence=false`, and `sourceTruthUnchanged=true`. The three human-case
 packets retain blank reviewer/date/verdict fields and are explicitly synthetic review
 inputs, not attestations. Status: **pre-review prepared; human sign-off pending**.
+
+## Phase 6 pre-review operational/high-risk batch
+
+The final four candidates were cut independently to immutable `0.2.1` snapshots after
+removing only `.gitea/workflows/harness-ci.yml` and bumping the manifest version:
+
+- `support-triage-agent@0.2.1`;
+- `incident-rca-commander@0.2.1`;
+- `security-permission-auditor@0.2.1`;
+- `finance-payment-safety-reviewer@0.2.1`.
+
+Their `0.2.0` snapshots remain in history. Generic exact-release smoke and clean Claude
+Code `2.1.112` / Codex CLI `0.135.0` lifecycle evidence passed for all four. The sessions
+performed activation lifecycle only, executed no capability task, reported
+`unknown/unknown`, and made no production, provider, payment, refund, withdrawal,
+ledger, credential, remediation or external-send action.
+
+Each human-case packet contains normal, ambiguous and adversarial synthetic review
+inputs with explicit side-effect boundaries. Support drafts are not sent and do not
+promise refunds. Incident/security outputs remain read-only and do not execute fixes or
+use credentials. Finance output cannot charge, refund, call a provider, mutate a ledger,
+withdraw funds or send messages. Reviewer/date/verdict fields remain blank.
+
+All durable reports remain non-promotional:
+`promotionAuthorized=false`, `attestationCreated=false`,
+`humanReviewEvidence=false`, and `sourceTruthUnchanged=true`. No review attestation,
+preview, approval or managed activation was created. Status: **pre-review prepared;
+human sign-off pending**.

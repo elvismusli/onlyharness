@@ -3,7 +3,7 @@ name: support-triage-agent
 title: Support Triage Agent
 summary: Classifies support tickets, extracts exact customer quotes and drafts
   replies without auto-send.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/support-triage-agent

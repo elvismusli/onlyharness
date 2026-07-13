@@ -1,6 +1,6 @@
 {
   "schemaVersion": "superskill.index.v1",
-  "generatedAt": "2026-07-13T13:39:11.449Z",
+  "generatedAt": "2026-07-13T14:03:44.667Z",
   "capabilities": [
     {
       "id": "agent-harness-refactorer",
@@ -458,10 +458,10 @@
       ],
       "release": {
         "ref": "harnesses/finance-payment-safety-reviewer",
-        "version": "0.2.0",
-        "artifactDigest": "sha256:0a1a2944c88e30159ea5d52c6375000f3ab76545dfe926574992dbc76d46130f",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:b36eec4030023c3586c14d88ced2bdeaed821aef561bdc30216295df8875428e",
         "immutable": true,
-        "publishedAt": "2026-07-12T10:58:34.466Z",
+        "publishedAt": "2026-07-13T14:03:44.667Z",
         "delivery": "free_archive"
       },
       "source": {
@@ -513,70 +513,70 @@
             "id": "schema",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Native manifest schema validated"
           },
           {
             "id": "artifact_digest",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Immutable artifact digest matches curated release"
           },
           {
             "id": "source_license",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Source and license are declared"
           },
           {
             "id": "static_security",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Static managed review not run"
           },
           {
             "id": "capability_diff",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Capability diff not run"
           },
           {
             "id": "claude_code_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Claude Code exact-release activation smoke"
           },
           {
             "id": "codex_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Codex exact-release activation smoke"
           },
           {
             "id": "human_review",
             "status": "not_run",
             "evidenceLevel": "human_reviewed",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Human task review not run"
           },
           {
             "id": "independent_eval",
             "status": "not_run",
             "evidenceLevel": "independently_evaluated",
-            "checkedAt": "2026-07-12T10:58:34.466Z",
+            "checkedAt": "2026-07-13T14:03:44.667Z",
             "summary": "Independent outcome evaluation not run"
           }
         ],
         "limitations": [
           "Candidate has not completed exact-release managed review"
         ],
-        "reviewedAt": "2026-07-12T10:58:34.466Z"
+        "reviewedAt": "2026-07-13T14:03:44.667Z"
       }
     },
     {
@@ -890,10 +890,10 @@
       ],
       "release": {
         "ref": "harnesses/incident-rca-commander",
-        "version": "0.2.0",
-        "artifactDigest": "sha256:ecf2355e726b9a36561931af8f58c48adda5abb0317dbd5f5fb149bc9d82165f",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:b5ea7a8395f818a6d1b398bd308c41fa4cb5b05e5fcd0d5222f88d30a2b70c99",
         "immutable": true,
-        "publishedAt": "2026-07-12T10:58:34.471Z",
+        "publishedAt": "2026-07-13T14:03:43.405Z",
         "delivery": "free_archive"
       },
       "source": {
@@ -943,70 +943,70 @@
             "id": "schema",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Native manifest schema validated"
           },
           {
             "id": "artifact_digest",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Immutable artifact digest matches curated release"
           },
           {
             "id": "source_license",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Source and license are declared"
           },
           {
             "id": "static_security",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Static managed review not run"
           },
           {
             "id": "capability_diff",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Capability diff not run"
           },
           {
             "id": "claude_code_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Claude Code exact-release activation smoke"
           },
           {
             "id": "codex_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Codex exact-release activation smoke"
           },
           {
             "id": "human_review",
             "status": "not_run",
             "evidenceLevel": "human_reviewed",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Human task review not run"
           },
           {
             "id": "independent_eval",
             "status": "not_run",
             "evidenceLevel": "independently_evaluated",
-            "checkedAt": "2026-07-12T10:58:34.471Z",
+            "checkedAt": "2026-07-13T14:03:43.405Z",
             "summary": "Independent outcome evaluation not run"
           }
         ],
         "limitations": [
           "Candidate has not completed exact-release managed review"
         ],
-        "reviewedAt": "2026-07-12T10:58:34.471Z"
+        "reviewedAt": "2026-07-13T14:03:43.405Z"
       }
     },
     {
@@ -1462,10 +1462,10 @@
       ],
       "release": {
         "ref": "harnesses/security-permission-auditor",
-        "version": "0.2.0",
-        "artifactDigest": "sha256:58e4889577f7dd8d1156989f95b2b863b8ab4f092d4874b5b726b46a7c878c11",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:b6317fe5feb0364d3b5386c962b0042eff9e558d364be2a105c014823ad5da47",
         "immutable": true,
-        "publishedAt": "2026-07-12T10:58:34.476Z",
+        "publishedAt": "2026-07-13T14:03:44.046Z",
         "delivery": "free_archive"
       },
       "source": {
@@ -1515,70 +1515,70 @@
             "id": "schema",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Native manifest schema validated"
           },
           {
             "id": "artifact_digest",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Immutable artifact digest matches curated release"
           },
           {
             "id": "source_license",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Source and license are declared"
           },
           {
             "id": "static_security",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Static managed review not run"
           },
           {
             "id": "capability_diff",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Capability diff not run"
           },
           {
             "id": "claude_code_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Claude Code exact-release activation smoke"
           },
           {
             "id": "codex_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Codex exact-release activation smoke"
           },
           {
             "id": "human_review",
             "status": "not_run",
             "evidenceLevel": "human_reviewed",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Human task review not run"
           },
           {
             "id": "independent_eval",
             "status": "not_run",
             "evidenceLevel": "independently_evaluated",
-            "checkedAt": "2026-07-12T10:58:34.476Z",
+            "checkedAt": "2026-07-13T14:03:44.046Z",
             "summary": "Independent outcome evaluation not run"
           }
         ],
         "limitations": [
           "Candidate has not completed exact-release managed review"
         ],
-        "reviewedAt": "2026-07-12T10:58:34.476Z"
+        "reviewedAt": "2026-07-13T14:03:44.046Z"
       }
     },
     {
@@ -1604,10 +1604,10 @@
       ],
       "release": {
         "ref": "harnesses/support-triage-agent",
-        "version": "0.2.0",
-        "artifactDigest": "sha256:0944704dd0e80921d43b32d68048470b099b348024830919e632582e7a31565b",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:ec38d44a21873e86e5d1b69f4b37cfd9e5bfe662aea00718281fa0373318afdd",
         "immutable": true,
-        "publishedAt": "2026-07-12T10:58:34.477Z",
+        "publishedAt": "2026-07-13T14:03:42.568Z",
         "delivery": "free_archive"
       },
       "source": {
@@ -1659,70 +1659,70 @@
             "id": "schema",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Native manifest schema validated"
           },
           {
             "id": "artifact_digest",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Immutable artifact digest matches curated release"
           },
           {
             "id": "source_license",
             "status": "pass",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Source and license are declared"
           },
           {
             "id": "static_security",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Static managed review not run"
           },
           {
             "id": "capability_diff",
             "status": "not_run",
             "evidenceLevel": "static_checked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Capability diff not run"
           },
           {
             "id": "claude_code_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Claude Code exact-release activation smoke"
           },
           {
             "id": "codex_activation",
             "status": "not_run",
             "evidenceLevel": "compatibility_smoked",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Codex exact-release activation smoke"
           },
           {
             "id": "human_review",
             "status": "not_run",
             "evidenceLevel": "human_reviewed",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Human task review not run"
           },
           {
             "id": "independent_eval",
             "status": "not_run",
             "evidenceLevel": "independently_evaluated",
-            "checkedAt": "2026-07-12T10:58:34.477Z",
+            "checkedAt": "2026-07-13T14:03:42.568Z",
             "summary": "Independent outcome evaluation not run"
           }
         ],
         "limitations": [
           "Candidate has not completed exact-release managed review"
         ],
-        "reviewedAt": "2026-07-12T10:58:34.477Z"
+        "reviewedAt": "2026-07-13T14:03:42.568Z"
       }
     }
   ]

@@ -1,0 +1,71 @@
+{
+  "owner": "harnesses",
+  "repo": "support-triage-agent",
+  "version": "0.2.1",
+  "createdAt": "2026-07-13T14:03:42.568Z",
+  "files": [
+    {
+      "path": "README.md",
+      "truncated": false,
+      "content": "# Support Triage Agent\n\nClassifies support tickets, extracts exact customer quotes and drafts replies without auto-send.\n\n## How to improve\n\n1. Fork this harness.\n2. Change one agent prompt or eval case.\n3. Run `hh validate && hh eval && hh gate`.\n4. Open PR and read the semantic diff.\n"
+    },
+    {
+      "path": "agents/classifier.md",
+      "truncated": false,
+      "content": "Classify urgency, ownership, money impact and required evidence.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "agents/drafter.md",
+      "truncated": false,
+      "content": "Draft a concise support response without unsupported promises.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "agents/quote_extractor.md",
+      "truncated": false,
+      "content": "Preserve exact customer statements and dates.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "evals/cases/case-1.yaml",
+      "truncated": false,
+      "content": "title: no auto-send for refund case\nscore: 0.9\n"
+    },
+    {
+      "path": "evals/cases/case-2.yaml",
+      "truncated": false,
+      "content": "title: keeps exact customer quote\nscore: 0.88\n"
+    },
+    {
+      "path": "evals/cases/case-3.yaml",
+      "truncated": false,
+      "content": "title: escalates ownership and payment risk\nscore: 0.87\n"
+    },
+    {
+      "path": "evals/promptfooconfig.yaml",
+      "truncated": false,
+      "content": "description: Support Triage Agent smoke eval\nprompts:\n  - agents/drafter.md\nproviders:\n  - echo\n"
+    },
+    {
+      "path": "examples/expected.md",
+      "truncated": false,
+      "content": "# Expected\n\nThe draft asks for transaction evidence, avoids refund promise and escalates money risk.\n"
+    },
+    {
+      "path": "examples/input.md",
+      "truncated": false,
+      "content": "# Input\n\nCustomer says they were charged twice and cannot access the service.\n"
+    },
+    {
+      "path": "harness.yaml",
+      "truncated": false,
+      "content": "schemaVersion: harness.v0.2\nname: support-triage-agent\ntitle: Support Triage Agent\nsummary: Classifies support tickets, extracts exact customer quotes and drafts\n  replies without auto-send.\nversion: 0.2.1\nlicense: MIT\nsource:\n  upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/support-triage-agent\n  upstream_license: MIT\n  attribution: OnlyHarness first-party instruction harness\n  authors:\n    - OnlyHarness\n  vendor_policy: original\nmaintainers:\n  - name: Harness.Hub Local\ntags:\n  - support\n  - triage\n  - drafting\nruntime:\n  primary: none\n  adapters: []\ninputs:\n  - id: request\n    type: markdown\n    required: true\noutputs:\n  - id: final_result\n    type: markdown\nagents:\n  - id: classifier\n    role: classify_ticket\n    title: Classifier\n    prompt: agents/classifier.md\n    tools: []\n    handoffs: []\n  - id: quote_extractor\n    role: extract_exact_quote\n    title: Quote Extractor\n    prompt: agents/quote_extractor.md\n    tools: []\n    handoffs: []\n  - id: drafter\n    role: draft_reply\n    title: Drafter\n    prompt: agents/drafter.md\n    tools: []\n    handoffs: []\nworkflow:\n  entrypoint: classifier\n  stages:\n    - id: classify\n      agent: classifier\n    - id: quote\n      agent: quote_extractor\n    - id: draft\n      agent: drafter\ntools:\n  mcp_servers:\n    - id: web_search\n      required: false\n      package: \"@modelcontextprotocol/server-web-search\"\n      pinned: true\n      allowlist:\n        - api.openai.com\n  function_tools: []\n  external_apis: []\npermissions:\n  network: allowlist\n  network_allowlist:\n    - api.openai.com\n  filesystem: readonly\n  shell: false\n  browser: false\n  credentials: runtime_injected\n  external_send: false\n  money_movement: false\n  user_data: false\n  human_approval_required:\n    - external_send\n    - money_movement\nsecrets:\n  required: []\n  optional: []\nevals:\n  promptfoo_config: evals/promptfooconfig.yaml\n  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o\n    .harnesshub/results.json -o .harnesshub/report.html -o\n    .harnesshub/results.junit.xml\nquality_gates:\n  min_score: 0.82\n  max_regression: 0.03\n  max_cost_usd_per_run: 3\n  max_risk_score: 39\n  required_checks:\n    - schema_valid\n    - eval_passed\n    - no_high_risk_permission_delta\nexamples:\n  - title: Smoke example\n    input: examples/input.md\n    output: examples/expected.md\n"
+    },
+    {
+      "path": "runbooks/local-run.md",
+      "truncated": false,
+      "content": "# Local run\n\n```bash\nhh validate\nhh eval\nhh gate\n```\n"
+    }
+  ],
+  "totalFileCount": 12,
+  "archiveTruncated": false,
+  "artifactDigest": "sha256:ec38d44a21873e86e5d1b69f4b37cfd9e5bfe662aea00718281fa0373318afdd"
+}

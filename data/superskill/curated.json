@@ -76,8 +76,8 @@
     {
       "id": "finance-payment-safety-reviewer",
       "ref": "harnesses/finance-payment-safety-reviewer",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:0a1a2944c88e30159ea5d52c6375000f3ab76545dfe926574992dbc76d46130f",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:b36eec4030023c3586c14d88ced2bdeaed821aef561bdc30216295df8875428e",
       "status": "candidate",
       "jobs": [
         {
@@ -146,8 +146,8 @@
     {
       "id": "incident-rca-commander",
       "ref": "harnesses/incident-rca-commander",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:ecf2355e726b9a36561931af8f58c48adda5abb0317dbd5f5fb149bc9d82165f",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:b5ea7a8395f818a6d1b398bd308c41fa4cb5b05e5fcd0d5222f88d30a2b70c99",
       "status": "candidate",
       "jobs": [
         {
@@ -238,8 +238,8 @@
     {
       "id": "security-permission-auditor",
       "ref": "harnesses/security-permission-auditor",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:58e4889577f7dd8d1156989f95b2b863b8ab4f092d4874b5b726b46a7c878c11",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:b6317fe5feb0364d3b5386c962b0042eff9e558d364be2a105c014823ad5da47",
       "status": "candidate",
       "jobs": [
         {
@@ -261,8 +261,8 @@
     {
       "id": "support-triage-agent",
       "ref": "harnesses/support-triage-agent",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:0944704dd0e80921d43b32d68048470b099b348024830919e632582e7a31565b",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:ec38d44a21873e86e5d1b69f4b37cfd9e5bfe662aea00718281fa0373318afdd",
       "status": "candidate",
       "jobs": [
         {
