@@ -254,8 +254,8 @@ Required evidence:
 Update smoke:
 
 ```bash
-CLAUDE_CONFIG_DIR=<temp> claude plugin marketplace update onlyharness
-CLAUDE_CONFIG_DIR=<temp> claude plugin update superskill@onlyharness
+CLAUDE_CONFIG_DIR=<temp> claude plugin marketplace update superskill
+CLAUDE_CONFIG_DIR=<temp> claude plugin update superskill@superskill
 ```
 
 Start a new session and verify updated plugin/CLI contract version.
@@ -270,7 +270,7 @@ Use isolated environment:
 
 ```bash
 CODEX_HOME=<temp> codex plugin marketplace add <repo-or-local-path>
-CODEX_HOME=<temp> codex plugin add superskill@onlyharness
+CODEX_HOME=<temp> codex plugin add superskill@superskill
 CODEX_HOME=<temp> codex plugin list
 CODEX_HOME=<temp> codex mcp list
 ```
@@ -279,15 +279,21 @@ Then run Codex with temp project and verify:
 
 - plugin enabled;
 - shared skill discovered;
-- MCP visible or CLI fallback works;
+- `superskill_local` MCP exposes exactly the eight lifecycle tools;
 - temporary activation writes only project `.onlyharness`;
 - pinned skill is `.agents/skills/...`;
 - new task detects pinned skill.
 - after pin, remove plugin/global CLI and prove generated skill reuses exact CLI version
   from marker via `npx`;
 
-Update smoke runs `codex plugin marketplace upgrade onlyharness`, re-adds the plugin,
+Update smoke runs `codex plugin marketplace upgrade superskill`, re-adds the plugin,
 starts a new task and verifies stale cache cleanup without touching project pinned files.
+
+`npm run smoke:superskill-exact-release` is legacy shell compatibility evidence only.
+It must report `mcpPrimaryGoEvidence: false` and cannot satisfy this gate. The local
+MCP-primary prerequisite is `npm run smoke:superskill-mcp-go`; production GO additionally
+requires fresh clean Codex and Claude sessions using the installed `superskill_local`
+server and all eight lifecycle tools.
 
 The installed local Codex CLI version is part of smoke report. Do not hardcode one version
 as a product requirement.
@@ -406,6 +412,7 @@ npm run smoke
 npm run smoke:mcp
 npm run check:superskill-router
 npm run smoke:superskill
+npm run smoke:superskill-mcp-go
 npm run build
 ```
 
@@ -497,6 +504,7 @@ npm run smoke
 npm run smoke:mcp
 npm run check:superskill-router
 npm run smoke:superskill
+npm run smoke:superskill-mcp-go
 npm run build
 CLI_VERSION=$(node -p "require('./plugins/superskill/runtime.json').cliVersion")
 npx onlyharness@"$CLI_VERSION" doctor --json

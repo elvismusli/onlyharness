@@ -43,6 +43,7 @@ const curatedFile = path.join(root, "data/superskill/curated.json");
 const historyFile = path.join(root, "data/superskill/history.json");
 const reviewsRoot = path.join(root, "data/superskill/reviews");
 const cliPackageFile = path.join(root, "packages/harness-cli/package.json");
+const runtimeFile = path.join(root, "plugins/superskill/runtime.json");
 const defaultExpected = {
   id: "deep-market-researcher",
   ref: "harnesses/deep-market-researcher",
@@ -50,7 +51,12 @@ const defaultExpected = {
   artifactDigest: "sha256:9ebad5b23017dc95b758a77361080f026832538903735cdcb7d9a669f204927e"
 } as const;
 const defaultTaskSummary = "competitor research market map source-backed comparison";
-const cliVersion = "0.2.13";
+const cliPackage = JSON.parse(readFileSync(cliPackageFile, "utf8")) as { name?: string; version?: string };
+const runtime = JSON.parse(readFileSync(runtimeFile, "utf8")) as { cliPackage?: string; cliVersion?: string };
+assert.equal(runtime.cliPackage, cliPackage.name, "SuperSkill runtime package must match the CLI package");
+assert.equal(runtime.cliVersion, cliPackage.version, "SuperSkill runtime version must match the CLI package");
+assert.match(runtime.cliVersion ?? "", /^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/, "SuperSkill runtime must pin a concrete CLI version");
+const cliVersion = runtime.cliVersion!;
 const smokeArguments = parseArguments(process.argv.slice(2));
 const realClientSessionsRequested = smokeArguments.realClientSessions;
 const realClientFilter = smokeArguments.realClient;
@@ -102,7 +108,7 @@ type RecommendationResult = CliResult & {
 
 const sourceTruthBefore = sourceTruthHashes();
 assert.ok(existsSync(cliFile), "Build packages/harness-cli/dist/hh.mjs before running this smoke");
-assert.equal((JSON.parse(readFileSync(cliPackageFile, "utf8")) as { version?: string }).version, cliVersion);
+assert.equal(cliPackage.version, cliVersion);
 
 assertExactTuple(exactCandidate);
 const exactArchiveBuilder = privateFixture ? privateArchiveBuilder(privateFixture) : buildManagedArchive;
@@ -198,6 +204,9 @@ try {
     && eligibleReports.every((item) => item.compatibilitySessionEligible === true);
   const report = {
     schemaVersion: "superskill.exact-release-bootstrap-smoke.v1",
+    proofMode: "legacy_shell_compatibility",
+    mcpPrimaryGoEvidence: false,
+    productionGoEvidence: false,
     bootstrapOnly: true,
     promotionAuthorized: false,
     attestationCreated: false,
@@ -230,7 +239,8 @@ try {
       requested: realClientSessionsRequested,
       filter: realClientFilter ?? "both",
       allEligible,
-      attemptPolicy: "one bounded fresh session per client; failures stay ineligible"
+      attemptPolicy: "one bounded fresh legacy-shell compatibility session per client; failures stay ineligible",
+      goUse: "compatibility_only"
     },
     clients: clientReports,
     privacy: {
@@ -239,7 +249,7 @@ try {
       absolutePathIncludedInPublicReportOrEvents: false
     },
     outcomePolicy: "No real capability task was executed; both activation outcomes are unknown with unknown evidence.",
-    nextGate: "Human review and a valid exact-release attestation are still required before promotion."
+    nextGate: "Run the separate MCP-primary plugin GO smoke, then complete human review and a valid exact-release attestation before promotion."
   };
   const publicJson = JSON.stringify(report, null, 2);
   assert.equal(publicJson.includes(token), false);
@@ -273,6 +283,7 @@ async function smokeClient(client: Client): Promise<Record<string, unknown>> {
     HOME: isolatedHome,
     HH_REGISTRY_URL: registry,
     HH_SUPERSKILL_TOKEN: token,
+    HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY: "1",
     HH_SUPERSKILL_TELEMETRY: "on",
     HH_SUPERSKILL_DOCTOR_SKIP_NPM_VIEW: "1"
   };
@@ -449,10 +460,7 @@ async function runRealClientSession(
   observedVersion: string
 ): Promise<Record<string, unknown> & { status: string; compatibilitySessionEligible: boolean }> {
   const sessionStartedAt = new Date().toISOString();
-  const expectedVersion = client === "claude-code" ? "2.1.112" : "0.135.0";
-  if (!observedVersion.includes(expectedVersion)) {
-    return realClientFailure("not_run", "CLIENT_VERSION_MISMATCH", client);
-  }
+  if (observedVersion === "unavailable") return realClientFailure("not_run", "CLIENT_UNAVAILABLE", client);
 
   const requestId = `req_clientsession_${client.replace("-", "")}_${randomBytes(8).toString("base64url")}`;
   const skillRelative = markerRelative.replace("/.superskill-managed.json", "/SKILL.md");
@@ -636,11 +644,13 @@ async function runRealClientSession(
 
   return {
     status: "passed",
+    proofMode: "legacy_shell_compatibility",
+    mcpPrimaryGoEvidence: false,
     compatibilitySessionEligible: true,
     blocker: null,
     sessionPersistence: client === "claude-code" ? "disabled" : "ephemeral",
     sandbox: client === "claude-code" ? "restricted Skill+Bash allowlist" : "workspace-write; model tools disabled except local shell",
-    clientVersion: expectedVersion,
+    clientVersionObserved: observedVersion,
     checkedAt: new Date().toISOString(),
     fixtureId: `${expected.id}-${expected.version}-real-${client}-v1`,
     sessionStartedAt,

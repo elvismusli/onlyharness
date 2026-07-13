@@ -14,6 +14,7 @@ SUPERSKILL_APEX_URL="${SUPERSKILL_APEX_URL:-https://superskill.sh}"
 SUPERSKILL_WWW_URL="${SUPERSKILL_WWW_URL:-https://www.superskill.sh}"
 RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"
 DEPLOY_SMOKE_ACCESS_TOKEN="${DEPLOY_SMOKE_ACCESS_TOKEN:-}"
+ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH="${ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH:-0}"
 RESOURCE_ARCHIVE_DIR="${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}"
 RESOURCE_IMPORT_ARCHIVE_DIR="${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}"
 SUPERSKILL_SUBJECT_SALT_PATH="${SUPERSKILL_SUBJECT_SALT_PATH:-/var/lib/onlyharness/superskill-subject-salt}"
@@ -49,8 +50,12 @@ fi
 
 configured_publish_flag="$(sed -n 's/^[[:space:]]*HOSTED_RESOURCE_PUBLISH_ENABLED[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
 configured_publish_flag="${configured_publish_flag:-false}"
-if [[ "$configured_publish_flag" != "false" ]]; then
-  echo "HOSTED_RESOURCE_PUBLISH_ENABLED must remain false during containment; refusing deploy." >&2
+if [[ "$configured_publish_flag" != "false" && "$configured_publish_flag" != "true" ]]; then
+  echo "HOSTED_RESOURCE_PUBLISH_ENABLED must be true or false; refusing deploy." >&2
+  exit 1
+fi
+if [[ "$configured_publish_flag" == "true" && "$ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH" != "1" ]]; then
+  echo "Hosted resource publishing requires ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH=1 after the migration and archive-parity gates pass." >&2
   exit 1
 fi
 ssh -o BatchMode=yes -o ConnectTimeout=10 "$SSH_TARGET" "mkdir -p '$SERVER_PATH' '$RESOURCE_ARCHIVE_DIR' '$RESOURCE_IMPORT_ARCHIVE_DIR'"
@@ -159,7 +164,7 @@ chmod 0600 "$temporary_env"
 mv "$temporary_env" "$env_file"
 REMOTE_SUBJECT_SALT
 
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES config | grep -q 'HOSTED_RESOURCE_PUBLISH_ENABLED: \"false\"'"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES config | grep -q 'HOSTED_RESOURCE_PUBLISH_ENABLED: \"$configured_publish_flag\"'"
 
 ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' RESOURCE_ARCHIVE_DIR='$RESOURCE_ARCHIVE_DIR' bash -s" <<'REMOTE_ARCHIVES'
 set -euo pipefail
@@ -169,16 +174,16 @@ if [ -d "$SERVER_PATH/data/resources/archives" ]; then
 fi
 REMOTE_ARCHIVES
 
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES build"
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES run --rm --no-deps api node --input-type=module -e 'const storage = await import(\"./apps/harness-api/dist/resource-releases.js\"); const probe = storage.probeResourceImportArchiveStorage(); if (!probe.ok) { console.error(JSON.stringify(probe)); process.exit(1); } const reconciliation = await storage.reconcileResourceReleases({pendingMaxAgeMs:0}); if (reconciliation.store === \"unavailable\") { console.error(JSON.stringify({ok:false,code:\"RELEASE_STORE_UNAVAILABLE\"})); process.exit(1); } const inventory = storage.verifyResourceReleaseInventory(); if (!inventory.ok) { console.error(JSON.stringify({ok:false,code:\"ARCHIVE_PARITY_FAILED\",failures:inventory.failures})); process.exit(1); } console.log(JSON.stringify({ok:true,code:\"RESOURCE_IMPORT_STORAGE_READY\",reconciliation,inventory}));'"
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES up -d --no-build"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES build"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES run --rm --no-deps api node --input-type=module -e 'const storage = await import(\"./apps/harness-api/dist/resource-releases.js\"); const probe = storage.probeResourceImportArchiveStorage(); if (!probe.ok) { console.error(JSON.stringify(probe)); process.exit(1); } const reconciliation = await storage.reconcileResourceReleases({pendingMaxAgeMs:0}); if (reconciliation.store === \"unavailable\") { console.error(JSON.stringify({ok:false,code:\"RELEASE_STORE_UNAVAILABLE\"})); process.exit(1); } const inventory = storage.verifyResourceReleaseInventory(); if (!inventory.ok) { console.error(JSON.stringify({ok:false,code:\"ARCHIVE_PARITY_FAILED\",failures:inventory.failures})); process.exit(1); } console.log(JSON.stringify({ok:true,code:\"RESOURCE_IMPORT_STORAGE_READY\",reconciliation,inventory}));'"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES up -d --no-build"
 
 # The api data volume shadows the image's /app/data: seed committed catalog
 # data into the volume so directory/resource shelves survive on prod.
 for seed_dir in directories resources harness-versions superskill; do
-  ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
+  ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
 done
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES restart api"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES restart api"
 
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
@@ -241,12 +246,12 @@ systemctl reload caddy
 REMOTE_CADDY
 fi
 
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES ps"
-ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' COMPOSE_FILES='$COMPOSE_FILES' bash -s" <<'REMOTE_HEALTH'
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES ps"
+ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' COMPOSE_FILES='$COMPOSE_FILES' configured_publish_flag='$configured_publish_flag' bash -s" <<'REMOTE_HEALTH'
 set -euo pipefail
 cd "$SERVER_PATH"
 for _ in $(seq 1 45); do
-  if env HOSTED_RESOURCE_PUBLISH_ENABLED=false docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch("http://127.0.0.1:8787/healthz").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' 2>/dev/null; then
+  if env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch("http://127.0.0.1:8787/healthz").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' 2>/dev/null; then
     exit 0
   fi
   sleep 1
@@ -276,9 +281,14 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   containment_status="$(printf 'Authorization: Bearer %s\n' "$DEPLOY_SMOKE_ACCESS_TOKEN" | curl -sS -o "$containment_response" -w '%{http_code}' -X POST "$PUBLIC_BASE_URL/api/imports/resource-package" \
     -H 'Content-Type: application/json' \
     -H @- \
-    --data '{"name":"deploy-containment-probe","resourceType":"guide","files":[{"path":"README.md","content":"# Deploy containment probe\\n\\nThis authenticated request must remain disabled."}]}')"
-  test "$containment_status" = "503"
-  grep -q '"code":"PUBLISH_DISABLED"' "$containment_response"
+    --data '{"name":"deploy-mode-probe","resourceType":"guide","files":[{"path":"README.md","content":"# Deploy mode probe\\n\\nThis incomplete request must never create a release."}]}')"
+  if [[ "$configured_publish_flag" == "true" ]]; then
+    test "$containment_status" = "400"
+    grep -q '"code":"VALIDATION_FAILED"' "$containment_response"
+  else
+    test "$containment_status" = "503"
+    grep -q '"code":"PUBLISH_DISABLED"' "$containment_response"
+  fi
   ! grep -Eq '/var/lib|/app/|tar:|stderr' "$containment_response"
   rm -f "$containment_response"
   curl -fsS "$PUBLIC_BASE_URL/server.json" | grep -q '"name": "com.onlyharness/registry"'

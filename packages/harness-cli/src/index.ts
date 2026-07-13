@@ -17,6 +17,7 @@ import {
 } from "@harnesshub/schema";
 import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff";
 import { registerActivationCommands } from "./commands/activation.js";
+import { registerAuthCommands } from "./commands/auth.js";
 import { registerRecommendCommand } from "./commands/recommend.js";
 import { registerSuperSkillInstallCommand } from "./commands/superskill-install.js";
 import { registerSuperSkillMcpCommand } from "./mcp/superskill-server.js";
@@ -1663,6 +1664,7 @@ program.command("pack")
   });
 
 registerRecommendCommand(program, () => registryUrl);
+registerAuthCommands(program, () => registryUrl);
 registerActivationCommands(program, () => registryUrl);
 registerSuperSkillInstallCommand(program, () => registryUrl);
 registerSuperSkillMcpCommand(program, () => registryUrl);

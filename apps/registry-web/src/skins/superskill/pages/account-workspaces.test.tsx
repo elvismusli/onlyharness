@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, expect, test, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
@@ -34,6 +34,8 @@ beforeEach(() => {
     joinWorkspace: vi.fn().mockResolvedValue(undefined)
   };
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 test("account uses the shared confirmation-first sign-up flow", () => {
   const signUp = vi.fn().mockResolvedValue(undefined);
@@ -74,6 +76,49 @@ test("signed-out account can resend confirmation through the shared auth hook", 
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ada@example.com" } });
   fireEvent.click(screen.getByRole("button", { name: "Resend confirmation email" }));
   expect(resendConfirmation).toHaveBeenCalledWith("ada@example.com");
+});
+
+test("confirmed account approves a terminal code without displaying or persisting credentials", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ approved: true, expires_in: 1800 }), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  harness.value = {
+    ...harness.value,
+    user: { email: "ada@example.com", email_confirmed_at: "2026-07-14T00:00:00Z", user_metadata: {} },
+    accessToken: "browser-session-secret"
+  };
+  render(<AccountPage />);
+
+  fireEvent.change(screen.getByLabelText("One-time code"), { target: { value: "abcd2345" } });
+  expect(screen.getByLabelText("One-time code")).toHaveValue("ABCD-2345");
+  fireEvent.submit(screen.getByLabelText("One-time code").closest("form")!);
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+  expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/auth/device/approve", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer browser-session-secret"
+    },
+    body: JSON.stringify({ user_code: "ABCD-2345" })
+  });
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Terminal approved"));
+  expect(screen.getByLabelText("One-time code")).toHaveValue("");
+  expect(screen.queryByText("browser-session-secret")).toBeNull();
+  expect(screen.getByRole("link", { name: "Publish a skill" })).toHaveAttribute("href", "#/superskill/publish");
+});
+
+test("unconfirmed account cannot approve a terminal", () => {
+  harness.value = {
+    ...harness.value,
+    user: { email: "ada@example.com", email_confirmed_at: null, user_metadata: {} },
+    accessToken: "browser-session-secret"
+  };
+  render(<AccountPage />);
+  expect(screen.getByText("Confirm your email before approving a terminal.")).toBeTruthy();
+  expect(screen.queryByLabelText("One-time code")).toBeNull();
 });
 
 test("workspaces fail closed for a signed-out visitor", () => {

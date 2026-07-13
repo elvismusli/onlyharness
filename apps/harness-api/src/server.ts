@@ -28,6 +28,8 @@ import * as workspaces from "./workspaces.js";
 import { registerSuperskillRoutes, resolveManagedAccess } from "./routes/superskill.js";
 import { handleManagedEventRequest } from "./routes/superskill-events.js";
 import { createSupabaseSuperskillAccessResolver, fetchSupabaseAuthIdentity, normalizeSupabaseOrigin, supabaseAuthTimeoutMs, superskillUserSubject } from "./superskill/access.js";
+import { registerSuperskillDeviceAuthRoutes } from "./superskill/device-auth.js";
+import { SUPERSKILL_DEVICE_TOKEN_PREFIX } from "./superskill/device-token.js";
 
 const statePath = path.resolve(process.env.HARNESS_STATE_PATH ?? path.join(registry.workspaceRoot, "data/harness-state.json"));
 const supabaseUrl = normalizeSupabaseOrigin(process.env.SUPABASE_URL);
@@ -323,6 +325,7 @@ await app.register(cors, {
     return callback(null, false);
   }
 });
+await registerSuperskillDeviceAuthRoutes(app);
 await registerSuperskillRoutes(app, { accessResolver: superskillAccessResolver });
 
 app.get("/healthz", async () => ({ ok: true }));
@@ -1875,28 +1878,35 @@ async function authenticatePublicResourcePublish(authorization: string | undefin
   if (!authorization) {
     return { status: 401, error: "Sign in required", code: "AUTH_REQUIRED" };
   }
-  if ((!supabaseUrl || !supabaseAnonKey) && process.env.NODE_ENV !== "production") {
-    const local = authorization.match(/^Bearer\s+local:([A-Za-z0-9._:-]{2,80})$/);
-    if (!local) return { status: 401, error: "Invalid or expired session", code: "AUTH_INVALID" };
-    return { user: { id: local[1], confirmed: true, subject: superskillUserSubject(local[1], process.env.SUPERSKILL_SUBJECT_SALT ?? "onlyharness-local-dev-subject") } };
-  }
-  const managed = await resolveManagedAccess(authorization, {}, superskillAccessResolver, new Date());
-  if (managed.ok) {
-    if (managed.evidence !== "confirmed_user" || !managed.publicGoEligible || !/^user:[a-f0-9]{64}$/.test(managed.subject)) {
-      return { status: 403, error: "Confirmed managed user access is required", code: "FORBIDDEN" };
+  if (authorization.startsWith(`Bearer ${SUPERSKILL_DEVICE_TOKEN_PREFIX}`)) {
+    const managed = await resolveManagedAccess(authorization, {}, superskillAccessResolver, new Date());
+    if (managed.ok && managed.evidence === "confirmed_user" && managed.publicGoEligible && /^user:[a-f0-9]{64}$/.test(managed.subject)) {
+      return { user: { id: managed.subject, subject: managed.subject, confirmed: true } };
     }
-    return { user: { id: managed.subject, subject: managed.subject, confirmed: true } };
+    return {
+      status: managed.ok ? 403 : managed.status,
+      error: !managed.ok && managed.reasonCode === "SUPERSKILL_AUTH_UNAVAILABLE"
+        ? "Authentication service unavailable"
+        : "Invalid or expired device session",
+      code: !managed.ok && managed.status === 503 ? "AUTH_UNAVAILABLE" : "AUTH_INVALID"
+    };
+  }
+
+  const signedIn = await userFromAuthorization(authorization);
+  if (!signedIn.user) return signedIn;
+  if (!signedIn.user.confirmed) return { status: 403, error: "Email confirmation required", code: "FORBIDDEN" };
+  const subjectSalt = process.env.SUPERSKILL_SUBJECT_SALT
+    ?? (process.env.NODE_ENV !== "production" ? "onlyharness-local-dev-subject-salt" : "");
+  if (Buffer.byteLength(subjectSalt, "utf8") < 32) {
+    return { status: 503, error: "Authentication service unavailable", code: "AUTH_UNAVAILABLE" };
   }
   return {
-    status: managed.status,
-    error: managed.reasonCode === "SUPERSKILL_EMAIL_UNCONFIRMED"
-      ? "Email confirmation required"
-      : managed.reasonCode === "SUPERSKILL_ACCESS_DENIED"
-        ? "Managed publication access is not granted"
-        : managed.reasonCode === "SUPERSKILL_AUTH_UNAVAILABLE"
-          ? "Authentication service unavailable"
-          : "Invalid or expired session",
-    code: managed.status === 503 ? "AUTH_UNAVAILABLE" : managed.status === 403 ? "FORBIDDEN" : "AUTH_INVALID"
+    user: {
+      id: signedIn.user.id,
+      email: signedIn.user.email,
+      confirmed: true,
+      subject: superskillUserSubject(signedIn.user.id, subjectSalt)
+    }
   };
 }
 
@@ -2694,7 +2704,7 @@ async function importResourcePackage(body: ResourcePackageImportRequest, user: A
     const signals = { stars: 0, opens: 0, imports: 1, installs: 0, threads: 0, passedGates: 0 };
     const canonicalUrl = workspaceSlug
       ? `https://superskill.sh/#/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}`
-      : `https://superskill.sh/#/resources/${encodeURIComponent(id)}`;
+      : `https://superskill.sh/#/superskill/resources/${encodeURIComponent(id)}`;
     const archiveUrl = workspaceSlug
       ? `https://superskill.sh/api/workspaces/${encodeURIComponent(workspaceSlug)}/resources/${encodeURIComponent(name)}/archive`
       : `https://superskill.sh/api/resources/${encodeURIComponent(id)}/releases/${encodeURIComponent(version!)}/archive`;

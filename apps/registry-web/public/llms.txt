@@ -16,7 +16,7 @@ MCP Registry metadata: https://superskill.sh/server.json
 
 OAuth protected-resource metadata: https://superskill.sh/.well-known/oauth-protected-resource
 
-SuperSkill does not advertise a vanity OAuth authorization server. Managed headless flows use a confirmed account token supplied manually through `HH_TOKEN`; the token is sent only in the Authorization header. `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid authorization flow.
+SuperSkill does not advertise a vanity OAuth authorization server. Managed headless flows use a separate one-time device authorization: run `eval "$(hh auth login --shell --client codex)"` (use `claude-code` for Claude Code), approve the user code from the confirmed signed-in Account page, and start the client from that terminal. The maximum 30-minute HMAC bearer remains only in `HH_TOKEN`, is sent only in the Authorization header, and is live-checked against the user and `superskill:managed` grant. This flow is not advertised as OAuth; `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid authorization flow.
 
 ## SuperSkill internal alpha
 

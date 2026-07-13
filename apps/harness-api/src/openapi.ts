@@ -768,7 +768,7 @@ export const openapi = {
     "/imports/resource-package": {
       post: {
         summary: "Publish a hosted agent resource package",
-        description: "A confirmed user with an active superskill:managed access grant is required. Temporarily fails closed with 503 PUBLISH_DISABLED while HOSTED_RESOURCE_PUBLISH_ENABLED=false. When enabled after the durable archive migration, requires immutable semantic version and a 16-200 character idempotencyKey, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
+        description: "A confirmed signed-in user is required; a short-lived SuperSkill device bearer is also accepted for the CLI. Publishing is self-service and does not require a managed recommendation grant. Temporarily fails closed with 503 PUBLISH_DISABLED while HOSTED_RESOURCE_PUBLISH_ENABLED=false. When enabled after the durable archive migration, requires immutable semantic version and a 16-200 character idempotencyKey, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1877,6 +1877,88 @@ export const openapi = {
         }
       }
     },
+    "/auth/device/start": {
+      post: {
+        summary: "Start one-time CLI device authorization",
+        description: "Creates a short-lived one-time device session. The high-entropy device code is returned only in the JSON body; the verification URL is static and contains no code, credential or identity.",
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { client: { type: "string", enum: ["cli", "codex", "claude-code"] } },
+                additionalProperties: false
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Short-lived device session", content: { "application/json": { schema: { $ref: "#/components/schemas/DeviceAuthorizationStart" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "429": { description: "Bounded start rate exceeded" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/auth/device/approve": {
+      post: {
+        summary: "Approve a CLI device code from the signed-in Account page",
+        description: "Requires the existing live Supabase browser bearer and a confirmed email. The one-time user code is accepted only in the request body. Approval creates or extends a short-lived superskill:managed grant through the audited server-only operator RPC; suspended and revoked grants fail closed.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { user_code: { type: "string", pattern: "^[A-Z2-9]{4}-[A-Z2-9]{4}$" } },
+                required: ["user_code"],
+                additionalProperties: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Device approved; no browser credential or CLI token is returned", content: { "application/json": { schema: { type: "object", properties: { approved: { type: "boolean", const: true }, expires_in: { type: "integer", maximum: 1800 } }, required: ["approved", "expires_in"], additionalProperties: false } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": { $ref: "#/components/responses/Conflict" },
+          "410": { description: "Device code expired" },
+          "429": { description: "Bounded approval rate exceeded" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/auth/device/token": {
+      post: {
+        summary: "Poll and exchange an approved one-time device session",
+        description: "The CLI sends its high-entropy device code only in the request body. A successful exchange consumes the session exactly once and returns a maximum 30-minute HMAC bearer scoped only to superskill:managed. The token is not written to browser or project storage.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { device_code: { type: "string", pattern: "^ohdc_[A-Za-z0-9_-]{43}$" } },
+                required: ["device_code"],
+                additionalProperties: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "One-time short-lived terminal bearer", content: { "application/json": { schema: { $ref: "#/components/schemas/DeviceAuthorizationToken" } } } },
+          "202": { description: "Browser approval is still pending" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "409": { $ref: "#/components/responses/Conflict" },
+          "410": { description: "Device session expired" },
+          "429": { description: "Polling interval or rate limit exceeded" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
     "/showroom/capabilities": {
       get: {
         summary: "List approved SuperSkill showroom capabilities",
@@ -2172,6 +2254,29 @@ export const openapi = {
           ok: { type: "boolean" }
         },
         required: ["ok"]
+      },
+      DeviceAuthorizationStart: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          device_code: { type: "string", pattern: "^ohdc_[A-Za-z0-9_-]{43}$" },
+          user_code: { type: "string", pattern: "^[A-Z2-9]{4}-[A-Z2-9]{4}$" },
+          verification_uri: { type: "string", format: "uri", description: "Static Account page URL; never includes a user or device code" },
+          expires_in: { type: "integer", minimum: 120, maximum: 900 },
+          interval: { type: "integer", minimum: 1, maximum: 10 }
+        },
+        required: ["device_code", "user_code", "verification_uri", "expires_in", "interval"]
+      },
+      DeviceAuthorizationToken: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          access_token: { type: "string", pattern: "^ohdt_[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{43}$" },
+          token_type: { type: "string", const: "Bearer" },
+          expires_in: { type: "integer", minimum: 1, maximum: 1800 },
+          scope: { type: "string", const: "superskill:managed" }
+        },
+        required: ["access_token", "token_type", "expires_in", "scope"]
       },
       SuperSkillBootstrap: {
         type: "object",

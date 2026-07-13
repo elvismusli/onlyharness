@@ -15,6 +15,8 @@ Before managed work, require the project-local `superskill_local` MCP with exact
 
 Never ask the user or tools to print/read `HH_TOKEN`. It may exist only in the inherited process environment and is sent by the local MCP runtime only as an Authorization header. It is never a tool argument or stored in project config. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and is not public proof.
 
+If managed access reports `SUPERSKILL_AUTH_REQUIRED` or `SUPERSKILL_AUTH_INVALID`, do not run login through an agent shell or ask for a pasted token. Tell a Codex user to run `eval "$(npx --yes onlyharness@0.2.14 auth login --shell --client codex)"` in a trusted terminal; use the `claude-code` client value for Claude Code. They approve the one-time code on the signed-in SuperSkill Account page, then start a fresh client session from that terminal. The short-lived token must never enter agent context or project files.
+
 Set one explicit `client` on every tool call:
 
 - Claude Code: `claude-code`

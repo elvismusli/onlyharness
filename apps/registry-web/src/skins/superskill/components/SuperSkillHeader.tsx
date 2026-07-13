@@ -10,6 +10,7 @@ const DOCS_ROUTE = buildSuperSkillRoute({ name: "docs" });
 const AGENT_GUIDE_ROUTE = buildSuperSkillRoute({ name: "agent-guide" });
 const INSTALL_ROUTE = buildSuperSkillRoute({ name: "install" });
 const ACCOUNT_ROUTE = buildSuperSkillRoute({ name: "account" });
+const PUBLISH_ROUTE = buildSuperSkillRoute({ name: "publish" });
 const WORKSPACES_ROUTE = buildSuperSkillRoute({ name: "workspaces" });
 
 export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
@@ -57,6 +58,7 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
           <a href={SHOWROOM_ROUTE} aria-current={route.name === "landing" ? "page" : undefined} onClick={closeMenu}>Showroom</a>
           <a href={DOCS_ROUTE} aria-current={route.name === "docs" ? "page" : undefined} onClick={closeMenu}>Docs</a>
           <a href={AGENT_GUIDE_ROUTE} aria-current={route.name === "agent-guide" ? "page" : undefined} onClick={closeMenu}>Agent guide</a>
+          <a href={PUBLISH_ROUTE} aria-current={route.name === "publish" ? "page" : undefined} onClick={closeMenu}>Publish</a>
           <a href={WORKSPACES_ROUTE} aria-current={route.name === "workspaces" ? "page" : undefined} onClick={closeMenu}>Workspaces</a>
           <a href={ACCOUNT_ROUTE} aria-current={route.name === "account" ? "page" : undefined} onClick={closeMenu}>Account</a>
           <a className="ss-link ss-link--primary ss-nav-install-link" href={INSTALL_ROUTE} aria-current={route.name === "install" ? "page" : undefined} onClick={closeMenu}>Get SuperSkill</a>
@@ -67,7 +69,7 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
 }
 
 function routeName(route: RoutableSuperSkillRoute | { name: "not-found" }): string {
-  if (route.name === "capability" || route.name === "selected" || route.name === "category") return `${route.name}:${JSON.stringify(route)}`;
+  if (route.name === "capability" || route.name === "selected" || route.name === "category" || route.name === "resource") return `${route.name}:${JSON.stringify(route)}`;
   if (route.name === "install") return `${route.name}:${route.capabilityId ?? "shared"}`;
   return route.name;
 }

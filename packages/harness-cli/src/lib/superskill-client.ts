@@ -235,7 +235,7 @@ function cleanRegistry(value: string): string {
     && url.protocol === "http:"
     && url.hostname === "127.0.0.1"
     && Boolean(url.port)
-    && pathname === "/";
+    && (pathname === "/" || pathname === "/api");
   if (!canonical && !insecureTest) throw untrustedRegistry();
   return pathname === "/" ? url.origin : `${url.origin}${pathname}`;
 }

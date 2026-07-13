@@ -6,7 +6,11 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const migrationsRoot = path.join(root, "supabase/migrations");
 const migrations = readdirSync(migrationsRoot).filter((name) => name.endsWith(".sql")).sort();
+const productionAppliedCutoff = "20260707160000";
 const forwardRepairMigration = "20260713130000_workspace_member_expiry_policy_repair.sql";
+const finalWorkspaceRlsMigration = "20260714100000_workspace_member_expiry_rls.sql";
+const productionAppliedMigrations = migrations.filter((migration) => migrationVersion(migration) <= productionAppliedCutoff);
+const productionPendingMigrations = migrations.filter((migration) => migrationVersion(migration) > productionAppliedCutoff);
 const container = `onlyharness-release-proof-${process.pid}-${randomUUID().slice(0, 8)}`;
 const password = "local-proof-password";
 const env = { ...process.env, PGPASSWORD: password };
@@ -25,13 +29,18 @@ try {
   sql("create database onlyharness_upgrade_proof;", baseArgs);
   const upgradeArgs = postgresArgs(port, "onlyharness_upgrade_proof");
   bootstrapDatabase(upgradeArgs, false);
-  const priorMigrations = migrations.filter((migration) => migration !== forwardRepairMigration);
-  const seededLedger = applyPendingMigrations(priorMigrations, upgradeArgs);
-  assertEqual(String(seededLedger.length), String(priorMigrations.length), "existing-ledger setup did not apply all historical migrations");
-  simulateAppliedLedgerDrift(upgradeArgs);
+  assertEqual(String(productionAppliedMigrations.length), "17", "production baseline migration count changed; update the explicit rollout cutoff");
+  assertEqual(String(productionPendingMigrations.length), "11", "production pending migration count changed; review the rollout proof before shipping");
+  const seededLedger = applyPendingMigrations(productionAppliedMigrations, upgradeArgs);
+  assertEqual(seededLedger.join(","), productionAppliedMigrations.join(","), "existing-ledger setup did not stop at the production cutoff");
+  seedProductionLikeData(upgradeArgs);
+  const productionSnapshot = captureProductionSnapshot(upgradeArgs);
   const upgradeApplied = applyPendingMigrations(migrations, upgradeArgs);
-  assertEqual(upgradeApplied.join(","), forwardRepairMigration, "forward upgrade applied migrations other than the latest pending repair");
-  proveForwardWorkspaceRepair(upgradeArgs);
+  assertEqual(upgradeApplied.join(","), productionPendingMigrations.join(","), "forward upgrade did not apply the exact production-pending chain");
+  proveProductionDataPreserved(upgradeArgs, productionSnapshot);
+  proveFinalWorkspaceRls(upgradeArgs);
+  await proveReleaseStore(upgradeArgs);
+  proveManagedAccessStore(upgradeArgs);
 
   console.log(JSON.stringify({
     ok: true,
@@ -39,7 +48,12 @@ try {
     migrations: migrations.length,
     freshChain: true,
     existingLedgerUpgrade: true,
+    productionAppliedCutoff,
+    productionApplied: productionAppliedMigrations.length,
     pendingApplied: upgradeApplied,
+    registrationsPreserved: true,
+    eventsPreserved: true,
+    finalWorkspaceRls: true,
     releaseRpc: true,
     grants: true,
     rls: true,
@@ -96,33 +110,70 @@ function migrationVersion(migration: string): string {
   return version;
 }
 
-function simulateAppliedLedgerDrift(baseArgs: string[]): void {
+function seedProductionLikeData(baseArgs: string[]): void {
   sql(`
-    drop policy if exists "Workspace members read subscription events" on public.workspace_subscription_events;
-    drop index if exists public.workspace_members_active_expiry_idx;
-    alter table public.workspace_members drop column if exists expires_at;
-    create policy "Workspace members read subscription events"
-      on public.workspace_subscription_events for select
-      using (
-        exists (
-          select 1 from public.workspace_members wm
-          where wm.workspace_id = workspace_subscription_events.workspace_id
-            and wm.user_id = auth.uid()
-            and wm.status = 'active'
-            and wm.removed_at is null
-        )
-      );
+    insert into auth.users (id, email, raw_user_meta_data) values
+      ('70000000-0000-4000-8000-000000000001', 'active@example.test', '{"display_name":"Active"}'::jsonb),
+      ('70000000-0000-4000-8000-000000000002', 'expired@example.test', '{"display_name":"Expired"}'::jsonb),
+      ('70000000-0000-4000-8000-000000000003', 'removed@example.test', '{"display_name":"Removed"}'::jsonb);
+    insert into public.events (kind, owner, repo, subject, target, client) values
+      ('view', 'harnesses', 'deep-market-researcher', 'anonymous', null, 'web'),
+      ('pull', 'harnesses', 'deep-market-researcher', 'user:fixture', 'codex', 'cli'),
+      ('accepted', 'harnesses', 'deep-market-researcher', 'user:fixture', 'codex', 'cli');
   `, baseArgs);
 }
 
-function proveForwardWorkspaceRepair(baseArgs: string[]): void {
+type ProductionSnapshot = {
+  authUsers: string;
+  profiles: string;
+  events: string;
+};
+
+function captureProductionSnapshot(baseArgs: string[]): ProductionSnapshot {
+  return {
+    authUsers: sql("select count(*) || ':' || md5(coalesce(string_agg(id::text, ',' order by id), '')) from auth.users;", baseArgs),
+    profiles: sql("select count(*) || ':' || md5(coalesce(string_agg(id::text, ',' order by id), '')) from public.profiles;", baseArgs),
+    events: sql("select count(*) || ':' || md5(coalesce(string_agg(id::text || ':' || kind, ',' order by id), '')) from public.events;", baseArgs)
+  };
+}
+
+function proveProductionDataPreserved(baseArgs: string[], before: ProductionSnapshot): void {
+  const after = captureProductionSnapshot(baseArgs);
+  assertEqual(after.authUsers, before.authUsers, "production upgrade changed existing auth users");
+  assertEqual(after.profiles, before.profiles, "production upgrade changed existing profiles");
+  assertEqual(after.events, before.events, "production upgrade changed existing events");
+  assertEqual(sql("select count(*) from public.events where kind in ('view','pull','accepted');", baseArgs), "3", "legacy event kinds did not survive the broadened constraint");
+  sql("insert into public.events (kind, subject) values ('recommended', 'user:managed-proof');", baseArgs);
+  assertEqual(sql("select count(*) from public.events where kind='recommended' and subject='user:managed-proof';", baseArgs), "1", "managed event kind was not admitted after upgrade");
+}
+
+function proveFinalWorkspaceRls(baseArgs: string[]): void {
   assertEqual(sql("select count(*) from information_schema.columns where table_schema='public' and table_name='workspace_members' and column_name='expires_at';", baseArgs), "1", "forward repair did not add workspace_members.expires_at");
   assertEqual(sql("select count(*) from pg_indexes where schemaname='public' and indexname='workspace_members_active_expiry_idx';", baseArgs), "1", "forward repair did not add the active expiry index");
   const policy = sql("select pg_get_expr(polqual, polrelid) from pg_policy where polrelid='public.workspace_subscription_events'::regclass and polname='Workspace members read subscription events';", baseArgs);
-  if (!policy.includes("wm.user_id = auth.uid()") || !policy.includes("wm.expires_at") || !policy.includes("wm.expires_at > now()")) {
-    throw new Error(`forward repair policy is not UUID-safe and expiry-aware: ${policy}`);
+  if (!policy.includes("superskill_private.has_active_workspace_membership(workspace_id)")) {
+    throw new Error(`final workspace subscription policy does not use the non-recursive expiry helper: ${policy}`);
   }
   assertEqual(sql(`select count(*) from supabase_migrations.schema_migrations where version='${migrationVersion(forwardRepairMigration)}';`, baseArgs), "1", "forward repair was not recorded in the migration ledger");
+  assertEqual(sql(`select count(*) from supabase_migrations.schema_migrations where version='${migrationVersion(finalWorkspaceRlsMigration)}';`, baseArgs), "1", "final workspace RLS migration was not recorded in the migration ledger");
+  assertEqual(sql("select count(*) from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and p.polname in ('Workspace members read their workspaces','Workspace members read membership','Workspace admins read token metadata','Workspace members read resources','Workspace members read audit','Workspace members read collections','Workspace members read collection items','Workspace members read join policies','Workspace members read subscription events') and pg_get_expr(p.polqual, p.polrelid) like '%superskill_private.has_active_workspace_membership%';", baseArgs), "9", "not every membership-scoped policy uses the final helper");
+  assertEqual(sql("select prosecdef::text || ':' || pg_get_userbyid(proowner) from pg_proc where oid='superskill_private.has_active_workspace_membership(uuid,text[])'::regprocedure;", baseArgs), "true:postgres", "workspace membership helper is not postgres-owned security definer");
+
+  sql(`
+    insert into public.workspaces (id, slug, name, type, visibility, owner_user_id) values
+      ('71000000-0000-4000-8000-000000000001', 'private-proof', 'Private proof', 'team', 'private', '70000000-0000-4000-8000-000000000001'),
+      ('71000000-0000-4000-8000-000000000002', 'public-proof', 'Public proof', 'community', 'public', null);
+    insert into public.workspace_members (id, workspace_id, user_id, role, status, removed_at, expires_at) values
+      ('72000000-0000-4000-8000-000000000001', '71000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', 'owner', 'active', null, now() + interval '1 hour'),
+      ('72000000-0000-4000-8000-000000000002', '71000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', 'member', 'active', null, now() - interval '1 hour'),
+      ('72000000-0000-4000-8000-000000000003', '71000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000003', 'member', 'removed', now(), null);
+    grant select on public.workspaces, public.workspace_members to anon, authenticated;
+  `, baseArgs);
+  assertEqual(sql("set role authenticated; set request.jwt.claim.sub='70000000-0000-4000-8000-000000000001'; select (select count(*) from public.workspaces where id='71000000-0000-4000-8000-000000000001') || ':' || (select count(*) from public.workspace_members where workspace_id='71000000-0000-4000-8000-000000000001');", baseArgs), "1:3", "active owner could not read the private workspace without recursive RLS");
+  for (const userId of ["70000000-0000-4000-8000-000000000002", "70000000-0000-4000-8000-000000000003"]) {
+    assertEqual(sql(`set role authenticated; set request.jwt.claim.sub='${userId}'; select (select count(*) from public.workspaces where id='71000000-0000-4000-8000-000000000001') || ':' || (select count(*) from public.workspace_members where workspace_id='71000000-0000-4000-8000-000000000001');`, baseArgs), "0:0", "expired or removed member retained private workspace access");
+  }
+  assertEqual(sql("set role anon; select count(*) from public.workspaces where id='71000000-0000-4000-8000-000000000002';", baseArgs), "1", "public workspace projection is not readable by anon");
 }
 
 async function proveReleaseStore(baseArgs: string[]): Promise<void> {

@@ -35,28 +35,34 @@ plugins/superskill/
 ```json
 {
   "mcpServers": {
-    "onlyharness": {
+    "superskill": {
       "type": "http",
-      "url": "https://onlyharness.com/mcp"
+      "url": "https://superskill.sh/mcp"
+    },
+    "superskill_local": {
+      "command": "npx",
+      "args": ["--yes", "onlyharness@0.2.14", "mcp", "superskill"]
     }
   }
 }
 ```
 
-Existing MCP is browse/search fallback only. Internal managed flow reads checked-in
-`runtime.json` and uses its concrete `npx --yes onlyharness@<cliVersion>`; contract checks
-compare runtime file, shared skill and generated markers. New managed MCP tools are
-outside internal alpha.
+The remote `superskill` MCP is browse/search fallback only. The project-local
+`superskill_local` MCP owns recommendation and the complete managed lifecycle through
+exactly eight tools. Its checked-in command is generated from `runtime.json`; contract
+checks compare the runtime file, shared skill, one-link bootstrap and generated markers.
 
 Internal onboarding sets one tester-specific environment variable outside repo/plugin:
 
 ```bash
-export HH_SUPERSKILL_TOKEN=<opaque-token-issued-to-one-tester>
+export HH_TOKEN=<confirmed-account-bearer-token>
 ```
 
 The skill never asks the model to print/read the value. Missing token stops network
 recommend/start/keep/live-doctor with setup guidance, but offline remove remains
-available. Token is not copied into `.mcp.json`, local state or events.
+available. Token is inherited by the local MCP process and is not copied into `.mcp.json`,
+local state or events. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and
+cannot produce public-GO evidence.
 
 ## 3. Plugin manifests
 
@@ -67,11 +73,11 @@ available. Token is not copied into `.mcp.json`, local state or events.
 ```json
 {
   "name": "superskill",
-  "description": "Find and temporarily activate a reviewed AI capability for the current task.",
-  "version": "0.1.0",
+  "description": "Install once from a pinned link, then find and consent to an exact reviewed capability.",
+  "version": "0.2.0",
   "author": {
-    "name": "OnlyHarness",
-    "url": "https://onlyharness.com"
+    "name": "SuperSkill",
+    "url": "https://superskill.sh"
   }
 }
 ```
@@ -83,7 +89,7 @@ Install path for internal team:
 
 ```bash
 claude plugin marketplace add elvismusli/onlyharness
-claude plugin install superskill@onlyharness
+claude plugin install superskill@superskill
 ```
 
 ### 3.2 Codex
@@ -93,13 +99,13 @@ claude plugin install superskill@onlyharness
 ```json
 {
   "name": "superskill",
-  "version": "0.1.0",
-  "description": "Find and temporarily activate a reviewed AI capability for the current task.",
+  "version": "0.2.0",
+  "description": "Install once from a pinned link, then find and consent to an exact reviewed capability.",
   "author": {
-    "name": "OnlyHarness",
-    "url": "https://onlyharness.com"
+    "name": "SuperSkill",
+    "url": "https://superskill.sh"
   },
-  "homepage": "https://onlyharness.com",
+  "homepage": "https://superskill.sh",
   "repository": "https://github.com/elvismusli/onlyharness",
   "license": "MIT",
   "keywords": ["skills", "agent-tools", "trust", "routing"],
@@ -109,12 +115,10 @@ claude plugin install superskill@onlyharness
     "displayName": "SuperSkill",
     "shortDescription": "Choose and activate a reviewed capability for a task",
     "longDescription": "SuperSkill maps a task to an exact reviewed instruction resource, shows permissions and limitations, then activates it temporarily or pins it with explicit consent.",
-    "developerName": "OnlyHarness",
+    "developerName": "SuperSkill",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Read", "Write"],
-    "websiteURL": "https://onlyharness.com",
-    "privacyPolicyURL": "https://onlyharness.com/privacy",
-    "termsOfServiceURL": "https://onlyharness.com/terms",
+    "websiteURL": "https://superskill.sh",
     "defaultPrompt": [
       "Find the best reviewed capability for this task.",
       "Use SuperSkill to help with this task."
@@ -123,8 +127,7 @@ claude plugin install superskill@onlyharness
 }
 ```
 
-Before implementation, confirm `/privacy` and `/terms` exist. If they do not, omit those
-optional fields for internal alpha instead of shipping dead links.
+Optional privacy/terms fields stay omitted until the canonical SuperSkill URLs exist.
 
 Codex marketplace file: `.agents/plugins/marketplace.json`.
 
@@ -132,8 +135,8 @@ Minimal internal entry:
 
 ```json
 {
-  "name": "onlyharness",
-  "interface": { "displayName": "OnlyHarness internal" },
+  "name": "superskill",
+  "interface": { "displayName": "SuperSkill" },
   "plugins": [
     {
       "name": "superskill",
@@ -153,7 +156,7 @@ Install path:
 
 ```bash
 codex plugin marketplace add elvismusli/onlyharness --ref main
-codex plugin add superskill@onlyharness
+codex plugin add superskill@superskill
 ```
 
 Implementation smoke must validate the actual checked-in marketplace with installed
@@ -180,10 +183,10 @@ Do not use for:
 
 ### Client binding
 
-The skill must pass one explicit target to every CLI command:
+The skill must pass one explicit `client` to every local MCP tool call:
 
-- current host is Claude Code → `--target claude-code`;
-- current host is Codex → `--target codex`.
+- current host is Claude Code → `claude-code`;
+- current host is Codex → `codex`.
 
 Do not infer client from presence of `.claude`/`.agents` directories because both may
 exist in the same repo.
@@ -199,19 +202,21 @@ If the host cannot determine its own product, stop before recommendation and ret
 3. Before network, disclose exact sanitized summary and destination and ask routing
    consent. Explicit invocation may reuse one session opt-in; activation consent remains
    separate.
-4. Run client-specific inventory/doctor if snapshot absent or expired.
-5. Call hh recommend with explicit target and internal token.
+4. Call local `activation_doctor` if inventory is absent or stale.
+5. Call local `recommend` with explicit client and routing consent.
 6. If no_safe_match: continue task without SuperSkill resource.
 7. If needs_clarification: ask only the returned clarification question.
 8. If recommend: render candidate/why/limits/permission delta.
 9. Ask explicit activation consent.
-10. On yes: call activation start with exact version/digest and `--consent explicit`.
-11. Read only plan.files under returned artifact root.
-12. Mark loaded.
-13. Mark invoked immediately before applying first workflow stage.
+10. On yes: call local `activation_start` with the exact recommendation tuple and
+    `activationConsent=true`.
+11. Read only returned `plan.files[].resourceUri` values; never scan or guess local paths.
+12. Call `activation_mark_loaded`.
+13. Call `activation_mark_invoked` immediately before applying the first workflow stage.
 14. Apply stages in declared order.
 15. Complete the user task.
-16. Record agent_reported outcome; use user_confirmed only after explicit user signal.
+16. Call `activation_finish` with an honest outcome; use `user_confirmed` only after an
+    explicit user signal.
 17. Offer keep after outcome only when repeated use is plausible; keep has separate
     consent.
 ```
@@ -363,7 +368,7 @@ Pinned directory is self-contained and does not depend on temporary cache.
   "version": "0.2.0",
   "artifactDigest": "sha256:...",
   "cliPackage": "onlyharness",
-  "cliVersion": "0.2.12",
+  "cliVersion": "0.2.14",
   "activationContractVersion": "superskill.activation.v1",
   "pinActivationId": "act_...",
   "pinRequestId": "req_...",
@@ -395,20 +400,11 @@ pinned root. A symlink in a managed file or any ancestor fails closed.
 
 ### Pinned reuse lifecycle
 
-On later trigger, generated skill calls:
-
-```bash
-npx --yes onlyharness@0.2.12 activation start \
-  --from-pinned <project-root-relative-marker-path> \
-  --activation-request <req-id> \
-  --target claude-code|codex \
-  --consent explicit \
-  --json
-```
-
-The generated skill creates one random request ID before the first call, retains it in
-the current turn and reuses the same ID/tuple on retry. `0.2.12` in this example is read
-from the checked-in runtime/marker, never hardcoded independently.
+On later trigger, the generated skill calls local `activation_start` with the trusted
+owning `pinnedActivationId`, an explicit client, one fresh random request ID and
+`activationConsent=true`. It never accepts an arbitrary marker path from model output.
+The project-local MCP command remains pinned to the exact CLI version copied from
+`runtime.json` when the universal skill was installed.
 
 This creates a new activation ID referencing the existing managed copy, rechecks remote
 status/digest plus append-only revoke overlay, then follows loaded/invoked/outcome states.
@@ -498,7 +494,7 @@ Only counts and managed exact refs. No paths, descriptions, contents or username
 
 1. Temporary isolated `CODEX_HOME`.
 2. Add repo marketplace.
-3. Install `superskill@onlyharness`.
+3. Install `superskill@superskill`.
 4. Verify plugin list and bundled skill.
 5. Run task in clean repo.
 6. Recommendation and consent.

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+import { apiUrl } from "../../../core/constants";
 import { useHarness } from "../../../core/store";
 import { PageHeading, ShellLink, SSButton } from "../primitives";
 
@@ -11,12 +12,47 @@ export function AccountPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [deviceCode, setDeviceCode] = useState("");
+  const [deviceStatus, setDeviceStatus] = useState("");
+  const [deviceBusy, setDeviceBusy] = useState(false);
 
   useEffect(() => setPassword(""), [mode]);
 
   if (h.user) {
     const displayName = typeof h.user.user_metadata?.display_name === "string" ? h.user.user_metadata.display_name : "";
     const confirmed = Boolean(h.user.email_confirmed_at);
+    const approveDevice = async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!confirmed || !h.accessToken || deviceBusy) return;
+      const userCode = normalizeDeviceCode(deviceCode);
+      if (!userCode) {
+        setDeviceStatus("Enter the 8-character code shown in your terminal.");
+        return;
+      }
+      setDeviceBusy(true);
+      setDeviceStatus("Approving this terminal…");
+      try {
+        const response = await fetch(`${apiUrl}/auth/device/approve`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${h.accessToken}`
+          },
+          body: JSON.stringify({ user_code: userCode })
+        });
+        const body = await response.json().catch(() => undefined) as { code?: unknown } | undefined;
+        if (!response.ok) {
+          setDeviceStatus(deviceApprovalMessage(typeof body?.code === "string" ? body.code : undefined));
+          return;
+        }
+        setDeviceCode("");
+        setDeviceStatus("Terminal approved. Return to it to finish sign-in.");
+      } catch {
+        setDeviceStatus("Could not reach the device authorization service. Try again.");
+      } finally {
+        setDeviceBusy(false);
+      }
+    };
     return (
       <main className="ss-content ss-page ss-account-page">
         <PageHeading eyebrow="Account">Your SuperSkill account</PageHeading>
@@ -32,9 +68,35 @@ export function AccountPage() {
           </span>
           {!confirmed ? <p className="ss-auth-notice">Confirm your email before relying on managed SuperSkill access.</p> : null}
           <div className="ss-account-actions">
-            <ShellLink href="#/superskill/workspaces">Open workspaces</ShellLink>
+            <div className="ss-account-links">
+              <ShellLink href="#/superskill/workspaces">Open workspaces</ShellLink>
+              <ShellLink href="#/superskill/publish">Publish a skill</ShellLink>
+            </div>
             <SSButton variant="secondary" type="button" disabled={h.authBusy} onClick={() => void h.signOut()}>Sign out</SSButton>
           </div>
+        </section>
+        <section className="ss-device-auth-card" aria-labelledby="ss-device-auth-title">
+          <span className="ss-evidence-label">Terminal authorization</span>
+          <h2 id="ss-device-auth-title">Connect the SuperSkill CLI</h2>
+          <p>Run <code>eval &quot;$(hh auth login --shell)&quot;</code> in your terminal, then enter its one-time code here. The browser session and resulting token are never displayed or stored by this page.</p>
+          {!confirmed ? <p className="ss-auth-notice">Confirm your email before approving a terminal.</p> : (
+            <form className="ss-device-auth-form" onSubmit={(event) => void approveDevice(event)}>
+              <label htmlFor="ss-device-code">One-time code</label>
+              <input
+                id="ss-device-code"
+                value={deviceCode}
+                onChange={(event) => setDeviceCode(formatDeviceCode(event.target.value))}
+                autoComplete="one-time-code"
+                inputMode="text"
+                spellCheck={false}
+                maxLength={9}
+                placeholder="ABCD-2345"
+                aria-describedby={deviceStatus ? "ss-device-status" : undefined}
+              />
+              <SSButton type="submit" disabled={deviceBusy || !deviceCode}>{deviceBusy ? "Approving…" : "Approve terminal"}</SSButton>
+            </form>
+          )}
+          {deviceStatus ? <p id="ss-device-status" className="ss-auth-status" role="status" aria-live="polite">{deviceStatus}</p> : null}
         </section>
       </main>
     );
@@ -78,4 +140,27 @@ export function AccountPage() {
       </section>
     </main>
   );
+}
+
+const DEVICE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function normalizeDeviceCode(value: string): string | undefined {
+  const normalized = value.toUpperCase().replace(/[\s-]+/g, "");
+  return normalized.length === 8 && [...normalized].every((character) => DEVICE_CODE_ALPHABET.includes(character))
+    ? `${normalized.slice(0, 4)}-${normalized.slice(4)}`
+    : undefined;
+}
+
+function formatDeviceCode(value: string): string {
+  const normalized = value.toUpperCase().replace(/[^A-Z2-9]/g, "").split("").filter((character) => DEVICE_CODE_ALPHABET.includes(character)).join("").slice(0, 8);
+  return normalized.length > 4 ? `${normalized.slice(0, 4)}-${normalized.slice(4)}` : normalized;
+}
+
+function deviceApprovalMessage(code: string | undefined): string {
+  if (code === "DEVICE_CODE_EXPIRED") return "This code expired. Start a new terminal login.";
+  if (code === "DEVICE_CODE_USED") return "This code was already used. Start a new terminal login.";
+  if (code === "DEVICE_AUTH_EMAIL_UNCONFIRMED") return "Confirm your email before approving a terminal.";
+  if (code === "DEVICE_AUTH_ACCESS_DENIED") return "Managed access is suspended or revoked for this account.";
+  if (code === "DEVICE_AUTH_RATE_LIMITED") return "Too many attempts. Wait before trying again.";
+  return "The one-time code is invalid. Check the terminal and try again.";
 }

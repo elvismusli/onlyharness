@@ -7,7 +7,9 @@ export type SuperSkillRoute =
   | { name: "docs" }
   | { name: "agent-guide" }
   | { name: "account" }
+  | { name: "publish" }
   | { name: "workspaces" }
+  | { name: "resource"; resourceId: string }
   | { name: "capability"; capabilityId: string }
   | { name: "selected"; owner: string; skill: string }
   | { name: "install"; capabilityId?: string }
@@ -22,7 +24,11 @@ export function parseSuperSkillRoute(hash: string): SuperSkillRoute {
   if (parts.length === 2 && parts[1] === "docs") return { name: "docs" };
   if (parts.length === 2 && parts[1] === "agent-guide") return { name: "agent-guide" };
   if (parts.length === 2 && parts[1] === "account") return { name: "account" };
+  if (parts.length === 2 && parts[1] === "publish") return { name: "publish" };
   if (parts.length === 2 && parts[1] === "workspaces") return { name: "workspaces" };
+  if (parts.length === 3 && parts[1] === "resources" && validResourceId(parts[2])) {
+    return { name: "resource", resourceId: parts[2]! };
+  }
   if (parts.length === 2 && parts[1] === "install") return { name: "install" };
   if (parts.length === 4 && parts[1] === "selected" && validSlug(parts[2]) && validSlug(parts[3])) {
     return { name: "selected", owner: parts[2]!, skill: parts[3]! };
@@ -43,8 +49,13 @@ export function buildSuperSkillRoute(route: Exclude<SuperSkillRoute, { name: "no
       return "#/superskill/agent-guide";
     case "account":
       return "#/superskill/account";
+    case "publish":
+      return "#/superskill/publish";
     case "workspaces":
       return "#/superskill/workspaces";
+    case "resource":
+      if (!validResourceId(route.resourceId)) throw new Error(`Invalid SuperSkill resource ID: ${route.resourceId}`);
+      return `#/superskill/resources/${encodeURIComponent(route.resourceId)}`;
     case "capability":
       return `#/superskill/c/${assertSlug(route.capabilityId)}`;
     case "selected":
@@ -84,6 +95,16 @@ function decodeSegment(value: string): string | null {
 
 function validSlug(value: string | null | undefined): value is string {
   return typeof value === "string" && SLUG.test(value);
+}
+
+function validResourceId(value: string | null | undefined): value is string {
+  return typeof value === "string"
+    && value.length >= 3
+    && value.length <= 180
+    && /^[A-Za-z0-9@._:+/-]+$/.test(value)
+    && !value.includes("..")
+    && !value.startsWith("/")
+    && !value.endsWith("/");
 }
 
 function assertSlug(value: string): string {

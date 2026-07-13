@@ -10,6 +10,8 @@ import { CategoryPage } from "./pages/CategoryPage";
 import { DocsPage } from "./pages/DocsPage";
 import { InstallHandoff } from "./pages/InstallHandoff";
 import { Landing } from "./pages/Landing";
+import { PublishPage } from "./pages/PublishPage";
+import { ResourcePage } from "./pages/ResourcePage";
 import { SelectedSkillPage } from "./pages/SelectedSkillPage";
 import { TrustPage } from "./pages/TrustPage";
 import { WorkspacesPage } from "./pages/WorkspacesPage";
@@ -42,7 +44,9 @@ function renderRoute(route: ReturnType<typeof useSuperSkillRoute>) {
     case "docs": return <DocsPage />;
     case "agent-guide": return <AgentGuidePage />;
     case "account": return <AccountPage />;
+    case "publish": return <PublishPage />;
     case "workspaces": return <WorkspacesPage />;
+    case "resource": return <ResourcePage resourceId={route.resourceId} />;
     case "capability": return <TrustPage capabilityId={route.capabilityId} />;
     case "selected": return <SelectedSkillPage owner={route.owner} skill={route.skill} />;
     case "install": return <main className="ss-content ss-page"><InstallHandoff capabilityId={route.capabilityId} /></main>;

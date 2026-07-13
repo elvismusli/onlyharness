@@ -9,7 +9,7 @@
   "universalSkill": {
     "name": "superskill",
     "version": "0.2.0",
-    "artifactDigest": "sha256:53df05eb16572c18d26b6bbf39970006aa2105800b1c0e75acc6bbaa9dea55cd"
+    "artifactDigest": "sha256:a6b6dccba06f2ac6b3374ba5f788e50965bc6d885ec7f444a7c311f182659d48"
   },
   "clientAdapters": {
     "codex": {

@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { SUPERSKILL_DEVICE_TOKEN_PREFIX, verifySuperskillDeviceToken } from "./device-token.js";
+
 export const SUPERSKILL_MANAGED_SCOPE = "superskill:managed" as const;
 
 export type SuperskillAccessScope = typeof SUPERSKILL_MANAGED_SCOPE;
@@ -80,7 +82,9 @@ export function createSupabaseSuperskillAccessResolver(options: SupabaseSuperski
     if (!bearer) return accessFailure(authorization ? "SUPERSKILL_AUTH_INVALID" : "SUPERSKILL_AUTH_REQUIRED");
     if (!supabaseUrl || !anonKey || !serviceRoleKey || !validSubjectSalt(subjectSalt)) return accessFailure("SUPERSKILL_AUTH_UNAVAILABLE");
 
-    const user = await fetchConfirmedUser({ supabaseUrl, anonKey, authorization: `Bearer ${bearer}`, fetchImpl, timeoutMs, now });
+    const user = bearer.startsWith(SUPERSKILL_DEVICE_TOKEN_PREFIX)
+      ? await fetchConfirmedDeviceUser({ supabaseUrl, serviceRoleKey, bearer, subjectSalt, requiredScope, fetchImpl, timeoutMs, now })
+      : await fetchConfirmedUser({ supabaseUrl, anonKey, authorization: `Bearer ${bearer}`, fetchImpl, timeoutMs, now });
     if (!user.ok) return user;
 
     const expectedSubject = superskillUserSubject(user.userId, subjectSalt);
@@ -116,6 +120,42 @@ export function createSupabaseSuperskillAccessResolver(options: SupabaseSuperski
       }
     };
   };
+}
+
+async function fetchConfirmedDeviceUser(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  bearer: string;
+  subjectSalt: string;
+  requiredScope: SuperskillAccessScope;
+  fetchImpl: FetchLike;
+  timeoutMs: number;
+  now: Date;
+}): Promise<{ ok: true; userId: string } | SuperskillAccessFailure> {
+  const token = verifySuperskillDeviceToken(input.bearer, input.subjectSalt, input.now);
+  if (!token || token.scope !== input.requiredScope) return accessFailure("SUPERSKILL_AUTH_INVALID");
+  const result = await fetchSupabaseJsonExact({
+    supabaseUrl: input.supabaseUrl,
+    url: new URL(`/auth/v1/admin/users/${encodeURIComponent(token.userId)}`, `${input.supabaseUrl}/`),
+    headers: {
+      apikey: input.serviceRoleKey,
+      authorization: `Bearer ${input.serviceRoleKey}`
+    },
+    fetchImpl: input.fetchImpl,
+    timeoutMs: input.timeoutMs
+  });
+  if (!result) return accessFailure("SUPERSKILL_AUTH_UNAVAILABLE");
+  if (result.status === 401 || result.status === 403 || result.status === 404) return accessFailure("SUPERSKILL_AUTH_INVALID");
+  if (!result.ok || !result.hasJson || !result.payload || typeof result.payload !== "object" || Array.isArray(result.payload)) {
+    return accessFailure("SUPERSKILL_AUTH_UNAVAILABLE");
+  }
+  const user = result.payload as SupabaseAuthUser;
+  if (user.id !== token.userId || typeof user.email_confirmed_at !== "string" || !isValidTimestamp(user.email_confirmed_at)) {
+    return accessFailure("SUPERSKILL_EMAIL_UNCONFIRMED");
+  }
+  if (Date.parse(user.email_confirmed_at) > input.now.getTime()) return accessFailure("SUPERSKILL_EMAIL_UNCONFIRMED");
+  if (!safeSubjectEqual(token.subject, superskillUserSubject(token.userId, input.subjectSalt))) return accessFailure("SUPERSKILL_AUTH_INVALID");
+  return { ok: true, userId: token.userId };
 }
 
 export type SupabaseAuthIdentityResult =

@@ -88,7 +88,7 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --jso
 
 - Public showroom reads: `GET /showroom/capabilities` and `GET /showroom/capabilities/{id}`. They return only public-safe exact-release projections and cannot recommend, download, or activate.
 - Public selected shelf: `GET /showroom/selected` lists current intake candidates as `selected_unreviewed`. It is discovery-only; managed recommendation and activation remain blocked until approval.
-- Protected managed routes use a confirmed account Bearer credential inherited as `HH_TOKEN` plus an active server-side `superskill:managed` grant. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and cannot produce public-GO evidence. The browser must never receive or store either credential or send the task to analytics, URLs, logs, or localStorage.
+- Protected managed routes use a confirmed account Bearer credential inherited as `HH_TOKEN` plus an active server-side `superskill:managed` grant. Clean users obtain a maximum 30-minute bearer with `eval "$(hh auth login --shell --client codex)"` (`claude-code` is the other client value); the signed-in Account page approves the one-time code and never receives the terminal token. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and cannot produce public-GO evidence. The browser must never receive or store either credential or send the task to analytics, URLs, logs, or localStorage.
 - The current checked-in supply is 12 candidates and zero approved items. The approved lane stays empty until dual-client compatibility and human review attestations exist; the separate selected shelf may show those candidates only as review-pending discovery.
 - `onlyharness@0.2.13` is the last published clean-`npx` verified CLI. The shared SuperSkill source is bound to release candidate `0.2.14` for universal one-link install; its public bootstrap must return `BOOTSTRAP_RELEASE_UNPUBLISHED` until the exact npm release and official integrity are pinned. Marketplace publication and clean new-session plugin proof remain rollout gates.
 - SuperSkill is selected automatically and locked on `superskill.sh` and `www.superskill.sh`; query parameters and stored legacy skin choices cannot change the product surface. Legacy human routes redirect here.
@@ -100,6 +100,9 @@ Core endpoints:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/healthz` | API health |
+| POST | `/auth/device/start` | Start a bounded one-time CLI authorization session; codes remain in JSON bodies, never URLs |
+| POST | `/auth/device/approve` | Confirmed signed-in browser approves a user code and short-lived managed grant |
+| POST | `/auth/device/token` | CLI polls and consumes the session once for a short-lived `superskill:managed` HMAC bearer |
 | GET | `/registry?q={terms}` | Search harnesses |
 | GET | `/resources?q={terms}` | Search mixed source-aware resources: harnesses, skills, plugins, workflows, MCP servers, configs, guides, runtimes and directories |
 | GET | `/resources/{id}` | Resource detail; IDs with `/` must be URL-encoded, e.g. `github%3Aobra%2Fsuperpowers` |
@@ -155,7 +158,7 @@ Tools: `search_harnesses`, `harness_detail`, `pull_instructions`, `pull_harness`
 Resource tools are source-aware. They can list/open upstream skills, plugins, workflows and MCP servers. Hosted resource packages download through `/resources/{id}/archive`; upstream-only resources stay open-only and must not pretend to have an OnlyHarness archive.
 OpenAPI is available at `https://superskill.sh/api/openapi.json`.
 MCP Registry metadata is available at `https://superskill.sh/server.json`; the `com.onlyharness/registry` identifier remains a compatibility coordinate.
-OAuth protected-resource metadata is available at `https://superskill.sh/.well-known/oauth-protected-resource`; it intentionally names no authorization server. Managed headless flows use a confirmed account token supplied manually through `HH_TOKEN`. `/.well-known/oauth-authorization-server` must return 404 until a single issuer owns a complete standards-valid authorization flow.
+OAuth protected-resource metadata is available at `https://superskill.sh/.well-known/oauth-protected-resource`; it intentionally names no authorization server. Managed headless flows use the separate one-time CLI device authorization above; this is not advertised as OAuth. `/.well-known/oauth-authorization-server` must return 404 until a single issuer owns a complete standards-valid authorization flow.
 Claude Code compatibility marketplace: `claude plugin marketplace add elvismusli/onlyharness`, then `claude plugin install superskill@superskill`. The one-link installer is primary.
 Codex MCP setup: `codex mcp add superskill --url https://superskill.sh/mcp --bearer-token-env-var HH_TOKEN`.
 

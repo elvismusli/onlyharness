@@ -667,8 +667,9 @@ npm run check:plugin
 npm run check:codex-plugin
 claude plugin validate plugins/superskill
 CODEX_HOME=<temp> codex plugin marketplace add <repo>
-CODEX_HOME=<temp> codex plugin add superskill@onlyharness
+CODEX_HOME=<temp> codex plugin add superskill@superskill
 CODEX_HOME=<temp> codex plugin list
+npm run smoke:superskill-mcp-go
 ```
 
 ### Done

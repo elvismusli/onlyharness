@@ -30,13 +30,17 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.c
 
 ## SuperSkill internal alpha
 
-Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor use the signed-in account credential from `HH_TOKEN`; the CLI sends it only in the Authorization header and never writes it to project state or telemetry. `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility only.
+Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor use the short-lived signed-in account credential from `HH_TOKEN`; the CLI sends it only in the Authorization header and never writes it to disk, project state or telemetry. `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility only.
 
 ```bash
-export HH_TOKEN=<signed-in-account-token>
+# Sign in through a one-time code approved on the SuperSkill Account page.
+# stdout is one export command; progress and the verification code stay on stderr.
+eval "$(hh auth login --shell --client codex)"
 # Recovery diagnostics only; the installed skill uses superskill_local MCP tools.
 hh activation doctor --target codex --live --json
 ```
+
+The device code expires after 10 minutes and is exchanged once. The resulting HMAC bearer lasts at most 30 minutes, is scoped to `superskill:managed`, stays only in the current terminal environment, and is live-checked against the confirmed user and active server grant. Start a fresh Codex or Claude Code session from that terminal so the project-local MCP inherits `HH_TOKEN`. Never paste a Supabase session or put `HH_TOKEN` in a command argument, URL, config, shell history file, browser storage, or project file.
 
 Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex pins under `.agents/skills`. Temporary activation writes only project-local `.onlyharness`. Copy/detection/pin never implies loaded or invoked. Pinned reuse always rechecks the exact remote release and revocation state; offline reuse is blocked. Remove is marker/digest-owned and works offline.
 
