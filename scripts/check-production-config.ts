@@ -145,6 +145,7 @@ check(deployProduction.includes(`env HOSTED_RESOURCE_PUBLISH_ENABLED='$configure
 check(deployProduction.includes(`grep -q 'HOSTED_RESOURCE_PUBLISH_ENABLED: \\"$configured_publish_flag\\"'`), "deploy-production.sh must verify the rendered publish mode");
 check(deployProduction.includes('for seed_dir in directories resources'), "deploy-production.sh must hydrate both directory and resource seed data into the API volume");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1'), "deploy-production.sh must smoke seeded resources after deploy");
+check(deployProduction.includes('RESOURCE_ARCHIVE_NOT_HOSTED'), "deploy-production.sh must prove external legacy mirrors remain open-only after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/imports/resource-package'), "deploy-production.sh must smoke the public hosted resource publish containment gate");
 check(deployProduction.includes('"code":"AUTH_REQUIRED"'), "deploy-production.sh must prove public publish authenticates before reporting containment state");
 check(deployProduction.includes('DEPLOY_SMOKE_ACCESS_TOKEN is required for authenticated containment proof'), "deploy-production.sh must require authenticated publish-route evidence");

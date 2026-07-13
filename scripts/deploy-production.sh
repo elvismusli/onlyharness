@@ -270,7 +270,10 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node scripts/check-superskill-showroom-response.mjs approved
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/selected?limit=12" | node scripts/check-superskill-showroom-response.mjs selected
   curl -fsS "$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
-  curl -fsS "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive" -o /dev/null
+  legacy_archive_response="$(mktemp)"
+  test "$(curl -sS -o "$legacy_archive_response" -w '%{http_code}' "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive")" = "409"
+  grep -q '"code":"RESOURCE_ARCHIVE_NOT_HOSTED"' "$legacy_archive_response"
+  rm -f "$legacy_archive_response"
   containment_response="$(mktemp)"
   containment_status="$(curl -sS -o "$containment_response" -w '%{http_code}' -X POST "$PUBLIC_BASE_URL/api/imports/resource-package" \
     -H 'Content-Type: application/json' \
