@@ -3,6 +3,19 @@ import type { Session } from "@supabase/supabase-js";
 
 import { supabase } from "./supabase";
 
+type AuthAction = "sign-in" | "sign-up" | "resend";
+
+export const RESEND_CONFIRMATION_REQUESTED_MESSAGE = "Confirmation email requested. For privacy, this does not prove that an account exists or that delivery succeeded. If nothing arrives, create the account again or try later.";
+
+export function authFailureMessage(error: unknown, action: AuthAction): string {
+  const candidate = error && typeof error === "object" ? error as { message?: unknown } : undefined;
+  const message = typeof candidate?.message === "string" ? candidate.message.trim() : "";
+  if (message && message !== "{}" && message !== "[object Object]") return message;
+  if (action === "sign-up") return "Account creation failed because the confirmation email service is unavailable. No account was created. Try again shortly.";
+  if (action === "resend") return "The confirmation email request failed. Try again shortly.";
+  return "Sign in failed. Check your credentials and try again.";
+}
+
 export type UseAuthResult = {
   session: Session | null;
   user: Session["user"] | null;
@@ -68,11 +81,16 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
     if (!email || !password) return setAuthStatus("Email and password are required.");
     setAuthBusy(true);
     setAuthStatus("Logging on...");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setAuthBusy(false);
-    if (error) return setAuthStatus(error.message);
-    setLogon({ open: false, note: "" });
-    opts?.onFlash?.(`Logged on as ${email}`);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return setAuthStatus(authFailureMessage(error, "sign-in"));
+      setLogon({ open: false, note: "" });
+      opts?.onFlash?.(`Logged on as ${email}`);
+    } catch (error) {
+      setAuthStatus(authFailureMessage(error, "sign-in"));
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   async function resendConfirmation(email: string) {
@@ -80,14 +98,19 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
     if (!email) return setAuthStatus("Email is required.");
     setAuthBusy(true);
     setAuthStatus("Sending confirmation email...");
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email,
-      options: { emailRedirectTo: window.location.origin }
-    });
-    setAuthBusy(false);
-    if (error) return setAuthStatus(error.message);
-    setAuthStatus("Confirmation email sent. Check your inbox, then log on.");
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: window.location.origin }
+      });
+      if (error) return setAuthStatus(authFailureMessage(error, "resend"));
+      setAuthStatus(RESEND_CONFIRMATION_REQUESTED_MESSAGE);
+    } catch (error) {
+      setAuthStatus(authFailureMessage(error, "resend"));
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   async function signUp(name: string, email: string, password: string) {
@@ -95,21 +118,26 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
     if (!email || !password) return setAuthStatus("Email and password are required.");
     setAuthBusy(true);
     setAuthStatus("Creating account...");
-    const { error, data } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: name || email.split("@")[0] },
-        emailRedirectTo: window.location.origin
+    try {
+      const { error, data } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { display_name: name || email.split("@")[0] },
+          emailRedirectTo: window.location.origin
+        }
+      });
+      if (error) return setAuthStatus(authFailureMessage(error, "sign-up"));
+      if (data.session) {
+        setLogon({ open: false, note: "" });
+        opts?.onFlash?.(`Welcome to the frontier, ${name || email}`);
+      } else {
+        setAuthStatus("Account created. Check your email to confirm, then log on.");
       }
-    });
-    setAuthBusy(false);
-    if (error) return setAuthStatus(error.message);
-    if (data.session) {
-      setLogon({ open: false, note: "" });
-      opts?.onFlash?.(`Welcome to the frontier, ${name || email}`);
-    } else {
-      setAuthStatus("Account created. Check your email to confirm, then log on.");
+    } catch (error) {
+      setAuthStatus(authFailureMessage(error, "sign-up"));
+    } finally {
+      setAuthBusy(false);
     }
   }
 
