@@ -20,14 +20,20 @@ test("published runtime without official integrity remains unavailable", () => {
   expect(handoff.installCommand).toBeNull();
 });
 
-test("current published integrity-pinned runtime exposes one exact command without latest or script piping", () => {
-  const handoff = superskillInstallHandoff();
+test("published integrity-pinned runtime exposes one exact command without latest or script piping", () => {
+  const handoff = superskillInstallHandoff(undefined, { ...superskillRuntime, cliReleaseStatus: "published", cliIntegrity: "sha512-YWJj" });
   expect(handoff.status).toBe("available");
   if (handoff.status !== "available") throw new Error("published fixture must be available");
   expect(handoff.installUrl).toBe("https://superskill.sh/api/superskill/install");
   expect(handoff.installCommand).toContain(`onlyharness@${superskillRuntime.cliVersion} superskill install ${handoff.installUrl} --auto`);
   expect(handoff.installCommand).not.toContain("@latest");
   expect(handoff.installCommand).not.toMatch(/curl|wget|\|\s*(?:sh|bash)/);
+});
+
+test("checked-in runtime exposes a command only after the release flag and integrity are both pinned", () => {
+  const handoff = superskillInstallHandoff();
+  const expected = String(superskillRuntime.cliReleaseStatus) === "published" && superskillRuntime.cliIntegrity ? "available" : "unavailable";
+  expect(handoff.status).toBe(expected);
 });
 
 test("capability handoff binds one canonical URL to id, version and digest", () => {

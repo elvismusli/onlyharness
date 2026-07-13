@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "SuperSkill API",
-    version: "0.2.14",
+    version: "0.2.15",
     description: "Find, verify and install reviewed AI-agent capabilities while preserving accounts, workspaces and exact release evidence."
   },
   servers: [
@@ -1869,8 +1869,8 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "SuperSkill MCP server v0.2.14. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
-        "x-mcp-server-version": "0.2.14",
+        description: "SuperSkill MCP server v0.2.15. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
+        "x-mcp-server-version": "0.2.15",
         "x-mcp-tools": ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"],
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream. Tool-level failures remain protocol-successful JSON-RPC responses but carry result.isError=true and a stable result.structuredContent.code." }

@@ -157,7 +157,11 @@ export async function verifyOfficialPackageIntegrity(manifest: SuperSkillBootstr
       response = await (options.fetchImpl ?? fetch)(metadataUrl, {
         redirect: "error",
         signal,
-        headers: { accept: "application/vnd.npm.install-v1+json" }
+        // The abbreviated install-v1 document is supported for package roots,
+        // but npm's exact-version endpoint returns 406 for that media type.
+        // Request the canonical version document because its dist.integrity is
+        // the value bound by the public bootstrap manifest.
+        headers: { accept: "application/json" }
       });
     } catch {
       throw integrityError("Official npm package integrity could not be verified.");

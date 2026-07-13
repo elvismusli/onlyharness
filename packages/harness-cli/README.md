@@ -47,7 +47,7 @@ Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex
 Universal bootstrap (available only after the exact CLI release and official npm integrity are published):
 
 ```bash
-npx --yes onlyharness@0.2.14 superskill install https://superskill.sh/api/superskill/install --auto
+npx --yes onlyharness@0.2.15 superskill install https://superskill.sh/api/superskill/install --auto
 ```
 
 Approved capability pages bind the same command to one immutable URL containing capability id, version and sha256. Exactly one detected client transactionally writes its project-native shared skill and merges the `superskill_local` project MCP entry into `.codex/config.toml` or `.mcp.json`; an exact link also records a private pending handoff. Existing unrelated config is preserved, conflicting entries fail before writes, rollback restores byte-exact originals, and no token is stored. Both/none fail with `CLIENT_AMBIGUOUS`/`CLIENT_NOT_DETECTED`. Use `--target codex|claude-code`, explicit `--all`, or `--dry-run`. Nothing is activated and routing/activation consent remain separate.

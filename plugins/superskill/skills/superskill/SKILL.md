@@ -9,13 +9,13 @@ Use the same managed flow in Claude Code and Codex. The project-local `superskil
 
 ## Runtime preflight
 
-This plugin is bound to `onlyharness@0.2.14` and activation contract `superskill.activation.v1`.
+This plugin is bound to `onlyharness@0.2.15` and activation contract `superskill.activation.v1`.
 
 Before managed work, require the project-local `superskill_local` MCP with exactly the eight lifecycle tools listed below. A fresh client session and normal MCP trust approval may be required after one-link install. If it is absent, stop with `LOCAL_MCP_UNAVAILABLE`; do not silently replace the lifecycle with shell commands, a global CLI, `latest`, or the public MCP. The pinned CLI is only a fail-closed installer/diagnostic recovery path.
 
 Never ask the user or tools to print/read `HH_TOKEN`. It may exist only in the inherited process environment and is sent by the local MCP runtime only as an Authorization header. It is never a tool argument or stored in project config. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility and is not public proof.
 
-If managed access reports `SUPERSKILL_AUTH_REQUIRED` or `SUPERSKILL_AUTH_INVALID`, do not run login through an agent shell or ask for a pasted token. Tell a Codex user to run `eval "$(npx --yes onlyharness@0.2.14 auth login --shell --client codex)"` in a trusted terminal; use the `claude-code` client value for Claude Code. They approve the one-time code on the signed-in SuperSkill Account page, then start a fresh client session from that terminal. The short-lived token must never enter agent context or project files.
+If managed access reports `SUPERSKILL_AUTH_REQUIRED` or `SUPERSKILL_AUTH_INVALID`, do not run login through an agent shell or ask for a pasted token. Tell a Codex user to run `eval "$(npx --yes onlyharness@0.2.15 auth login --shell --client codex)"` in a trusted terminal; use the `claude-code` client value for Claude Code. They approve the one-time code on the signed-in SuperSkill Account page, then start a fresh client session from that terminal. The short-lived token must never enter agent context or project files.
 
 Set one explicit `client` on every tool call:
 

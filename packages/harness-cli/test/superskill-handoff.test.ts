@@ -108,7 +108,7 @@ test("pending exact handoff is disclosed online without activation and retries a
     assert.equal(first.recommendation.selected?.capability.release.artifactDigest, tuple.artifactDigest);
     assert.deepEqual(first.recommendation.selected?.capability.permissions, capability.permissions);
     assert.deepEqual(first.recommendation.selected?.capability.trust.checks, capability.trust.checks);
-    assert.match(first.activation.command, /^npx --yes onlyharness@0\.2\.14 activation start market-research /);
+    assert.match(first.activation.command, /^npx --yes onlyharness@0\.2\.15 activation start market-research /);
     assert.match(first.activation.command, /--target codex --mode temporary --consent explicit --json$/);
     assert.match(first.activation.command, /--activation-request req_[A-Za-z0-9_-]{8,}/);
     assert.equal(first.activation.command.includes("<"), false);

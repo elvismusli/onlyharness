@@ -1,9 +1,9 @@
 // generated from plugins/superskill/runtime.json; do not edit
 export const superskillRuntime = {
   cliPackage: "onlyharness",
-  cliVersion: "0.2.14",
+  cliVersion: "0.2.15",
   pluginVersion: "0.2.0",
-  cliIntegrity: "sha512-9tzFsPUC2WJpJMn3BZOCe4VYetHLTLuds6FVoi0QZK6QaXj35kdv9q4S8Rb+lsyXMl4y89KUiJtfJHIhtYIPUA==",
-  cliReleaseStatus: "published",
+  cliIntegrity: null,
+  cliReleaseStatus: "unpublished",
   activationContractVersion: "superskill.activation.v1"
 } as const;

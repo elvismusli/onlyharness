@@ -41,7 +41,7 @@ plugins/superskill/
     },
     "superskill_local": {
       "command": "npx",
-      "args": ["--yes", "onlyharness@0.2.14", "mcp", "superskill"]
+      "args": ["--yes", "onlyharness@0.2.15", "mcp", "superskill"]
     }
   }
 }
@@ -368,7 +368,7 @@ Pinned directory is self-contained and does not depend on temporary cache.
   "version": "0.2.0",
   "artifactDigest": "sha256:...",
   "cliPackage": "onlyharness",
-  "cliVersion": "0.2.14",
+  "cliVersion": "0.2.15",
   "activationContractVersion": "superskill.activation.v1",
   "pinActivationId": "act_...",
   "pinRequestId": "req_...",

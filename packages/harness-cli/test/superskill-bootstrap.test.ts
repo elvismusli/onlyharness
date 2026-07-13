@@ -96,7 +96,7 @@ test("installer preserves unrelated MCP config, rejects collisions before writes
     const claude = JSON.parse(readFileSync(path.join(project, ".mcp.json"), "utf8"));
     assert.equal(claude.unrelated, true);
     assert.deepEqual(claude.mcpServers.existing, { command: "safe-tool", args: ["serve"] });
-    assert.deepEqual(claude.mcpServers.superskill_local, { command: "npx", args: ["--yes", "onlyharness@0.2.14", "mcp", "superskill"] });
+    assert.deepEqual(claude.mcpServers.superskill_local, { command: "npx", args: ["--yes", "onlyharness@0.2.15", "mcp", "superskill"] });
     const codex = readFileSync(path.join(project, ".codex/config.toml"), "utf8");
     assert.match(codex, /model = "gpt-5"/);
     assert.match(codex, /\[mcp_servers\.existing\]/);
@@ -175,9 +175,14 @@ test("bootstrap and official npm redirects fail closed, and npm integrity must m
     hasReason("BOOTSTRAP_INTEGRITY_FAILED")
   );
   const exact = responseAt(metadataUrl, { dist: { integrity: manifest.installer.integrity } });
-  const verifiedResult = await verifyOfficialPackageIntegrity(manifest, { fetchImpl: async () => exact });
+  let exactRequestInit: RequestInit | undefined;
+  const verifiedResult = await verifyOfficialPackageIntegrity(manifest, { fetchImpl: async (_url, init) => {
+    exactRequestInit = init;
+    return exact;
+  } });
   assert.equal(verifiedResult.officialIntegrity, manifest.installer.integrity);
   assert.equal(verifiedResult.verified, true);
+  assert.equal(new Headers(exactRequestInit?.headers).get("accept"), "application/json");
 });
 
 test("all target and handoff preflights complete before any write", () => {

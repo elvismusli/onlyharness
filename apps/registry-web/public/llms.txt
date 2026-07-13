@@ -28,8 +28,8 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Public selected shelf: GET /showroom/selected returns current intake candidates labelled `selected_unreviewed`. These cards fill discovery only and cannot be used as approval, recommendation or managed activation evidence.
 - Managed recommendation, exact release/archive, hosted proof publish, and managed event routes use the same confirmed Supabase user Bearer plus an active `superskill:managed` server grant. Headless clients inherit `HH_TOKEN` only through an explicit environment allowlist; never put it in a manifest, tool argument, URL, log, analytics event, or localStorage. Legacy tester-specific `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility and is public-GO ineligible.
 - The checked-in managed catalog currently has 12 exact candidates and zero approved releases. The approved lane and managed recommendation remain empty/no-match until real Claude Code, Codex, and human review evidence exists; the selected shelf is discovery-only.
-- `onlyharness@0.2.13` is the published managed CLI contract and has been verified through a clean `npx` install. Marketplace publication and clean new-session plugin proof remain rollout gates.
-- The source release candidate `onlyharness@0.2.14` adds one-link universal bootstrap. Until the exact npm release exists and its official `dist.integrity` is pinned, `GET https://superskill.sh/api/superskill/install` returns `503 BOOTSTRAP_RELEASE_UNPUBLISHED`; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
+- `onlyharness@0.2.13` is the last CLI verified through a clean `npx` install. `0.2.14` is published but not public-GO because its one-link installer requests an npm media type rejected by the exact-version endpoint.
+- The source release candidate `onlyharness@0.2.15` fixes exact-version npm integrity verification. Until it is published, integrity-pinned, and clean-installed, `GET https://superskill.sh/api/superskill/install` returns `503 BOOTSTRAP_RELEASE_UNPUBLISHED`; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
 - Approved current releases use one canonical URL: `https://superskill.sh/api/superskill/install/{capability-id}/{version}/{sha256-hex}`. It returns a signed-by-digest JSON contract, not executable script. Local install selects exactly one detected Codex/Claude client or fails closed; installation never implies activation.
 - Daylight is available as the isolated `superskill` skin, while the production default remains gated by live showroom acceptance.
 
@@ -136,7 +136,7 @@ End-to-end example:
 
 Endpoint: https://superskill.sh/mcp
 
-Transport: Streamable HTTP. Server version: `0.2.14`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+Transport: Streamable HTTP. Server version: `0.2.15`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
 
 Official compatibility MCP Registry name: `com.onlyharness/registry`. The public `server.json` is remote-only and points at the canonical SuperSkill Streamable HTTP endpoint. The old coordinate is retained for installed-client compatibility.
 
@@ -153,7 +153,7 @@ Tools:
 - publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
 - publish_resource_package: confirmed-user + managed-scope hosted package publish; requires semantic `version` and `idempotencyKey`, is idempotent for the same exact payload, uses `VALIDATION_FAILED` for all pre-mutation package validation failures across HTTP and MCP, and currently returns `PUBLISH_DISABLED` during storage containment; not a Verified harness badge.
 
-This ten-tool inventory is exact for remote MCP v0.2.14. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `PUBLISH_DISABLED`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
+This ten-tool inventory is exact for remote MCP v0.2.15. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `PUBLISH_DISABLED`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
 
 Initialize example:
 
