@@ -156,7 +156,11 @@ export async function installHostedCatalogSkill(input: {
       archiveDigest,
       trust: { securityScan: scan, riskTier: resource.trust?.riskTier ?? "UNKNOWN", managedApproval: false },
       files: files.map((file) => file.path),
-      warning: scan === "pass" ? null : "Installed by explicit consent as an unreviewed hosted catalog skill; this is not managed approval or Verified evidence."
+      warning: scan === "pass" ? null : status === "planned"
+        ? "Validated and planned after explicit consent as an unreviewed hosted catalog skill; no files were installed and this is not managed approval or Verified evidence."
+        : status === "unchanged"
+          ? "The existing explicit-consent unreviewed hosted catalog skill is unchanged; this is not managed approval or Verified evidence."
+          : "Installed by explicit consent as an unreviewed hosted catalog skill; this is not managed approval or Verified evidence."
     };
   }
 }

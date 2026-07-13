@@ -118,7 +118,7 @@ export class SuperSkillCliError extends Error {
 
 export const SUPERSKILL_RUNTIME = {
   cliPackage: "onlyharness",
-  cliVersion: "0.2.16",
+  cliVersion: "0.2.17",
   activationContractVersion: "superskill.activation.v1"
 } as const;
 

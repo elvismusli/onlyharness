@@ -6,7 +6,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
-export const MCP_SERVER_VERSION = "0.2.16";
+export const MCP_SERVER_VERSION = "0.2.17";
 export const MCP_TOOL_NAMES = [
   "search_harnesses",
   "harness_detail",
@@ -374,8 +374,8 @@ export function resourceInstructions(resource: resources.Resource): string[] {
     const consentFlag = resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed";
     lines.push("This hosted skill is a browse-catalog install, not a managed approval or activation.");
     if (resource.trust.securityScan !== "pass") lines.push("Show the unreviewed/not-scanned trust state and ask explicit install consent before using --allow-unreviewed.");
-    lines.push(`Install for Codex after consent: npx --yes onlyharness@0.2.16 resources install ${resource.id} --target codex${consentFlag} --json`);
-    lines.push(`Install for Claude Code after consent: npx --yes onlyharness@0.2.16 resources install ${resource.id} --target claude-code${consentFlag} --json`);
+    lines.push(`Install for Codex after consent: npx --yes onlyharness@0.2.17 resources install ${resource.id} --target codex${consentFlag} --json`);
+    lines.push(`Install for Claude Code after consent: npx --yes onlyharness@0.2.17 resources install ${resource.id} --target claude-code${consentFlag} --json`);
   }
   if (open && "url" in open) {
     lines.push(`Upstream source: ${open.url}`);

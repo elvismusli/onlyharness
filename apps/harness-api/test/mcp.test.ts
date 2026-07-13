@@ -94,6 +94,6 @@ test("hosted skill instructions route explicit consent to the native client root
   const instructions = resourceInstructions(resource).join("\n");
   assert.match(instructions, /not a managed approval/);
   assert.match(instructions, /explicit install consent/);
-  assert.match(instructions, /onlyharness@0\.2\.16 resources install .* --target codex --allow-unreviewed --json/);
-  assert.match(instructions, /onlyharness@0\.2\.16 resources install .* --target claude-code --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.2\.17 resources install .* --target codex --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.2\.17 resources install .* --target claude-code --allow-unreviewed --json/);
 });

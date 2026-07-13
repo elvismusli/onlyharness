@@ -12,7 +12,7 @@ import { approvedCapability, managedIndex } from "./superskill-fixture.js";
 
 const contract: SuperSkillBootstrapContract = {
   schemaVersion: "superskill.bootstrap-contract.v1",
-  installer: { package: "onlyharness", version: "0.2.16", integrity: "sha512-YWJj", releaseStatus: "published" },
+  installer: { package: "onlyharness", version: "0.2.17", integrity: "sha512-YWJj", releaseStatus: "published" },
   universalSkill: { name: "superskill", version: "0.2.0", artifactDigest: `sha256:${"b".repeat(64)}` },
   clientAdapters: {
     codex: { path: ".codex/config.toml", contractDigest: `sha256:${"c".repeat(64)}` },

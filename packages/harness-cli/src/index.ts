@@ -631,7 +631,7 @@ const program = new Command();
 program
   .name("hh")
   .description("SuperSkill CLI compatibility runtime — find, inspect, install and publish reusable AI-agent capabilities (superskill.sh)")
-  .version("0.2.16");
+  .version("0.2.17");
 program.enablePositionalOptions();
 
 program.command("search")

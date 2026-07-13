@@ -68,6 +68,9 @@ test("hosted skill install routes to Claude and dry-run writes nothing", async (
     });
     assert.equal(planned.status, "planned");
     assert.equal(planned.target, ".claude/skills/clean-user-skill");
+    assert.match(planned.warning ?? "", /planned/);
+    assert.match(planned.warning ?? "", /no files were installed/);
+    assert.doesNotMatch(planned.warning ?? "", /^Installed/);
     assert.equal(readOptional(path.join(project, planned.target)), undefined);
   } finally {
     rmSync(project, { recursive: true, force: true });
