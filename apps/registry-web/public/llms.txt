@@ -19,6 +19,10 @@ OAuth authorization-server metadata: https://onlyharness.com/.well-known/oauth-a
 
 ## SuperSkill internal alpha
 
+Human-readable SuperSkill docs: https://superskill.sh/#/superskill/docs
+
+Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
+
 - Public showroom: GET /showroom/capabilities and GET /showroom/capabilities/{id}. These are cached public-safe projections only; they never accept task text or return archive/activation controls.
 - Public selected shelf: GET /showroom/selected returns current intake candidates labelled `selected_unreviewed`. These cards fill discovery only and cannot be used as approval, recommendation or managed activation evidence.
 - Managed recommendation, exact release/archive, and managed event routes require a tester-specific Bearer token used by the local CLI. Never put `HH_SUPERSKILL_TOKEN` in a browser, URL, cookie, log, analytics event, or localStorage.

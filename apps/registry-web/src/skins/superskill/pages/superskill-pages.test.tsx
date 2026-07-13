@@ -3,13 +3,63 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { superskillRuntime } from "../../../generated/superskill-runtime";
 import { selectedShowroomFixture, showroomFixture } from "../../../test/superskill-fixtures";
+import { SuperskillSkin } from "../index";
+import { AgentGuidePage } from "./AgentGuidePage";
 import { CategoryPage } from "./CategoryPage";
+import { DocsPage } from "./DocsPage";
 import { InstallHandoff } from "./InstallHandoff";
 import { Landing } from "./Landing";
 import { SelectedSkillPage } from "./SelectedSkillPage";
 import { TrustPage } from "./TrustPage";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
+
+test("the single global CTA opens generic install without requesting capability detail", async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/?skin=superskill#/superskill/docs");
+  render(<SuperskillSkin />);
+  const ctas = screen.getAllByRole("link", { name: "Get SuperSkill" });
+  expect(ctas).toHaveLength(1);
+  expect(ctas[0]).toHaveAttribute("href", "#/superskill/install");
+  fireEvent.click(ctas[0]!);
+  await waitFor(() => expect(window.location.hash).toBe("#/superskill/install"));
+  expect(await screen.findByRole("heading", { level: 1, name: "Continue in your existing agent" })).toBeTruthy();
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(screen.queryByText("Activated")).toBeNull();
+  expect(screen.queryByText("Installed")).toBeNull();
+});
+
+test("generic install supports a direct reload and exposes both shared client paths", async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/?skin=superskill#/superskill/install");
+  render(<SuperskillSkin />);
+  expect(await screen.findByRole("heading", { level: 1, name: "Continue in your existing agent" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Claude Code" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
+  expect(screen.getByDisplayValue("codex plugin add superskill@onlyharness")).toBeTruthy();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("browser docs stay HTML-first while preserving raw machine-readable links", () => {
+  render(<DocsPage />);
+  expect(screen.getByRole("heading", { level: 1, name: "Install and use SuperSkill" })).toBeTruthy();
+  expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")}`))).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Raw llms.txt" })).toHaveAttribute("href", "/llms.txt");
+  expect(screen.getByRole("link", { name: "Raw AGENTS.md" })).toHaveAttribute("href", "/AGENTS.md");
+});
+
+test("agent guide keeps selected candidates separate from approved exact releases", () => {
+  render(<AgentGuidePage />);
+  expect(screen.getByRole("heading", { level: 1, name: "Use SuperSkill from an agent" })).toBeTruthy();
+  expect(screen.getByText("selected_unreviewed")).toBeTruthy();
+  expect(screen.getByText(/cannot support a trust claim, managed recommendation, or activation/i)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Raw AGENTS.md" })).toHaveAttribute("href", "/AGENTS.md");
+});
 
 test("landing renders a real public DTO and does not send task content", async () => {
   const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify({
@@ -44,6 +94,7 @@ test("empty approved category falls back to matching selected skills without man
   }), { status: 200 })));
   vi.stubGlobal("fetch", fetchMock);
   render(<CategoryPage job="market-research" />);
+  expect(screen.getByRole("heading", { level: 1, name: "Resources for market research" })).toBeTruthy();
   expect(await screen.findByText("No approved releases in this category")).toBeTruthy();
   expect(await screen.findAllByText("Selected · review pending")).toHaveLength(2);
   expect(screen.getByText("Managed install pending review")).toBeTruthy();
@@ -72,7 +123,8 @@ test("unknown selected skill fails closed inside Daylight", async () => {
     generatedAt: "2026-07-12T00:00:00Z"
   }), { status: 200 })));
   render(<SelectedSkillPage owner="harnesses" skill="missing-skill" />);
-  expect(await screen.findByText("Selected skill not found")).toBeTruthy();
+  expect(await screen.findByRole("heading", { level: 1, name: "Selected skill not found" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Open showroom" })).toHaveAttribute("href", "#/superskill");
 });
 
 test("revoked trust page stays visible and blocks handoff", async () => {
@@ -96,9 +148,27 @@ test("stale public evidence blocks client handoff without calling it quarantine"
 test("install handoff exposes exact runtime for both clients", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(showroomFixture()), { status: 200 })));
   render(<InstallHandoff capabilityId="market-research" />);
-  await screen.findByText("Continue in your existing agent");
+  await screen.findByRole("heading", { level: 1, name: "Continue in your existing agent" });
   expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")}`))).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Codex CLI" }));
   await waitFor(() => expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")}`))).toBeTruthy());
   expect(screen.getByDisplayValue("codex plugin add superskill@onlyharness")).toBeTruthy();
+});
+
+test("capability-specific install keeps the exact release gate fail closed", async () => {
+  const revoked = showroomFixture({ trust: { ...showroomFixture().capability.trust, status: "revoked" } });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(revoked), { status: 200 })));
+  render(<InstallHandoff capabilityId="market-research" />);
+  expect(await screen.findByRole("heading", { level: 1, name: "Client handoff blocked — revoked" })).toBeTruthy();
+  expect(screen.queryByDisplayValue(/plugin install/)).toBeNull();
+  expect(screen.getByRole("link", { name: "Open trust report" })).toHaveAttribute("href", "#/superskill/c/market-research");
+  expect(screen.getByRole("link", { name: "Open showroom" })).toHaveAttribute("href", "#/superskill");
+});
+
+test("capability install not-found state offers showroom and trust navigation", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Missing release", code: "CAPABILITY_NOT_FOUND" }), { status: 404 })));
+  render(<InstallHandoff capabilityId="market-research" />);
+  expect(await screen.findByRole("heading", { level: 1, name: "Resource not found" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Open showroom" })).toHaveAttribute("href", "#/superskill");
+  expect(screen.getByRole("link", { name: "Open trust report" })).toHaveAttribute("href", "#/superskill/c/market-research");
 });

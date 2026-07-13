@@ -3,14 +3,14 @@ import { useShowroomCapabilities } from "../../../core/useShowroomCapabilities";
 import { SelectedSkillCard } from "../components/SelectedSkillCard";
 import { SkillCard } from "../components/SkillCard";
 import { StatePanel } from "../components/StatePanel";
-import { SectionHeading } from "../primitives";
+import { PageHeading } from "../primitives";
 
 export function CategoryPage({ job }: { job: string }) {
   const showroom = useShowroomCapabilities({ limit: 7, job });
   const selected = useSelectedShowroomCapabilities({ limit: 12, job, enabled: showroom.state.status === "empty" });
   return (
     <main className="ss-content ss-page ss-category">
-      <SectionHeading eyebrow="curated task category">Resources for {job.replaceAll("-", " ")}</SectionHeading>
+      <PageHeading eyebrow="curated task category">Resources for {job.replaceAll("-", " ")}</PageHeading>
       <p>These are server-curated exact releases. They are not ranked unless routing evidence explicitly says so.</p>
       {showroom.state.status === "loading" || showroom.state.status === "idle" ? <StatePanel kind="loading" title="Loading curated releases" /> : null}
       {showroom.state.status === "empty" ? <div className="ss-category-selected"><StatePanel kind="empty" title="No approved releases in this category" reason="Selected resources below are still awaiting exact review." next="Managed install remains disabled until approval." />

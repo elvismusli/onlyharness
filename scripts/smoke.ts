@@ -46,6 +46,8 @@ for (const seed of seeds) {
 
 const base = path.join(seedRoot, "deep-market-researcher");
 const head = path.join(seedRoot, "support-triage-agent");
+const deepMarketVersion = readFileSync(path.join(base, "harness.yaml"), "utf8").match(/^version:\s*(\S+)\s*$/m)?.[1];
+if (!deepMarketVersion) throw new Error("Deep Market Researcher manifest version missing");
 run("node", [cliBin, "diff", "--base-dir", base, "--head-dir", head, "--format", "json", "--out", path.join(root, ".harnesshub-smoke-diff.json")], { allowFailure: true });
 if (!existsSync(path.join(root, ".harnesshub-smoke-diff.json"))) throw new Error("Diff output missing");
 
@@ -207,7 +209,7 @@ try {
   const remixItem = remix.body.item;
   const remixSource = remix.body.remix?.source;
   const remixFork = remix.body.remix?.forkGraph;
-  if (!remixItem || !remixSource || !remixFork?.recorded || remix.status !== 201 || remix.body.owner !== "local" || remix.body.repo !== "smoke-deep-market-remix" || remix.body.verified !== false || !remix.body.snapshotVersion || remixItem.owner !== "local" || remixItem.name !== "smoke-deep-market-remix" || remixItem.evalStatus !== "unknown" || remixItem.forks !== 0 || remixItem.signalCount !== 0 || remixSource.owner !== "harnesses" || remixSource.repo !== "deep-market-researcher" || remixSource.version !== "0.2.0" || remixFork.source?.owner !== "harnesses" || remixFork.source.repo !== "deep-market-researcher" || remixFork.fork?.owner !== "local" || remixFork.fork.repo !== "smoke-deep-market-remix") {
+  if (!remixItem || !remixSource || !remixFork?.recorded || remix.status !== 201 || remix.body.owner !== "local" || remix.body.repo !== "smoke-deep-market-remix" || remix.body.verified !== false || !remix.body.snapshotVersion || remixItem.owner !== "local" || remixItem.name !== "smoke-deep-market-remix" || remixItem.evalStatus !== "unknown" || remixItem.forks !== 0 || remixItem.signalCount !== 0 || remixSource.owner !== "harnesses" || remixSource.repo !== "deep-market-researcher" || remixSource.version !== deepMarketVersion || remixFork.source?.owner !== "harnesses" || remixFork.source.repo !== "deep-market-researcher" || remixFork.fork?.owner !== "local" || remixFork.fork.repo !== "smoke-deep-market-remix") {
     throw new Error(`Server-side remix returned wrong payload: ${JSON.stringify(remix)}`);
   }
   const sourceAfterRemix = await fetch("http://127.0.0.1:8799/registry?q=deep-market-researcher").then((response) => response.json()) as {
@@ -222,10 +224,10 @@ try {
     evalResult?: unknown;
     files?: string[];
   };
-  if (remixDetail.manifest?.name !== "smoke-deep-market-remix" || remixDetail.manifest.pricing?.model !== "free" || remixDetail.manifest.source?.vendor_policy !== "vendored" || !remixDetail.manifest.source.attribution?.includes("harnesses/deep-market-researcher@0.2.0") || !remixDetail.manifest.tags?.includes("remix") || remixDetail.evalResult || remixDetail.files?.some((file) => file.startsWith(".harnesshub/"))) {
+  if (remixDetail.manifest?.name !== "smoke-deep-market-remix" || remixDetail.manifest.pricing?.model !== "free" || remixDetail.manifest.source?.vendor_policy !== "vendored" || !remixDetail.manifest.source.attribution?.includes(`harnesses/deep-market-researcher@${deepMarketVersion}`) || !remixDetail.manifest.tags?.includes("remix") || remixDetail.evalResult || remixDetail.files?.some((file) => file.startsWith(".harnesshub/"))) {
     throw new Error(`Server-side remix detail is not a clean unverified local draft: ${JSON.stringify(remixDetail)}`);
   }
-  const remixArchive = await fetch("http://127.0.0.1:8799/repos/local/smoke-deep-market-remix/archive?version=0.2.0").then(async (response) => ({ status: response.status, body: await response.json() as { snapshot?: boolean; files?: Array<{ path?: string }> } }));
+  const remixArchive = await fetch(`http://127.0.0.1:8799/repos/local/smoke-deep-market-remix/archive?version=${deepMarketVersion}`).then(async (response) => ({ status: response.status, body: await response.json() as { snapshot?: boolean; files?: Array<{ path?: string }> } }));
   if (remixArchive.status !== 200 || remixArchive.body.snapshot !== true || !remixArchive.body.files?.some((file) => file.path === "harness.yaml") || remixArchive.body.files.some((file) => file.path?.startsWith(".harnesshub/"))) {
     throw new Error(`Server-side remix archive leaked eval files or missed snapshot: ${JSON.stringify(remixArchive)}`);
   }
@@ -867,7 +869,7 @@ try {
     };
     const receiptOutput = gateReceiptBody.receipt;
     const receiptPayload = receiptOutput?.receipt?.payload;
-    if (receiptOutput?.path !== receiptPath || receiptPayload?.harness !== "harnesses/deep-market-researcher" || receiptPayload?.version !== "0.2.0" || receiptPayload?.verdict !== "passed" || !receiptPayload?.resultsHash || !receiptOutput?.receipt?.publicKey || !receiptOutput?.receipt?.signature) {
+    if (receiptOutput?.path !== receiptPath || receiptPayload?.harness !== "harnesses/deep-market-researcher" || receiptPayload?.version !== deepMarketVersion || receiptPayload?.verdict !== "passed" || !receiptPayload?.resultsHash || !receiptOutput?.receipt?.publicKey || !receiptOutput?.receipt?.signature) {
       throw new Error(`Gate receipt CLI output invalid: ${gateReceiptResult.stdout}`);
     }
     const gateReceiptRaw = readFileSync(receiptPath, "utf8");
@@ -878,7 +880,7 @@ try {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(gateReceipt)
     }).then(async (response) => ({ status: response.status, body: await response.json() as { ok?: boolean; harness?: string; version?: string; verdict?: string; receipt_hash?: string } }));
-    if (verifiedReceipt.status !== 200 || verifiedReceipt.body.ok !== true || verifiedReceipt.body.harness !== "harnesses/deep-market-researcher" || verifiedReceipt.body.version !== "0.2.0" || verifiedReceipt.body.verdict !== "passed" || !verifiedReceipt.body.receipt_hash) {
+    if (verifiedReceipt.status !== 200 || verifiedReceipt.body.ok !== true || verifiedReceipt.body.harness !== "harnesses/deep-market-researcher" || verifiedReceipt.body.version !== deepMarketVersion || verifiedReceipt.body.verdict !== "passed" || !verifiedReceipt.body.receipt_hash) {
       throw new Error(`Gate receipt verification failed: ${JSON.stringify(verifiedReceipt)}`);
     }
     const tamperedReceipt = { ...gateReceipt, payload: { ...gateReceipt.payload, verdict: "failed" } };
@@ -1262,7 +1264,7 @@ function createOrgStore(target: string, token: string) {
             {
               owner: "harnesses",
               name: "deep-market-researcher",
-              version: "0.2.0"
+              version: deepMarketVersion
             }
           ],
           configs: [

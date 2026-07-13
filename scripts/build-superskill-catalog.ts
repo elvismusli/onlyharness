@@ -235,7 +235,7 @@ function assertUnique(resources: CuratedResource[]): void {
 }
 
 function assertInstructionOnly(files: string[], resource: CuratedResource): void {
-  const allowed = /^(?:harness\.yaml|README\.md|(?:agents|prompts|runbooks)\/.+\.md|examples\/.+\.md|evals\/cases\/.+\.(?:yaml|yml|json|md))$/i;
+  const allowed = /^(?:harness\.yaml|README\.md|(?:agents|prompts|runbooks)\/.+\.md|examples\/.+\.md|evals\/(?:promptfooconfig\.yaml|cases\/.+\.(?:yaml|yml|json|md)))$/i;
   const forbidden = files.filter((file) => !allowed.test(file));
   if (forbidden.length) throw new Error(`Approved capability is not instruction-only: ${resource.id} (${forbidden.join(", ")})`);
 }

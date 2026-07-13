@@ -5,7 +5,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const commands: Array<[string, string[]]> = [
   [process.execPath, ["--import", "tsx", "--test", "packages/capability-schema/test/artifact.test.ts", "packages/capability-schema/test/schema.test.ts"]],
   [process.execPath, ["--import", "tsx", "--test", "apps/harness-api/test/capabilities.test.ts", "apps/harness-api/test/recommendations.test.ts", "apps/harness-api/test/superskill-routes.test.ts", "apps/harness-api/test/trust-policy.test.ts"]],
-  [process.execPath, ["--import", "tsx", "--test", "scripts/superskill-catalog.test.ts", "scripts/superskill-revoke.test.ts"]],
+  [process.execPath, ["--import", "tsx", "--test", "scripts/superskill-catalog.test.ts", "scripts/superskill-revoke.test.ts", "scripts/superskill-showroom-response.test.ts"]],
   ["npx", ["tsx", "scripts/check-managed-archive-boundary.ts"]],
   ["npx", ["tsx", "scripts/check-superskill-catalog.ts"]],
   ["npx", ["tsx", "scripts/check-superskill-router.ts"]],

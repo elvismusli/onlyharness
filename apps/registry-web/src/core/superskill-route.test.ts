@@ -5,6 +5,8 @@ import { buildSuperSkillRoute, parseSuperSkillRoute, type SuperSkillRoute } from
 describe("SuperSkill hash routes", () => {
   const routes: Array<Exclude<SuperSkillRoute, { name: "not-found" }>> = [
     { name: "landing" },
+    { name: "docs" },
+    { name: "agent-guide" },
     { name: "capability", capabilityId: "market-research" },
     { name: "selected", owner: "harnesses", skill: "deep-market-researcher" },
     { name: "install", capabilityId: "market-research" },
@@ -19,6 +21,13 @@ describe("SuperSkill hash routes", () => {
   test("generic install handoff has a direct entry point", () => {
     expect(parseSuperSkillRoute("#/superskill/install")).toEqual({ name: "install" });
     expect(buildSuperSkillRoute({ name: "install" })).toBe("#/superskill/install");
+  });
+
+  test("human docs and agent guide have browser-safe entry points", () => {
+    expect(parseSuperSkillRoute("#/superskill/docs")).toEqual({ name: "docs" });
+    expect(buildSuperSkillRoute({ name: "docs" })).toBe("#/superskill/docs");
+    expect(parseSuperSkillRoute("#/superskill/agent-guide")).toEqual({ name: "agent-guide" });
+    expect(buildSuperSkillRoute({ name: "agent-guide" })).toBe("#/superskill/agent-guide");
   });
 
   test("selected skill detail stays inside the SuperSkill route namespace", () => {

@@ -22,6 +22,8 @@ import { SuperSkillCliError } from "../src/lib/superskill-types.js";
 const seed = path.resolve(import.meta.dirname, "../../../seed-harnesses/deep-market-researcher");
 const files = collectFiles(seed);
 const artifactDigest = canonicalArtifactDigest(files);
+const seedVersion = readFileSync(path.join(seed, "harness.yaml"), "utf8").match(/^version:\s*(\S+)\s*$/m)?.[1];
+if (!seedVersion) throw new Error("Deep Market Researcher fixture version missing");
 const expiresAt = "2099-01-01T00:00:00.000Z";
 const capability: ManagedCapability = {
   id: "market-research",
@@ -29,7 +31,7 @@ const capability: ManagedCapability = {
   title: "Deep Market Researcher",
   summary: "Reviewed multi-stage market research workflow.",
   jobs: [{ id: "market-research", intents: ["market research"], outcomes: ["source-backed comparison"], exclusions: ["send outreach"] }],
-  release: { ref: "harnesses/deep-market-researcher", version: "0.2.0", artifactDigest, immutable: true, publishedAt: "2026-07-01T00:00:00.000Z", delivery: "free_archive" },
+  release: { ref: "harnesses/deep-market-researcher", version: seedVersion, artifactDigest, immutable: true, publishedAt: "2026-07-01T00:00:00.000Z", delivery: "free_archive" },
   source: { owner: "OnlyHarness", url: "https://onlyharness.com", license: "MIT" },
   compatibility: [
     { client: "claude-code", status: "verified", verifiedAt: "2026-07-01T00:00:00.000Z" },
@@ -100,12 +102,12 @@ before(async () => {
         }));
         return;
       }
-      if (request.url === "/capabilities/market-research/releases/0.2.0") {
-        response.end(JSON.stringify({ capability, activationAllowed: true, archive: { url: `${registry}/capabilities/market-research/releases/0.2.0/archive`, artifactDigest } }));
+      if (request.url === `/capabilities/market-research/releases/${seedVersion}`) {
+        response.end(JSON.stringify({ capability, activationAllowed: true, archive: { url: `${registry}/capabilities/market-research/releases/${seedVersion}/archive`, artifactDigest } }));
         return;
       }
-      if (request.url === "/capabilities/market-research/releases/0.2.0/archive") {
-        response.end(JSON.stringify({ owner: "harnesses", repo: "deep-market-researcher", version: "0.2.0", snapshot: true, artifactDigest, totalFileCount: files.length, archiveTruncated: false, files }));
+      if (request.url === `/capabilities/market-research/releases/${seedVersion}/archive`) {
+        response.end(JSON.stringify({ owner: "harnesses", repo: "deep-market-researcher", version: seedVersion, snapshot: true, artifactDigest, totalFileCount: files.length, archiveTruncated: false, files }));
         return;
       }
       if (request.url === "/events") {

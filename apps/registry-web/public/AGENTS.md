@@ -83,6 +83,9 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff --jso
 
 ### SuperSkill internal alpha
 
+- Human-readable docs: `https://superskill.sh/#/superskill/docs`.
+- Browser agent guide: `https://superskill.sh/#/superskill/agent-guide`; the raw file remains the full machine contract.
+
 - Public showroom reads: `GET /showroom/capabilities` and `GET /showroom/capabilities/{id}`. They return only public-safe exact-release projections and cannot recommend, download, or activate.
 - Public selected shelf: `GET /showroom/selected` lists current intake candidates as `selected_unreviewed`. It is discovery-only; managed recommendation and activation remain blocked until approval.
 - Protected managed routes use a tester-specific `HH_SUPERSKILL_TOKEN` in the CLI Authorization header only. The browser must never receive or store this token or send the task to analytics, URLs, logs, or localStorage.

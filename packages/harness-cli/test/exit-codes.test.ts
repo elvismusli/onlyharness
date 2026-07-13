@@ -1456,12 +1456,13 @@ test("pull --version requests an immutable archive version and records it in sou
 
 test("doctor --harness reports local harness validity", async () => {
   const result = await runCli(["doctor", "--harness", seedHarness, "--json"], { HH_REGISTRY_URL: registryUrl });
+  const localManifest = YAML.parse(await readFile(path.join(seedHarness, "harness.yaml"), "utf8")) as { version?: string };
 
   assert.equal(result.status, 0, result.stderr);
   const body = JSON.parse(result.stdout) as { harness?: { valid?: boolean; name?: string; version?: string; contextCost?: { approxTokens?: number; files?: number; status?: string } } };
   assert.equal(body.harness?.valid, true);
   assert.equal(body.harness?.name, "deep-market-researcher");
-  assert.equal(body.harness?.version, "0.2.0");
+  assert.equal(body.harness?.version, localManifest.version);
   assert.equal(body.harness?.contextCost?.status, "estimated");
   assert.equal(typeof body.harness?.contextCost?.approxTokens, "number");
   assert.equal(typeof body.harness?.contextCost?.files, "number");

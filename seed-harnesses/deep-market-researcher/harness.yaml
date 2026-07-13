@@ -3,7 +3,7 @@ name: deep-market-researcher
 title: Deep Market Researcher
 summary: Multi-stage research, synthesis, critique and validation pipeline for
   market questions.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/deep-market-researcher

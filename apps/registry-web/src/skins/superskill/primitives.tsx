@@ -13,6 +13,15 @@ export function SectionHeading({ eyebrow, children }: { eyebrow?: string; childr
   );
 }
 
+export function PageHeading({ eyebrow, children }: { eyebrow?: string; children: ReactNode }) {
+  return (
+    <div className="ss-page-heading">
+      {eyebrow ? <div className="ss-eyebrow">{eyebrow}</div> : null}
+      <h1>{children}</h1>
+    </div>
+  );
+}
+
 export function ShellLink({ href, children, className = "" }: { href: string; children: ReactNode; className?: string }) {
   return <a className={`ss-link ${className}`.trim()} href={href}>{children}</a>;
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "superskill.history.v1",
-  "generatedAt": "2026-07-12T10:58:34.477Z",
+  "generatedAt": "2026-07-13T10:30:42.310Z",
   "capabilities": [
     {
       "id": "agent-harness-refactorer",
@@ -432,6 +432,152 @@
           "Candidate has not completed exact-release managed review"
         ],
         "reviewedAt": "2026-07-12T10:58:34.465Z"
+      }
+    },
+    {
+      "id": "deep-market-researcher",
+      "type": "instruction_harness",
+      "title": "Deep Market Researcher",
+      "summary": "Multi-stage research, synthesis, critique and validation pipeline for market questions.",
+      "jobs": [
+        {
+          "id": "market-research",
+          "intents": [
+            "competitor research",
+            "market map",
+            "deep market research"
+          ],
+          "outcomes": [
+            "source-backed comparison",
+            "market evidence map"
+          ],
+          "exclusions": [
+            "send outreach",
+            "buy data"
+          ]
+        }
+      ],
+      "release": {
+        "ref": "harnesses/deep-market-researcher",
+        "version": "0.2.1",
+        "artifactDigest": "sha256:9ebad5b23017dc95b758a77361080f026832538903735cdcb7d9a669f204927e",
+        "immutable": true,
+        "publishedAt": "2026-07-13T10:30:42.310Z",
+        "delivery": "free_archive"
+      },
+      "source": {
+        "owner": "OnlyHarness",
+        "url": "https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/deep-market-researcher",
+        "license": "MIT"
+      },
+      "compatibility": [
+        {
+          "client": "claude-code",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        },
+        {
+          "client": "codex",
+          "status": "available",
+          "notes": "Managed activation smoke has not been completed"
+        }
+      ],
+      "permissions": {
+        "network": "allowlist",
+        "networkAllowlist": [
+          "api.openai.com"
+        ],
+        "filesystem": "readonly",
+        "shell": false,
+        "browser": false,
+        "credentials": "runtime_injected",
+        "externalSend": false,
+        "moneyMovement": false,
+        "userData": false,
+        "humanApprovalRequired": [
+          "external_send",
+          "money_movement"
+        ]
+      },
+      "contextCost": {
+        "approxTokens": 217,
+        "files": 5,
+        "bytes": 868,
+        "status": "estimated"
+      },
+      "trust": {
+        "status": "candidate",
+        "riskScore": 25,
+        "riskTier": "MEDIUM",
+        "checks": [
+          {
+            "id": "schema",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Native manifest schema validated"
+          },
+          {
+            "id": "artifact_digest",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Immutable artifact digest matches curated release"
+          },
+          {
+            "id": "source_license",
+            "status": "pass",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Source and license are declared"
+          },
+          {
+            "id": "static_security",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Static managed review not run"
+          },
+          {
+            "id": "capability_diff",
+            "status": "not_run",
+            "evidenceLevel": "static_checked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Capability diff not run"
+          },
+          {
+            "id": "claude_code_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Claude Code exact-release activation smoke"
+          },
+          {
+            "id": "codex_activation",
+            "status": "not_run",
+            "evidenceLevel": "compatibility_smoked",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Codex exact-release activation smoke"
+          },
+          {
+            "id": "human_review",
+            "status": "not_run",
+            "evidenceLevel": "human_reviewed",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Human task review not run"
+          },
+          {
+            "id": "independent_eval",
+            "status": "not_run",
+            "evidenceLevel": "independently_evaluated",
+            "checkedAt": "2026-07-13T10:30:42.310Z",
+            "summary": "Independent outcome evaluation not run"
+          }
+        ],
+        "limitations": [
+          "Candidate has not completed exact-release managed review"
+        ],
+        "reviewedAt": "2026-07-13T10:30:42.310Z"
       }
     },
     {

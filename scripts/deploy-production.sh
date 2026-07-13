@@ -10,6 +10,8 @@ ALLOW_STOP_EXISTING_CADDY="${ALLOW_STOP_EXISTING_CADDY:-0}"
 DEPLOY_MODE="${DEPLOY_MODE:-system-caddy}"
 ONLYHARNESS_WEB_PORT="${ONLYHARNESS_WEB_PORT:-8097}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-https://onlyharness.com}"
+SUPERSKILL_APEX_URL="${SUPERSKILL_APEX_URL:-https://superskill.sh}"
+SUPERSKILL_WWW_URL="${SUPERSKILL_WWW_URL:-https://www.superskill.sh}"
 RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"
 RESOURCE_ARCHIVE_DIR="${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}"
 COMPOSE_FILES="-f infra/production-compose.yml"
@@ -125,7 +127,18 @@ if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
 set -euo pipefail
 cat > /etc/caddy/sites/onlyharness.caddy <<CADDY
-onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {
+www.superskill.sh {
+	redir https://superskill.sh{uri} permanent
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+}
+
+onlyharness.com, www.onlyharness.com, superskill.sh {
 	encode zstd gzip
 
 	reverse_proxy 127.0.0.1:${ONLYHARNESS_WEB_PORT} {
@@ -162,6 +175,11 @@ exit 1
 REMOTE_HEALTH
 
 if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
+  superskill_redirect_headers="$(curl -fsSI "$SUPERSKILL_WWW_URL/deploy-canonical-smoke?source=deploy" | tr -d '\r')"
+  grep -Eq '^HTTP/[0-9.]+ 30[18]([[:space:]]|$)' <<<"$superskill_redirect_headers"
+  grep -Fqi "location: $SUPERSKILL_APEX_URL/deploy-canonical-smoke?source=deploy" <<<"$superskill_redirect_headers"
+  grep -qi '^strict-transport-security:' <<<"$superskill_redirect_headers"
+  curl -fsS "$SUPERSKILL_APEX_URL/" | grep -q '<div id="root"></div>'
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node scripts/check-superskill-showroom-response.mjs approved
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/selected?limit=12" | node scripts/check-superskill-showroom-response.mjs selected

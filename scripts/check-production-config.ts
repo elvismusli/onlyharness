@@ -7,6 +7,9 @@ const envExample = readFileSync(path.join(root, "infra/production.env.example"),
 const gitignore = readFileSync(path.join(root, ".gitignore"), "utf8");
 const smokeCompose = readFileSync(path.join(root, "scripts/smoke-production-compose.sh"), "utf8");
 const deployProduction = readFileSync(path.join(root, "scripts/deploy-production.sh"), "utf8");
+const caddyfile = readFileSync(path.join(root, "infra/Caddyfile"), "utf8");
+const standaloneSuperSkillRedirect = sectionBetween(caddyfile, "www.superskill.sh {", "onlyharness.com, www.onlyharness.com, superskill.sh {", "standalone SuperSkill redirect site");
+const systemSuperSkillRedirect = sectionBetween(deployProduction, "www.superskill.sh {", "onlyharness.com, www.onlyharness.com, superskill.sh {", "system SuperSkill redirect site");
 
 const apiRuntimeEnv = [
   "SUPABASE_URL",
@@ -103,17 +106,36 @@ check(smokeCompose.includes('$BASE_URL/api/resources?q=superpowers&limit=1'), "p
 check(smokeCompose.includes('$BASE_URL/api/showroom/selected?limit=12'), "production compose smoke must verify selected SuperSkill intake cards");
 check(smokeCompose.includes('SMOKE_AUTH_RATE_LIMIT_OK="${SMOKE_AUTH_RATE_LIMIT_OK:-1}"'), "production compose smoke must soft-skip external Supabase auth rate limits by default");
 check(smokeCompose.includes('$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "production compose smoke must verify checkout deep links fall back to the SPA");
+check(standaloneSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "standalone Caddy must permanently redirect www.superskill.sh to the apex while preserving the URI");
+check(standaloneSuperSkillRedirect.includes("Strict-Transport-Security"), "standalone SuperSkill redirect must preserve HSTS");
+check(caddyfile.includes("onlyharness.com, www.onlyharness.com, superskill.sh {"), "standalone Caddy must keep www.onlyharness.com proxied while serving the SuperSkill apex");
+check(!caddyfile.includes("onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {"), "standalone Caddy must not serve www.superskill.sh as an HTML origin");
 check(deployProduction.includes('RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"'), "deploy-production.sh must run public smoke by default");
 check(deployProduction.includes('for seed_dir in directories resources'), "deploy-production.sh must hydrate both directory and resource seed data into the API volume");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1'), "deploy-production.sh must smoke seeded resources after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/showroom/selected?limit=12'), "deploy-production.sh must smoke selected SuperSkill intake cards after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/mcp'), "deploy-production.sh must smoke the public MCP endpoint");
-check(deployProduction.includes("superskill.sh, www.superskill.sh"), "deploy-production.sh must provision both SuperSkill hostnames in system Caddy");
+check(systemSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "deploy-production.sh must permanently redirect www.superskill.sh to the apex while preserving the URI");
+check(systemSuperSkillRedirect.includes("Strict-Transport-Security"), "system SuperSkill redirect must preserve HSTS");
+check(deployProduction.includes("onlyharness.com, www.onlyharness.com, superskill.sh {"), "deploy-production.sh must keep www.onlyharness.com proxied while serving the SuperSkill apex");
+check(!deployProduction.includes("onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {"), "deploy-production.sh must not serve www.superskill.sh as an HTML origin");
+check(deployProduction.includes('SUPERSKILL_APEX_URL="${SUPERSKILL_APEX_URL:-https://superskill.sh}"'), "deploy-production.sh must default the canonical SuperSkill apex smoke URL");
+check(deployProduction.includes('SUPERSKILL_WWW_URL="${SUPERSKILL_WWW_URL:-https://www.superskill.sh}"'), "deploy-production.sh must default the SuperSkill redirect smoke URL");
+check(deployProduction.includes('$SUPERSKILL_WWW_URL/deploy-canonical-smoke?source=deploy'), "deploy-production.sh must smoke the www SuperSkill redirect with path and query");
+check(deployProduction.includes('location: $SUPERSKILL_APEX_URL/deploy-canonical-smoke?source=deploy'), "deploy-production.sh must verify the canonical SuperSkill redirect target");
+check(deployProduction.includes('curl -fsS "$SUPERSKILL_APEX_URL/"'), "deploy-production.sh must smoke the SuperSkill apex HTML origin");
 check(deployProduction.includes('"name":"search_resources"'), "deploy-production.sh must smoke the MCP resource search tool");
 check(deployProduction.includes('$PUBLIC_BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "deploy-production.sh must smoke checkout deep links after deploy");
 
-console.log("Production config check passed: compose env, example env, and smoke API routing are in sync");
+console.log("Production config check passed: compose env, canonical Caddy hosts, example env, and deploy smokes are in sync");
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function sectionBetween(source: string, start: string, end: string, label: string): string {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  check(startIndex >= 0 && endIndex > startIndex, `Missing ${label}`);
+  return source.slice(startIndex, endIndex);
 }

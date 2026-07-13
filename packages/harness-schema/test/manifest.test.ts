@@ -18,8 +18,9 @@ test("all 12 managed seed candidates are honest instruction-only v0.2 manifests"
   assert.equal(manifests.length, 12, "expected the complete Stage A seed set");
   for (const manifestPath of manifests) {
     const manifest = parseManifestText(readFileSync(manifestPath, "utf8"));
+    const expectedVersion = path.basename(path.dirname(manifestPath)) === "deep-market-researcher" ? "0.2.1" : "0.2.0";
     assert.equal(manifest.schemaVersion, "harness.v0.2", manifestPath);
-    assert.equal(manifest.version, "0.2.0", manifestPath);
+    assert.equal(manifest.version, expectedVersion, manifestPath);
     assert.equal(manifest.visibility, "public", manifestPath);
     assert.equal(manifest.pricing.model, "free", manifestPath);
     assert.equal(manifest.runtime.primary, "none", manifestPath);

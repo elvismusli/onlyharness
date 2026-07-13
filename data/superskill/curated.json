@@ -51,8 +51,8 @@
     {
       "id": "deep-market-researcher",
       "ref": "harnesses/deep-market-researcher",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:97fc086edf062acb20bacc036da5b39dd7970c19e661cae1e87dd36b11147ff2",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:9ebad5b23017dc95b758a77361080f026832538903735cdcb7d9a669f204927e",
       "status": "candidate",
       "jobs": [
         {

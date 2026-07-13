@@ -8,6 +8,7 @@ const publicCopyFiles = [
   "apps/registry-web/public/llms.txt",
   "AGENTS.md",
   "apps/registry-web/public/AGENTS.md",
+  "apps/registry-web/src/core/superskill-route.ts",
   "apps/registry-web/src/skins/win98/explore.tsx",
   "apps/registry-web/src/skins/win98/detail.tsx",
   "apps/registry-web/src/core/useSocial.ts",
@@ -57,6 +58,10 @@ check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser sourc
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("localStorage"), "Task prompt must not persist task text");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("fetch("), "Task prompt must hand off locally instead of calling recommendation transport");
 check(docs["apps/registry-web/src/skins/superskill/pages/InstallHandoff.tsx"].includes("Copying a command only copies text"), "Install handoff must not turn copy into lifecycle state");
+check(docs["apps/registry-web/src/core/superskill-route.ts"].includes('name: "docs"') && docs["apps/registry-web/src/core/superskill-route.ts"].includes('name: "agent-guide"'), "SuperSkill must expose HTML docs and agent-guide routes");
+check(docs["apps/registry-web/src/skins/superskill/components/SuperSkillHeader.tsx"].includes('name: "docs"') && docs["apps/registry-web/src/skins/superskill/components/SuperSkillHeader.tsx"].includes('name: "agent-guide"'), "SuperSkill header must use HTML documentation routes");
+check(docs["apps/registry-web/src/skins/superskill/pages/DocsPage.tsx"].includes("superskillRuntime") && docs["apps/registry-web/src/skins/superskill/pages/AgentGuidePage.tsx"].includes("superskillRuntime"), "SuperSkill HTML docs must read the generated runtime contract");
+check(docs["apps/registry-web/public/llms.txt"].includes("https://superskill.sh/#/superskill/docs") && docs["apps/registry-web/public/AGENTS.md"].includes("https://superskill.sh/#/superskill/agent-guide"), "Raw public docs must link to browser-safe SuperSkill documentation");
 check(docs["apps/registry-web/src/core/useSelectedShowroomCapabilities.ts"].includes("/showroom/selected"), "Selected skill shelf must use its separate public-safe endpoint");
 check(docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("not an approval, trust badge, or managed activation claim"), "Selected skill cards must keep review-pending status explicit");
 check(!docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("Client handoff"), "Selected skill cards must not expose managed client handoff");

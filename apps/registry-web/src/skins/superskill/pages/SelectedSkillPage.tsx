@@ -8,18 +8,18 @@ export function SelectedSkillPage({ owner, skill }: { owner: string; skill: stri
   const releaseRef = `${owner}/${skill}`;
 
   if (selected.state.status === "idle" || selected.state.status === "loading") {
-    return <main className="ss-content ss-page"><StatePanel kind="loading" title="Loading selected skill" reason="Reading the current candidate projection." /></main>;
+    return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="loading" title="Loading selected skill" reason="Reading the current candidate projection." /></main>;
   }
   if (selected.state.status === "error") {
-    return <main className="ss-content ss-page"><StatePanel kind="error" title="Selected skill unavailable" reason={selected.state.reason} next={selected.state.next} onRetry={selected.refresh} /></main>;
+    return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="error" title="Selected skill unavailable" reason={selected.state.reason} next={selected.state.next} onRetry={selected.refresh}><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;
   }
   if (selected.state.status === "not_found") {
-    return <main className="ss-content ss-page"><StatePanel kind="not-found" title="Selected skill not found" reason={selected.state.reason} next={selected.state.next} /></main>;
+    return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="not-found" title="Selected skill not found" reason={selected.state.reason} next={selected.state.next}><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;
   }
 
   const item = selected.state.data.items.find((candidate) => candidate.capability.release.ref === releaseRef);
   if (!item) {
-    return <main className="ss-content ss-page"><StatePanel kind="not-found" title="Selected skill not found" reason="This skill is not in the current reviewed intake shelf." next="Return to the showroom and open a current selected skill."><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;
+    return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="not-found" title="Selected skill not found" reason="This skill is not in the current reviewed intake shelf." next="Return to the showroom and open a current selected skill."><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;
   }
 
   return <SelectedSkillDetail item={item} />;

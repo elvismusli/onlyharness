@@ -1,33 +1,34 @@
 import { useState } from "react";
 
+import { buildSuperSkillRoute } from "../../../core/superskill-route";
 import { superskillInstallCommands } from "../../../core/superskill-install";
 import type { ShowroomCapability, SuperSkillClient } from "../../../core/superskill-types";
 import { installAllowed } from "../../../core/superskill-types";
 import { useShowroomCapability } from "../../../core/useShowroomCapability";
 import { CopyField } from "../components/CopyField";
 import { StatePanel } from "../components/StatePanel";
-import { SectionHeading, ShellLink } from "../primitives";
+import { PageHeading, SectionHeading, ShellLink } from "../primitives";
 
 export function InstallHandoff({ capabilityId, initialClient = "claude-code", task = "" }: { capabilityId?: string; initialClient?: SuperSkillClient; task?: string }) {
   const [client, setClient] = useState<SuperSkillClient>(initialClient);
   const detail = useShowroomCapability(capabilityId);
-  if (capabilityId && (detail.state.status === "idle" || detail.state.status === "loading")) return <StatePanel kind="loading" title="Loading exact release" reason="Reading the public trust projection before showing client steps." />;
-  if (detail.state.status === "not_found") return <StatePanel kind="not-found" title="Resource not found" reason={detail.state.reason} next="Return to the showroom and choose a current resource." />;
-  if (detail.state.status === "error") return <StatePanel kind="error" title="Install handoff unavailable" reason={detail.state.reason} next={detail.state.next} onRetry={detail.refresh} />;
+  if (capabilityId && (detail.state.status === "idle" || detail.state.status === "loading")) return <StatePanel headingLevel={1} kind="loading" title="Loading exact release" reason="Reading the public trust projection before showing client steps." />;
+  if (detail.state.status === "not_found") return <StatePanel headingLevel={1} kind="not-found" title="Resource not found" reason={detail.state.reason} next="Return to the showroom and choose a current resource."><ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink>{capabilityId ? <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId })}>Open trust report</ShellLink> : null}</StatePanel>;
+  if (detail.state.status === "error") return <StatePanel headingLevel={1} kind="error" title="Install handoff unavailable" reason={detail.state.reason} next={detail.state.next} onRetry={detail.refresh}><ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink>{capabilityId ? <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId })}>Open trust report</ShellLink> : null}</StatePanel>;
   const item = detail.state.status === "success" ? detail.state.data : undefined;
-  return <InstallInstructions client={client} setClient={setClient} item={item} task={task} />;
+  return <InstallInstructions client={client} setClient={setClient} item={item} task={task} pageHeading />;
 }
 
-export function InstallInstructions({ client, setClient, item, task }: { client: SuperSkillClient; setClient: (client: SuperSkillClient) => void; item?: ShowroomCapability; task?: string }) {
+export function InstallInstructions({ client, setClient, item, task, pageHeading = false }: { client: SuperSkillClient; setClient: (client: SuperSkillClient) => void; item?: ShowroomCapability; task?: string; pageHeading?: boolean }) {
   const capability = item?.capability;
   if (capability && !installAllowed(capability, item?.clientHandoff)) {
     const reason = item?.clientHandoff.reason === "stale_or_ineligible_evidence" ? "stale evidence" : capability.trust.status;
-    return <StatePanel kind="blocked" title={`Client handoff blocked — ${reason}`} reason="This exact release cannot be handed to a client." next="Return to its trust report for limitations and replacement information."><ShellLink href={`#/superskill/c/${capability.id}`}>Open trust report</ShellLink></StatePanel>;
+    return <StatePanel headingLevel={pageHeading ? 1 : 2} kind="blocked" title={`Client handoff blocked — ${reason}`} reason="This exact release cannot be handed to a client." next="Return to its trust report for limitations and replacement information."><ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId: capability.id })}>Open trust report</ShellLink><ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink></StatePanel>;
   }
   const commands = superskillInstallCommands(client);
   return (
     <section className="ss-install" aria-labelledby="ss-install-title">
-      <SectionHeading eyebrow="client handoff"><span id="ss-install-title">Continue in your existing agent</span></SectionHeading>
+      {pageHeading ? <PageHeading eyebrow="client handoff"><span id="ss-install-title">Continue in your existing agent</span></PageHeading> : <SectionHeading eyebrow="client handoff"><span id="ss-install-title">Continue in your existing agent</span></SectionHeading>}
       {capability ? <p>Resource: <strong>{capability.title}</strong> · release {capability.release.version}. Installation and recommendation happen in the terminal client, not this page.</p> : <p>Install the shared SuperSkill plugin, start a fresh client session, then paste the task. The showroom does not claim activation.</p>}
       <div className="ss-client-tabs" role="group" aria-label="Choose terminal client"><button type="button" aria-pressed={client === "claude-code"} onClick={() => setClient("claude-code")}>Claude Code</button><button type="button" aria-pressed={client === "codex"} onClick={() => setClient("codex")}>Codex CLI</button></div>
       <div className="ss-install-steps">

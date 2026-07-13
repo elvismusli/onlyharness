@@ -7,9 +7,9 @@ import { ShellLink } from "../primitives";
 
 export function TrustPage({ capabilityId }: { capabilityId: string }) {
   const detail = useShowroomCapability(capabilityId);
-  if (detail.state.status === "idle" || detail.state.status === "loading") return <main className="ss-content ss-page"><StatePanel kind="loading" title="Loading trust report" reason="Reading the exact public release projection." /></main>;
-  if (detail.state.status === "not_found") return <main className="ss-content ss-page"><StatePanel kind="not-found" title="Resource not found" reason={detail.state.reason} next="Return to the showroom and open a current trust link." /></main>;
-  if (detail.state.status === "error") return <main className="ss-content ss-page"><StatePanel kind="error" title="Trust report unavailable" reason={detail.state.reason} next={detail.state.next} onRetry={detail.refresh} /></main>;
+  if (detail.state.status === "idle" || detail.state.status === "loading") return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="loading" title="Loading trust report" reason="Reading the exact public release projection." /></main>;
+  if (detail.state.status === "not_found") return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="not-found" title="Resource not found" reason={detail.state.reason} next="Return to the showroom and open a current trust link."><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;
+  if (detail.state.status === "error") return <main className="ss-content ss-page"><StatePanel headingLevel={1} kind="error" title="Trust report unavailable" reason={detail.state.reason} next={detail.state.next} onRetry={detail.refresh}><ShellLink href="#/superskill">Open showroom</ShellLink></StatePanel></main>;
   const item = detail.state.data;
   const capability = item.capability;
   const verdict = capabilityVerdict(capability);
