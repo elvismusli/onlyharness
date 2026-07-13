@@ -145,7 +145,7 @@ function containsSensitiveResourceData(value: unknown, seen = new Set<object>())
   if (typeof value === "string") {
     return /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(value)
       || /\bBearer\s+[A-Za-z0-9._~+\/-]{8,}/i.test(value)
-      || /\b(?:sk|ghp|github_pat|xox[baprs])-?[A-Za-z0-9_-]{12,}\b/i.test(value);
+      || /\b(?:sk[-_][A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9_-]{12,})\b/i.test(value);
   }
   if (!value || typeof value !== "object") return false;
   if (seen.has(value)) return true;

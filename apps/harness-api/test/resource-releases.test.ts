@@ -241,6 +241,21 @@ test("public metadata rejects email-like creator identity before durable mutatio
   assert.equal(releases.readActiveReleaseResourcesSync().some((resource) => resource.id === input.resource.id), false);
 });
 
+test("resource names containing skill are not misclassified as API secrets", async () => {
+  const input = releaseInput("clean-user-skill-1234567890", "1.0.0", "clean-user-skill-key-0001", "clean-user-skill-owner", "# Clean user skill\n");
+  const result = await releases.commitResourceRelease(input);
+  assert.equal(result.ok, true);
+});
+
+test("public metadata still rejects literal API secrets before durable mutation", async () => {
+  const input = releaseInput("literal-secret", "1.0.0", "literal-secret-key-000001", "literal-secret-owner", "# Secret\n");
+  input.resource.summary = `Leaked credential sk-${"a".repeat(24)}`;
+  const result = await releases.commitResourceRelease(input);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "PUBLISH_CONFLICT");
+  assert.equal(releases.readActiveReleaseResourcesSync().some((resource) => resource.id === input.resource.id), false);
+});
+
 test("concurrent retries create one active release and preserve cross-resource idempotency uniqueness", async () => {
   const input = releaseInput("parallel", "2.0.0", "parallel-idempotency-001", "parallel-owner", "# Parallel\n");
   const results = await Promise.all([releases.commitResourceRelease(input), releases.commitResourceRelease(input)]);
