@@ -14,5 +14,7 @@ process.stdout.write(`${JSON.stringify({
   cleanClientSessionEvidence: false,
   distribution,
   localMcp,
-  nextGate: "Publish and integrity-pin the exact CLI, deploy the one-link endpoint, then run clean Codex and Claude sessions through the same superskill_local tools."
+  nextGate: distribution.releaseStatus === "published"
+    ? "Deploy the integrity-pinned one-link endpoint, then run clean Codex and Claude sessions through the same superskill_local tools."
+    : "Publish and integrity-pin the exact CLI, deploy the one-link endpoint, then run clean Codex and Claude sessions through the same superskill_local tools."
 }, null, 2)}\n`);
