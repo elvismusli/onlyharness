@@ -1,0 +1,71 @@
+{
+  "owner": "harnesses",
+  "repo": "data-quality-sentinel",
+  "version": "0.2.1",
+  "createdAt": "2026-07-13T13:39:10.705Z",
+  "files": [
+    {
+      "path": "README.md",
+      "truncated": false,
+      "content": "# Data Quality Sentinel\n\nAudits metric definitions, source freshness and dashboard evidence before a business decision relies on the data.\n\n## How to improve\n\n1. Fork this harness.\n2. Change one agent prompt or eval case.\n3. Run `hh validate && hh eval && hh gate`.\n4. Open PR and read the semantic diff.\n"
+    },
+    {
+      "path": "agents/anomaly_checker.md",
+      "truncated": false,
+      "content": "Check freshness, sample size, joins, denominator drift and conflicting cuts.\n\nRules:\n- Look for silent denominator changes.\n- Flag stale or partial data before interpreting trends.\n- Keep units and time windows visible.\n"
+    },
+    {
+      "path": "agents/decision_guard.md",
+      "truncated": false,
+      "content": "Write a go/no-go data quality verdict for the business decision.\n\nRules:\n- State which findings block the decision.\n- Include a smallest useful validation query or reconciliation step.\n- Separate caveats from blockers.\n"
+    },
+    {
+      "path": "agents/source_mapper.md",
+      "truncated": false,
+      "content": "Map every metric to source tables, event names, filters, windows and owners.\n\nRules:\n- Name missing source fields explicitly.\n- Distinguish raw data, modeled data and dashboard calculations.\n- Do not accept screenshots as authoritative source definitions.\n"
+    },
+    {
+      "path": "evals/cases/case-1.yaml",
+      "truncated": false,
+      "content": "title: identifies metric owner and source gaps\nscore: 0.89\n"
+    },
+    {
+      "path": "evals/cases/case-2.yaml",
+      "truncated": false,
+      "content": "title: catches denominator and freshness drift\nscore: 0.9\n"
+    },
+    {
+      "path": "evals/cases/case-3.yaml",
+      "truncated": false,
+      "content": "title: gives decision-safe go no-go verdict\nscore: 0.86\n"
+    },
+    {
+      "path": "evals/promptfooconfig.yaml",
+      "truncated": false,
+      "content": "description: Data Quality Sentinel smoke eval\nprompts:\n  - agents/decision_guard.md\nproviders:\n  - echo\n"
+    },
+    {
+      "path": "examples/expected.md",
+      "truncated": false,
+      "content": "# Expected\n\nThe verdict blocks the decision until ARR freshness and conversion denominator changes are reconciled.\n"
+    },
+    {
+      "path": "examples/input.md",
+      "truncated": false,
+      "content": "# Input\n\nARR dashboard is up 18% week over week, but billing exports lag by two days and trial conversions changed definition.\n"
+    },
+    {
+      "path": "harness.yaml",
+      "truncated": false,
+      "content": "schemaVersion: harness.v0.2\nname: data-quality-sentinel\ntitle: Data Quality Sentinel\nsummary: Audits metric definitions, source freshness and dashboard evidence\n  before a business decision relies on the data.\nversion: 0.2.1\nlicense: MIT\nsource:\n  upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/data-quality-sentinel\n  upstream_license: MIT\n  attribution: OnlyHarness first-party instruction harness\n  authors:\n    - OnlyHarness\n  vendor_policy: original\nmaintainers:\n  - name: Harness.Hub Local\ntags:\n  - data\n  - analytics\n  - quality\nruntime:\n  primary: none\n  adapters: []\ninputs:\n  - id: request\n    type: markdown\n    required: true\noutputs:\n  - id: final_result\n    type: markdown\nagents:\n  - id: source_mapper\n    role: map_data_sources\n    title: Source Mapper\n    prompt: agents/source_mapper.md\n    tools: []\n    handoffs: []\n  - id: anomaly_checker\n    role: check_metric_anomalies\n    title: Anomaly Checker\n    prompt: agents/anomaly_checker.md\n    tools: []\n    handoffs: []\n  - id: decision_guard\n    role: write_decision_guard\n    title: Decision Guard\n    prompt: agents/decision_guard.md\n    tools: []\n    handoffs: []\nworkflow:\n  entrypoint: source_mapper\n  stages:\n    - id: sources\n      agent: source_mapper\n    - id: anomalies\n      agent: anomaly_checker\n    - id: guard\n      agent: decision_guard\ntools:\n  mcp_servers: []\n  function_tools: []\n  external_apis: []\npermissions:\n  network: \"false\"\n  network_allowlist: []\n  filesystem: readonly\n  shell: false\n  browser: false\n  credentials: \"false\"\n  external_send: false\n  money_movement: false\n  user_data: false\n  human_approval_required:\n    - external_send\n    - money_movement\nsecrets:\n  required: []\n  optional: []\nevals:\n  promptfoo_config: evals/promptfooconfig.yaml\n  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o\n    .harnesshub/results.json -o .harnesshub/report.html -o\n    .harnesshub/results.junit.xml\nquality_gates:\n  min_score: 0.82\n  max_regression: 0.03\n  max_cost_usd_per_run: 3\n  max_risk_score: 39\n  required_checks:\n    - schema_valid\n    - eval_passed\n    - no_high_risk_permission_delta\nexamples:\n  - title: Smoke example\n    input: examples/input.md\n    output: examples/expected.md\n"
+    },
+    {
+      "path": "runbooks/local-run.md",
+      "truncated": false,
+      "content": "# Local run\n\n```bash\nhh validate\nhh eval\nhh gate\n```\n"
+    }
+  ],
+  "totalFileCount": 12,
+  "archiveTruncated": false,
+  "artifactDigest": "sha256:ced6cb6eb0b087b128af19b77d898006ac1bfc8c3726b0ca2d49ef7d1f9ced22"
+}

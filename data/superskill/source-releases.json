@@ -3,13 +3,13 @@
   "resources": [
     {
       "id": "agent-harness-refactorer",
-      "version": "0.2.0",
-      "includeCiWorkflow": true
+      "version": "0.2.1",
+      "includeCiWorkflow": false
     },
     {
       "id": "data-quality-sentinel",
-      "version": "0.2.0",
-      "includeCiWorkflow": true
+      "version": "0.2.1",
+      "includeCiWorkflow": false
     },
     {
       "id": "deep-market-researcher",
@@ -28,8 +28,8 @@
     },
     {
       "id": "gtm-research-sprint",
-      "version": "0.2.0",
-      "includeCiWorkflow": true
+      "version": "0.2.1",
+      "includeCiWorkflow": false
     },
     {
       "id": "incident-rca-commander",

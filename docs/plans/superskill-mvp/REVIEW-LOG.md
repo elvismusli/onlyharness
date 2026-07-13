@@ -155,3 +155,33 @@ was not accepted as evidence. The generated pinned SKILL.md lifecycle was correc
 include exact loaded/invoked/finish commands; the diagnostic and final dual-client runs
 then passed. All four durable reports remain non-promotional and all human-case packet
 review fields remain blank. Status: **pre-review prepared; human sign-off pending**.
+
+## Phase 6 pre-review research/data batch
+
+Three further candidates were cut independently to immutable `0.2.1` snapshots after
+removing only `.gitea/workflows/harness-ci.yml` and bumping the manifest version:
+
+- `gtm-research-sprint@0.2.1`;
+- `data-quality-sentinel@0.2.1`;
+- `agent-harness-refactorer@0.2.1`.
+
+Their `0.2.0` snapshots remain in history. Generic exact-release smoke initially derived
+the GTM task by concatenating intent and outcome, which diluted the known-positive route
+into `needs_clarification`. That failed run was rejected. Smoke now uses the first exact
+curated intent as its routing probe, with a focused regression test; all three generic
+exact-release smokes then passed.
+
+Clean Claude Code `2.1.112` and Codex CLI `0.135.0` exact lifecycle evidence passed for
+all three releases. The first `agent-harness-refactorer` full run and two pre-fix Claude
+diagnostics produced no Skill tool call or pinned activation state and were rejected. One
+intermediate positional-argument experiment also failed at CLI input validation and was
+not treated as client evidence. The root cause was a multiline `/skill` invocation whose
+discovery remained model-dependent. Claude now receives the canonical single-line
+user-invoked `/skill <arguments>` as a positional prompt. Two consecutive isolated Claude
+diagnostics and the final dual-client evidence run then passed.
+
+All durable reports remain non-promotional:
+`promotionAuthorized=false`, `attestationCreated=false`,
+`humanReviewEvidence=false`, and `sourceTruthUnchanged=true`. The three human-case
+packets retain blank reviewer/date/verdict fields and are explicitly synthetic review
+inputs, not attestations. Status: **pre-review prepared; human sign-off pending**.

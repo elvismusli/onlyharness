@@ -3,7 +3,7 @@ name: data-quality-sentinel
 title: Data Quality Sentinel
 summary: Audits metric definitions, source freshness and dashboard evidence
   before a business decision relies on the data.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/data-quality-sentinel

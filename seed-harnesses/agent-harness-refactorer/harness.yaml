@@ -3,7 +3,7 @@ name: agent-harness-refactorer
 title: Agent Harness Refactorer
 summary: Turns messy prompts or markdown workflows into staged harness repos
   with explicit unresolved fields.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/agent-harness-refactorer

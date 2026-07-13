@@ -33,6 +33,7 @@ import {
   inspectCodexActivationToolTrace,
   inspectExactActivationEventChain
 } from "./superskill-exact-evidence.js";
+import { deriveCuratedSmokeTask } from "./superskill-smoke-task.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const cliFile = path.join(root, "packages/harness-cli/dist/hh.mjs");
@@ -430,6 +431,9 @@ async function runRealClientSession(
     ...(client === "claude-code" ? [`/superskill-${expected.id}`] : []),
     "Run one disposable exact-release compatibility session.",
     `Use the project-local skill named superskill-${expected.id}.`,
+    ...(client === "claude-code" ? [
+      `Your first action must be an actual Skill tool call for exactly superskill-${expected.id}; do not imitate, summarize, or skip the skill.`
+    ] : []),
     `I explicitly consent to activate ${expected.ref}@${expected.version} with digest ${expected.artifactDigest} for this session only.`,
     `Use activation request id ${requestId}.`,
     "Discover and follow the pinned skill's mandatory lifecycle yourself through loaded, invoked, then finish with outcome unknown and evidence unknown.",
@@ -448,7 +452,9 @@ async function runRealClientSession(
       : "Run no other Bash command.",
     "Do not perform the requested capability task, keep, remove, update, inspect environment variables, or print tokens or absolute paths.",
     "Do not answer until every required activation command has completed successfully. Then reply only: lifecycle complete."
-  ].join("\n");
+  // Claude Code treats a user-invoked /skill plus arguments as one command line.
+  // Keeping the slash command on a separate line makes discovery model-dependent.
+  ].join(client === "claude-code" ? " " : "\n");
   const sessionEnv: NodeJS.ProcessEnv = allowlistedClientSessionEnvironment({
     HH_REGISTRY_URL: cliEnv.HH_REGISTRY_URL,
     HH_SUPERSKILL_TOKEN: cliEnv.HH_SUPERSKILL_TOKEN,
@@ -486,6 +492,7 @@ async function runRealClientSession(
         command: "claude",
         args: [
           "--print",
+          prompt,
           "--no-session-persistence",
           "--output-format", "stream-json",
           "--verbose",
@@ -520,7 +527,7 @@ async function runRealClientSession(
     cwd: project,
     env: sessionEnv,
     timeoutMs: realClientSessionTimeoutMs,
-    input: prompt
+    input: client === "claude-code" ? "" : prompt
   });
   rmSync(clientNpmCache, { recursive: true, force: true });
   rmSync(clientNpmConfig, { recursive: true, force: true });
@@ -535,6 +542,9 @@ async function runRealClientSession(
   const activationToolUsesObserved = client === "claude-code"
     ? claudeActivationBashToolUseCount(result.stdout)
     : undefined;
+  const claudeTraceSummary = client === "claude-code"
+    ? summarizeClaudeTrace(result.stdout)
+    : undefined;
   const record = readActivationByRequest(project, requestId);
   const codexToolEvidence = client === "codex"
     ? inspectCodexActivationToolTrace(result.stdout, {
@@ -547,6 +557,7 @@ async function runRealClientSession(
     : undefined;
   if (!record) return realClientFailure("failed", "PINNED_ACTIVATION_STATE_MISSING", client, {
     skillTraceObserved: claudeSkillTraceObserved,
+    ...(claudeTraceSummary === undefined ? {} : { claudeTraceSummary }),
     ...(codexToolEvidence === undefined ? {} : { codexToolEvidence }),
     ...(activationToolUsesObserved === undefined ? {} : { activationToolUsesObserved })
   });
@@ -744,6 +755,50 @@ function claudeExactSkillToolObserved(output: string, skill: string): boolean {
     }
   }
   return false;
+}
+
+function summarizeClaudeTrace(output: string): {
+  toolUseCount: number;
+  toolNames: string[];
+  textSignals: string[];
+  textDigest: string;
+} {
+  const names: string[] = [];
+  const text: string[] = [];
+  for (const line of output.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      collectClaudeTrace(JSON.parse(line), names, text);
+    } catch {
+      // Non-JSON output is not evidence and is intentionally not retained.
+    }
+  }
+  const joined = text.join("\n");
+  const signals = [
+    [/unknown skill|skill.{0,40}(?:not found|unavailable|does not exist)/i, "skill_unavailable"],
+    [/permission|not allowed|denied/i, "permission_blocked"],
+    [/lifecycle complete/i, "lifecycle_complete_text"],
+    [/cannot|can't|unable|refus/i, "refusal_or_inability"]
+  ] as const;
+  return {
+    toolUseCount: names.length,
+    toolNames: [...new Set(names)].sort(),
+    textSignals: signals.filter(([pattern]) => pattern.test(joined)).map(([, label]) => label),
+    textDigest: createHash("sha256").update(joined).digest("hex")
+  };
+}
+
+function collectClaudeTrace(value: unknown, names: string[], text: string[]): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectClaudeTrace(item, names, text);
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.type === "tool_use" && typeof record.name === "string") names.push(record.name);
+  if ((record.type === "text" || record.type === "result") && typeof record.text === "string") text.push(record.text);
+  if (record.type === "result" && typeof record.result === "string") text.push(record.result);
+  for (const item of Object.values(record)) collectClaudeTrace(item, names, text);
 }
 
 function containsExactSkillToolUse(value: unknown, skill: string): boolean {
@@ -1078,11 +1133,7 @@ function resolveTaskSummary(expected: ExpectedTuple, explicit: string | undefine
   assert.equal(resource.status, "candidate", `Curated ${expected.id} must remain candidate during bootstrap smoke`);
   if (explicit !== undefined) return validateTaskSummary(explicit);
   if (expected.id === defaultExpected.id) return defaultTaskSummary;
-  const job = resource.jobs?.[0];
-  const intent = Array.isArray(job?.intents) && typeof job.intents[0] === "string" ? job.intents[0] : undefined;
-  const outcome = Array.isArray(job?.outcomes) && typeof job.outcomes[0] === "string" ? job.outcomes[0] : undefined;
-  assert.ok(intent && outcome, `Curated ${expected.id} requires at least one intent and outcome to derive a smoke task`);
-  return validateTaskSummary(`${intent} ${outcome}`);
+  return deriveCuratedSmokeTask(resource, expected.id);
 }
 
 function validateTaskSummary(value: string): string {

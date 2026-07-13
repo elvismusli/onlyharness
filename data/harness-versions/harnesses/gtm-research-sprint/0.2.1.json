@@ -1,0 +1,71 @@
+{
+  "owner": "harnesses",
+  "repo": "gtm-research-sprint",
+  "version": "0.2.1",
+  "createdAt": "2026-07-13T13:39:08.862Z",
+  "files": [
+    {
+      "path": "README.md",
+      "truncated": false,
+      "content": "# GTM Research Sprint\n\nBuilds target segment, account list, pain hypotheses, outreach angles and proof plan.\n\n## How to improve\n\n1. Fork this harness.\n2. Change one agent prompt or eval case.\n3. Run `hh validate && hh eval && hh gate`.\n4. Open PR and read the semantic diff.\n"
+    },
+    {
+      "path": "agents/angle_writer.md",
+      "truncated": false,
+      "content": "Create testable outreach angles tied to pains and proof.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "agents/researcher.md",
+      "truncated": false,
+      "content": "Collect account candidates with source caveats and no fake data.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "agents/segmenter.md",
+      "truncated": false,
+      "content": "Define tight ICP and exclusion criteria.\n\nRules:\n- Be concrete and source-backed.\n- State uncertainty directly.\n- Do not invent external tool access.\n"
+    },
+    {
+      "path": "evals/cases/case-1.yaml",
+      "truncated": false,
+      "content": "title: source-backed account logic\nscore: 0.86\n"
+    },
+    {
+      "path": "evals/cases/case-2.yaml",
+      "truncated": false,
+      "content": "title: testable outreach hypotheses\nscore: 0.88\n"
+    },
+    {
+      "path": "evals/cases/case-3.yaml",
+      "truncated": false,
+      "content": "title: does not fabricate market data\nscore: 0.9\n"
+    },
+    {
+      "path": "evals/promptfooconfig.yaml",
+      "truncated": false,
+      "content": "description: GTM Research Sprint smoke eval\nprompts:\n  - agents/angle_writer.md\nproviders:\n  - echo\n"
+    },
+    {
+      "path": "examples/expected.md",
+      "truncated": false,
+      "content": "# Expected\n\nThe sprint targets agent engineers with reusable workflows and defines a 20-user alpha proof plan.\n"
+    },
+    {
+      "path": "examples/input.md",
+      "truncated": false,
+      "content": "# Input\n\nFind first users for a GitHub-like agent harness registry.\n"
+    },
+    {
+      "path": "harness.yaml",
+      "truncated": false,
+      "content": "schemaVersion: harness.v0.2\nname: gtm-research-sprint\ntitle: GTM Research Sprint\nsummary: Builds target segment, account list, pain hypotheses, outreach angles\n  and proof plan.\nversion: 0.2.1\nlicense: MIT\nsource:\n  upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/gtm-research-sprint\n  upstream_license: MIT\n  attribution: OnlyHarness first-party instruction harness\n  authors:\n    - OnlyHarness\n  vendor_policy: original\nmaintainers:\n  - name: Harness.Hub Local\ntags:\n  - gtm\n  - sales\n  - research\nruntime:\n  primary: none\n  adapters: []\ninputs:\n  - id: request\n    type: markdown\n    required: true\noutputs:\n  - id: final_result\n    type: markdown\nagents:\n  - id: segmenter\n    role: define_segment\n    title: Segmenter\n    prompt: agents/segmenter.md\n    tools: []\n    handoffs: []\n  - id: researcher\n    role: collect_accounts\n    title: Researcher\n    prompt: agents/researcher.md\n    tools:\n      - web_search\n    handoffs: []\n  - id: angle_writer\n    role: write_outreach_angles\n    title: Angle Writer\n    prompt: agents/angle_writer.md\n    tools: []\n    handoffs: []\nworkflow:\n  entrypoint: segmenter\n  stages:\n    - id: segment\n      agent: segmenter\n    - id: accounts\n      agent: researcher\n    - id: angles\n      agent: angle_writer\ntools:\n  mcp_servers:\n    - id: web_search\n      required: false\n      package: \"@modelcontextprotocol/server-web-search\"\n      pinned: true\n      allowlist:\n        - api.openai.com\n  function_tools: []\n  external_apis: []\npermissions:\n  network: allowlist\n  network_allowlist:\n    - api.openai.com\n  filesystem: readonly\n  shell: false\n  browser: false\n  credentials: runtime_injected\n  external_send: false\n  money_movement: false\n  user_data: false\n  human_approval_required:\n    - external_send\n    - money_movement\nsecrets:\n  required: []\n  optional: []\nevals:\n  promptfoo_config: evals/promptfooconfig.yaml\n  command: npx promptfoo@latest eval -c evals/promptfooconfig.yaml -o\n    .harnesshub/results.json -o .harnesshub/report.html -o\n    .harnesshub/results.junit.xml\nquality_gates:\n  min_score: 0.82\n  max_regression: 0.03\n  max_cost_usd_per_run: 3\n  max_risk_score: 39\n  required_checks:\n    - schema_valid\n    - eval_passed\n    - no_high_risk_permission_delta\nexamples:\n  - title: Smoke example\n    input: examples/input.md\n    output: examples/expected.md\n"
+    },
+    {
+      "path": "runbooks/local-run.md",
+      "truncated": false,
+      "content": "# Local run\n\n```bash\nhh validate\nhh eval\nhh gate\n```\n"
+    }
+  ],
+  "totalFileCount": 12,
+  "archiveTruncated": false,
+  "artifactDigest": "sha256:0a38066fce479c7c159134e90e30fa63c14933820b840bee89064ff7902912b1"
+}

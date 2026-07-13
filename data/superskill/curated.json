@@ -5,8 +5,8 @@
     {
       "id": "agent-harness-refactorer",
       "ref": "harnesses/agent-harness-refactorer",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:a3e129962c1acb631c2d795d0c2c31275ce74a47d4ec181e88e4f3cf14243d38",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:79915daa0ef8ceee4f6a6585e05995e21f81d35c08d501a861c548ef7a15b9e8",
       "status": "candidate",
       "jobs": [
         {
@@ -28,8 +28,8 @@
     {
       "id": "data-quality-sentinel",
       "ref": "harnesses/data-quality-sentinel",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:9f6e4f590cb1e195686597b4d468e87a7971a391301c13556a1fe0f3ccb4ac2e",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:ced6cb6eb0b087b128af19b77d898006ac1bfc8c3726b0ca2d49ef7d1f9ced22",
       "status": "candidate",
       "jobs": [
         {
@@ -123,8 +123,8 @@
     {
       "id": "gtm-research-sprint",
       "ref": "harnesses/gtm-research-sprint",
-      "version": "0.2.0",
-      "expectedDigest": "sha256:0f5485a6cd9dd7259524c4905d2cbf83f36d4adf0f6252b4dc4f9dd9f16eeb3d",
+      "version": "0.2.1",
+      "expectedDigest": "sha256:0a38066fce479c7c159134e90e30fa63c14933820b840bee89064ff7902912b1",
       "status": "candidate",
       "jobs": [
         {

@@ -3,7 +3,7 @@ name: gtm-research-sprint
 title: GTM Research Sprint
 summary: Builds target segment, account list, pain hypotheses, outreach angles
   and proof plan.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 source:
   upstream_url: https://github.com/elvismusli/onlyharness/tree/main/seed-harnesses/gtm-research-sprint
