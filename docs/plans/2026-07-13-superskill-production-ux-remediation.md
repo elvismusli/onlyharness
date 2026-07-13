@@ -85,16 +85,19 @@ canonical-domain пункты из таблицы закрыты deploy-ем `3b
   `a554bd8` (`Prepare low-risk SuperSkill review batch`);
 - research/data candidate pre-review batch и production deploy:
   `fcc1032` (`Prepare research SuperSkill review batch`);
+- operational/high-risk candidate pre-review batch и production deploy:
+  `9068146` (`Prepare operational SuperSkill review batch`);
 - `apps/registry-web/**` не содержит dirty changes;
 - generic install route, CTA и optional `capabilityId` уже закоммичены;
 - этот exact commit задеплоен стандартным production script из clean temporary worktree;
 - production Chrome подтверждает generic install, HTML Docs/Agent guide, mobile menu,
   heading/actions remediation и отсутствие horizontal overflow;
 - `www.superskill.sh` отвечает `301` на apex с сохранением path/query и HSTS;
-- public showroom отвечает `0 approved / 12 selected_unreviewed`;
-- текущие незакоммиченные изменения включают отдельный operational/high-risk candidate batch в
-  `data/superskill`, immutable snapshots и `seed-harnesses`; пользовательские
-  docs/research/output changes остаются unrelated и не должны попадать в batch commit.
+- public showroom отвечает `0 approved / 12 selected_unreviewed`; все 12 live current
+  releases имеют exact version `0.2.1`, trust `candidate` и managed handoff
+  `blocked:review_required`;
+- текущие незакоммиченные изменения остаются только в пользовательских
+  docs/research/output files и не относятся к SuperSkill remediation scope.
 
 Следствие: generic install нельзя планировать как отсутствующую фичу. Это уже shipped
 behavior, которое нужно защитить тестами и повторно проверять после следующих deploy.
@@ -518,7 +521,7 @@ npm run smoke
    `3bdb523f9cde57ba5025539cde58eaee74e7fea2`; evidence hardening и повторный deploy
    shipped commit `7290c5fe4c68975a9a075489ff46e9a4f4da261c`; low-risk pre-review tooling и четыре
    candidate cuts shipped commit `a554bd8`; research/data pre-review batch shipped
-   commit `fcc1032`.
+   commit `fcc1032`; operational/high-risk pre-review batch shipped commit `9068146`.
 2. Pre-review tooling/release-cut commits могут публиковать только immutable candidate
    tuples и пустые review packets; они не должны создавать attestation, preview или
    activation handoff.
