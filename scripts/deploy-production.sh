@@ -51,6 +51,14 @@ configured_agent_session_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_SESSION_
 configured_agent_session_ttl="${configured_agent_session_ttl:-2592000}"
 configured_device_auth_flag="$(sed -n 's/^[[:space:]]*SUPERSKILL_DEVICE_AUTH_ENABLED[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
 configured_device_auth_flag="${configured_device_auth_flag:-true}"
+if [[ ! "$configured_agent_access_ttl" =~ ^[0-9]+$ || "$configured_agent_access_ttl" != "600" ]]; then
+  echo "SUPERSKILL_AGENT_ACCESS_TTL_SECONDS must be 600 for the agent-first release." >&2
+  exit 1
+fi
+if [[ ! "$configured_agent_session_ttl" =~ ^[0-9]+$ || "$configured_agent_session_ttl" != "2592000" ]]; then
+  echo "SUPERSKILL_AGENT_SESSION_TTL_SECONDS must be 2592000 for the agent-first release." >&2
+  exit 1
+fi
 if [[ "$configured_device_auth_flag" != "false" && "$configured_device_auth_flag" != "true" ]]; then
   echo "SUPERSKILL_DEVICE_AUTH_ENABLED must be true or false; refusing deploy." >&2
   exit 1
@@ -58,14 +66,6 @@ fi
 if [[ "$configured_agent_auth_flag" == "true" ]]; then
   if [[ ${#configured_agent_token_pepper} -lt 32 ]]; then
     echo "SUPERSKILL_AGENT_TOKEN_PEPPER must contain at least 32 non-whitespace characters when agent auth is enabled." >&2
-    exit 1
-  fi
-  if [[ "$configured_agent_access_ttl" != "600" ]]; then
-    echo "SUPERSKILL_AGENT_ACCESS_TTL_SECONDS must be 600 for the agent-first release." >&2
-    exit 1
-  fi
-  if [[ "$configured_agent_session_ttl" != "2592000" ]]; then
-    echo "SUPERSKILL_AGENT_SESSION_TTL_SECONDS must be 2592000 for the agent-first release." >&2
     exit 1
   fi
   if [[ "$ALLOW_ENABLE_SUPERSKILL_AGENT_AUTH" != "1" ]]; then
@@ -337,31 +337,29 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsSI "$PUBLIC_BASE_URL/favicon.ico" | tr -d '\r' | grep -qi '^content-type: image/vnd.microsoft.icon\|^content-type: image/x-icon'
   curl -fsSI "$PUBLIC_BASE_URL/manifest.webmanifest" | tr -d '\r' | grep -qi '^content-type: application/manifest+json\|^content-type: application/json'
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
-  agent_auth_response="$(mktemp)"
-  agent_auth_status="$(curl -sS -o "$agent_auth_response" -w '%{http_code}' -X POST "$PUBLIC_BASE_URL/api/auth/agent/start" \
-    -H 'Content-Type: application/json' \
-    --data '{"client":"cli","scopes":["workspaces:read"]}')"
-  if [[ "$configured_agent_auth_flag" == "true" ]]; then
-    test "$agent_auth_status" = "201"
-    node --input-type=module -e '
-      import { readFileSync } from "node:fs";
-      const body = JSON.parse(readFileSync(process.argv[1], "utf8"));
-      const ok = /^ohrq_[A-Za-z0-9_-]{43}$/.test(body.request_id ?? "")
-        && /^ohdp_[A-Za-z0-9_-]{43}$/.test(body.device_proof ?? "")
-        && typeof body.browser_url === "string"
-        && body.browser_url.startsWith("https://superskill.sh/#/superskill/connect?")
-        && body.browser_url.includes(`request=${body.request_id}`)
-        && body.browser_url.includes("&proof=ohbp_")
-        && body.expires_in > 0
-        && body.interval > 0;
-      if (!ok) throw new Error("Agent auth start contract is not ready");
-      console.log(JSON.stringify({ ok: true, code: "AGENT_AUTH_START_READY" }));
-    ' "$agent_auth_response"
-  else
-    test "$agent_auth_status" = "503"
-    grep -q '"code":"AGENT_AUTH_UNAVAILABLE"' "$agent_auth_response"
-  fi
-  rm -f "$agent_auth_response"
+  PUBLIC_BASE_URL="$PUBLIC_BASE_URL" AGENT_AUTH_EXPECTED="$configured_agent_auth_flag" node --input-type=module <<'AGENT_AUTH_SMOKE'
+const response = await fetch(`${process.env.PUBLIC_BASE_URL}/api/auth/agent/start`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ client: "cli", scopes: ["workspaces:read"] }),
+});
+const body = await response.json();
+if (process.env.AGENT_AUTH_EXPECTED === "true") {
+  const ok = response.status === 201
+    && /^ohrq_[A-Za-z0-9_-]{43}$/.test(body.request_id ?? "")
+    && /^ohdp_[A-Za-z0-9_-]{43}$/.test(body.device_proof ?? "")
+    && typeof body.browser_url === "string"
+    && body.browser_url.startsWith("https://superskill.sh/#/superskill/connect?")
+    && body.browser_url.includes(`request=${body.request_id}`)
+    && body.browser_url.includes("&proof=ohbp_")
+    && body.expires_in > 0
+    && body.interval > 0;
+  if (!ok) throw new Error("Agent auth start contract is not ready");
+  console.log(JSON.stringify({ ok: true, code: "AGENT_AUTH_START_READY" }));
+} else if (response.status !== 503 || body.code !== "AGENT_AUTH_UNAVAILABLE") {
+  throw new Error("Agent auth dark-deploy contract is not fail-closed");
+}
+AGENT_AUTH_SMOKE
   curl -fsS "$PUBLIC_BASE_URL/api/superskill/install" | grep -q '"action":"install_superskill"'
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node scripts/check-superskill-showroom-response.mjs approved
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/selected?limit=12" | node scripts/check-superskill-showroom-response.mjs selected

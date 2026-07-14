@@ -193,7 +193,8 @@ check(deployProduction.includes(`HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_pu
 check(deployProduction.includes('environment.HOSTED_RESOURCE_PUBLISH_ENABLED === publish'), "deploy-production.sh must verify the rendered publish mode inside the unified compose contract");
 check(deployProduction.includes('for seed_dir in directories resources'), "deploy-production.sh must hydrate both directory and resource seed data into the API volume");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1'), "deploy-production.sh must smoke seeded resources after deploy");
-check(deployProduction.includes('$PUBLIC_BASE_URL/api/auth/agent/start') && deployProduction.includes('AGENT_AUTH_START_READY'), "deploy-production.sh must smoke durable agent-auth start when the feature is enabled");
+check(deployProduction.includes('${process.env.PUBLIC_BASE_URL}/api/auth/agent/start') && deployProduction.includes('AGENT_AUTH_START_READY'), "deploy-production.sh must smoke durable agent-auth start when the feature is enabled");
+check(!deployProduction.includes('agent_auth_response="$(mktemp)"'), "deploy-production.sh must never persist raw agent auth proofs during smoke");
 check(deployProduction.includes('AGENT_AUTH_UNAVAILABLE'), "deploy-production.sh must verify fail-closed agent auth during a dark deploy");
 check(deployProduction.includes('RESOURCE_ARCHIVE_NOT_HOSTED'), "deploy-production.sh must prove external legacy mirrors remain open-only after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/imports/resource-package'), "deploy-production.sh must smoke the public hosted resource publish containment gate");
