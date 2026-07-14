@@ -113,10 +113,7 @@ export function SkillCard({ item, variant = "compact", label }: { item: Showroom
       <div className="ss-card-actions">
         <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId: capability.id })}>Trust report</ShellLink>
         {allowed ? (
-          <>
-            <ShellLink className="ss-link--primary" href={installHref}>Install · temporary</ShellLink>
-            <ShellLink href={installHref}>Pin</ShellLink>
-          </>
+          <ShellLink className="ss-link--primary" href={installHref}>Install · temporary</ShellLink>
         ) : (
           <ShellLink href={buildSuperSkillRoute({ name: "category", job: capability.jobs[0]?.id ?? capability.id })}>See alternatives</ShellLink>
         )}

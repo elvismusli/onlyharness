@@ -8,14 +8,11 @@ export function resourceShareUrl(resourceId: string, version?: string): string {
   return `${CANONICAL_ORIGIN}/r/${key}${version ? `/${encodeURIComponent(version)}` : ""}`;
 }
 
-// Accepts a full capability (release-pinned) or a bare id (unpinned, legacy callers).
+// Capability preview routes are identity-based. Exact release pins belong to resource
+// share routes until the HTML and OG capability endpoints support versioned previews.
 export function capabilityShareUrl(capability: ManagedCapability | string): string {
-  if (typeof capability === "string") {
-    return `${CANONICAL_ORIGIN}/c/${encodeURIComponent(capability)}`;
-  }
-  const version = capability.release?.version;
-  const pin = version ? `/${encodeURIComponent(version)}` : "";
-  return `${CANONICAL_ORIGIN}/c/${encodeURIComponent(capability.id)}${pin}`;
+  const capabilityId = typeof capability === "string" ? capability : capability.id;
+  return `${CANONICAL_ORIGIN}/c/${encodeURIComponent(capabilityId)}`;
 }
 
 export function encodeBase64Url(value: string): string {

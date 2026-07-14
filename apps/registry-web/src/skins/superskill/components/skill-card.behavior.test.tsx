@@ -90,11 +90,11 @@ test("selected card exposes the artifact digest via a copy affordance", () => {
   expect(writeText).toHaveBeenCalledWith(item.capability.release.artifactDigest);
 });
 
-// Fix 6 — primary action is "Install · temporary" with a secondary "Pin"; blocked cards keep an exit.
-test("approved card installs temporarily with a pin option; blocked card offers an exit not a dead end", () => {
+// Managed activation always starts temporary. Pinning is offered only after an observed outcome.
+test("approved card starts a temporary install without premature pinning; blocked card offers an exit", () => {
   const { rerender } = render(<SkillCard item={showroomFixture()} />);
   expect(screen.getByRole("link", { name: /install\b.*temporary/i })).toBeTruthy();
-  expect(screen.getByRole("link", { name: /^pin$/i })).toBeTruthy();
+  expect(screen.queryByRole("link", { name: /^pin$/i })).toBeNull();
   expect(screen.queryByText("Client handoff")).toBeNull();
 
   const blocked = showroomFixture({ trust: { ...showroomFixture().capability.trust, status: "revoked" } });
