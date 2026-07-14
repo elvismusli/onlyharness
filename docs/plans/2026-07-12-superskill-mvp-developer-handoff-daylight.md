@@ -584,6 +584,9 @@ This section is the current implementation truth for the transition release seri
 - Supabase migration is applied and service-only RPC access was verified.
 - Production is dark-deployed with `SUPERSKILL_AGENT_AUTH_ENABLED=false`; public reads and
   the universal installer remain available.
+- The matching `0.3.1` API/runtime is live. Fresh isolated Codex and Claude Code homes each
+  completed the pinned one-link bootstrap and anonymous exact native-harness install; a
+  second install returned `unchanged` and wrote no bearer credential or project secret.
 - `/.well-known/oauth-authorization-server` remains 404. Native `/mcp/account` OAuth is a
   later stage and must not be advertised before clean Codex and Claude compatibility proof.
 - Public enablement is **NO-GO** until production Google and GitHub Supabase providers are
