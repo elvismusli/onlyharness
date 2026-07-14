@@ -7,6 +7,7 @@ import { ShellLink } from "./primitives";
 import { AgentGuidePage } from "./pages/AgentGuidePage";
 import { AccountPage } from "./pages/AccountPage";
 import { CategoryPage } from "./pages/CategoryPage";
+import { ConnectPage } from "./pages/ConnectPage";
 import { DocsPage } from "./pages/DocsPage";
 import { InstallHandoff } from "./pages/InstallHandoff";
 import { Landing } from "./pages/Landing";
@@ -45,6 +46,7 @@ function renderRoute(route: ReturnType<typeof useSuperSkillRoute>) {
     case "docs": return <DocsPage />;
     case "agent-guide": return <AgentGuidePage />;
     case "account": return <AccountPage />;
+    case "connect": return <ConnectPage requestId={route.requestId} browserProof={route.browserProof} />;
     case "publish": return <PublishPage />;
     case "workspaces": return <WorkspacesPage />;
     case "search": return <SearchPage query={route.query} resourceType={route.resourceType} />;

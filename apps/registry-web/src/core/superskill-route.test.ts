@@ -2,12 +2,16 @@ import { describe, expect, test } from "vitest";
 
 import { buildSuperSkillRoute, parseSuperSkillRoute, type SuperSkillRoute } from "./superskill-route";
 
+const AGENT_REQUEST_ID = `ohrq_${"A".repeat(43)}`;
+const AGENT_BROWSER_PROOF = `ohbp_${"B".repeat(43)}`;
+
 describe("SuperSkill hash routes", () => {
   const routes: Array<Exclude<SuperSkillRoute, { name: "not-found" }>> = [
     { name: "landing" },
     { name: "docs" },
     { name: "agent-guide" },
     { name: "account" },
+    { name: "connect", requestId: AGENT_REQUEST_ID },
     { name: "publish" },
     { name: "workspaces" },
     { name: "search" },
@@ -59,5 +63,17 @@ describe("SuperSkill hash routes", () => {
     expect(parseSuperSkillRoute("#/superskill/resources/..%2Fsecret")).toEqual({ name: "not-found" });
     expect(parseSuperSkillRoute("#/superskill/search?type=executable")).toEqual({ name: "not-found" });
     expect(parseSuperSkillRoute(`#/superskill/search?q=${"a".repeat(201)}`)).toEqual({ name: "not-found" });
+    expect(parseSuperSkillRoute("#/superskill/connect?request=short&proof=also-short")).toEqual({ name: "not-found" });
+    expect(parseSuperSkillRoute(`#/superskill/connect?request=${AGENT_REQUEST_ID}&request=${AGENT_REQUEST_ID}`)).toEqual({ name: "not-found" });
+    expect(parseSuperSkillRoute(`#/superskill/connect?request=${AGENT_REQUEST_ID}&proof=${AGENT_BROWSER_PROOF}&next=https://evil.example`)).toEqual({ name: "not-found" });
+  });
+
+  test("reads agent handoff secrets only from the hash route and never rebuilds the proof", () => {
+    expect(parseSuperSkillRoute(`#/superskill/connect?request=${AGENT_REQUEST_ID}&proof=${AGENT_BROWSER_PROOF}`)).toEqual({
+      name: "connect",
+      requestId: AGENT_REQUEST_ID,
+      browserProof: AGENT_BROWSER_PROOF
+    });
+    expect(buildSuperSkillRoute({ name: "connect", requestId: AGENT_REQUEST_ID, browserProof: AGENT_BROWSER_PROOF })).toBe(`#/superskill/connect?request=${AGENT_REQUEST_ID}`);
   });
 });

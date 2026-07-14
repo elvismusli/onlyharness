@@ -28,7 +28,7 @@ import { CAPABILITY_ID_RE, DIGEST_RE, SUPERSKILL_RUNTIME, SuperSkillCliError } f
 
 export const SUPERSKILL_INSTALL_ORIGIN = "https://superskill.sh";
 export const SUPERSKILL_INSTALL_PATH = "/api/superskill/install";
-export const SUPERSKILL_PLUGIN_VERSION = "0.2.0";
+export const SUPERSKILL_PLUGIN_VERSION = "0.3.0";
 export const SUPERSKILL_PUBLIC_MCP_URL = "https://superskill.sh/mcp";
 
 export { UNIVERSAL_SUPERSKILL_FILES };
@@ -106,7 +106,6 @@ export function clientAdapterContractDigest(client: SuperSkillClient): string {
         superskill_local: {
           command: "npx",
           args: ["--yes", `${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
-          env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
           default_tools_approval_mode: "prompt"
         }
       },
@@ -125,7 +124,7 @@ export function clientAdapterContractDigest(client: SuperSkillClient): string {
           args: ["--yes", `${SUPERSKILL_RUNTIME.cliPackage}@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"]
         }
       },
-      credentialTransport: "inherited-environment",
+      credentialTransport: "os-keychain-browser-broker",
       tokenStored: false
     };
   return `sha256:${createHash("sha256").update(canonicalJson(contract), "utf8").digest("hex")}`;
@@ -433,7 +432,6 @@ const CODEX_PUBLIC_MCP = { url: SUPERSKILL_PUBLIC_MCP_URL, default_tools_approva
 const CODEX_LOCAL_MCP = {
   command: "npx",
   args: [...LOCAL_MCP_ARGS],
-  env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
   default_tools_approval_mode: "prompt"
 } as const;
 
@@ -516,7 +514,6 @@ function preflightCodexMcpConfig(projectRoot: string): McpConfigPlan {
       "[mcp_servers.superskill_local]",
       'command = "npx"',
       `args = [${LOCAL_MCP_ARGS.map((item) => JSON.stringify(item)).join(", ")}]`,
-      'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
       'default_tools_approval_mode = "prompt"'
     ].join("\n"));
   }

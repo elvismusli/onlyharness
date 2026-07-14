@@ -7,7 +7,8 @@ import test from "node:test";
 import Fastify from "fastify";
 import { ManagedCatalog } from "../src/capabilities.js";
 import { registerSuperskillRoutes } from "../src/routes/superskill.js";
-import { buildSuperSkillBootstrapManifest, type SuperSkillBootstrapContract } from "../src/superskill/bootstrap.js";
+import { buildSuperSkillBootstrapManifest, loadSuperSkillBootstrapContract, type SuperSkillBootstrapContract } from "../src/superskill/bootstrap.js";
+import { validateBootstrapManifest } from "../../../packages/harness-cli/src/lib/superskill-bootstrap.js";
 import { approvedCapability, managedIndex } from "./superskill-fixture.js";
 
 const contract: SuperSkillBootstrapContract = {
@@ -37,6 +38,14 @@ test("public bootstrap exposes one pinned no-script install contract with secure
   assert.equal(head.statusCode, 200);
   assert.equal(head.body, "");
   await app.close();
+});
+
+test("checked-in API bootstrap contract is accepted by the exact pinned CLI adapter contract", () => {
+  const manifest = buildSuperSkillBootstrapManifest(loadSuperSkillBootstrapContract());
+  const validated = validateBootstrapManifest(manifest as never, new URL(manifest.canonicalUrl));
+  assert.equal(validated.manifestDigest, manifest.manifestDigest);
+  assert.equal(JSON.stringify(manifest.clientAdapters).includes("HH_TOKEN"), false);
+  assert.equal(JSON.stringify(manifest.clientAdapters).includes("HH_SUPERSKILL_TOKEN"), false);
 });
 
 test("exact capability URL binds id, version and digest and cannot drift", async () => {

@@ -112,14 +112,17 @@ check(
     && JSON.stringify(superskillMcp.mcpServers.superskill_local.args) === JSON.stringify(["--yes", `${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion}`, "mcp", "superskill"])
     && !superskillMcp.mcpServers.superskill_local.env
     && !superskillMcp.mcpServers.superskill_local.headers,
-  "Local SuperSkill MCP must use the exact pinned CLI and inherit credentials without embedding them"
+  "Local SuperSkill MCP must use the exact pinned CLI without embedded credential transport"
 );
 for (const required of [
   `onlyharness@${superskillRuntime.cliVersion}`,
   "superskill_local",
-  "HH_SUPERSKILL_TOKEN",
   "LOCAL_MCP_UNAVAILABLE",
   "no_safe_match",
+  "auth_status",
+  "auth_start",
+  "auth_wait",
+  "auth_logout",
   "activation_doctor",
   "recommend",
   "activation_start",
@@ -128,12 +131,20 @@ for (const required of [
   "activation_finish",
   "activation_keep",
   "activation_remove",
+  "publish_markdown_to_harness",
+  "publish_resource_package",
+  "workspace_create",
+  "workspace_get",
+  "workspace_publish_resource",
+  "workspace_install",
   "agent_reported",
   "never downgrade an exact link to an id-only/latest call",
   ".agents/skills",
   ".codex/harnesses"
 ]) check(superskillSkill.includes(required), `SuperSkill shared skill must include ${required}`);
 check(!superskillSkill.includes("onlyharness@latest"), "SuperSkill managed commands must never use latest");
+check(!superskillSkill.includes("HH_TOKEN") && !superskillSkill.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill shared skill must not expose legacy environment credential transport");
+check(!superskillSkill.includes("auth login --shell") && !superskillSkill.includes("eval \"$("), "SuperSkill shared skill must not require token export or a second shell session");
 check(!/npx[^\n]*(?:recommend|activation (?:start|mark|finish|keep|remove))/.test(superskillSkill), "SuperSkill lifecycle must use local MCP tools, not shell CLI fallback");
 
 for (const docs of [

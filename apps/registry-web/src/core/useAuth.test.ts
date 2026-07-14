@@ -64,6 +64,17 @@ test("OAuth continuation is limited to safe SuperSkill account and workspace has
     .toBe("#/superskill/account");
 });
 
+test("agent connect continuations keep the request but strip the one-time browser proof", () => {
+  const requestId = `ohrq_${"A".repeat(43)}`;
+  const browserProof = `ohbp_${"B".repeat(43)}`;
+  const hash = `#/superskill/connect?request=${requestId}&proof=${browserProof}`;
+  expect(safeSuperskillAuthContinuation(hash)).toBe(`#/superskill/connect?request=${requestId}`);
+  expect(safeSuperskillExternalAuthContinuation(hash)).toBe(`#/superskill/connect?request=${requestId}`);
+  expect(oauthRedirectUrl({ origin: "https://superskill.sh", hash } as Location)).toBe(`https://superskill.sh/#/superskill/connect?request=${requestId}`);
+  expect(localStorage.length).toBe(0);
+  expect(sessionStorage.length).toBe(0);
+});
+
 test("approval continuation fails closed when its exact release tuple is missing or invalid", () => {
   const resource = "onlyharness%3Apackages%2Fresearch";
   expect(safeSuperskillAuthContinuation(`#/superskill/account?workspace=acme&resource=${resource}&approve=1`))

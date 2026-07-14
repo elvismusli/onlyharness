@@ -44,6 +44,11 @@ const apiRuntimeEnv = [
   "SUPERSKILL_TELEMETRY_SALT",
   "SUPERSKILL_TELEMETRY_ENABLED",
   "SUPERSKILL_SUBJECT_SALT",
+  "SUPERSKILL_AGENT_AUTH_ENABLED",
+  "SUPERSKILL_AGENT_TOKEN_PEPPER",
+  "SUPERSKILL_AGENT_ACCESS_TTL_SECONDS",
+  "SUPERSKILL_AGENT_SESSION_TTL_SECONDS",
+  "SUPERSKILL_DEVICE_AUTH_ENABLED",
   "COMMUNITY_INVITE_SECRET",
   "HARNESS_WEBHOOK_TOKEN",
   "HOSTED_RESOURCE_PUBLISH_ENABLED",
@@ -82,6 +87,11 @@ const exampleEnv = [
   "SUPERSKILL_TELEMETRY_SALT",
   "SUPERSKILL_TELEMETRY_ENABLED",
   "SUPERSKILL_SUBJECT_SALT",
+  "SUPERSKILL_AGENT_AUTH_ENABLED",
+  "SUPERSKILL_AGENT_TOKEN_PEPPER",
+  "SUPERSKILL_AGENT_ACCESS_TTL_SECONDS",
+  "SUPERSKILL_AGENT_SESSION_TTL_SECONDS",
+  "SUPERSKILL_DEVICE_AUTH_ENABLED",
   "COMMUNITY_INVITE_SECRET",
   "GITEA_BASE_URL",
   "HARNESS_WEBHOOK_TOKEN",
@@ -104,6 +114,10 @@ for (const name of exampleEnv) {
 check(compose.includes("PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-manual}"), "PAYMENT_PROVIDER must default to manual");
 check(compose.includes("X402_ENABLED: ${X402_ENABLED:-false}"), "X402_ENABLED must default off");
 check(compose.includes("SUPERSKILL_ENABLED: ${SUPERSKILL_ENABLED:-false}"), "SUPERSKILL_ENABLED must default off");
+check(compose.includes("SUPERSKILL_AGENT_AUTH_ENABLED: ${SUPERSKILL_AGENT_AUTH_ENABLED:-false}"), "agent auth must default off until its durable store and secrets are ready");
+check(compose.includes("SUPERSKILL_AGENT_ACCESS_TTL_SECONDS: ${SUPERSKILL_AGENT_ACCESS_TTL_SECONDS:-600}"), "agent access tokens must default to ten minutes");
+check(compose.includes("SUPERSKILL_AGENT_SESSION_TTL_SECONDS: ${SUPERSKILL_AGENT_SESSION_TTL_SECONDS:-2592000}"), "agent refresh sessions must have a thirty-day absolute lifetime");
+check(compose.includes("SUPERSKILL_DEVICE_AUTH_ENABLED: ${SUPERSKILL_DEVICE_AUTH_ENABLED:-true}"), "the transition release must keep an explicit legacy device rollback flag");
 check(compose.includes("HOSTED_RESOURCE_PUBLISH_ENABLED: ${HOSTED_RESOURCE_PUBLISH_ENABLED:-false}"), "hosted public resource publishing must default off");
 check(compose.includes("${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:ro"), "the existing resource archive mirror must stay read-only during containment");
 check(compose.includes("${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:rw"), "public resource imports must use a separate writable persistent archive mount");
@@ -124,6 +138,8 @@ check(envExample.includes("PAYMENTS_ENABLED=false"), "production.env.example mus
 check(envExample.includes("ORGS_ENABLED=false"), "production.env.example must keep orgs off by default");
 check(envExample.includes("WORKSPACES_ENABLED=false"), "production.env.example must keep workspaces off by default");
 check(envExample.includes("SUPERSKILL_ENABLED=false"), "production.env.example must keep SuperSkill managed routes off by default");
+check(envExample.includes("SUPERSKILL_AGENT_AUTH_ENABLED=false"), "production.env.example must keep agent auth off until explicitly enabled");
+check(envExample.includes("SUPERSKILL_AGENT_TOKEN_PEPPER=\n"), "production.env.example must document the server-only agent token pepper without a value");
 check(envExample.includes("HOSTED_RESOURCE_PUBLISH_ENABLED=false"), "production.env.example must keep hosted public resource publishing off by default");
 check(envExample.includes("RESOURCE_IMPORT_ARCHIVE_DIR=/var/lib/onlyharness/resource-import-archives"), "production.env.example must document the dedicated import archive directory");
 check(envExample.includes("VITE_DEFAULT_SKIN=superskill"), "production.env.example must default to the SuperSkill product surface");
@@ -163,6 +179,10 @@ check(deployProduction.includes('RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"'), "d
 check(deployProduction.includes("for required_auth_var in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY"), "deploy-production.sh must fail before mutation when production auth config is missing");
 check(deployProduction.includes('configured_publish_flag="${configured_publish_flag:-false}"'), "deploy-production.sh must fail closed when the containment publish flag is missing");
 check(deployProduction.includes('ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH'), "deploy-production.sh must require an explicit operator opt-in before enabling hosted resource publishing");
+check(deployProduction.includes('ALLOW_ENABLE_SUPERSKILL_AGENT_AUTH'), "deploy-production.sh must require an explicit operator opt-in before enabling agent auth");
+check(deployProduction.includes('SUPERSKILL_AGENT_TOKEN_PEPPER must contain at least 32'), "deploy-production.sh must reject an enabled agent auth service without a strong server-only pepper");
+check(deployProduction.includes('SUPERSKILL_AGENT_ACCESS_TTL_SECONDS must be 600'), "deploy-production.sh must enforce the ten-minute access token contract");
+check(deployProduction.includes('SUPERSKILL_AGENT_SESSION_TTL_SECONDS must be 2592000'), "deploy-production.sh must enforce the thirty-day absolute session contract");
 check(deployProduction.includes("SUPERSKILL_SUBJECT_SALT_PATH") && deployProduction.includes("openssl rand -hex 32"), "deploy-production.sh must provision a stable server-only user-subject salt");
 check(deployProduction.includes("'^SUPERSKILL_SUBJECT_SALT='") && deployProduction.includes("tr -d '\\r\\n' < \"$SUPERSKILL_SUBJECT_SALT_PATH\""), "deploy-production.sh must inject the persistent subject salt without logging it");
 check(deployProduction.includes('RESOURCE_IMPORT_ARCHIVE_DIR must be an absolute traversal-free path'), "deploy-production.sh must validate the writable import archive bind path before mutation");

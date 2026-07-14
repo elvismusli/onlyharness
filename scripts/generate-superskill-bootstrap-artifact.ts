@@ -36,7 +36,6 @@ const adapterContract = (client: "codex" | "claude-code") => {
         superskill_local: {
           command: "npx",
           args: ["--yes", `${runtime.cliPackage}@${runtime.cliVersion}`, "mcp", "superskill"],
-          env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
           default_tools_approval_mode: "prompt"
         }
       },
@@ -55,7 +54,7 @@ const adapterContract = (client: "codex" | "claude-code") => {
           args: ["--yes", `${runtime.cliPackage}@${runtime.cliVersion}`, "mcp", "superskill"]
         }
       },
-      credentialTransport: "inherited-environment",
+      credentialTransport: "os-keychain-browser-broker",
       tokenStored: false
     };
 };

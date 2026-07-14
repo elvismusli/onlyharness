@@ -59,6 +59,11 @@ let registry = "";
 let unsafeArchive = false;
 let releaseRevoked = false;
 let stallExactRelease = false;
+let lastIdempotencyKey = "";
+let markdownPublishCalls = 0;
+let lastWorkspaceIdempotencyKey = "";
+let lastWorkspacePublishIdempotencyKey = "";
+let requestedAuthScopes = ["superskill:managed"];
 const requestBodies: string[] = [];
 
 before(async () => {
@@ -68,7 +73,32 @@ before(async () => {
     request.on("data", (chunk) => { body += chunk; });
     request.on("end", () => {
       if (body) requestBodies.push(body);
-      if (request.headers.authorization !== "Bearer mcp-fixture-secret") {
+      if (request.url === "/auth/agent/start" && request.method === "POST") {
+        requestedAuthScopes = (JSON.parse(body) as { scopes?: string[] }).scopes ?? [];
+        const browserUrl = `${registry}/#/superskill/connect?request=ohrq_${"r".repeat(43)}&proof=ohbp_${"b".repeat(43)}`;
+        response.statusCode = 201;
+        response.end(JSON.stringify({
+          request_id: `ohrq_${"r".repeat(43)}`,
+          device_proof: `ohdp_${"d".repeat(43)}`,
+          browser_url: browserUrl,
+          verification_uri: browserUrl,
+          expires_in: 600,
+          interval: 1
+        }));
+        return;
+      }
+      if (request.url === "/auth/agent/token" && request.method === "POST") {
+        response.end(JSON.stringify({
+          access_token: `ohat_${"a".repeat(43)}`,
+          refresh_token: `ohrt_${"f".repeat(43)}`,
+          token_type: "Bearer",
+          expires_in: 600,
+          session_expires_in: 30 * 24 * 60 * 60,
+          scope: requestedAuthScopes.join(" ")
+        }));
+        return;
+      }
+      if (request.headers.authorization !== "Bearer mcp-fixture-secret" && request.headers.authorization !== `Bearer ohat_${"a".repeat(43)}`) {
         response.statusCode = 401;
         response.end(JSON.stringify({ code: "SUPERSKILL_AUTH_REQUIRED" }));
         return;
@@ -129,6 +159,25 @@ before(async () => {
         response.end(JSON.stringify({ recorded: true }));
         return;
       }
+      if (request.url === "/imports/markdown-to-harness" && request.method === "POST") {
+        markdownPublishCalls += 1;
+        lastIdempotencyKey = String(request.headers["idempotency-key"] ?? "");
+        response.statusCode = 201;
+        response.end(JSON.stringify({ item: { name: "same-task", title: "Same task" }, snapshotVersion: "1" }));
+        return;
+      }
+      if (request.url === "/workspaces" && request.method === "POST") {
+        lastWorkspaceIdempotencyKey = String(request.headers["idempotency-key"] ?? "");
+        response.statusCode = 201;
+        response.end(JSON.stringify({ workspace: { slug: "acme", name: "Acme" }, replay: false }));
+        return;
+      }
+      if (request.url === "/workspaces/acme/imports/resource-package" && request.method === "POST") {
+        lastWorkspacePublishIdempotencyKey = String(request.headers["idempotency-key"] ?? "");
+        response.statusCode = 201;
+        response.end(JSON.stringify({ resource: { id: "@acme/team-workflow", name: "team-workflow" }, replay: false }));
+        return;
+      }
       response.statusCode = 404;
       response.end(JSON.stringify({ code: "CAPABILITY_NOT_FOUND" }));
     });
@@ -143,7 +192,7 @@ after(async () => {
   await new Promise<void>((resolve, reject) => api.close((error) => error ? reject(error) : resolve()));
 });
 
-test("real stdio MCP exposes exactly eight tools and runs the consent-bound Codex lifecycle without path leaks", async () => {
+test("real stdio MCP exposes the agent-first auth/account surface and runs the consent-bound Codex lifecycle without path leaks", async () => {
   const project = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-project-"));
   const home = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-home-"));
   execFileSync("git", ["init", "-q"], { cwd: project });
@@ -154,6 +203,10 @@ test("real stdio MCP exposes exactly eight tools and runs the consent-bound Code
     await client.connect(transport);
     const listed = await client.listTools();
     assert.deepEqual(listed.tools.map((tool) => tool.name), [
+      "auth_status",
+      "auth_start",
+      "auth_wait",
+      "auth_logout",
       "activation_doctor",
       "recommend",
       "activation_start",
@@ -161,7 +214,13 @@ test("real stdio MCP exposes exactly eight tools and runs the consent-bound Code
       "activation_mark_invoked",
       "activation_finish",
       "activation_keep",
-      "activation_remove"
+      "activation_remove",
+      "publish_markdown_to_harness",
+      "publish_resource_package",
+      "workspace_create",
+      "workspace_get",
+      "workspace_publish_resource",
+      "workspace_install"
     ]);
 
     const doctor = await client.callTool({ name: "activation_doctor", arguments: { client: "codex" } });
@@ -303,6 +362,130 @@ test("real stdio MCP exposes exactly eight tools and runs the consent-bound Code
   }
 });
 
+test("local MCP browser auth automatically continues the pending publish without serializing proofs or credentials", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-auth-"));
+  const home = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-auth-home-"));
+  const { client, transport } = createMcpClient(project, home, false, {
+    HH_TOKEN: "",
+    HH_SUPERSKILL_TOKEN: "",
+    HH_SUPERSKILL_AUTH_DISABLE_KEYCHAIN: "1",
+    HH_SUPERSKILL_AUTH_TEST_BROWSER_OPENED: "1"
+  });
+  try {
+    await client.connect(transport);
+    const publishArgs = {
+      client: "codex",
+      name: "same-task",
+      markdown: "# Same task\n\nPublish after browser authorization without changing this payload.",
+      idempotencyKey: "req_same_task_auth_001"
+    };
+    const beforeAuth = await client.callTool({ name: "publish_markdown_to_harness", arguments: publishArgs });
+    assert.equal(beforeAuth.isError, true);
+    assert.equal(structured(beforeAuth).code, "SUPERSKILL_AUTH_REQUIRED");
+    const started = await client.callTool({ name: "auth_start", arguments: { client: "codex", scopes: ["resources:publish"] } });
+    assert.equal(structured(started).code, "AUTH_PENDING");
+    assert.deepEqual(requestedAuthScopes, ["resources:publish"], "creator publishing must not request the managed operator grant");
+    assertNoAuthSecrets(started);
+    const authorized = await client.callTool({ name: "auth_wait", arguments: { client: "codex", maxWaitSeconds: 2 } });
+    assert.equal(structured(authorized).code, "AUTH_AUTHORIZED");
+    assert.equal(structured(authorized).persistence, "memory");
+    const continuation = structured(authorized).continuation as { tool: string; result: Record<string, unknown> };
+    assert.equal(continuation.tool, "publish_markdown_to_harness");
+    assert.equal(continuation.result.code, "MARKDOWN_PUBLISHED");
+    assert.match(String(structured(authorized).next), /Do not submit it again/);
+    assertNoAuthSecrets(authorized);
+    assert.equal(lastIdempotencyKey, publishArgs.idempotencyKey);
+    assert.equal(markdownPublishCalls, 1, "the broker must replay the pending mutation exactly once");
+  } finally {
+    await client.close();
+    rmSync(project, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("browser-open failure preserves the exact protected invocation for safe auth_wait continuation", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-auth-fallback-"));
+  const home = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-auth-fallback-home-"));
+  markdownPublishCalls = 0;
+  const { client, transport } = createMcpClient(project, home, false, {
+    HH_TOKEN: "",
+    HH_SUPERSKILL_TOKEN: "",
+    HH_SUPERSKILL_AUTH_DISABLE_KEYCHAIN: "1",
+    HH_SUPERSKILL_AUTH_TEST_BROWSER_OPENED: "0"
+  });
+  try {
+    await client.connect(transport);
+    const publishArgs = {
+      client: "codex",
+      name: "fallback-same-task",
+      markdown: "# Fallback same task\n\nKeep this exact protected invocation while browser opening is unavailable.",
+      idempotencyKey: "req_fallback_same_task_001"
+    };
+    const beforeAuth = await client.callTool({ name: "publish_markdown_to_harness", arguments: publishArgs });
+    assert.equal(structured(beforeAuth).code, "SUPERSKILL_AUTH_REQUIRED");
+
+    const unavailable = await client.callTool({ name: "auth_start", arguments: { client: "codex", scopes: ["resources:publish"] } });
+    assert.equal(unavailable.isError, true);
+    assert.equal(structured(unavailable).code, "AUTH_BROWSER_UNAVAILABLE");
+    assert.match(String(structured(unavailable).next), /auth login --no-browser/);
+    assert.match(String(structured(unavailable).next), /remains pending locally/);
+    assertNoAuthSecrets(unavailable);
+
+    const resumed = await client.callTool({ name: "auth_wait", arguments: { client: "codex", maxWaitSeconds: 2 } });
+    assert.equal(structured(resumed).code, "AUTH_AUTHORIZED");
+    const continuation = structured(resumed).continuation as { tool: string; result: Record<string, unknown> };
+    assert.equal(continuation.tool, "publish_markdown_to_harness");
+    assert.equal(continuation.result.code, "MARKDOWN_PUBLISHED");
+    assert.equal(lastIdempotencyKey, publishArgs.idempotencyKey);
+    assert.equal(markdownPublishCalls, 1, "browser fallback may replay the protected mutation only once");
+    assertNoAuthSecrets(resumed);
+  } finally {
+    await client.close();
+    rmSync(project, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("local MCP retains exact workspace idempotency keys across automatic auth and scope step-up", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-workspace-auth-"));
+  const home = mkdtempSync(path.join(os.tmpdir(), "superskill-mcp-workspace-auth-home-"));
+  const { client, transport } = createMcpClient(project, home, false, {
+    HH_TOKEN: "",
+    HH_SUPERSKILL_TOKEN: "",
+    HH_SUPERSKILL_AUTH_DISABLE_KEYCHAIN: "1",
+    HH_SUPERSKILL_AUTH_TEST_BROWSER_OPENED: "1"
+  });
+  try {
+    await client.connect(transport);
+    const createArgs = { client: "codex", slug: "acme", name: "Acme", idempotencyKey: "req_workspace_create_001" };
+    const createBeforeAuth = await client.callTool({ name: "workspace_create", arguments: createArgs });
+    assert.equal(structured(createBeforeAuth).code, "SUPERSKILL_AUTH_REQUIRED");
+    await client.callTool({ name: "auth_start", arguments: { client: "codex", scopes: ["workspaces:write"] } });
+    const createAuthorized = structured(await client.callTool({ name: "auth_wait", arguments: { client: "codex", maxWaitSeconds: 2 } }));
+    assert.equal((createAuthorized.continuation as { result: { code: string } }).result.code, "WORKSPACE_READY");
+    assert.equal(lastWorkspaceIdempotencyKey, createArgs.idempotencyKey);
+
+    const publishArgs = {
+      client: "codex",
+      workspace: "acme",
+      name: "team-workflow",
+      files: [{ path: "workflow.md", content: "# Team workflow\n\nUse this reviewed workspace workflow." }],
+      idempotencyKey: "req_workspace_publish_001"
+    };
+    const publishBeforeStepUp = await client.callTool({ name: "workspace_publish_resource", arguments: publishArgs });
+    assert.equal(structured(publishBeforeStepUp).code, "AUTH_SCOPE_REQUIRED");
+    await client.callTool({ name: "auth_start", arguments: { client: "codex", scopes: ["resources:publish", "workspaces:write"] } });
+    const publishAuthorized = structured(await client.callTool({ name: "auth_wait", arguments: { client: "codex", maxWaitSeconds: 2 } }));
+    assert.equal((publishAuthorized.continuation as { result: { code: string } }).result.code, "WORKSPACE_RESOURCE_PUBLISHED");
+    assert.equal(lastWorkspacePublishIdempotencyKey, publishArgs.idempotencyKey);
+    assertNoAuthSecrets(publishAuthorized);
+  } finally {
+    await client.close();
+    rmSync(project, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("JSON-RPC cancellation and managed timeout leave no activation state", async () => {
   for (const mode of ["cancel", "timeout"] as const) {
     const project = mkdtempSync(path.join(os.tmpdir(), `superskill-mcp-${mode}-`));
@@ -414,10 +597,12 @@ function createMcpClient(project: string, home: string, exposeRoot: boolean, env
       PATH: process.env.PATH ?? "",
       HOME: home,
       HH_REGISTRY_URL: registry,
-      HH_SUPERSKILL_TOKEN: "mcp-fixture-secret",
+      HH_TOKEN: "mcp-fixture-secret",
+      SUPERSKILL_DEVICE_AUTH_ENABLED: "1",
       HH_SUPERSKILL_ALLOW_INSECURE_TEST_REGISTRY: "1",
       HH_SUPERSKILL_DOCTOR_SKIP_NPM_VIEW: "1",
       HH_SUPERSKILL_TELEMETRY: "off",
+      HH_SUPERSKILL_AUTH_DISABLE_KEYCHAIN: "1",
       NO_COLOR: "1",
       ...envOverrides
     }
@@ -445,6 +630,13 @@ function startArgs(recommendation: { recommendationId: string; decisionDigest: s
 
 function structured(result: CallToolResult): Record<string, unknown> {
   return (result.structuredContent ?? {}) as Record<string, unknown>;
+}
+
+function assertNoAuthSecrets(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  for (const secret of ["proof=", "ohdp_", "ohbp_", "ohat_", "ohrt_", "HH_TOKEN", "HH_SUPERSKILL_TOKEN"]) {
+    assert.equal(serialized.includes(secret), false, `MCP result leaked ${secret}`);
+  }
 }
 
 function collectFiles(root: string): Array<{ path: string; content: string; truncated: false }> {

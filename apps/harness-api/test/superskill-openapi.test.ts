@@ -17,22 +17,35 @@ test("OpenAPI exposes the confirmed-account exact handoff decision without activ
   assert.ok("409" in operation.responses);
 });
 
-test("OpenAPI documents bounded one-time device authorization without URL credentials", () => {
-  const start = openapi.paths["/auth/device/start"].post;
-  const approve = openapi.paths["/auth/device/approve"].post;
-  const token = openapi.paths["/auth/device/token"].post;
-  assert.match(start.description, /verification URL is static/);
-  assert.deepEqual(approve.security, [{ bearerAuth: [] }]);
-  assert.match(approve.description, /confirmed email/);
-  assert.match(approve.description, /audited server-only operator RPC/);
-  assert.match(token.description, /consumes the session exactly once/);
-  assert.match(token.description, /maximum 30-minute HMAC bearer/);
-  assert.deepEqual(token.requestBody.content["application/json"].schema.required, ["device_code"]);
-  assert.equal(token.requestBody.content["application/json"].schema.additionalProperties, false);
-  assert.ok("202" in token.responses);
-  assert.ok("409" in token.responses);
-  assert.ok("410" in token.responses);
-  assert.equal(openapi.components.schemas.DeviceAuthorizationToken.properties.scope.const, "superskill:managed");
+test("OpenAPI hides one-transition legacy device authorization", () => {
+  assert.equal(openapi.paths["/auth/device/start"], undefined);
+  assert.equal(openapi.paths["/auth/device/approve"], undefined);
+  assert.equal(openapi.paths["/auth/device/token"], undefined);
+  assert.equal(openapi.components.schemas.DeviceAuthorizationStart, undefined);
+  assert.equal(openapi.components.schemas.DeviceAuthorizationToken, undefined);
+  assert.doesNotMatch(JSON.stringify(openapi), /device bearer/i);
+});
+
+test("OpenAPI documents the durable agent-first browser authorization contract", () => {
+  const start = openapi.paths["/auth/agent/start"].post;
+  const bind = openapi.paths["/auth/agent/browser-bind"].post;
+  const context = openapi.paths["/auth/agent/context"].get;
+  const decision = openapi.paths["/auth/agent/decision"].post;
+  const token = openapi.paths["/auth/agent/token"].post;
+  const refresh = openapi.paths["/auth/agent/refresh"].post;
+  const revoke = openapi.paths["/auth/agent/revoke"].post;
+  assert.match(start.description, /fragment/);
+  assert.equal(start.requestBody.content["application/json"].schema.$ref, "#/components/schemas/AgentAuthorizationStartRequest");
+  assert.match(bind.description, /HttpOnly/);
+  assert.deepEqual(context.security, [{ agentBindingCookie: [] }]);
+  assert.match(decision.description, /Deny requires only/);
+  assert.match(decision.description, /Approve additionally requires/);
+  assert.match(token.description, /consumed exactly once/);
+  assert.match(refresh.description, /Reuse revokes the whole session family/);
+  assert.deepEqual(revoke.security, [{ bearerAuth: [] }, {}]);
+  assert.equal(openapi.components.securitySchemes.agentBindingCookie.name, "__Host-superskill_agent_bind");
+  assert.equal(openapi.components.schemas.AgentAuthorizationToken.properties.expires_in.maximum, 600);
+  assert.equal(openapi.components.schemas.AgentAuthorizationToken.properties.session_expires_in.maximum, 2592000);
 });
 
 test("OpenAPI keeps public package publishing self-service but unreviewed", () => {

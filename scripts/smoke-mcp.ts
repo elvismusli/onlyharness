@@ -59,7 +59,7 @@ try {
     capabilities: {},
     clientInfo: { name: "superskill-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.2.19") {
+  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.3.0") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 

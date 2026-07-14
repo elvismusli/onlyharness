@@ -1,0 +1,25 @@
+.ss-connect-page { max-width: 1060px; }
+.ss-connect-layout { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: 20px; align-items: start; }
+.ss-connect-card { border: 1px solid var(--ss-border); border-radius: var(--ss-r-card); padding: 26px; background: var(--ss-surface); box-shadow: var(--ss-shadow-rest); }
+.ss-connect-card h2 { margin: 5px 0 12px; }
+.ss-connect-card > p { color: var(--ss-muted); }
+.ss-connect-card--approved { border-color: color-mix(in srgb, var(--ss-pass), transparent 45%); }
+.ss-connect-card--denied, .ss-connect-card--expired, .ss-connect-card--error { border-color: color-mix(in srgb, var(--ss-fail), transparent 45%); }
+.ss-connect-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+.ss-connect-summary div { border: 1px solid var(--ss-border-soft); border-radius: 8px; padding: 10px 12px; background: var(--ss-sunken); }
+.ss-connect-summary dt { color: var(--ss-faint); font: 700 10px "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+.ss-connect-summary dd { margin: 4px 0 0; overflow-wrap: anywhere; color: var(--ss-ink); font-weight: 700; }
+.ss-connect-scopes { display: grid; gap: 9px; margin: 20px 0; padding: 0; list-style: none; }
+.ss-connect-scopes li { display: grid; gap: 4px; border-left: 3px solid var(--ss-action); padding: 8px 12px; background: color-mix(in srgb, var(--ss-action) 5%, transparent); }
+.ss-connect-scopes code { color: var(--ss-muted); overflow-wrap: anywhere; font-size: 11px; }
+.ss-connect-expiry, .ss-connect-email, .ss-connect-signin-copy { color: var(--ss-muted); font-size: 13px; }
+.ss-connect-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 22px; border-top: 1px solid var(--ss-border-soft); padding-top: 18px; }
+.ss-connect-deny { display: flex; justify-content: flex-start; margin-top: 18px; border-top: 1px solid var(--ss-border-soft); padding-top: 18px; }
+.ss-oauth-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0 26px; }
+
+@media (max-width: 760px) {
+  .ss-connect-layout { grid-template-columns: 1fr; }
+  .ss-connect-summary, .ss-oauth-actions { grid-template-columns: 1fr; }
+  .ss-connect-actions { align-items: stretch; flex-direction: column; }
+  .ss-connect-actions .ss-button, .ss-connect-deny .ss-button { width: 100%; }
+}

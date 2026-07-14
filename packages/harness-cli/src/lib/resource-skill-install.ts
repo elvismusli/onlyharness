@@ -36,7 +36,7 @@ type HostedSkillResource = {
   release?: { version?: string; artifactDigest?: string; archiveSize?: number; trust?: string };
 };
 
-type ArchiveFile = { path: string; content: Buffer };
+export type CanonicalArchiveFile = { path: string; content: Buffer };
 
 export type HostedSkillInstallResult = {
   status: "installed" | "unchanged" | "planned";
@@ -107,7 +107,7 @@ export async function installHostedCatalogSkill(input: {
   const bytes = Buffer.from(await archiveResponse.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_ARCHIVE_BYTES) throw installError("Catalog archive size is invalid.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   if (bytes.length !== release.archiveSize) throw installError("Catalog archive size does not match the immutable detail release.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
-  const files = readCanonicalTarGz(bytes);
+  const files = readCanonicalTarGzFiles(bytes);
   const skill = files.find((file) => file.path === "SKILL.md");
   if (!skill || !validUtf8(skill.content) || skillName(skill.content.toString("utf8")) !== name) {
     throw installError("Catalog archive has no matching root SKILL.md.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
@@ -219,10 +219,10 @@ function assertResponseUrl(response: Response, expected: URL): void {
   }
 }
 
-function readCanonicalTarGz(compressed: Buffer): ArchiveFile[] {
+export function readCanonicalTarGzFiles(compressed: Buffer): CanonicalArchiveFile[] {
   let tar: Buffer;
   try { tar = gunzipSync(compressed, { maxOutputLength: MAX_UNCOMPRESSED_BYTES }); } catch { throw installError("Catalog archive is not a bounded gzip tar.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response."); }
-  const files: ArchiveFile[] = [];
+  const files: CanonicalArchiveFile[] = [];
   const seen = new Set<string>();
   let offset = 0;
   let terminated = false;
@@ -305,7 +305,7 @@ function assertSafeDescendant(root: string, target: string): void {
   }
 }
 
-function installedFilesMatch(target: string, files: ArchiveFile[], marker: string): boolean {
+function installedFilesMatch(target: string, files: CanonicalArchiveFile[], marker: string): boolean {
   try {
     if (!lstatSync(target).isDirectory() || lstatSync(target).isSymbolicLink()) return false;
     const expected = new Map(files.map((file) => [file.path, file.content]));

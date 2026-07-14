@@ -15,6 +15,7 @@ SUPERSKILL_WWW_URL="${SUPERSKILL_WWW_URL:-https://www.superskill.sh}"
 RUN_DEPLOY_SMOKE="${RUN_DEPLOY_SMOKE:-1}"
 DEPLOY_SMOKE_ACCESS_TOKEN="${DEPLOY_SMOKE_ACCESS_TOKEN:-}"
 ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH="${ALLOW_ENABLE_HOSTED_RESOURCE_PUBLISH:-0}"
+ALLOW_ENABLE_SUPERSKILL_AGENT_AUTH="${ALLOW_ENABLE_SUPERSKILL_AGENT_AUTH:-0}"
 RESOURCE_ARCHIVE_DIR="${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}"
 RESOURCE_IMPORT_ARCHIVE_DIR="${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}"
 SUPERSKILL_SUBJECT_SALT_PATH="${SUPERSKILL_SUBJECT_SALT_PATH:-/var/lib/onlyharness/superskill-subject-salt}"
@@ -37,6 +38,35 @@ for required_auth_var in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY SUPABASE_SERVI
     exit 1
   fi
 done
+configured_agent_auth_flag="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_AUTH_ENABLED[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+configured_agent_auth_flag="${configured_agent_auth_flag:-false}"
+if [[ "$configured_agent_auth_flag" != "false" && "$configured_agent_auth_flag" != "true" ]]; then
+  echo "SUPERSKILL_AGENT_AUTH_ENABLED must be true or false; refusing deploy." >&2
+  exit 1
+fi
+if [[ "$configured_agent_auth_flag" == "true" ]]; then
+  configured_agent_token_pepper="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_TOKEN_PEPPER[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+  if [[ ${#configured_agent_token_pepper} -lt 32 ]]; then
+    echo "SUPERSKILL_AGENT_TOKEN_PEPPER must contain at least 32 non-whitespace characters when agent auth is enabled." >&2
+    exit 1
+  fi
+  configured_agent_access_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_ACCESS_TTL_SECONDS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+  configured_agent_access_ttl="${configured_agent_access_ttl:-600}"
+  if [[ "$configured_agent_access_ttl" != "600" ]]; then
+    echo "SUPERSKILL_AGENT_ACCESS_TTL_SECONDS must be 600 for the agent-first release." >&2
+    exit 1
+  fi
+  configured_agent_session_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_SESSION_TTL_SECONDS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+  configured_agent_session_ttl="${configured_agent_session_ttl:-2592000}"
+  if [[ "$configured_agent_session_ttl" != "2592000" ]]; then
+    echo "SUPERSKILL_AGENT_SESSION_TTL_SECONDS must be 2592000 for the agent-first release." >&2
+    exit 1
+  fi
+  if [[ "$ALLOW_ENABLE_SUPERSKILL_AGENT_AUTH" != "1" ]]; then
+    echo "Agent auth requires ALLOW_ENABLE_SUPERSKILL_AGENT_AUTH=1 after the durable migration and clean-client gates pass." >&2
+    exit 1
+  fi
+fi
 configured_import_archive_dir="$(sed -n 's/^[[:space:]]*RESOURCE_IMPORT_ARCHIVE_DIR[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
 RESOURCE_IMPORT_ARCHIVE_DIR="${configured_import_archive_dir:-$RESOURCE_IMPORT_ARCHIVE_DIR}"
 if [[ ! "$RESOURCE_IMPORT_ARCHIVE_DIR" =~ ^/[A-Za-z0-9._/-]+$ || "$RESOURCE_IMPORT_ARCHIVE_DIR" == *".."* ]]; then

@@ -53,6 +53,7 @@ export type DeviceAuthGrantResolver = (input: {
 }) => Promise<{ ok: true } | { ok: false; kind: "denied" | "unavailable" }>;
 
 export type SuperskillDeviceAuthOptions = {
+  enabled?: boolean;
   subjectSalt?: string;
   publicUrl?: string;
   identityResolver?: DeviceAuthIdentityResolver;
@@ -252,6 +253,8 @@ export function createSuperskillDeviceAuthService(options: SuperskillDeviceAuthO
 }
 
 export async function registerSuperskillDeviceAuthRoutes(app: FastifyInstance, options: SuperskillDeviceAuthOptions = {}): Promise<void> {
+  const enabled = options.enabled ?? process.env.SUPERSKILL_DEVICE_AUTH_ENABLED !== "false";
+  if (!enabled) return;
   const service = createSuperskillDeviceAuthService(options);
   const identityResolver = options.identityResolver ?? createSupabaseDeviceIdentityResolver({ fetchImpl: options.fetchImpl });
   const now = options.now ?? (() => new Date());

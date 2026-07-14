@@ -127,7 +127,10 @@ for (const docs of [
   check(docs.text.includes(expectedRemoteUrl), `${docs.name} must link the MCP remote endpoint`);
   check(docs.text.includes("https://superskill.sh/api/openapi.json"), `${docs.name} must link OpenAPI`);
   check(docs.text.includes("https://superskill.sh/.well-known/oauth-protected-resource"), `${docs.name} must link OAuth protected resource metadata`);
-  check(docs.text.includes("HH_TOKEN"), `${docs.name} must document the manual managed Bearer credential`);
+  check(docs.text.includes("superskill_local"), `${docs.name} must document the local browser-auth broker for protected actions`);
+  check(!docs.text.includes("--bearer-token-env-var HH_TOKEN"), `${docs.name} must not configure interactive MCP credentials through the environment`);
+  check(!docs.text.includes("HH_SUPERSKILL_TOKEN"), `${docs.name} must not expose the transition-only internal credential`);
+  check(!docs.text.includes("/auth/device/"), `${docs.name} must not expose hidden transition device endpoints`);
   check(docs.text.includes("does not advertise") || docs.text.includes("intentionally returns 404"), `${docs.name} must document that no vanity authorization server is advertised`);
   for (const tool of expectedMcpTools) check(docs.text.includes(tool), `${docs.name} must list MCP tool ${tool}`);
   check(docs.text.includes("structuredContent"), `${docs.name} must document MCP structured results`);

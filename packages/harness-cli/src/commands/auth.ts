@@ -1,4 +1,5 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
+import { agentAuth, type AgentAuthClient, type AgentAuthManager, type AgentAuthScope } from "../lib/agent-auth.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const DEVICE_TOKEN_MAX_TTL_SECONDS = 30 * 60;
@@ -39,16 +40,90 @@ export class DeviceAuthCliError extends Error {
 export function registerAuthCommands(program: Command, getRegistryUrl: () => string): void {
   const auth = program.command("auth").description("authorize the local CLI with a confirmed SuperSkill account");
   auth.command("login")
-    .description("authorize this terminal through a one-time browser code")
-    .option("--shell", "print one export command for eval; never write the token to disk", false)
+    .description("authorize SuperSkill in the browser and store the renewable session in the OS keychain")
+    .option("--no-browser", "print the browser URL instead of opening it", false)
+    .option("--scope <scope...>", "permissions to request", ["superskill:managed"])
     .option("--client <client>", "cli|codex|claude-code", "cli")
-    .action(async (options: { shell?: boolean; client?: string }) => {
-      await loginWithDeviceFlow({
+    .option("--json", "print structured status without credentials", false)
+    .addOption(new Option("--shell").hideHelp())
+    .action(async (options: { browser?: boolean; scope?: string[]; shell?: boolean; client?: string; json?: boolean }) => {
+      const client = cleanClient(options.client);
+      if (options.shell) {
+        await loginWithDeviceFlow({
+          registryUrl: getRegistryUrl(),
+          shell: true,
+          client
+        });
+        return;
+      }
+      const result = await loginWithAgentFlow({
         registryUrl: getRegistryUrl(),
-        shell: Boolean(options.shell),
-        client: cleanClient(options.client)
+        client,
+        scopes: options.scope ?? ["superskill:managed"],
+        openBrowser: options.browser !== false
       });
+      if (options.json) process.stdout.write(`${JSON.stringify(result)}\n`);
+      else process.stdout.write(result.persistence === "memory"
+        ? `Authorized as ${client} for this process only; the OS keychain is unavailable.\n`
+        : `Authorized as ${client}. SuperSkill can continue in the current agent task.\n`);
     });
+
+  auth.command("status")
+    .description("show the current agent authorization state without printing credentials")
+    .option("--client <client>", "cli|codex|claude-code", "cli")
+    .option("--json", "print structured status", false)
+    .action(async (options: { client?: string; json?: boolean }) => {
+      const result = await agentAuth.status({ registry: getRegistryUrl(), client: cleanClient(options.client) });
+      if (options.json) process.stdout.write(`${JSON.stringify(result)}\n`);
+      else process.stdout.write(result.status === "signed_out"
+        ? `Not authorized for ${result.client}.\n`
+        : `Authorized for ${result.client} until ${result.sessionExpiresAt ?? "this process ends"} (${result.persistence}).\n`);
+    });
+
+  auth.command("logout")
+    .description("revoke the renewable agent session and clear the OS keychain")
+    .option("--client <client>", "cli|codex|claude-code", "cli")
+    .option("--json", "print structured status", false)
+    .action(async (options: { client?: string; json?: boolean }) => {
+      const result = await agentAuth.logout({ registry: getRegistryUrl(), client: cleanClient(options.client) });
+      if (options.json) process.stdout.write(`${JSON.stringify(result)}\n`);
+      else process.stdout.write(`Signed out ${result.client}.${result.revoked ? " Session revoked." : " Local credential cleared."}\n`);
+    });
+}
+
+export async function loginWithAgentFlow(input: {
+  registryUrl: string;
+  client: AgentAuthClient;
+  scopes: readonly string[];
+  openBrowser: boolean;
+  manager?: AgentAuthManager;
+  stderr?: (value: string) => void;
+}): Promise<{ status: "authorized"; code: "AUTH_AUTHORIZED"; client: AgentAuthClient; scopes: AgentAuthScope[]; persistence: "keychain" | "memory"; sessionExpiresAt?: string }> {
+  const manager = input.manager ?? agentAuth;
+  const stderr = input.stderr ?? ((value: string) => process.stderr.write(value));
+  const started = await manager.start({
+    registry: input.registryUrl,
+    client: input.client,
+    scopes: input.scopes,
+    openBrowser: input.openBrowser
+  });
+  if (started.manualUrl) {
+    stderr(`Open this SuperSkill authorization URL in a trusted browser:\n${started.manualUrl}\n`);
+  } else if (started.browserOpened) {
+    stderr("Browser authorization opened. Approve the exact permissions, then return here.\n");
+  } else {
+    throw new DeviceAuthCliError("Could not open the browser. Retry with hh auth login --no-browser.", 1);
+  }
+  const deadline = Date.now() + started.expiresIn * 1_000;
+  while (Date.now() < deadline) {
+    const result = await manager.wait({ registry: input.registryUrl, client: input.client, maxWaitMs: 45_000 });
+    if (result.status === "authorized") {
+      return { status: "authorized", code: "AUTH_AUTHORIZED", client: result.client, scopes: result.scopes, persistence: result.persistence === "none" ? "memory" : result.persistence, sessionExpiresAt: result.sessionExpiresAt };
+    }
+    if (result.status === "denied") throw new DeviceAuthCliError("SuperSkill authorization was denied.", 2);
+    if (result.status === "expired") throw new DeviceAuthCliError("SuperSkill authorization expired. Start a new login.", 2);
+  }
+  throw new DeviceAuthCliError("SuperSkill authorization expired. Start a new login.", 2);
 }
 
 export async function loginWithDeviceFlow(input: {
@@ -113,7 +188,7 @@ export async function loginWithDeviceFlow(input: {
   throw new DeviceAuthCliError("SuperSkill device authorization expired. Start a new login.", 2);
 }
 
-function cleanClient(value: string | undefined): "cli" | "codex" | "claude-code" {
+function cleanClient(value: string | undefined): AgentAuthClient {
   if (value === "cli" || value === "codex" || value === "claude-code") return value;
   throw new DeviceAuthCliError("Unsupported auth client. Use cli, codex, or claude-code.", 3);
 }

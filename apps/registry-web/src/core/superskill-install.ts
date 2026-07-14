@@ -29,6 +29,7 @@ export function superskillInstallHandoff(
   runtime: SuperSkillReleaseRuntime = superskillRuntime
 ): SuperSkillInstallHandoff {
   const runtimeLabel = `${runtime.cliPackage}@${runtime.cliVersion}`;
+  const publicRuntimeLabel = `SuperSkill installer ${runtime.cliVersion}`;
   if (runtime.cliReleaseStatus !== "published") {
     return {
       status: "unavailable",
@@ -36,7 +37,7 @@ export function superskillInstallHandoff(
       installCommand: null,
       runtime: runtimeLabel,
       reasonCode: "CLI_RELEASE_UNPUBLISHED",
-      reason: `The exact ${runtimeLabel} release has not been published and verified yet.`
+      reason: `The exact ${publicRuntimeLabel} release has not been published and verified yet.`
     };
   }
   if (!runtime.cliIntegrity || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(runtime.cliIntegrity)) {
@@ -46,7 +47,7 @@ export function superskillInstallHandoff(
       installCommand: null,
       runtime: runtimeLabel,
       reasonCode: "CLI_INTEGRITY_UNPINNED",
-      reason: `The official npm integrity for ${runtimeLabel} is not pinned.`
+      reason: `The official npm integrity for ${publicRuntimeLabel} is not pinned.`
     };
   }
   const installUrl = capability

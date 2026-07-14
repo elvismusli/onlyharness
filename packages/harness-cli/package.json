@@ -1,6 +1,6 @@
 {
   "name": "onlyharness",
-  "version": "0.2.19",
+  "version": "0.3.0",
   "description": "SuperSkill universal installer and compatibility CLI (hh) for reviewed AI-agent capabilities",
   "type": "module",
   "license": "MIT",
@@ -31,6 +31,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@napi-rs/keyring": "1.3.0",
+    "open": "11.0.0",
     "smol-toml": "^1.7.0"
   },
   "scripts": {

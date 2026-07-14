@@ -47,11 +47,16 @@ export type SupabaseSuperskillAccessOptions = {
   subjectSalt?: string;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
+  agentTokenResolver?: (accessToken: string, requiredScopes: readonly [SuperskillAccessScope]) => Promise<
+    | { ok: true; principal: { userId: string; subject: string; scopes: readonly string[] } }
+    | { ok: false; kind: "invalid" | "forbidden" | "unavailable" }
+  >;
 };
 
 type SupabaseAuthUser = {
   id?: unknown;
   email_confirmed_at?: unknown;
+  banned_until?: unknown;
 };
 
 type SuperskillAccessGrantRow = {
@@ -82,12 +87,26 @@ export function createSupabaseSuperskillAccessResolver(options: SupabaseSuperski
     if (!bearer) return accessFailure(authorization ? "SUPERSKILL_AUTH_INVALID" : "SUPERSKILL_AUTH_REQUIRED");
     if (!supabaseUrl || !anonKey || !serviceRoleKey || !validSubjectSalt(subjectSalt)) return accessFailure("SUPERSKILL_AUTH_UNAVAILABLE");
 
-    const user = bearer.startsWith(SUPERSKILL_DEVICE_TOKEN_PREFIX)
-      ? await fetchConfirmedDeviceUser({ supabaseUrl, serviceRoleKey, bearer, subjectSalt, requiredScope, fetchImpl, timeoutMs, now })
-      : await fetchConfirmedUser({ supabaseUrl, anonKey, authorization: `Bearer ${bearer}`, fetchImpl, timeoutMs, now });
+    const agent = bearer.startsWith("ohat_") && options.agentTokenResolver
+      ? await options.agentTokenResolver(bearer, [requiredScope])
+      : undefined;
+    if (agent && !agent.ok) return accessFailure(
+      agent.kind === "invalid" ? "SUPERSKILL_AUTH_INVALID"
+        : agent.kind === "forbidden" ? "SUPERSKILL_ACCESS_DENIED"
+          : "SUPERSKILL_AUTH_UNAVAILABLE"
+    );
+    const user = agent?.ok
+      ? await fetchConfirmedAgentUser({
+          supabaseUrl, serviceRoleKey, userId: agent.principal.userId, subject: agent.principal.subject,
+          subjectSalt, fetchImpl, timeoutMs, now
+        })
+      : bearer.startsWith(SUPERSKILL_DEVICE_TOKEN_PREFIX)
+        ? await fetchConfirmedDeviceUser({ supabaseUrl, serviceRoleKey, bearer, subjectSalt, requiredScope, fetchImpl, timeoutMs, now })
+        : await fetchConfirmedUser({ supabaseUrl, anonKey, authorization: `Bearer ${bearer}`, fetchImpl, timeoutMs, now });
     if (!user.ok) return user;
 
     const expectedSubject = superskillUserSubject(user.userId, subjectSalt);
+    if (agent?.ok && !safeSubjectEqual(agent.principal.subject, expectedSubject)) return accessFailure("SUPERSKILL_AUTH_INVALID");
     const grant = await fetchAccessGrant({
       supabaseUrl,
       serviceRoleKey,
@@ -120,6 +139,40 @@ export function createSupabaseSuperskillAccessResolver(options: SupabaseSuperski
       }
     };
   };
+}
+
+async function fetchConfirmedAgentUser(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  userId: string;
+  subject: string;
+  subjectSalt: string;
+  fetchImpl: FetchLike;
+  timeoutMs: number;
+  now: Date;
+}): Promise<{ ok: true; userId: string } | SuperskillAccessFailure> {
+  if (!safeSubjectEqual(input.subject, superskillUserSubject(input.userId, input.subjectSalt))) return accessFailure("SUPERSKILL_AUTH_INVALID");
+  const result = await fetchSupabaseJsonExact({
+    supabaseUrl: input.supabaseUrl,
+    url: new URL(`/auth/v1/admin/users/${encodeURIComponent(input.userId)}`, `${input.supabaseUrl}/`),
+    headers: { apikey: input.serviceRoleKey, authorization: `Bearer ${input.serviceRoleKey}` },
+    fetchImpl: input.fetchImpl,
+    timeoutMs: input.timeoutMs
+  });
+  if (!result) return accessFailure("SUPERSKILL_AUTH_UNAVAILABLE");
+  if (result.status === 401 || result.status === 403 || result.status === 404) return accessFailure("SUPERSKILL_AUTH_INVALID");
+  if (!result.ok || !result.hasJson || !result.payload || typeof result.payload !== "object" || Array.isArray(result.payload)) {
+    return accessFailure("SUPERSKILL_AUTH_UNAVAILABLE");
+  }
+  const user = result.payload as SupabaseAuthUser;
+  if (user.id !== input.userId || typeof user.email_confirmed_at !== "string" || !isValidTimestamp(user.email_confirmed_at)) {
+    return accessFailure("SUPERSKILL_EMAIL_UNCONFIRMED");
+  }
+  if (Date.parse(user.email_confirmed_at) > input.now.getTime()) return accessFailure("SUPERSKILL_EMAIL_UNCONFIRMED");
+  if (typeof user.banned_until === "string" && isValidTimestamp(user.banned_until) && Date.parse(user.banned_until) > input.now.getTime()) {
+    return accessFailure("SUPERSKILL_ACCESS_DENIED");
+  }
+  return { ok: true, userId: input.userId };
 }
 
 async function fetchConfirmedDeviceUser(input: {

@@ -6,7 +6,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
-export const MCP_SERVER_VERSION = "0.2.19";
+export const MCP_SERVER_VERSION = "0.3.0";
 export const MCP_TOOL_NAMES = [
   "search_harnesses",
   "harness_detail",

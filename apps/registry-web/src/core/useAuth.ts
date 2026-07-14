@@ -224,6 +224,17 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
 
 /** Keep OAuth returns on the SuperSkill surface and reject unrelated hashes. */
 export function safeSuperskillAuthContinuation(hash: string): string {
+  const connectMatch = hash.match(/^#\/superskill\/connect(?:\?([^#]*))?$/);
+  if (connectMatch) {
+    const input = new URLSearchParams(connectMatch[1] ?? "");
+    const requestIds = input.getAll("request");
+    const requestId = requestIds.length === 1 ? requestIds[0]?.trim() : undefined;
+    if (requestId && /^ohrq_[A-Za-z0-9_-]{43}$/.test(requestId)) {
+      const output = new URLSearchParams({ request: requestId });
+      return `#/superskill/connect?${output.toString()}`;
+    }
+    return "#/superskill/account";
+  }
   const match = hash.match(/^#\/superskill\/(account|workspaces)(?:\?([^#]*))?$/);
   if (!match) return "#/superskill/account";
   const route = match[1];

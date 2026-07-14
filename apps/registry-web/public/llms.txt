@@ -20,7 +20,7 @@ Universal install link to paste into Codex or Claude Code: https://superskill.sh
 
 Crawler-visible share links use website paths instead of hash routes: `/r/{base64url-resource-id}` for the current public resource, `/r/{base64url-resource-id}/{version}` for an exact release, `/c/{capability-id}` for a managed skill, and `/w/{invite-id}#invite={raw-code}` for a private workspace invitation. Matching PNG cards are under `/og/r/*`, `/og/c/*`, and `/og/w/*`. Workspace invite secrets always remain after `#` and are never sent to preview endpoints.
 
-SuperSkill does not advertise a vanity OAuth authorization server. Managed headless flows use a separate one-time device authorization: run `eval "$(hh auth login --shell --client codex)"` (use `claude-code` for Claude Code), approve the user code from the confirmed signed-in Account page, and start the client from that terminal. The maximum 30-minute HMAC bearer remains only in `HH_TOKEN`, is sent only in the Authorization header, and is live-checked against the user and `superskill:managed` grant. This flow is not advertised as OAuth; `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid authorization flow.
+SuperSkill does not advertise a vanity OAuth authorization server. The project-local `superskill_local` MCP owns interactive account authorization: the first protected action opens the SuperSkill Connect page, waits for explicit browser approval, and retries the same idempotent action in the same client task. Access credentials stay only in local process memory; a rotating refresh credential may be kept only in the OS credential store for at most 30 days. This broker is not OAuth, and `/.well-known/oauth-authorization-server` intentionally returns 404 until a separate protected MCP endpoint passes complete standards-valid Codex and Claude verification.
 
 ## SuperSkill internal alpha
 
@@ -30,7 +30,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 
 - Public showroom: GET /showroom/capabilities and GET /showroom/capabilities/{id}. These are cached public-safe projections only; they never accept task text or return archive/activation controls.
 - Public selected shelf: GET /showroom/selected returns current intake candidates labelled `selected_unreviewed`. These cards fill discovery only and cannot be used as approval, recommendation or managed activation evidence.
-- Managed recommendation, exact release/archive, hosted proof publish, and managed event routes use the same confirmed Supabase user Bearer plus an active `superskill:managed` server grant. Headless clients inherit `HH_TOKEN` only through an explicit environment allowlist; never put it in a manifest, tool argument, URL, log, analytics event, or localStorage. Legacy tester-specific `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility and is public-GO ineligible.
+- Managed recommendation, exact release/archive, hosted publish, workspace and managed-event routes accept a scoped agent session resolved to the confirmed Supabase user. New plugin config never inherits environment credentials; never put credentials or connect proofs in a manifest, tool argument/result, prompt, URL query, log, analytics event or browser storage. `HH_TOKEN` remains non-interactive/paid compatibility only.
 - The checked-in managed catalog currently has 12 exact candidates and zero approved releases. The approved lane and managed recommendation remain empty/no-match until real Claude Code, Codex, and human review evidence exists; the selected shelf is discovery-only.
 - `onlyharness@0.2.14` is published but known-bad for one-link because its exact-version npm metadata request is rejected.
 - Current public `onlyharness@0.2.19` is pinned to official npm integrity. It binds hosted-skill detail, archive headers and bytes to one immutable version/digest/size/trust tuple; exact MCP version reads never drift to latest. `0.2.18` is a known-bad one-link release with a stale universal-skill digest; do not substitute `latest`, a remote script pipe, or an unscoped `superskill` npm package.
@@ -126,7 +126,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Verified publish (auth required): POST /imports/harness-dir
   Use `hh eval <dir> && hh gate --dir <dir> && hh publish <dir> --name my-harness`, or `hh publish <git-url> --path harnesses/my-harness --name my-harness` for a git repo. The CLI/server accepts bounded native package files, including `scripts/`, plus `.harnesshub/results.json`, then rechecks schema, security, eval, and gate before showing verification.lastVerifiedAt.
 - Resource package publish (auth required): POST /imports/resource-package
-  Production publishing is enabled. The request requires a confirmed in-policy SuperSkill user, immutable semantic `version`, and a 16-200 character `idempotencyKey`. Accepted responses bind `resourceId`, version, archive digest/size, replay state, exact static-v2 `pass`/`warn` state and trust=`unreviewed`; static pass does not infer runtime risk, so risk stays `UNKNOWN`. Use `HH_TOKEN=... hh publish-resource <dir-or-git-url> --name my-agent-tool --version 0.1.0 --type command_pack`; the CLI supplies a deterministic retry key unless `--idempotency-key` is set. A failed scan returns sanitized rule/file identifiers and is rejected before any archive, catalog or event mutation. Publishing does not grant a Verified or reviewed badge.
+  Production publishing is enabled. The request requires a confirmed in-policy SuperSkill user, immutable semantic `version`, and a 16-200 character `idempotencyKey`. Accepted responses bind `resourceId`, version, archive digest/size, replay state, exact static-v2 `pass`/`warn` state and trust=`unreviewed`; static pass does not infer runtime risk, so risk stays `UNKNOWN`. Interactive agents use `superskill_local.publish_resource_package`; the broker obtains the minimum scope in the browser and automatically retries the exact idempotent call. A failed scan returns sanitized rule/file identifiers and is rejected before any archive, catalog or event mutation. Publishing does not grant a Verified or reviewed badge.
 - Exact hosted resource release: GET /resources/{id}/releases/{version}/archive
   Returns only the active immutable release matching the exact semantic version and durable digest/size metadata. The unversioned `/resources/{id}/archive` route remains a latest-version compatibility alias.
 - GitHub resource classify: POST /imports/github-resource
@@ -142,7 +142,7 @@ End-to-end example:
 
 Endpoint: https://superskill.sh/mcp
 
-Transport: Streamable HTTP. Server version: `0.2.19`. Reads are anonymous; publishing requires `Authorization: Bearer {access token}`.
+Transport: Streamable HTTP. Public reads are anonymous. Interactive publishing and workspace operations use the project-local `superskill_local` broker so credentials never enter chat or project configuration.
 
 Official compatibility MCP Registry name: `com.onlyharness/registry`. The public `server.json` is remote-only and points at the canonical SuperSkill Streamable HTTP endpoint. The old coordinate is retained for installed-client compatibility.
 
@@ -156,10 +156,10 @@ Tools:
 - resource_detail: return provenance, trust, popularity and actions for one resource.
 - resource_use_instructions: return safe use/open/install guidance; hosted skills expose an exact-version native install command that requires explicit unreviewed consent when applicable, while upstream-only resources stay open-only.
 - search_docs: search this llms.txt and agent guidance.
-- publish_markdown_to_harness: convert markdown into an unverified harness scaffold; auth required.
-- publish_resource_package: confirmed-user + managed-scope hosted package publish; requires semantic `version` and `idempotencyKey`, is idempotent for the same exact payload, records static-v2 scan state, and uses `VALIDATION_FAILED` for all pre-mutation package validation failures across HTTP and MCP; not a Verified harness badge.
+- publish_markdown_to_harness: transition compatibility tool; new interactive clients call the same protected operation through `superskill_local`.
+- publish_resource_package: transition compatibility tool; new interactive clients call the same protected operation through `superskill_local` with semantic `version` and `idempotencyKey`; it is not a Verified harness badge.
 
-This ten-tool inventory is exact for remote MCP v0.2.19. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`; `PUBLISH_DISABLED` remains a fail-closed configuration error, not the normal production publish state. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
+This ten-tool inventory is exact for remote MCP v0.3.0. Every successful tool result includes `structuredContent` with `code: OK` and numeric `status`. Logical failures set `isError: true` and return a stable machine code such as `AUTH_REQUIRED`, `AUTH_INVALID`, `RESOURCE_NOT_FOUND`, `ARCHIVE_STORAGE_UNAVAILABLE`, `PAYMENT_REQUIRED`, or `HOSTED_EXECUTION_NOT_AVAILABLE`; `PUBLISH_DISABLED` remains a fail-closed configuration error, not the normal production publish state. JSON-RPC transport failures use the JSON-RPC `error` envelope instead. Error results never include authorization values, local server paths, stacks, or raw provider diagnostics; successful archive delivery preserves exact package file contents.
 
 Initialize example:
 
@@ -247,7 +247,9 @@ Install from the marketplace source:
 
 Codex MCP setup:
 
-    codex mcp add superskill --url https://superskill.sh/mcp --bearer-token-env-var HH_TOKEN
+    codex mcp add superskill --url https://superskill.sh/mcp
+
+The universal installer also configures `superskill_local`; its first protected action opens browser consent and resumes the same task automatically.
 
 Local development check from a repo clone:
 

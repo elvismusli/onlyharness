@@ -41,6 +41,7 @@ export type SuperSkillRoute =
   | { name: "docs" }
   | { name: "agent-guide" }
   | { name: "account" }
+  | { name: "connect"; requestId: string; browserProof?: string }
   | { name: "publish" }
   | { name: "workspaces" }
   | { name: "search"; query?: string; resourceType?: SuperSkillSearchResourceType }
@@ -62,6 +63,20 @@ export function parseSuperSkillRoute(hash: string): SuperSkillRoute {
   if (parts.length === 2 && parts[1] === "docs") return { name: "docs" };
   if (parts.length === 2 && parts[1] === "agent-guide") return { name: "agent-guide" };
   if (parts.length === 2 && parts[1] === "account") return { name: "account" };
+  if (parts.length === 2 && parts[1] === "connect") {
+    const requestIds = search.getAll("request");
+    const browserProofs = search.getAll("proof");
+    const keys = [...search.keys()];
+    if (requestIds.length !== 1 || browserProofs.length > 1 || keys.some((key) => key !== "request" && key !== "proof")) {
+      return { name: "not-found" };
+    }
+    const requestId = requestIds[0]?.trim();
+    const browserProof = browserProofs[0]?.trim();
+    if (!validAgentRequestId(requestId) || (browserProof !== undefined && !validAgentBrowserProof(browserProof))) {
+      return { name: "not-found" };
+    }
+    return { name: "connect", requestId, ...(browserProof ? { browserProof } : {}) };
+  }
   if (parts.length === 2 && parts[1] === "publish") return { name: "publish" };
   if (parts.length === 2 && parts[1] === "workspaces") return { name: "workspaces" };
   if (parts.length === 2 && parts[1] === "search") {
@@ -98,6 +113,11 @@ export function buildSuperSkillRoute(route: Exclude<SuperSkillRoute, { name: "no
       return "#/superskill/agent-guide";
     case "account":
       return "#/superskill/account";
+    case "connect": {
+      if (!validAgentRequestId(route.requestId)) throw new Error("Invalid SuperSkill agent authorization request");
+      const params = new URLSearchParams({ request: route.requestId });
+      return `#/superskill/connect?${params.toString()}`;
+    }
     case "publish":
       return "#/superskill/publish";
     case "workspaces":
@@ -177,6 +197,14 @@ function validSearchResourceType(value: string): value is SuperSkillSearchResour
 
 function validSemver(value: string | null | undefined): value is string {
   return typeof value === "string" && SEMVER.test(value);
+}
+
+function validAgentRequestId(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^ohrq_[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+function validAgentBrowserProof(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^ohbp_[A-Za-z0-9_-]{43}$/.test(value);
 }
 
 function assertSlug(value: string): string {

@@ -109,9 +109,6 @@ node packages/harness-cli/dist/hh.mjs pull harnesses/deep-market-researcher --ve
 node packages/harness-cli/dist/hh.mjs mcp-config deep-market-researcher --target claude-desktop --out mcp.json
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
-HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish git@github.com:acme/harnesses.git --path harnesses/my-harness --name my-harness --json
-HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
-HH_TOKEN=<token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
 HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources search agent-tool --workspace acme --json
 HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources detail @acme/agent-tool --json
@@ -128,7 +125,7 @@ SuperSkill is the task-first managed capability layer built on OnlyHarness. The 
 
 - Public, read-only: `GET /api/showroom/capabilities` and `GET /api/showroom/capabilities/{id}`. These routes never recommend, download, or activate files.
 - Selected shelf: `GET /api/showroom/selected` exposes the current reviewed-intake candidates as `selected_unreviewed` cards. They can fill the Daylight catalog, but cannot be recommended or activated until exact-release approval evidence exists.
-- Confirmed-user Bearer: `/api/recommendations`, `/api/capabilities/{id}`, exact release/archive routes, hosted proof publish and managed lifecycle events use one confirmed Supabase user credential plus an active server-side `superskill:managed` grant. Headless clients inherit `HH_TOKEN` explicitly. `HH_SUPERSKILL_TOKEN` is legacy internal-alpha compatibility only and cannot produce public-GO evidence.
+- Agent-first authorization: the project-local `superskill_local` MCP opens browser consent on the first protected action, keeps access credentials in process memory, stores only the rotating refresh credential in the OS keychain, and automatically retries the exact idempotent action. Public search, detail and public archive reads remain anonymous.
 - Managed CLI release: `onlyharness@0.2.19` is the current one-link release, published and verified through a clean `npx` install, and pinned to official npm integrity in `plugins/superskill/runtime.json`. It binds hosted skill detail, archive headers and archive bytes to one immutable version/digest/size/trust tuple. `0.2.14` and `0.2.18` are known-bad one-link releases; never substitute `latest` for the exact runtime pin.
 - Web: the SuperSkill product surface is hostname-locked on `superskill.sh`; legacy query or stored skin state cannot switch it.
 
@@ -144,8 +141,8 @@ Plugin sources live under `plugins/superskill` with one byte-identical shared sk
 
 ## For agents
 
-- Discovery: [`/llms.txt`](https://superskill.sh/llms.txt), [`/AGENTS.md`](https://superskill.sh/AGENTS.md), [`/api/openapi.json`](https://superskill.sh/api/openapi.json), MCP Registry metadata at [`/server.json`](https://superskill.sh/server.json), and OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://superskill.sh/.well-known/oauth-protected-resource). SuperSkill does not advertise a vanity authorization server: managed headless flows receive a confirmed account token manually through `HH_TOKEN`, and `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid flow.
-- MCP v0.2.19: `https://superskill.sh/mcp` with the exact inventory `search_harnesses`, `harness_detail`, `search_resources`, `resource_detail`, `resource_use_instructions`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`, and `publish_resource_package`. Resource detail/use tools accept an optional exact `version`; explicit historical reads never drift to latest. Tool results use `structuredContent`; logical failures set `isError: true` with stable machine codes and sanitized details.
+- Discovery: [`/llms.txt`](https://superskill.sh/llms.txt), [`/AGENTS.md`](https://superskill.sh/AGENTS.md), [`/api/openapi.json`](https://superskill.sh/api/openapi.json), MCP Registry metadata at [`/server.json`](https://superskill.sh/server.json), and OAuth protected-resource metadata at [`/.well-known/oauth-protected-resource`](https://superskill.sh/.well-known/oauth-protected-resource). SuperSkill does not advertise a vanity authorization server: interactive protected actions use the local browser-auth broker, and `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid flow.
+- MCP v0.3.0: `https://superskill.sh/mcp` with the exact inventory `search_harnesses`, `harness_detail`, `search_resources`, `resource_detail`, `resource_use_instructions`, `pull_instructions`, `pull_harness`, `search_docs`, `publish_markdown_to_harness`, and `publish_resource_package`. Resource detail/use tools accept an optional exact `version`; explicit historical reads never drift to latest. Tool results use `structuredContent`; logical failures set `isError: true` with stable machine codes and sanitized details.
 - Public hosted resource-package publishing is enabled in production. Confirmed publishers create immutable semantic versions with idempotency, durable ownership, artifact SHA-256 and bounded text archives; changing an existing version fails closed. The SuperSkill web form accepts a repository folder or an authored skill and labels every accepted release `unreviewed` until separate review evidence exists. A static-v2 `fail` is rejected before any archive, catalog or event mutation with sanitized rule/file evidence; HTTP uses `SECURITY_SCAN_FAILED`, while MCP keeps its stable `VALIDATION_FAILED` envelope. Accepted `pass`/`warn` releases remain unreviewed, and static pass does not claim a known runtime risk tier.
 - Registry publish: `server.json` is remote-only at canonical `https://superskill.sh/mcp`; `com.onlyharness/registry` remains the compatibility identifier. Publication still requires MCP Registry authorization/publication proof for `superskill.sh`, the exact published runtime pin, and a clean client proof; `onlyharness.com` is compatibility-only.
 - Team setup and publish: `hh setup @acme` reads `GET /api/orgs/{slug}/bundle`; `hh publish --org acme` writes an org-private harness. Both use `HH_ORG_TOKEN` when `ORGS_ENABLED=true`. Org auth/bundles/audit read Supabase service-role tables first and keep `HARNESS_ORGS_PATH`/`HARNESS_ORG_AUDIT_PATH` as the local smoke fallback.
@@ -176,7 +173,7 @@ Plugin sources live under `plugins/superskill` with one byte-identical shared sk
 - Safer community gates use short-lived signed codes: the buyer calls `POST /api/community/invite-code` after entitlement, then the Telegram/Discord bot calls `POST /api/community/verify-code` with a scoped org token before granting access. `COMMUNITY_INVITE_SECRET` must be configured on the API.
 - Registry items include `installConfirms`; only authenticated `kind=install&client=claude-code` events count toward the `works in Claude Code: N confirms` badge.
 - Claude Code compatibility marketplace: `claude plugin marketplace add elvismusli/onlyharness` then `claude plugin install superskill@superskill`. The one-link installer is the primary path.
-- Codex MCP setup: `codex mcp add superskill --url https://superskill.sh/mcp --bearer-token-env-var HH_TOKEN`.
+- Codex public MCP setup: `codex mcp add superskill --url https://superskill.sh/mcp`. The universal installer adds `superskill_local` for browser-authorized protected actions.
 - Local validation: `npm run check:mcp-registry && npm run check:plugin`; when Claude CLI is installed, also run `claude plugin validate . && claude plugin validate plugins/onlyharness`.
 
 Create local env from the examples:
@@ -230,7 +227,7 @@ npm run smoke:x402
 scripts/smoke-production-compose.sh
 ```
 
-The production auth smoke creates a QA Supabase user and verifies that email confirmation blocks immediate sign-in. To test authenticated publish with a pre-confirmed token, pass `HH_TOKEN` to the CLI publish flow or run the API publish smoke against a confirmed session.
+The production auth smoke creates a QA Supabase user, verifies that email confirmation blocks immediate sign-in, and exercises protected publishing through the local browser-auth broker with a confirmed session.
 
 ## Repository Layout
 

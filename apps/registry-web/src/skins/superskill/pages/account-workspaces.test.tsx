@@ -150,12 +150,7 @@ test("signed-in account preserves a fragment-only workspace invite continuation"
   );
 });
 
-test("confirmed account approves a terminal code without displaying or persisting credentials", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ approved: true, expires_in: 1800 }), {
-    status: 200,
-    headers: { "content-type": "application/json" }
-  }));
-  vi.stubGlobal("fetch", fetchMock);
+test("confirmed account does not expose the legacy terminal-code authorization flow", () => {
   harness.value = {
     ...harness.value,
     user: { email: "ada@example.com", email_confirmed_at: "2026-07-14T00:00:00Z", user_metadata: {} },
@@ -163,34 +158,11 @@ test("confirmed account approves a terminal code without displaying or persistin
   };
   render(<AccountPage />);
 
-  fireEvent.change(screen.getByLabelText("One-time code"), { target: { value: "abcd2345" } });
-  expect(screen.getByLabelText("One-time code")).toHaveValue("ABCD-2345");
-  fireEvent.submit(screen.getByLabelText("One-time code").closest("form")!);
-
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-  expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/auth/device/approve", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer browser-session-secret"
-    },
-    body: JSON.stringify({ user_code: "ABCD-2345" })
-  });
-  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Terminal approved"));
-  expect(screen.getByLabelText("One-time code")).toHaveValue("");
+  expect(screen.queryByLabelText("One-time code")).toBeNull();
+  expect(screen.queryByText(/hh auth login --shell/i)).toBeNull();
+  expect(screen.queryByText(/terminal authorization/i)).toBeNull();
   expect(screen.queryByText("browser-session-secret")).toBeNull();
   expect(screen.getByRole("link", { name: "Publish a skill" })).toHaveAttribute("href", "#/superskill/publish");
-});
-
-test("unconfirmed account cannot approve a terminal", () => {
-  harness.value = {
-    ...harness.value,
-    user: { email: "ada@example.com", email_confirmed_at: null, user_metadata: {} },
-    accessToken: "browser-session-secret"
-  };
-  render(<AccountPage />);
-  expect(screen.getByText("Confirm your email before approving a terminal.")).toBeTruthy();
-  expect(screen.queryByLabelText("One-time code")).toBeNull();
 });
 
 test("workspaces fail closed for a signed-out visitor", () => {

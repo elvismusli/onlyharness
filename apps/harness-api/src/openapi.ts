@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "SuperSkill API",
-    version: "0.2.19",
+    version: "0.3.0",
     description: "Find, verify and install reviewed AI-agent capabilities while preserving accounts, workspaces and exact release evidence."
   },
   servers: [
@@ -796,7 +796,7 @@ export const openapi = {
     "/imports/resource-package": {
       post: {
         summary: "Publish a hosted agent resource package",
-        description: "A confirmed signed-in user is required; a short-lived SuperSkill device bearer is also accepted for the CLI. Publishing is self-service and does not require a managed recommendation grant. Production enables the durable archive path; deployments still fail closed with 503 PUBLISH_DISABLED when HOSTED_RESOURCE_PUBLISH_ENABLED=false. Every publish requires an immutable semantic version and a 16-200 character idempotencyKey, accepts at most 8 MiB of bounded text file content, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
+        description: "A confirmed signed-in user is required. Publishing is self-service and does not require a managed recommendation grant. Production enables the durable archive path; deployments still fail closed with 503 PUBLISH_DISABLED when HOSTED_RESOURCE_PUBLISH_ENABLED=false. Every publish requires an immutable semantic version and a 16-200 character idempotencyKey, accepts at most 8 MiB of bounded text file content, writes a canonical digest-bound archive to the dedicated import store, and lists only active unreviewed metadata. This does not grant a Verified harness badge; use /imports/harness-dir for eval/gate-verified native packages.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1952,92 +1952,109 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "SuperSkill MCP server v0.2.19. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
-        "x-mcp-server-version": "0.2.19",
+        description: "SuperSkill MCP server v0.3.0. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
+        "x-mcp-server-version": "0.3.0",
         "x-mcp-tools": ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"],
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream. Tool-level failures remain protocol-successful JSON-RPC responses but carry result.isError=true and a stable result.structuredContent.code." }
         }
       }
     },
-    "/auth/device/start": {
+    "/auth/agent/start": {
       post: {
-        summary: "Start one-time CLI device authorization",
-        description: "Creates a short-lived one-time device session. The high-entropy device code is returned only in the JSON body; the verification URL is static and contains no code, credential or identity.",
-        requestBody: {
-          required: false,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: { client: { type: "string", enum: ["cli", "codex", "claude-code"] } },
-                additionalProperties: false
-              }
-            }
-          }
-        },
+        summary: "Start browser authorization for a local SuperSkill agent",
+        description: "Creates a durable ten-minute request. The device proof is returned only in JSON; the independent browser proof appears only in the URL fragment after # in browser_url and therefore never reaches HTTP logs.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationStartRequest" } } } },
         responses: {
-          "201": { description: "Short-lived device session", content: { "application/json": { schema: { $ref: "#/components/schemas/DeviceAuthorizationStart" } } } },
+          "201": { description: "Bounded authorization request", content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationStart" } } } },
           "400": { $ref: "#/components/responses/BadRequest" },
-          "429": { description: "Bounded start rate exceeded" },
+          "429": { description: "Bounded per-client start rate exceeded" },
           "503": { $ref: "#/components/responses/ServiceUnavailable" }
         }
       }
     },
-    "/auth/device/approve": {
+    "/auth/agent/browser-bind": {
       post: {
-        summary: "Approve a CLI device code from the signed-in Account page",
-        description: "Requires the existing live Supabase browser bearer and a confirmed email. The one-time user code is accepted only in the request body. Approval creates or extends a short-lived superskill:managed grant through the audited server-only operator RPC; suspended and revoked grants fail closed.",
-        security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: { user_code: { type: "string", pattern: "^[A-Z2-9]{4}-[A-Z2-9]{4}$" } },
-                required: ["user_code"],
-                additionalProperties: false
-              }
-            }
-          }
-        },
+        summary: "Consume the fragment-only browser proof",
+        description: "Consumes browser_proof once and sets a short-lived HttpOnly SameSite binding cookie. No account authorization occurs here.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AgentBrowserBindRequest" } } } },
         responses: {
-          "200": { description: "Device approved; no browser credential or CLI token is returned", content: { "application/json": { schema: { type: "object", properties: { approved: { type: "boolean", const: true }, expires_in: { type: "integer", maximum: 1800 } }, required: ["approved", "expires_in"], additionalProperties: false } } } },
+          "200": { description: "Browser request bound", content: { "application/json": { schema: { type: "object", additionalProperties: false, properties: { bound: { const: true }, request_id: { type: "string" } }, required: ["bound", "request_id"] } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "409": { $ref: "#/components/responses/Conflict" },
+          "410": { description: "Authorization request expired" }
+        }
+      }
+    },
+    "/auth/agent/context": {
+      get: {
+        summary: "Read sanitized browser consent context",
+        description: "Requires the HttpOnly binding cookie and returns client, scopes, status and expiry only. Proofs, user identity and tokens are never returned.",
+        security: [{ agentBindingCookie: [] }],
+        parameters: [{ name: "request_id", in: "query", required: true, schema: { type: "string", pattern: "^ohrq_[A-Za-z0-9_-]{43}$" } }],
+        responses: {
+          "200": { description: "Sanitized authorization context", content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationContext" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "410": { description: "Authorization request expired" }
+        }
+      }
+    },
+    "/auth/agent/decision": {
+      post: {
+        summary: "Approve or deny a bound agent request",
+        description: "Deny requires only the one-time binding cookie. Approve additionally requires a live confirmed Supabase browser bearer and creates managed access only when that scope was explicitly requested.",
+        security: [{ agentBindingCookie: [], bearerAuth: [] }, { agentBindingCookie: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationDecision" } } } },
+        responses: {
+          "200": { description: "Explicit decision recorded; no credential is returned" },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "409": { $ref: "#/components/responses/Conflict" },
-          "410": { description: "Device code expired" },
-          "429": { description: "Bounded approval rate exceeded" },
+          "410": { description: "Authorization request expired" },
           "503": { $ref: "#/components/responses/ServiceUnavailable" }
         }
       }
     },
-    "/auth/device/token": {
+    "/auth/agent/token": {
       post: {
-        summary: "Poll and exchange an approved one-time device session",
-        description: "The CLI sends its high-entropy device code only in the request body. A successful exchange consumes the session exactly once and returns a maximum 30-minute HMAC bearer scoped only to superskill:managed. The token is not written to browser or project storage.",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: { device_code: { type: "string", pattern: "^ohdc_[A-Za-z0-9_-]{43}$" } },
-                required: ["device_code"],
-                additionalProperties: false
-              }
-            }
-          }
-        },
+        summary: "Poll and consume an approved agent request",
+        description: "The local broker presents its device proof. Approval is consumed exactly once and returns a ten-minute opaque access token plus a rotating refresh token bounded by the thirty-day session.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationTokenRequest" } } } },
         responses: {
-          "200": { description: "One-time short-lived terminal bearer", content: { "application/json": { schema: { $ref: "#/components/schemas/DeviceAuthorizationToken" } } } },
-          "202": { description: "Browser approval is still pending" },
+          "200": { description: "Opaque agent credential pair", content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationToken" } } } },
+          "202": { description: "Explicit browser decision is still pending" },
           "400": { $ref: "#/components/responses/BadRequest" },
-          "409": { $ref: "#/components/responses/Conflict" },
-          "410": { description: "Device session expired" },
-          "429": { description: "Polling interval or rate limit exceeded" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "410": { description: "Authorization request expired" },
+          "429": { description: "Bounded polling rate exceeded" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/auth/agent/refresh": {
+      post: {
+        summary: "Rotate an agent refresh token",
+        description: "Consumes the refresh token once and returns a replacement pair. Reuse revokes the whole session family.",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", additionalProperties: false, properties: { refresh_token: { type: "string", pattern: "^ohrt_[A-Za-z0-9_-]{43}$" } }, required: ["refresh_token"] } } } },
+        responses: {
+          "200": { description: "Rotated opaque credential pair", content: { "application/json": { schema: { $ref: "#/components/schemas/AgentAuthorizationToken" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "429": { description: "Bounded refresh rate exceeded" },
+          "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/auth/agent/revoke": {
+      post: {
+        summary: "Revoke an agent session",
+        description: "Accepts the access bearer, a refresh token in the JSON body, or both. Revocation invalidates the session and all access tokens without returning credential material.",
+        security: [{ bearerAuth: [] }, {}],
+        requestBody: { required: false, content: { "application/json": { schema: { type: "object", additionalProperties: false, properties: { refresh_token: { type: "string", pattern: "^ohrt_[A-Za-z0-9_-]{43}$" } } } } } },
+        responses: {
+          "200": { description: "Session revoked or already absent", content: { "application/json": { schema: { type: "object", additionalProperties: false, properties: { revoked: { const: true } }, required: ["revoked"] } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
           "503": { $ref: "#/components/responses/ServiceUnavailable" }
         }
       }
@@ -2283,7 +2300,8 @@ export const openapi = {
   },
   components: {
     securitySchemes: {
-      bearerAuth: { type: "http", scheme: "bearer" }
+      bearerAuth: { type: "http", scheme: "bearer" },
+      agentBindingCookie: { type: "apiKey", in: "cookie", name: "__Host-superskill_agent_bind" }
     },
     responses: {
       BadRequest: {
@@ -2338,28 +2356,72 @@ export const openapi = {
         },
         required: ["ok"]
       },
-      DeviceAuthorizationStart: {
+      AgentAuthorizationStartRequest: {
         type: "object",
         additionalProperties: false,
         properties: {
-          device_code: { type: "string", pattern: "^ohdc_[A-Za-z0-9_-]{43}$" },
-          user_code: { type: "string", pattern: "^[A-Z2-9]{4}-[A-Z2-9]{4}$" },
-          verification_uri: { type: "string", format: "uri", description: "Static Account page URL; never includes a user or device code" },
+          client: { type: "string", enum: ["codex", "claude-code", "cli"] },
+          scopes: { type: "array", minItems: 1, maxItems: 4, uniqueItems: true, items: { type: "string", enum: ["superskill:managed", "resources:publish", "workspaces:read", "workspaces:write"] } }
+        },
+        required: ["client", "scopes"]
+      },
+      AgentAuthorizationStart: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          request_id: { type: "string", pattern: "^ohrq_[A-Za-z0-9_-]{43}$" },
+          device_proof: { type: "string", pattern: "^ohdp_[A-Za-z0-9_-]{43}$" },
+          browser_url: { type: "string", format: "uri", description: "The browser proof is present only in the URL fragment." },
+          verification_uri: { type: "string", format: "uri" },
           expires_in: { type: "integer", minimum: 120, maximum: 900 },
           interval: { type: "integer", minimum: 1, maximum: 10 }
         },
-        required: ["device_code", "user_code", "verification_uri", "expires_in", "interval"]
+        required: ["request_id", "device_proof", "browser_url", "verification_uri", "expires_in", "interval"]
       },
-      DeviceAuthorizationToken: {
+      AgentBrowserBindRequest: {
         type: "object",
         additionalProperties: false,
         properties: {
-          access_token: { type: "string", pattern: "^ohdt_[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{43}$" },
-          token_type: { type: "string", const: "Bearer" },
-          expires_in: { type: "integer", minimum: 1, maximum: 1800 },
-          scope: { type: "string", const: "superskill:managed" }
+          request_id: { type: "string", pattern: "^ohrq_[A-Za-z0-9_-]{43}$" },
+          browser_proof: { type: "string", pattern: "^ohbp_[A-Za-z0-9_-]{43}$" }
         },
-        required: ["access_token", "token_type", "expires_in", "scope"]
+        required: ["request_id", "browser_proof"]
+      },
+      AgentAuthorizationContext: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          request: {
+            type: "object", additionalProperties: false,
+            properties: {
+              id: { type: "string" }, client: { type: "string", enum: ["codex", "claude-code", "cli"] }, client_name: { type: "string" },
+              scopes: { type: "array", items: { type: "string" } }, expires_at: { type: "string", format: "date-time" },
+              status: { type: "string", enum: ["pending", "approved", "denied", "expired", "consumed"] }
+            },
+            required: ["id", "client", "client_name", "scopes", "expires_at", "status"]
+          }
+        },
+        required: ["request"]
+      },
+      AgentAuthorizationDecision: {
+        type: "object", additionalProperties: false,
+        properties: { request_id: { type: "string", pattern: "^ohrq_[A-Za-z0-9_-]{43}$" }, decision: { type: "string", enum: ["approve", "deny"] } },
+        required: ["request_id", "decision"]
+      },
+      AgentAuthorizationTokenRequest: {
+        type: "object", additionalProperties: false,
+        properties: { request_id: { type: "string", pattern: "^ohrq_[A-Za-z0-9_-]{43}$" }, device_proof: { type: "string", pattern: "^ohdp_[A-Za-z0-9_-]{43}$" } },
+        required: ["request_id", "device_proof"]
+      },
+      AgentAuthorizationToken: {
+        type: "object", additionalProperties: false,
+        properties: {
+          access_token: { type: "string", pattern: "^ohat_[A-Za-z0-9_-]{43}$" },
+          refresh_token: { type: "string", pattern: "^ohrt_[A-Za-z0-9_-]{43}$" },
+          token_type: { type: "string", const: "Bearer" }, expires_in: { type: "integer", minimum: 1, maximum: 600 },
+          session_expires_in: { type: "integer", minimum: 1, maximum: 2592000 }, scope: { type: "string" }
+        },
+        required: ["access_token", "refresh_token", "token_type", "expires_in", "session_expires_in", "scope"]
       },
       SuperSkillBootstrap: {
         type: "object",

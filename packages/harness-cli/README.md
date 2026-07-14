@@ -18,8 +18,6 @@ node packages/harness-cli/dist/hh.mjs update deep-market-researcher --diff
 node packages/harness-cli/dist/hh.mjs audit-setup
 node packages/harness-cli/dist/hh.mjs benchmark benchmarks/research-discovery.yaml --json
 node packages/harness-cli/dist/hh.mjs extract ~/.claude/skills/my-skill --out my-skill-harness
-HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --name agent-tool --type command_pack --json
-HH_TOKEN=<access-token> node packages/harness-cli/dist/hh.mjs publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack --json
 HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack --json
 HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources search agent-tool --workspace acme --json
 HH_WORKSPACE_TOKEN=<workspace-token> node packages/harness-cli/dist/hh.mjs resources detail @acme/agent-tool --json
@@ -30,17 +28,17 @@ HH_ORG_TOKEN=<org-token> node packages/harness-cli/dist/hh.mjs sync git@github.c
 
 ## SuperSkill internal alpha
 
-Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor use the short-lived signed-in account credential from `HH_TOKEN`; the CLI sends it only in the Authorization header and never writes it to disk, project state or telemetry. `HH_SUPERSKILL_TOKEN` remains internal-alpha compatibility only.
+Managed SuperSkill routing is separate from the legacy `hh suggest` catalog path. Network recommendation, activation start/keep and live doctor use the local browser-auth broker. Access tokens stay in process memory; renewable credentials are stored in the OS keychain and never in project state or telemetry. `HH_TOKEN` remains an explicit non-interactive compatibility path for paid and automation commands.
 
 ```bash
-# Sign in through a one-time code approved on the SuperSkill Account page.
-# stdout is one export command; progress and the verification code stay on stderr.
-eval "$(hh auth login --shell --client codex)"
+hh auth login --client codex
+hh auth status --client codex
+hh auth logout --client codex
 # Recovery diagnostics only; managed lifecycle uses superskill_local MCP tools.
 hh activation doctor --target codex --live --json
 ```
 
-The device code expires after 10 minutes and is exchanged once. The resulting HMAC bearer lasts at most 30 minutes, is scoped to `superskill:managed`, stays only in the current terminal environment, and is live-checked against the confirmed user and active server grant. Start a fresh Codex or Claude Code session from that terminal so the project-local MCP inherits `HH_TOKEN`. Never paste a Supabase session or put `HH_TOKEN` in a command argument, URL, config, shell history file, browser storage, or project file.
+Login opens the SuperSkill confirmation page and resumes in the same process. Use `--no-browser` only on a trusted headless terminal. The CLI never prints a bearer token or shell export. If the OS keychain is unavailable, authorization is explicitly marked `session_only` and is not written to a plaintext fallback.
 
 Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex pins under `.agents/skills`. Temporary activation writes only project-local `.onlyharness`. Copy/detection/pin never implies loaded or invoked. Pinned reuse always rechecks the exact remote release and revocation state; offline reuse is blocked. Remove is marker/digest-owned and works offline.
 
@@ -60,7 +58,7 @@ npx --yes onlyharness@0.2.19 resources install onlyharness:packages/example-skil
 
 Codex writes `.agents/skills/<name>` and Claude Code writes `.claude/skills/<name>`. The CLI downloads one exact release, verifies the server-pinned SHA-256 digest, validates safe package paths and root `SKILL.md`, writes an ownership marker atomically, and records the install event only after files exist. `--allow-unreviewed` is required for hosted skills without a passing scan; it is explicit acceptance of the shown risk, never a Verified or managed-approval claim. Open-only resources, failed scans, non-skill packages, symlinks, cross-origin archives and destination collisions fail closed.
 
-After starting a fresh trusted client session, use the eight `superskill_local` MCP tools. `recommend` first discloses or explicitly dismisses a pending exact handoff; otherwise it routes the consented privacy-safe task summary. `activation_start` acknowledges an exact handoff only after `ready`, and the remaining mark/finish/keep/remove tools own lifecycle state. The CLI `superskill handoff` command is diagnostic compatibility only and must not replace the MCP lifecycle. `HH_SUPERSKILL_TOKEN` remains legacy internal-alpha compatibility only.
+After the one required post-install client restart, use `superskill_local`. On the first protected action it calls `auth_start`, waits through `auth_wait`, then retries the original tool once with the same idempotency key. `recommend` first discloses or explicitly dismisses a pending exact handoff; `activation_start` acknowledges it only after `ready`. Protected publishing and workspace tools use the same account broker. The CLI `superskill handoff` command is diagnostic compatibility only.
 
 Internal plugin install commands (after the prepared CLI version is published and verified):
 
@@ -99,15 +97,13 @@ Workspace resource catalogs use `HH_WORKSPACE_TOKEN`, with `HH_ORG_TOKEN` as a c
 
 ## Publishing
 
-Publishing needs a SuperSkill account access token; the `onlyharness` package name remains a compatibility coordinate.
+Interactive publishing uses the `superskill_local` MCP installed by the universal link. The first protected tool call opens browser consent and resumes with the original idempotency key. The `onlyharness` package name remains a compatibility coordinate.
 
 ```bash
-HH_TOKEN=<access-token> hh publish workflow.md --name my-harness
-HH_TOKEN=<access-token> hh publish <verified-harness-dir> --name my-harness
-HH_TOKEN=<access-token> hh publish-resource ./agent-tool --name agent-tool --type command_pack
-HH_TOKEN=<access-token> hh publish-resource https://github.com/acme/agent-tool.git --path packages/tool --name agent-tool --type command_pack
 HH_WORKSPACE_TOKEN=<workspace-token> hh publish-resource ./agent-tool --workspace acme --name agent-tool --type command_pack
 ```
+
+Existing non-interactive paid and automation commands may still receive `HH_TOKEN` explicitly. Interactive agent configuration never inherits it and no browser-auth credential is printed.
 
 Use `hh publish` for markdown scaffolds or eval/gate-verified native packages. Use
 `hh publish-resource` for universal hosted agent resource packages: skills,

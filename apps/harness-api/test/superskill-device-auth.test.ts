@@ -122,6 +122,14 @@ test("unconfirmed browser identity is rejected before grant issuance", async (t)
   assert.equal(grants, 0);
 });
 
+test("legacy device routes disappear when the transition flag is disabled", async (t) => {
+  const app = Fastify({ logger: false });
+  await registerSuperskillDeviceAuthRoutes(app, { enabled: false });
+  t.after(() => app.close());
+  const response = await app.inject({ method: "POST", url: "/auth/device/start", payload: { client: "codex" } });
+  assert.equal(response.statusCode, 404);
+});
+
 test("device sessions expire, reject rapid polling, and rate-limit starts", async () => {
   let now = new Date("2026-07-14T00:00:00.000Z");
   const service = createSuperskillDeviceAuthService({

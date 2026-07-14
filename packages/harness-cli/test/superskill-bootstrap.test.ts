@@ -11,6 +11,7 @@ import {
   fetchBootstrapManifest,
   installUniversalSkill,
   resolveInstallClients,
+  SUPERSKILL_PLUGIN_VERSION,
   SUPERSKILL_PUBLIC_MCP_URL,
   universalSkillArtifactDigest,
   validateBootstrapManifest,
@@ -68,7 +69,6 @@ for (const client of ["codex", "claude-code"] as const) {
         assert.deepEqual(config.mcp_servers.superskill_local, {
           command: "npx",
           args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
-          env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
           default_tools_approval_mode: "prompt"
         });
       }
@@ -197,7 +197,6 @@ test("installer repairs either missing canonical MCP entry and then requires bot
       "[mcp_servers.superskill_local]",
       'command = "npx"',
       `args = ["--yes", "onlyharness@${SUPERSKILL_RUNTIME.cliVersion}", "mcp", "superskill"]`,
-      'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
       'default_tools_approval_mode = "prompt"',
       ""
     ].join("\n"));
@@ -216,7 +215,6 @@ test("installer repairs either missing canonical MCP entry and then requires bot
     assert.deepEqual(codex.mcp_servers.superskill_local, {
       command: "npx",
       args: ["--yes", `onlyharness@${SUPERSKILL_RUNTIME.cliVersion}`, "mcp", "superskill"],
-      env_vars: ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"],
       default_tools_approval_mode: "prompt"
     });
     assert.equal(installUniversalSkill({ verifiedBootstrap: verified(validManifest(null)), clients: ["codex"], projectDir: codexProject }).status, "unchanged");
@@ -260,7 +258,6 @@ for (const fixture of [
         "[mcp_servers.superskill_local]",
         'command = "npx"',
         `args = ["--yes", "onlyharness@${SUPERSKILL_RUNTIME.cliVersion}", "mcp", "superskill"]`,
-        'env_vars = ["HH_TOKEN", "HH_SUPERSKILL_TOKEN"]',
         'default_tools_approval_mode = "prompt"',
         ""
       ].join("\n"));
@@ -429,7 +426,7 @@ function validManifest(input: BootstrapCapability | null): SuperSkillBootstrapMa
     schemaVersion: "superskill.bootstrap.v1" as const,
     canonicalUrl: canonicalInstallUrl(input ?? undefined),
     installer: { package: "onlyharness" as const, version: SUPERSKILL_RUNTIME.cliVersion, integrity: "sha512-YWJj", releaseStatus: "published" as const },
-    universalSkill: { name: "superskill" as const, version: "0.2.0", artifactDigest: universalSkillArtifactDigest() },
+    universalSkill: { name: "superskill" as const, version: SUPERSKILL_PLUGIN_VERSION, artifactDigest: universalSkillArtifactDigest() },
     clientAdapters: {
       codex: { path: ".codex/config.toml", contractDigest: clientAdapterContractDigest("codex") },
       "claude-code": { path: ".mcp.json", contractDigest: clientAdapterContractDigest("claude-code") }

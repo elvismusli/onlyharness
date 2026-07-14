@@ -31,6 +31,8 @@ import * as workspaces from "./workspaces.js";
 import { registerSuperskillRoutes, resolveManagedAccess } from "./routes/superskill.js";
 import { handleManagedEventRequest } from "./routes/superskill-events.js";
 import { createSupabaseSuperskillAccessResolver, fetchSupabaseAuthIdentity, normalizeSupabaseOrigin, supabaseAuthTimeoutMs, superskillUserSubject } from "./superskill/access.js";
+import { AGENT_ACCESS_TOKEN_PREFIX, createAgentAuthService, registerAgentAuthRoutes, type AgentAuthScope } from "./superskill/agent-auth.js";
+import { createAgentMutationService } from "./superskill/agent-idempotency.js";
 import { registerSuperskillDeviceAuthRoutes } from "./superskill/device-auth.js";
 import { SUPERSKILL_DEVICE_TOKEN_PREFIX } from "./superskill/device-token.js";
 
@@ -297,7 +299,17 @@ type ThreadItem = {
   at: string;
 };
 
-type AuthUser = { id: string; email?: string; subject?: string; confirmed?: boolean };
+type AuthUser = {
+  id: string;
+  email?: string;
+  subject?: string;
+  confirmed?: boolean;
+  authKind?: "agent_access";
+  clientId?: string;
+  sessionId?: string;
+  scopes?: readonly AgentAuthScope[];
+  expiresAt?: Date;
+};
 
 type AuthResult = {
   user?: AuthUser;
@@ -333,14 +345,18 @@ type DirectoryLinkOnlyBody = {
 };
 
 const app = Fastify({ logger: true });
-const superskillAccessResolver = createSupabaseSuperskillAccessResolver();
+const agentAuthService = createAgentAuthService();
+const agentMutationService = createAgentMutationService();
+const superskillAccessResolver = createSupabaseSuperskillAccessResolver({ agentTokenResolver: agentAuthService.resolveAccessToken });
 const shareCapabilityCatalog = new ManagedCatalog();
 await app.register(cors, {
+  credentials: true,
   origin: (origin, callback) => {
     if (!origin || isAllowedOrigin(origin)) return callback(null, true);
     return callback(null, false);
   }
 });
+await registerAgentAuthRoutes(app, agentAuthService);
 await registerSuperskillDeviceAuthRoutes(app);
 await registerSuperskillRoutes(app, { accessResolver: superskillAccessResolver });
 await registerSharePreviewRoutes(app, {
@@ -573,12 +589,18 @@ async function sendPublicResourceArchive(resource: resources.Resource, version: 
 
 app.post("/workspaces", async (request, reply) => {
   if (!workspacesEnabled) return reply.code(404).send({ error: "Workspace layer is not enabled" });
-  const user = await requireUser(request, reply);
+  const user = await requireUser(request, reply, ["workspaces:write"]);
   if (!user) return;
   if (!user.confirmed) return reply.code(403).send({ error: "Confirmed account required", code: "EMAIL_CONFIRMATION_REQUIRED" });
   const body = request.body && typeof request.body === "object" ? request.body as WorkspaceCreateRequest : {};
+  const idempotency = await claimAgentMutation(request, reply, user, "/workspaces", body);
+  if (!idempotency.proceed) return;
   const result = await workspaces.createWorkspaceForUser({ ...body, userId: user.id });
-  if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
+  if (!result.ok) {
+    const payload = { error: result.error, code: result.code };
+    if (!await completeAgentMutation(idempotency, user.id, "/workspaces", result.status, payload)) return idempotencyCommitFailed(reply);
+    return reply.code(result.status).send(payload);
+  }
   await workspaces.appendWorkspaceAudit({
     slug: result.workspace.slug,
     action: result.replay ? "workspace_create_replayed" : "workspace_create_confirmed",
@@ -586,12 +608,15 @@ app.post("/workspaces", async (request, reply) => {
     target: result.workspace.slug,
     via: "workspace_member"
   });
-  return reply.code(result.replay ? 200 : 201).send({
+  const status = result.replay ? 200 : 201;
+  const payload = {
     workspace: publicWorkspace(result.workspace),
     member: result.member,
     replay: result.replay,
     next: `Create a bounded invite or publish a private resource under @${result.workspace.slug}.`
-  });
+  };
+  if (!await completeAgentMutation(idempotency, user.id, "/workspaces", status, payload)) return idempotencyCommitFailed(reply);
+  return reply.code(status).send(payload);
 });
 
 app.get("/workspaces/:slug/workspace", async (request, reply) => {
@@ -600,7 +625,7 @@ app.get("/workspaces/:slug/workspace", async (request, reply) => {
   const auth = await authorizeWorkspaceRequest(slug, request, ["workspace:read"]);
   if (!auth.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "workspace" });
-    return reply.code(auth.status).send({ error: auth.error });
+    return reply.code(auth.status).send(workspaceAuthFailure(auth));
   }
   const query = request.query as resources.ResourceQuery;
   const resourceResult = workspaces.searchWorkspaceResources(auth.workspace.slug, { ...query, limit: query.limit ?? 50 });
@@ -623,7 +648,7 @@ app.get("/workspaces/:slug/setup-bundle", async (request, reply) => {
   const auth = await authorizeWorkspaceRequest(slug, request, ["workspace:setup"]);
   if (!auth.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "setup_bundle" });
-    return reply.code(auth.status).send({ error: auth.error });
+    return reply.code(auth.status).send(workspaceAuthFailure(auth));
   }
   const query = request.query as { target?: string };
   const bundle = await workspaces.workspaceSetupBundle(auth.workspace, query.target);
@@ -1646,18 +1671,27 @@ app.post("/workspaces/:slug/imports/resource-package", { bodyLimit: resourcePack
   const auth = await authorizeWorkspaceRequest(slug, request, ["resource:publish"]);
   if (!auth.ok) {
     await workspaces.appendWorkspaceAudit({ slug: auth.slug ?? "invalid", action: auth.auditAction, tokenName: auth.tokenName, subject: eventSubject(undefined), target: "resource_publish" });
-    return reply.code(auth.status).send({ error: auth.error });
+    return reply.code(auth.status).send(workspaceAuthFailure(auth));
   }
   const body = request.body && typeof request.body === "object" ? request.body as ResourcePackageImportRequest : {};
+  const route = `/workspaces/${auth.workspace.slug}/imports/resource-package`;
+  const agentUser: AuthUser = {
+    id: auth.userId ?? `workspace:${auth.workspace.slug}`,
+    ...(headerValue(request.headers.authorization)?.startsWith(`Bearer ${AGENT_ACCESS_TOKEN_PREFIX}`) ? { authKind: "agent_access" as const } : {})
+  };
+  const idempotency = await claimAgentMutation(request, reply, agentUser, route, body);
+  if (!idempotency.proceed) return;
   const result = await importResourcePackage(body, { id: auth.userId ?? `workspace:${auth.workspace.slug}`, email: auth.workspace.name }, { workspaceSlug: auth.workspace.slug, workspaceName: auth.workspace.name, actorLabel: auth.tokenName ?? auth.userId });
   if ("error" in result) {
     const payload: { error: string; code?: string; failures?: string[] } = { error: result.error ?? "Workspace resource package import failed" };
     if ("code" in result && result.code) payload.code = result.code;
     if ("failures" in result && Array.isArray(result.failures)) payload.failures = result.failures;
     await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_publish_rejected", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: body.name, via: auth.via });
+    if (!await completeAgentMutation(idempotency, agentUser.id, route, result.status ?? 500, payload)) return idempotencyCommitFailed(reply);
     return reply.code(result.status ?? 500).send(payload);
   }
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "resource_package_publish", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: result.resource?.id, via: auth.via });
+  if (!await completeAgentMutation(idempotency, agentUser.id, route, 201, result)) return idempotencyCommitFailed(reply);
   return reply.code(201).send(result);
 });
 
@@ -1824,16 +1858,25 @@ app.get("/mcp", async (_request, reply) => mcpMethodNotAllowed(reply));
 app.delete("/mcp", async (_request, reply) => mcpMethodNotAllowed(reply));
 
 app.post("/imports/markdown-to-harness", async (request, reply) => {
-  const user = await requireUser(request, reply);
+  const user = await requireUser(request, reply, ["resources:publish"]);
   if (!user) return;
   const body = request.body as ImportRequest;
+  const route = "/imports/markdown-to-harness";
+  const idempotency = await claimAgentMutation(request, reply, user, route, body);
+  if (!idempotency.proceed) return;
   const result = await importMarkdownToHarness(body, user);
-  if ("error" in result) return reply.code(result.status ?? 500).send({ error: result.error });
+  if ("error" in result) {
+    const status = result.status ?? 500;
+    const payload = { error: result.error };
+    if (!await completeAgentMutation(idempotency, user.id, route, status, payload)) return idempotencyCommitFailed(reply);
+    return reply.code(status).send(payload);
+  }
+  if (!await completeAgentMutation(idempotency, user.id, route, 200, result)) return idempotencyCommitFailed(reply);
   return result;
 });
 
 app.post("/imports/harness-dir", async (request, reply) => {
-  const user = await requireUser(request, reply);
+  const user = await requireUser(request, reply, ["resources:publish"]);
   if (!user) return;
   const body = request.body && typeof request.body === "object" ? request.body as HarnessDirPublishRequest : {};
   const result = await importVerifiedHarnessDir(body, user);
@@ -1849,7 +1892,12 @@ app.post("/imports/resource-package", { bodyLimit: resourcePackageRouteBodyLimit
   const auth = await authenticatePublicResourcePublish(headerValue(request.headers.authorization));
   if (!auth.user) return sendPublicResourcePublishAuthFailure(reply, auth);
   if (!hostedResourcePublishEnabled) return reply.code(503).send(publicResourcePublishDisabled());
-  const body = request.body && typeof request.body === "object" ? request.body as ResourcePackageImportRequest : {};
+  const requestedBody = request.body && typeof request.body === "object" ? request.body as ResourcePackageImportRequest : {};
+  const headerIdempotencyKey = idempotencyKeyFromRequest(request);
+  if (headerIdempotencyKey && requestedBody.idempotencyKey && headerIdempotencyKey !== requestedBody.idempotencyKey) {
+    return reply.code(409).send({ error: "Idempotency-Key header conflicts with body idempotencyKey", code: "IDEMPOTENCY_KEY_CONFLICT" });
+  }
+  const body = headerIdempotencyKey ? { ...requestedBody, idempotencyKey: headerIdempotencyKey } : requestedBody;
   const result = await importResourcePackage(body, auth.user);
   if ("error" in result) {
     const payload: { error: string; code?: string; failures?: string[] } = { error: result.error ?? "Resource package import failed" };
@@ -2076,14 +2124,76 @@ function isAllowedOrigin(origin: string): boolean {
   }
 }
 
-async function requireUser(request: FastifyRequest, reply: FastifyReply): Promise<AuthUser | undefined> {
-  const result = await userFromAuthorization(headerValue(request.headers.authorization));
+async function requireUser(request: FastifyRequest, reply: FastifyReply, agentScopes?: readonly AgentAuthScope[]): Promise<AuthUser | undefined> {
+  const result = await userFromAuthorization(headerValue(request.headers.authorization), agentScopes);
   if (result.user) return result.user;
   if (result.status === 401) {
     reply.header("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl}"`);
   }
-  reply.code(result.status ?? 401).send({ error: result.error ?? "Sign in required" });
+  reply.code(result.status ?? 401).send({ error: result.error ?? "Sign in required", code: result.code ?? "AUTH_REQUIRED" });
   return undefined;
+}
+
+type AgentMutationClaim =
+  | { proceed: true; claim?: { keyHash: string; payloadHash: string } }
+  | { proceed: false };
+
+async function claimAgentMutation(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  user: AuthUser,
+  route: string,
+  payload: unknown
+): Promise<AgentMutationClaim> {
+  if (user.authKind !== "agent_access") return { proceed: true };
+  const result = await agentMutationService.begin({ key: idempotencyKeyFromRequest(request), userId: user.id, route, payload });
+  if (result.kind === "claimed") return { proceed: true, claim: { keyHash: result.keyHash, payloadHash: result.payloadHash } };
+  if (result.kind === "replay") {
+    reply.header("Idempotency-Replayed", "true");
+    reply.code(result.response.status).send(result.response.body);
+    return { proceed: false };
+  }
+  if (result.kind === "conflict") {
+    reply.code(409).send({ error: "Idempotency-Key was already used with a different payload", code: "IDEMPOTENCY_KEY_CONFLICT" });
+    return { proceed: false };
+  }
+  if (result.kind === "in_progress") {
+    reply.code(409).send({
+      error: "The original mutation is still running or its final result is indeterminate",
+      code: "IDEMPOTENCY_INDETERMINATE",
+      next: "Reconcile the resource or workspace state. Do not repeat this mutation automatically."
+    });
+    return { proceed: false };
+  }
+  if (result.kind === "unavailable") {
+    reply.code(503).send({ error: "Idempotency service unavailable", code: "IDEMPOTENCY_UNAVAILABLE" });
+    return { proceed: false };
+  }
+  reply.code(400).send({ error: "Agent mutations require a 16-200 character Idempotency-Key", code: "IDEMPOTENCY_KEY_REQUIRED" });
+  return { proceed: false };
+}
+
+async function completeAgentMutation(
+  claim: AgentMutationClaim,
+  userId: string,
+  route: string,
+  status: number,
+  body: Record<string, unknown>
+): Promise<boolean> {
+  if (!claim.proceed || !claim.claim) return true;
+  return agentMutationService.complete({ ...claim.claim, userId, route, status, body });
+}
+
+function idempotencyCommitFailed(reply: FastifyReply) {
+  return reply.code(503).send({
+    error: "The mutation completed but its replay receipt could not be stored",
+    code: "IDEMPOTENCY_COMMIT_FAILED",
+    next: "The result is indeterminate. Reconcile the resource or workspace state and do not repeat this mutation automatically."
+  });
+}
+
+function idempotencyKeyFromRequest(request: FastifyRequest): string | undefined {
+  return headerValue(request.headers["idempotency-key"]);
 }
 
 async function authenticatePublicResourcePublish(authorization: string | undefined): Promise<AuthResult> {
@@ -2104,7 +2214,7 @@ async function authenticatePublicResourcePublish(authorization: string | undefin
     };
   }
 
-  const signedIn = await userFromAuthorization(authorization);
+  const signedIn = await userFromAuthorization(authorization, ["resources:publish"]);
   if (!signedIn.user) return signedIn;
   if (!signedIn.user.confirmed) return { status: 403, error: "Email confirmation required", code: "FORBIDDEN" };
   const subjectSalt = process.env.SUPERSKILL_SUBJECT_SALT
@@ -2142,7 +2252,31 @@ function publicResourcePublishDisabled() {
   } as const;
 }
 
-async function userFromAuthorization(authorization: string | undefined): Promise<AuthResult> {
+async function userFromAuthorization(authorization: string | undefined, agentScopes?: readonly AgentAuthScope[]): Promise<AuthResult> {
+  const accessToken = authorization?.match(/^Bearer\s+([^\s]{1,8192})$/i)?.[1];
+  if (accessToken?.startsWith(AGENT_ACCESS_TOKEN_PREFIX)) {
+    if (!agentScopes?.length) {
+      return { status: 403, error: "Agent sessions are not accepted for this account route", code: "FORBIDDEN" };
+    }
+    const agent = await agentAuthService.resolveAccessToken(accessToken, agentScopes);
+    if (!agent.ok) {
+      if (agent.kind === "unavailable") return { status: 503, error: "Authentication service unavailable", code: "AUTH_UNAVAILABLE" };
+      if (agent.kind === "forbidden") return { status: 403, error: "Agent session lacks the required scope", code: "FORBIDDEN" };
+      return { status: 401, error: "Invalid or expired session", code: "AUTH_INVALID" };
+    }
+    return {
+      user: {
+        id: agent.principal.userId,
+        subject: agent.principal.subject,
+        confirmed: true,
+        authKind: "agent_access",
+        clientId: agent.principal.clientId,
+        sessionId: agent.principal.sessionId,
+        scopes: agent.principal.scopes,
+        expiresAt: agent.principal.expiresAt
+      }
+    };
+  }
   if (!supabaseUrl || !supabaseAnonKey) {
     if (process.env.NODE_ENV === "production") {
       return { status: 503, error: "Authentication service unavailable", code: "AUTH_UNAVAILABLE" };
@@ -2171,7 +2305,7 @@ async function userFromAuthorization(authorization: string | undefined): Promise
 }
 
 const publishMarkdownFromMcp: PublishMarkdownHandler = async (body, authorization) => {
-  const auth = await userFromAuthorization(authorization);
+  const auth = await userFromAuthorization(authorization, ["resources:publish"]);
   if (!auth.user) {
     return {
       error: auth.error ?? "Authorization required",
@@ -3504,10 +3638,15 @@ async function authorizeWorkspaceRequest(slug: string, request: FastifyRequest, 
   if (tokenAuth.ok) return tokenAuth;
 
   const authorization = headerValue(request.headers.authorization);
-  const canBeUserBearer = Boolean(authorization?.startsWith("Bearer ")) && (Boolean(supabaseUrl && supabaseAnonKey) || authorization?.startsWith("Bearer local:"));
+  const canBeUserBearer = Boolean(authorization?.startsWith("Bearer ")) && (Boolean(supabaseUrl && supabaseAnonKey) || authorization?.startsWith("Bearer local:") || authorization?.startsWith(`Bearer ${AGENT_ACCESS_TOKEN_PREFIX}`));
   if (!canBeUserBearer) return tokenAuth;
 
-  const userAuth = await userFromAuthorization(authorization);
+  const methodMutates = request.method !== "GET" && request.method !== "HEAD";
+  const scopeMutates = requiredScopes.some((scope) => !scope.endsWith(":read") && scope !== "gate:verify");
+  const mutating = methodMutates && scopeMutates;
+  const agentScopes: AgentAuthScope[] = [mutating ? "workspaces:write" : "workspaces:read"];
+  if (requiredScopes.includes("resource:publish")) agentScopes.push("resources:publish");
+  const userAuth = await userFromAuthorization(authorization, agentScopes);
   if (!userAuth.user) {
     return { ok: false, status: userAuth.status ?? 401, error: userAuth.error ?? "Sign in required", slug, auditAction: "workspace_member_auth_failed" };
   }
@@ -3516,6 +3655,23 @@ async function authorizeWorkspaceRequest(slug: string, request: FastifyRequest, 
 
 function workspaceAuthSubject(auth: workspaces.WorkspaceAuthResult): string {
   return auth.ok && auth.userId ? eventSubject(auth.userId) : eventSubject(undefined);
+}
+
+function workspaceAuthFailure(auth: Extract<workspaces.WorkspaceAuthResult, { ok: false }>) {
+  const code = auth.auditAction === "workspace_member_expired"
+    ? "WORKSPACE_MEMBERSHIP_EXPIRED"
+    : auth.auditAction === "workspace_role_denied"
+      ? "WORKSPACE_ROLE_FORBIDDEN"
+      : auth.auditAction === "workspace_member_denied"
+        ? "WORKSPACE_MEMBERSHIP_REQUIRED"
+        : auth.status === 401
+          ? "AUTH_REQUIRED"
+          : auth.status === 403
+            ? "WORKSPACE_ACCESS_DENIED"
+            : auth.status === 404
+              ? "WORKSPACE_NOT_FOUND"
+              : "WORKSPACE_UNAVAILABLE";
+  return { error: auth.error, code };
 }
 
 function orgTokenFromAuthorization(authorization: string | undefined): string | undefined {

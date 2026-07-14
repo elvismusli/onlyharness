@@ -21,10 +21,19 @@ export type InventorySummary = {
   installedManagedRefs: Array<{ ref: string; version: string; artifactDigest: string }>;
 };
 
+let inProcessAgentAccessToken: string | undefined;
+
+export function setSuperSkillAgentAccessToken(token: string | undefined): void {
+  if (token !== undefined && !/^ohat_[A-Za-z0-9_-]{32,180}$/.test(token)) {
+    throw new SuperSkillCliError("Invalid in-process SuperSkill agent credential.", 3, "AUTH_RESPONSE_INVALID", "Start a new browser authorization.");
+  }
+  inProcessAgentAccessToken = token;
+}
+
 export function requireSuperSkillToken(): string {
-  const token = process.env.HH_TOKEN ?? process.env.HH_SUPERSKILL_TOKEN;
+  const token = inProcessAgentAccessToken ?? process.env.HH_TOKEN ?? process.env.HH_SUPERSKILL_TOKEN;
   if (!token) {
-    throw new SuperSkillCliError("SuperSkill account token is required.", 2, "SUPERSKILL_AUTH_REQUIRED", "Sign in at https://superskill.sh, export HH_TOKEN for this terminal session, and do not store it in the project. HH_SUPERSKILL_TOKEN is legacy compatibility only.");
+    throw new SuperSkillCliError("SuperSkill account authorization is required.", 2, "SUPERSKILL_AUTH_REQUIRED", "Call auth_start, then auth_wait, and retry the original tool once after AUTH_AUTHORIZED.");
   }
   return token;
 }
@@ -269,7 +278,7 @@ function statusReason(status: number): string {
 }
 
 function defaultNext(reason: string): string {
-  if (reason === "SUPERSKILL_AUTH_REQUIRED" || reason === "SUPERSKILL_AUTH_INVALID") return "Sign in at https://superskill.sh and export HH_TOKEN for this terminal session.";
+  if (reason === "SUPERSKILL_AUTH_REQUIRED" || reason === "SUPERSKILL_AUTH_INVALID") return "Call auth_start, then auth_wait, and retry the original tool once after AUTH_AUTHORIZED.";
   if (reason === "SUPERSKILL_CONFIRMED_ACCESS_REQUIRED" || reason === "SUPERSKILL_ACCESS_DENIED" || reason === "INTERNAL_ALPHA_DENIED") return "Use a confirmed SuperSkill account with an active managed-access grant; HH_SUPERSKILL_TOKEN is legacy compatibility only.";
   if (reason === "CAPABILITY_REVOKED" || reason === "CAPABILITY_QUARANTINED") return "Request a fresh recommendation or use the approved replacement.";
   if (reason === "PERMISSION_BLOCKED") return "Request a fresh recommendation after the exact release evidence or permissions are reviewed.";
