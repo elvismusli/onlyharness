@@ -252,6 +252,8 @@ set -euo pipefail
 cd "$SERVER_PATH"
 for _ in $(seq 1 45); do
   if env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch("http://127.0.0.1:8787/healthz").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' 2>/dev/null; then
+    env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node scripts/check-share-fonts.mjs
+    env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node scripts/check-share-unicode-render.mjs
     exit 0
   fi
   sleep 1
@@ -283,7 +285,7 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   grep -q "https://superskill.sh/og/r/$share_key" <<<"$share_html"
   share_png="$(mktemp)"
   curl -fsS "$PUBLIC_BASE_URL/og/r/$share_key" -o "$share_png"
-  node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$share_png"
+  node scripts/check-share-png.mjs "$share_png"
   rm -f "$share_png"
   capability_html="$(curl -fsS -A 'TelegramBot (like TwitterBot)' "$PUBLIC_BASE_URL/c/deep-market-researcher")"
   grep -q 'property="og:title"' <<<"$capability_html"
@@ -291,7 +293,7 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   grep -q 'https://superskill.sh/og/c/deep-market-researcher' <<<"$capability_html"
   capability_png="$(mktemp)"
   curl -fsS "$PUBLIC_BASE_URL/og/c/deep-market-researcher" -o "$capability_png"
-  node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$capability_png"
+  node scripts/check-share-png.mjs "$capability_png"
   rm -f "$capability_png"
   legacy_archive_response="$(mktemp)"
   test "$(curl -sS -o "$legacy_archive_response" -w '%{http_code}' "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive")" = "409"

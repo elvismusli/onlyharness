@@ -308,11 +308,19 @@ test("JSON-RPC cancellation and managed timeout leave no activation state", asyn
     const project = mkdtempSync(path.join(os.tmpdir(), `superskill-mcp-${mode}-`));
     const home = mkdtempSync(path.join(os.tmpdir(), `superskill-mcp-${mode}-home-`));
     execFileSync("git", ["init", "-q"], { cwd: project });
-    const { client, transport } = createMcpClient(project, home, true, mode === "timeout" ? { HH_SUPERSKILL_TEST_TIMEOUT_MS: "150" } : {});
+    const initial = createMcpClient(project, home, true);
+    let client = initial.client;
     try {
-      await client.connect(transport);
+      await client.connect(initial.transport);
       const recommended = await client.callTool({ name: "recommend", arguments: { client: "codex", taskSummary: "compare reviewed market research sources", routingConsent: true } });
+      assert.notEqual(recommended.isError, true, `recommendation setup failed: ${JSON.stringify(structured(recommended))}`);
       const recommendation = structured(recommended).recommendation as { recommendationId: string; decisionDigest: string; expiresAt: string };
+      if (mode === "timeout") {
+        await client.close();
+        const timed = createMcpClient(project, home, true, { HH_SUPERSKILL_TEST_TIMEOUT_MS: "150" });
+        client = timed.client;
+        await client.connect(timed.transport);
+      }
       stallExactRelease = true;
       if (mode === "cancel") {
         const controller = new AbortController();

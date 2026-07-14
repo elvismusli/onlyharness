@@ -10,6 +10,8 @@ import {
   renderShareHtml,
   renderSharePng,
   renderSharePngAsync,
+  renderShareSvg,
+  safePreviewText,
   safeText,
   type SharePreviewModel,
   type SharePreviewResolvers
@@ -59,6 +61,10 @@ test("share HTML is crawler-visible, escaped and workspace noindex", () => {
   assert.doesNotMatch(html, /ohwi_/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.equal(safeText("safe\u202etext\u0000here", 100), "safe text here");
+  assert.equal(safePreviewText("Ж مرحبا 世界 שלום नमस्ते ไทย 한글 😀🧪", 100), "Ж مرحبا 世界 שלום नमस्ते ไทย 한글 ?");
+  assert.equal(safePreviewText("CJK \u4DBF \u9FFF \u{20000} Cyrillic ӿ", 100), "CJK ? ? ? Cyrillic ?");
+  const rtlSvg = renderShareSvg({ ...workspace, title: "مرحبا بالعالم" });
+  assert.match(rtlSvg, /direction="rtl" unicode-bidi="plaintext">مرحبا بالعالم<\/text>/);
 });
 
 test("share PNGs are 1200x630 and vary per card", () => {
@@ -68,6 +74,8 @@ test("share PNGs are 1200x630 and vary per card", () => {
   assert.equal(skillPng.readUInt32BE(16), 1200);
   assert.equal(skillPng.readUInt32BE(20), 630);
   assert.notDeepEqual(skillPng, workspacePng);
+  const multilingualPng = renderSharePng({ ...workspace, title: "世界 مرحبا שלום नमस्ते ไทย 한글" });
+  assert.notDeepEqual(multilingualPng, renderSharePng({ ...workspace, title: "? ? ? ? ? ?" }));
 });
 
 test("async share PNG rendering leaves the API event loop responsive", async () => {

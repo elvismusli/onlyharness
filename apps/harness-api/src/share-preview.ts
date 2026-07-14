@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { Resvg } from "@resvg/resvg-js";
@@ -13,12 +15,32 @@ const BIDI_AND_CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\
 const HAS_BIDI_OR_CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 const IMAGE_CACHE_LIMIT = 128;
 const IMAGE_QUEUE_LIMIT = 24;
+const shareFontPath = (name: string) => fileURLToPath(new URL(`../assets/fonts/${name}`, import.meta.url));
+const SHARE_FONTS = {
+  schibsted: { family: "Schibsted Grotesk", path: shareFontPath("SchibstedGrotesk-wght.ttf") },
+  ibmRegular: { family: "IBM Plex Mono", path: shareFontPath("IBMPlexMono-Regular.ttf") },
+  ibmBold: { family: "IBM Plex Mono", path: shareFontPath("IBMPlexMono-Bold.ttf") },
+  arabic: { family: "Noto Sans Arabic", path: shareFontPath("NotoSansArabic-wdth-wght.ttf") },
+  devanagari: { family: "Noto Sans Devanagari", path: shareFontPath("NotoSansDevanagari-wdth-wght.ttf") },
+  hebrew: { family: "Noto Sans Hebrew", path: shareFontPath("NotoSansHebrew-wdth-wght.ttf") },
+  korean: { family: "Noto Sans KR", path: shareFontPath("NotoSansKR-wght.ttf") },
+  cjk: { family: "Noto Sans SC", path: shareFontPath("NotoSansSC-wght.ttf") },
+  thai: { family: "Noto Sans Thai", path: shareFontPath("NotoSansThai-wdth-wght.ttf") }
+};
+type ShareFontDefinition = (typeof SHARE_FONTS)[keyof typeof SHARE_FONTS];
+const SHARE_BASE_FONT_FILES = [SHARE_FONTS.schibsted.path, SHARE_FONTS.ibmRegular.path, SHARE_FONTS.ibmBold.path];
+const shareFontCoverage = new Map<string, Set<number>>();
+const SHARE_BODY_FONT_FAMILY = "Schibsted Grotesk, Noto Sans SC, Noto Sans KR, Noto Sans Arabic, Noto Sans Hebrew, Noto Sans Devanagari, Noto Sans Thai, IBM Plex Mono";
+const SHARE_MONO_FONT_FAMILY = "IBM Plex Mono, Noto Sans SC, Noto Sans KR, Noto Sans Arabic, Noto Sans Hebrew, Noto Sans Devanagari, Noto Sans Thai";
 const IMAGE_WORKER_SOURCE = `
   const { parentPort } = require("node:worker_threads");
   const { Resvg } = require("@resvg/resvg-js");
-  parentPort.on("message", ({ key, svg }) => {
+  parentPort.on("message", ({ key, svg, fontFiles }) => {
     try {
-      const png = new Resvg(svg, { fitTo: { mode: "width", value: 1200 } }).render().asPng();
+      const png = new Resvg(svg, {
+        fitTo: { mode: "width", value: 1200 },
+        font: { fontFiles, loadSystemFonts: false, defaultFontFamily: "Schibsted Grotesk" }
+      }).render().asPng();
       parentPort.postMessage({ key, png });
     } catch {
       parentPort.postMessage({ key, error: "render_failed" });
@@ -29,6 +51,7 @@ const IMAGE_WORKER_SOURCE = `
 type ImageJob = {
   key: string;
   svg: string;
+  fontFiles: string[];
   resolve: (png: Buffer) => void;
   reject: (error: Error) => void;
 };
@@ -187,12 +210,13 @@ export function renderShareHtml(model: SharePreviewModel): string {
 }
 
 export function renderShareSvg(model: SharePreviewModel): string {
-  const titleLines = wrapText(safeText(model.title, 96), 28, 2);
-  const summaryLines = wrapText(safeText(model.summary, 220), 72, 2);
-  const facts = model.facts.map((fact) => safeText(fact, 42)).filter(Boolean).slice(0, 3);
-  const badgeWidth = Math.max(118, safeText(model.badge, 30).length * 11 + 34);
+  const titleLines = wrapText(safePreviewText(model.title, 96), 28, 2);
+  const summaryLines = wrapText(safePreviewText(model.summary, 220), 72, 2);
+  const facts = model.facts.map((fact) => safePreviewText(fact, 42)).filter(Boolean).slice(0, 3);
+  const badge = safePreviewText(model.badge, 30);
+  const badgeWidth = Math.max(118, badge.length * 11 + 34);
   const factsStart = badgeWidth + 58;
-  const titleY = 224;
+  const titleY = 236;
   const summaryY = titleY + titleLines.length * 72 + 26;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
@@ -205,21 +229,21 @@ export function renderShareSvg(model: SharePreviewModel): string {
   <path d="M788 426c91-80 187-118 292-114" fill="none" stroke="#0f736e" stroke-width="3" stroke-linecap="round" stroke-dasharray="9 14" opacity=".38"/>
   <circle cx="792" cy="424" r="9" fill="#0f736e"/><circle cx="1081" cy="312" r="9" fill="#0f736e"/>
   <g transform="translate(64 54)">${brandMarkSvg(56, true)}</g>
-  <text x="136" y="91" fill="#1a1917" font-family="Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="-1">SuperSkill</text>
-  <text x="1136" y="89" text-anchor="end" fill="#6b6862" font-family="monospace" font-size="18" font-weight="700">superskill.sh</text>
-  <text x="64" y="177" fill="#0f736e" font-family="monospace" font-size="16" font-weight="700" letter-spacing="1.4">${escapeXml(safeText(model.eyebrow, 70).toUpperCase())}</text>
-  ${titleLines.map((line, index) => `<text x="64" y="${titleY + index * 72}" fill="#1a1917" font-family="Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="-2">${escapeXml(line)}</text>`).join("")}
-  ${summaryLines.map((line, index) => `<text x="64" y="${summaryY + index * 33}" fill="#6b6862" font-family="Arial, sans-serif" font-size="24" font-weight="400">${escapeXml(line)}</text>`).join("")}
+  <text x="136" y="91" fill="#1a1917" font-family="${SHARE_BODY_FONT_FAMILY}" font-size="30" font-weight="800" letter-spacing="-1">SuperSkill</text>
+  <text x="1136" y="89" text-anchor="end" fill="#6b6862" font-family="${SHARE_MONO_FONT_FAMILY}" font-size="18" font-weight="700">superskill.sh</text>
+  <text x="64" y="154" fill="#0f736e" font-family="${SHARE_MONO_FONT_FAMILY}" font-size="16" font-weight="700" letter-spacing="1.4">${escapeXml(safePreviewText(model.eyebrow, 70).toUpperCase())}</text>
+  ${titleLines.map((line, index) => renderPreviewTextRuns(line, { x: 64, y: titleY + index * 72, fill: "#1a1917", fontSize: 64, fontWeight: 800, letterSpacing: -2, mode: "body" })).join("")}
+  ${summaryLines.map((line, index) => renderPreviewTextRuns(line, { x: 64, y: summaryY + index * 33, fill: "#6b6862", fontSize: 24, fontWeight: 400, letterSpacing: 0, mode: "body" })).join("")}
   <g transform="translate(64 539)">
     <rect width="${badgeWidth}" height="38" rx="19" fill="#e6f0ef" stroke="#0f736e"/>
-    <text x="17" y="25" fill="#0b5a56" font-family="monospace" font-size="14" font-weight="700">${escapeXml(safeText(model.badge, 30).toUpperCase())}</text>
-    ${facts.map((fact, index) => `<text x="${factsStart + index * 245}" y="25" fill="#6b6862" font-family="monospace" font-size="14" font-weight="700">${escapeXml(fact)}</text>`).join("")}
+    <text x="17" y="25" fill="#0b5a56" font-family="${SHARE_MONO_FONT_FAMILY}" font-size="14" font-weight="700">${escapeXml(badge.toUpperCase())}</text>
+    ${facts.map((fact, index) => `<text x="${factsStart + index * 245}" y="25" fill="#6b6862" font-family="${SHARE_MONO_FONT_FAMILY}" font-size="14" font-weight="700">${escapeXml(fact)}</text>`).join("")}
   </g>
 </svg>`;
 }
 
 export function renderSharePng(model: SharePreviewModel): Buffer {
-  return Buffer.from(new Resvg(renderShareSvg(model), { fitTo: { mode: "width", value: 1200 } }).render().asPng());
+  return Buffer.from(new Resvg(renderShareSvg(model), resvgOptions(shareFontFilesForModel(model))).render().asPng());
 }
 
 export function renderSharePngAsync(model: SharePreviewModel): Promise<Buffer> {
@@ -237,7 +261,7 @@ export function renderSharePngAsync(model: SharePreviewModel): Promise<Buffer> {
     return Promise.reject(new Error("Share image renderer is busy"));
   }
   const pending = new Promise<Buffer>((resolve, reject) => {
-    imageQueue.push({ key, svg, resolve, reject });
+    imageQueue.push({ key, svg, fontFiles: shareFontFilesForModel(model), resolve, reject });
     dispatchImageJob();
   });
   imageInFlight.set(key, pending);
@@ -248,6 +272,173 @@ export function safeText(value: string, maxLength: number): string {
   const clean = value.normalize("NFKC").replace(BIDI_AND_CONTROLS, " ").replace(/\s+/g, " ").trim();
   if (clean.length <= maxLength) return clean;
   return `${clean.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+}
+
+export function safePreviewText(value: string, maxLength: number): string {
+  let clean = "";
+  let replacing = false;
+  for (const character of safeText(value, maxLength)) {
+    if (previewFontDefinition(character.codePointAt(0) ?? 0, "body")) {
+      clean += character;
+      replacing = false;
+    } else if (!replacing) {
+      clean += "?";
+      replacing = true;
+    }
+  }
+  return clean;
+}
+
+function renderPreviewTextRuns(value: string, style: { x: number; y: number; fill: string; fontSize: number; fontWeight: number; letterSpacing: number; mode: "body" | "mono" }): string {
+  const rtlFont = rtlPreviewFont(value);
+  if (rtlFont) {
+    const rtlValue = [...value].map((character) => /\s/u.test(character) || previewFontSupports(rtlFont, character.codePointAt(0) ?? 0) ? character : "?").join("");
+    return `<text x="${style.x.toFixed(2)}" y="${style.y}" fill="${style.fill}" font-family="${rtlFont.family}" font-size="${style.fontSize}" font-weight="${style.fontWeight}" letter-spacing="${style.letterSpacing}" direction="rtl" unicode-bidi="plaintext">${escapeXml(rtlValue)}</text>`;
+  }
+  const spans: Array<{ family: string; text: string }> = [];
+  for (const character of value) {
+    const family = previewFontDefinition(character.codePointAt(0) ?? 0, style.mode)?.family ?? (style.mode === "mono" ? SHARE_FONTS.ibmRegular.family : SHARE_FONTS.schibsted.family);
+    const previous = spans.at(-1);
+    if (previous?.family === family) previous.text += character;
+    else spans.push({ family, text: character });
+  }
+  let x = style.x;
+  return spans.map(({ family, text }) => {
+    const element = `<text x="${x.toFixed(2)}" y="${style.y}" fill="${style.fill}" font-family="${family}" font-size="${style.fontSize}" font-weight="${style.fontWeight}" letter-spacing="${style.letterSpacing}">${escapeXml(text)}</text>`;
+    x += estimatePreviewTextWidth(text, style.fontSize, style.letterSpacing);
+    return element;
+  }).join("");
+}
+
+function rtlPreviewFont(value: string): ShareFontDefinition | undefined {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint >= 0x0590 && codePoint <= 0x05ff && previewFontSupports(SHARE_FONTS.hebrew, codePoint)) return SHARE_FONTS.hebrew;
+    if (((codePoint >= 0x0600 && codePoint <= 0x06ff) || (codePoint >= 0x0750 && codePoint <= 0x077f) || (codePoint >= 0x08a0 && codePoint <= 0x08ff)) && previewFontSupports(SHARE_FONTS.arabic, codePoint)) return SHARE_FONTS.arabic;
+  }
+  return undefined;
+}
+
+function previewFontDefinition(codePoint: number, mode: "body" | "mono"): ShareFontDefinition | undefined {
+  const base = mode === "mono" ? [SHARE_FONTS.ibmRegular, SHARE_FONTS.schibsted] : [SHARE_FONTS.schibsted, SHARE_FONTS.ibmRegular];
+  let preferred: ShareFontDefinition[];
+  if (codePoint >= 0x0590 && codePoint <= 0x05ff) preferred = [SHARE_FONTS.hebrew, ...base];
+  else if ((codePoint >= 0x0600 && codePoint <= 0x06ff) || (codePoint >= 0x0750 && codePoint <= 0x077f) || (codePoint >= 0x08a0 && codePoint <= 0x08ff)) preferred = [SHARE_FONTS.arabic, ...base];
+  else if (codePoint >= 0x0900 && codePoint <= 0x097f) preferred = [SHARE_FONTS.devanagari, ...base];
+  else if (codePoint >= 0x0e00 && codePoint <= 0x0e7f) preferred = [SHARE_FONTS.thai, ...base];
+  else if ((codePoint >= 0x1100 && codePoint <= 0x11ff) || (codePoint >= 0xac00 && codePoint <= 0xd7af)) preferred = [SHARE_FONTS.korean, SHARE_FONTS.cjk, ...base];
+  else if ((codePoint >= 0x2e80 && codePoint <= 0x30ff)
+    || (codePoint >= 0x31f0 && codePoint <= 0x31ff)
+    || (codePoint >= 0x3400 && codePoint <= 0x9fff)
+    || (codePoint >= 0xf900 && codePoint <= 0xfaff)
+    || (codePoint >= 0x20000 && codePoint <= 0x2fa1f)) preferred = [SHARE_FONTS.cjk, SHARE_FONTS.korean, ...base];
+  else if (codePoint >= 0x0370 && codePoint <= 0x052f) preferred = [SHARE_FONTS.ibmRegular, SHARE_FONTS.cjk, ...base];
+  else preferred = [...base, SHARE_FONTS.cjk, SHARE_FONTS.korean, SHARE_FONTS.arabic, SHARE_FONTS.hebrew, SHARE_FONTS.devanagari, SHARE_FONTS.thai];
+  return preferred.find((font, index) => preferred.findIndex((candidate) => candidate.path === font.path) === index && previewFontSupports(font, codePoint));
+}
+
+function previewFontSupports(font: ShareFontDefinition, codePoint: number): boolean {
+  let coverage = shareFontCoverage.get(font.path);
+  if (!coverage) {
+    coverage = readPreviewFontCoverage(font.path);
+    shareFontCoverage.set(font.path, coverage);
+  }
+  return coverage.has(codePoint);
+}
+
+function readPreviewFontCoverage(file: string): Set<number> {
+  const font = readFileSync(file);
+  const tableCount = font.readUInt16BE(4);
+  let cmapOffset: number | undefined;
+  for (let index = 0; index < tableCount; index += 1) {
+    const record = 12 + index * 16;
+    if (font.subarray(record, record + 4).toString("ascii") === "cmap") {
+      cmapOffset = font.readUInt32BE(record + 8);
+      break;
+    }
+  }
+  if (cmapOffset === undefined) throw new Error(`Share preview font has no cmap: ${file}`);
+  const coverage = new Set<number>();
+  const subtableCount = font.readUInt16BE(cmapOffset + 2);
+  const seenSubtables = new Set<number>();
+  for (let index = 0; index < subtableCount; index += 1) {
+    const record = cmapOffset + 4 + index * 8;
+    const subtable = cmapOffset + font.readUInt32BE(record + 4);
+    if (seenSubtables.has(subtable)) continue;
+    seenSubtables.add(subtable);
+    const format = font.readUInt16BE(subtable);
+    if (format === 12) addFormat12Coverage(font, subtable, coverage);
+    else if (format === 4) addFormat4Coverage(font, subtable, coverage);
+  }
+  return coverage;
+}
+
+function addFormat12Coverage(font: Buffer, offset: number, coverage: Set<number>): void {
+  const groupCount = font.readUInt32BE(offset + 12);
+  for (let index = 0; index < groupCount; index += 1) {
+    const group = offset + 16 + index * 12;
+    const start = font.readUInt32BE(group);
+    const end = font.readUInt32BE(group + 4);
+    const startGlyph = font.readUInt32BE(group + 8);
+    for (let codePoint = start + (startGlyph === 0 ? 1 : 0); codePoint <= end; codePoint += 1) coverage.add(codePoint);
+  }
+}
+
+function addFormat4Coverage(font: Buffer, offset: number, coverage: Set<number>): void {
+  const segmentCount = font.readUInt16BE(offset + 6) / 2;
+  const endCodes = offset + 14;
+  const startCodes = endCodes + segmentCount * 2 + 2;
+  const deltas = startCodes + segmentCount * 2;
+  const rangeOffsets = deltas + segmentCount * 2;
+  for (let index = 0; index < segmentCount; index += 1) {
+    const start = font.readUInt16BE(startCodes + index * 2);
+    const end = font.readUInt16BE(endCodes + index * 2);
+    const delta = font.readUInt16BE(deltas + index * 2);
+    const rangeOffsetPosition = rangeOffsets + index * 2;
+    const rangeOffset = font.readUInt16BE(rangeOffsetPosition);
+    for (let codePoint = start; codePoint <= end && codePoint !== 0xffff; codePoint += 1) {
+      let glyph = (codePoint + delta) & 0xffff;
+      if (rangeOffset !== 0) {
+        const glyphPosition = rangeOffsetPosition + rangeOffset + (codePoint - start) * 2;
+        glyph = glyphPosition + 2 <= font.length ? font.readUInt16BE(glyphPosition) : 0;
+        if (glyph !== 0) glyph = (glyph + delta) & 0xffff;
+      }
+      if (glyph !== 0) coverage.add(codePoint);
+    }
+  }
+}
+
+function shareFontFilesForModel(model: SharePreviewModel): string[] {
+  const files = new Set(SHARE_BASE_FONT_FILES);
+  const text = [model.title, model.summary, model.eyebrow, model.badge, ...model.facts].join(" ");
+  for (const character of safePreviewText(text, 500)) {
+    const font = previewFontDefinition(character.codePointAt(0) ?? 0, "body");
+    if (font) files.add(font.path);
+  }
+  return [...files];
+}
+
+function resvgOptions(fontFiles: string[]) {
+  return {
+    fitTo: { mode: "width" as const, value: 1200 },
+    font: { fontFiles, loadSystemFonts: false, defaultFontFamily: "Schibsted Grotesk" }
+  };
+}
+
+function estimatePreviewTextWidth(value: string, fontSize: number, letterSpacing: number): number {
+  let units = 0;
+  let characters = 0;
+  for (const character of value) {
+    characters += 1;
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (/\s/u.test(character)) units += .32;
+    else if ((codePoint >= 0x2e80 && codePoint <= 0x9fff) || (codePoint >= 0xac00 && codePoint <= 0xd7af) || codePoint >= 0x20000) units += 1;
+    else if ((codePoint >= 0x0590 && codePoint <= 0x0e7f)) units += .68;
+    else if (codePoint < 0x80 && /[.,:;!|·'"()\[\]{}\-]/u.test(character)) units += .34;
+    else if (codePoint < 0x80 && /[A-Z0-9]/u.test(character)) units += .62;
+    else units += .56;
+  }
+  return units * fontSize + Math.max(0, characters - 1) * letterSpacing;
 }
 
 function sendSharePage(reply: FastifyReply, result: SharePreviewResult) {
@@ -330,7 +521,7 @@ function dispatchImageJob(): void {
   if (!activeImageJob) return;
   const worker = ensureImageWorker();
   worker.ref();
-  worker.postMessage({ key: activeImageJob.key, svg: activeImageJob.svg });
+  worker.postMessage({ key: activeImageJob.key, svg: activeImageJob.svg, fontFiles: activeImageJob.fontFiles });
 }
 
 function ensureImageWorker(): Worker {

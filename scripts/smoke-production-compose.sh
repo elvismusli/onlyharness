@@ -74,6 +74,18 @@ docker compose \
   -f "$ROOT/infra/production-compose.yml" \
   -f "$ROOT/infra/production-smoke.override.yml" \
   exec -T api node --input-type=module -e 'const storage = await import("./apps/harness-api/dist/resource-releases.js"); const result = storage.probeResourceImportArchiveStorage(); if (!result.ok) { console.error(JSON.stringify(result)); process.exit(1); } console.log(JSON.stringify(result));'
+docker compose \
+  --project-name "$PROJECT_NAME" \
+  --env-file "$ENV_FILE" \
+  -f "$ROOT/infra/production-compose.yml" \
+  -f "$ROOT/infra/production-smoke.override.yml" \
+  exec -T api node scripts/check-share-fonts.mjs
+docker compose \
+  --project-name "$PROJECT_NAME" \
+  --env-file "$ENV_FILE" \
+  -f "$ROOT/infra/production-compose.yml" \
+  -f "$ROOT/infra/production-smoke.override.yml" \
+  exec -T api node scripts/check-share-unicode-render.mjs
 curl -fsS "$BASE_URL/api/showroom/capabilities?limit=12" | node "$ROOT/scripts/check-superskill-showroom-response.mjs" approved
 curl -fsS "$BASE_URL/api/showroom/selected?limit=12" | node "$ROOT/scripts/check-superskill-showroom-response.mjs" selected
 curl -fsS "$BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
@@ -102,7 +114,7 @@ grep -qi 'superpowers' <<<"$share_html"
 [[ "$share_html" == *"https://superskill.sh/og/r/$share_key"* ]]
 share_png="$(mktemp)"
 curl -fsS "$BASE_URL/og/r/$share_key" -o "$share_png"
-node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$share_png"
+node "$ROOT/scripts/check-share-png.mjs" "$share_png"
 rm -f "$share_png"
 capability_html="$(curl -fsS -A 'TelegramBot (like TwitterBot)' "$BASE_URL/c/deep-market-researcher")"
 [[ "$capability_html" == *'property="og:title"'* ]]
@@ -110,7 +122,7 @@ grep -qi 'deep market researcher' <<<"$capability_html"
 [[ "$capability_html" == *'https://superskill.sh/og/c/deep-market-researcher'* ]]
 capability_png="$(mktemp)"
 curl -fsS "$BASE_URL/og/c/deep-market-researcher" -o "$capability_png"
-node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$capability_png"
+node "$ROOT/scripts/check-share-png.mjs" "$capability_png"
 rm -f "$capability_png"
 checkout_html="$(curl -fsS "$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher&version=0.2.0&provider_ref=manual_smoke")"
 [[ "$checkout_html" == *"SuperSkill"* ]]

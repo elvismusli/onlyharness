@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertSharePng } from "./check-share-png.mjs";
 
 const apiUrl = (process.env.SMOKE_API_URL ?? "https://superskill.sh/api").replace(/\/$/, "");
 const token = process.env.DEPLOY_SMOKE_ACCESS_TOKEN;
@@ -24,7 +25,7 @@ const headers = { "content-type": "application/json", authorization: `Bearer ${t
 const workspaceResponse = await fetch(`${apiUrl}/workspaces`, {
   method: "POST",
   headers,
-  body: JSON.stringify({ slug, name: "SuperSkill Preview QA", type: "team", visibility: "private", description: "Bounded production preview verification workspace." })
+  body: JSON.stringify({ slug, name: "SuperSkill Preview QA 世界 مرحبا", type: "team", visibility: "private", description: "Bounded production preview verification workspace." })
 });
 if (![200, 201].includes(workspaceResponse.status)) {
   throw new Error(`Workspace preview smoke could not create or replay workspace: ${workspaceResponse.status}`);
@@ -67,9 +68,7 @@ const imageResponse = await fetch(imageUrl);
 const image = Buffer.from(await imageResponse.arrayBuffer());
 if (imageResponse.status !== 200 || imageResponse.headers.get("content-type") !== "image/png") throw new Error(`Workspace OG image returned ${imageResponse.status}`);
 if (!/private\s*,\s*no-store/i.test(imageResponse.headers.get("cache-control") ?? "")) throw new Error("Workspace OG image is not private/no-store");
-if (image.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" || image.readUInt32BE(16) !== 1200 || image.readUInt32BE(20) !== 630) {
-  throw new Error("Workspace OG image is not a 1200x630 PNG");
-}
+assertSharePng(image, "workspace OG image");
 if (image.includes(Buffer.from(inviteBody.code))) throw new Error("Workspace OG image leaked the raw invite code");
 
 const missingResponse = await fetch(`${publicOrigin}/w/invite_missingPreviewSmoke`, { headers: { "user-agent": "TelegramBot (like TwitterBot)" } });

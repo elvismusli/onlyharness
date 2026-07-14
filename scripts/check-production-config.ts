@@ -10,6 +10,9 @@ const deployProduction = readFileSync(path.join(root, "scripts/deploy-production
 const caddyfile = readFileSync(path.join(root, "infra/Caddyfile"), "utf8");
 const apiDockerfile = readFileSync(path.join(root, "infra/api.Dockerfile"), "utf8");
 const workspacePreviewSmoke = readFileSync(path.join(root, "scripts/smoke-workspace-preview.mjs"), "utf8");
+const sharePngCheck = readFileSync(path.join(root, "scripts/check-share-png.mjs"), "utf8");
+const shareFontCheck = readFileSync(path.join(root, "scripts/check-share-fonts.mjs"), "utf8");
+const shareUnicodeRenderCheck = readFileSync(path.join(root, "scripts/check-share-unicode-render.mjs"), "utf8");
 const standaloneSuperSkillRedirect = sectionBetween(caddyfile, "www.superskill.sh {", "superskill.sh {", "standalone SuperSkill redirect site");
 const standaloneMachineRoutes = sectionBetween(caddyfile, "(superskill_machine_routes) {", "www.superskill.sh {", "standalone machine routes");
 const standaloneSuperSkillSite = sectionBetween(caddyfile, "superskill.sh {", "onlyharness.com, www.onlyharness.com {", "standalone SuperSkill site");
@@ -138,6 +141,12 @@ check(smokeCompose.includes('$BASE_URL/checkout?owner=harnesses&repo=deep-market
 check(smokeCompose.includes('[[ "$index_html" == *"SuperSkill"* ]]'), "production compose smoke must verify the SuperSkill product identity");
 check(smokeCompose.includes('$BASE_URL/r/$share_key') && smokeCompose.includes('$BASE_URL/og/r/$share_key'), "production compose smoke must verify crawler HTML and PNG share previews");
 check(smokeCompose.includes('$BASE_URL/c/deep-market-researcher') && smokeCompose.includes('$BASE_URL/og/c/deep-market-researcher'), "production compose smoke must verify managed capability share previews");
+check(smokeCompose.includes("check-share-png.mjs") && deployProduction.includes("check-share-png.mjs"), "production preview smokes must verify rendered text rather than PNG dimensions only");
+check(sharePngCheck.includes("darkTitlePixels") && sharePngCheck.includes("darkTitlePixels < 600"), "share PNG checker must fail when dynamic title fonts are missing");
+check(smokeCompose.includes("check-share-fonts.mjs") && deployProduction.includes("check-share-fonts.mjs"), "production preview smokes must verify bundled Unicode font coverage inside the API container");
+check(shareFontCheck.includes('"Arabic"') && shareFontCheck.includes('"Han"') && shareFontCheck.includes('"Hangul"'), "share font checker must cover major non-Latin preview scripts");
+check(smokeCompose.includes("check-share-unicode-render.mjs") && deployProduction.includes("check-share-unicode-render.mjs"), "production preview smokes must verify deterministic non-Latin glyph rendering inside the API container");
+check(shareUnicodeRenderCheck.includes('"Arabic"') && shareUnicodeRenderCheck.includes('"Han"') && shareUnicodeRenderCheck.includes("tofuPng"), "Unicode share canary must reject tofu glyph output without platform-specific hashes");
 check(smokeCompose.includes('$BASE_URL/manifest.webmanifest') && smokeCompose.includes('$BASE_URL/favicon.ico'), "production compose smoke must verify real brand assets");
 check(smokeCompose.includes('[[ "$checkout_html" == *"SuperSkill"* ]]'), "production compose smoke must verify SuperSkill checkout identity");
 check(!smokeCompose.includes('[[ "$checkout_html" == *"OnlyHarness"* ]]'), "production compose smoke must reject the legacy checkout identity");
