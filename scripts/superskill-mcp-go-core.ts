@@ -9,6 +9,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { ListRootsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 export const REQUIRED_LOCAL_TOOLS = [
+  "auth_status",
+  "auth_start",
+  "auth_wait",
+  "auth_logout",
   "activation_doctor",
   "recommend",
   "activation_start",
@@ -16,7 +20,13 @@ export const REQUIRED_LOCAL_TOOLS = [
   "activation_mark_invoked",
   "activation_finish",
   "activation_keep",
-  "activation_remove"
+  "activation_remove",
+  "publish_markdown_to_harness",
+  "publish_resource_package",
+  "workspace_create",
+  "workspace_get",
+  "workspace_publish_resource",
+  "workspace_install"
 ] as const;
 
 type Runtime = {
