@@ -21,7 +21,7 @@ import { registerAuthCommands } from "./commands/auth.js";
 import { registerRecommendCommand } from "./commands/recommend.js";
 import { registerSuperSkillInstallCommand } from "./commands/superskill-install.js";
 import { registerSuperSkillMcpCommand } from "./mcp/superskill-server.js";
-import { installHostedCatalogSkill } from "./lib/resource-skill-install.js";
+import { installHostedCatalogSkill, resourceInstallEventCoordinates } from "./lib/resource-skill-install.js";
 import { SuperSkillCliError } from "./lib/superskill-types.js";
 import { scanInventory as scanManagedInventory } from "./lib/client-adapters.js";
 
@@ -631,7 +631,7 @@ const program = new Command();
 program
   .name("hh")
   .description("SuperSkill CLI compatibility runtime — find, inspect, install and publish reusable AI-agent capabilities (superskill.sh)")
-  .version("0.3.0");
+  .version("0.3.1");
 program.enablePositionalOptions();
 
 program.command("search")
@@ -716,9 +716,10 @@ resourcesCommand.command("open")
   });
 
 resourcesCommand.command("install")
-  .description("install an explicitly selected hosted catalog skill into the native client skill root")
-  .argument("<id>", "exact hosted skill ID, e.g. onlyharness:packages/my-skill")
-  .option("--version <semver>", "exact immutable release version")
+  .description("install an explicitly selected exact hosted skill or native public harness into the client")
+  .argument("<id>", "exact resource ID, e.g. onlyharness:packages/my-skill or onlyharness:harnesses/deep-market-researcher")
+  .requiredOption("--version <semver>", "exact immutable release version")
+  .requiredOption("--digest <sha256>", "exact consented sha256 artifact digest")
   .requiredOption("--target <target>", "codex|claude-code")
   .option("--project-dir <path>", "project root", ".")
   .option("--allow-unreviewed", "explicitly consent to an unreviewed hosted skill after inspecting trust", false)
@@ -732,20 +733,24 @@ resourcesCommand.command("install")
         registryUrl,
         resourceId: id,
         version: options.version,
+        expectedDigest: options.digest,
         client,
         projectDir: options.projectDir,
         allowUnreviewed: Boolean(options.allowUnreviewed),
         dryRun: Boolean(options.dryRun)
       });
-      if (result.status === "installed") await recordCliRegistryEvent({
-        registry: registryUrl,
-        kind: "install",
-        owner: "onlyharness",
-        repo: id.replace(/^onlyharness:packages\//, ""),
-        version: result.version,
-        target: client,
-        client: client === "claude-code" ? "claude-code" : "hh"
-      });
+      if (result.status === "installed") {
+        const eventCoordinates = resourceInstallEventCoordinates(result);
+        await recordCliRegistryEvent({
+          registry: registryUrl,
+          kind: "install",
+          owner: eventCoordinates.owner,
+          repo: eventCoordinates.repo,
+          version: result.version,
+          target: client,
+          client: client === "claude-code" ? "claude-code" : "hh"
+        });
+      }
       if (options.json) return writeStdout(result);
       writeStdout([
         `${result.resourceId}@${result.version} ${result.status} at ${result.target}`,

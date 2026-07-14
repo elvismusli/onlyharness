@@ -245,6 +245,7 @@ function collectTextFiles(root: string, dir: string, files: string[]) {
       collectTextFiles(root, full, files);
       continue;
     }
+    if (!entry.isFile()) continue;
     if (!TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
     if (statSync(full).size > MAX_SCAN_BYTES) continue;
     files.push(path.relative(root, full));

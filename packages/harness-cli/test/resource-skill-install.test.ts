@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { installHostedCatalogSkill } from "../src/lib/resource-skill-install.js";
+import YAML from "yaml";
+import { canonicalArtifactDigest } from "@harnesshub/capability-schema/node";
+import { installHostedCatalogSkill, resourceInstallEventCoordinates } from "../src/lib/resource-skill-install.js";
 import { SuperSkillCliError } from "../src/lib/superskill-types.js";
 
 const registry = "https://superskill.sh/api";
@@ -16,18 +18,29 @@ const archive = tarGz([
   { name: "README.md", content: Buffer.from("# Clean user skill\n") },
   { name: "SKILL.md", content: Buffer.from(skill) }
 ]);
+const archiveDigest = `sha256:${createHash("sha256").update(archive).digest("hex")}`;
+const nativeResourceId = "onlyharness:harnesses/deep-market-researcher";
+const nativeVersion = "0.2.1";
+const nativeManifestText = readFileSync(path.resolve(import.meta.dirname, "../../../seed-harnesses/deep-market-researcher/harness.yaml"), "utf8");
+const nativeFiles = [
+  { path: "README.md", content: "# Native harness\n", truncated: false },
+  { path: "harness.yaml", content: nativeManifestText, truncated: false }
+];
+const nativeDigest = canonicalArtifactDigest({ files: nativeFiles, totalFileCount: nativeFiles.length, archiveTruncated: false });
 
 test("explicit unreviewed hosted skill install routes to Codex and is idempotent", async () => {
   const project = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-install-"));
   try {
     const fetchImpl = fixtureFetch();
     await assert.rejects(
-      () => installHostedCatalogSkill({ registryUrl: registry, resourceId, client: "codex", projectDir: project, fetchImpl }),
+      () => installHostedCatalogSkill({ registryUrl: registry, resourceId, version: "0.1.1", expectedDigest: archiveDigest, client: "codex", projectDir: project, fetchImpl }),
       hasReason("RESOURCE_REVIEW_REQUIRED")
     );
     const installed = await installHostedCatalogSkill({
       registryUrl: registry,
       resourceId,
+      version: "0.1.1",
+      expectedDigest: archiveDigest,
       client: "codex",
       projectDir: project,
       allowUnreviewed: true,
@@ -43,6 +56,8 @@ test("explicit unreviewed hosted skill install routes to Codex and is idempotent
     const repeated = await installHostedCatalogSkill({
       registryUrl: registry,
       resourceId,
+      version: "0.1.1",
+      expectedDigest: archiveDigest,
       client: "codex",
       projectDir: project,
       allowUnreviewed: true,
@@ -60,6 +75,8 @@ test("hosted skill install routes to Claude and dry-run writes nothing", async (
     const planned = await installHostedCatalogSkill({
       registryUrl: registry,
       resourceId,
+      version: "0.1.1",
+      expectedDigest: archiveDigest,
       client: "claude-code",
       projectDir: project,
       allowUnreviewed: true,
@@ -89,6 +106,7 @@ test("exact hosted skill install requests the immutable release detail route", a
       registryUrl: registry,
       resourceId,
       version: "0.1.1",
+      expectedDigest: archiveDigest,
       client: "codex",
       projectDir: project,
       allowUnreviewed: true,
@@ -115,7 +133,7 @@ for (const [label, releaseOverride] of [
     const fetchImpl = fixtureFetch(archiveUrl, releaseOverride, () => { requests += 1; });
     try {
       await assert.rejects(
-        () => installHostedCatalogSkill({ registryUrl: registry, resourceId, version: "0.1.1", client: "codex", projectDir: project, allowUnreviewed: true, fetchImpl }),
+        () => installHostedCatalogSkill({ registryUrl: registry, resourceId, version: "0.1.1", expectedDigest: archiveDigest, client: "codex", projectDir: project, allowUnreviewed: true, fetchImpl }),
         hasReason("RESOURCE_ARCHIVE_INVALID")
       );
       if (label === "version" || label === "trust") assert.equal(requests, 1);
@@ -147,7 +165,7 @@ test("failing static scan blocks hosted skill before archive download", async ()
   }) as typeof fetch;
   try {
     await assert.rejects(
-      () => installHostedCatalogSkill({ registryUrl: registry, resourceId, client: "codex", projectDir: project, allowUnreviewed: true, fetchImpl }),
+      () => installHostedCatalogSkill({ registryUrl: registry, resourceId, version: "0.1.1", expectedDigest: archiveDigest, client: "codex", projectDir: project, allowUnreviewed: true, fetchImpl }),
       hasReason("RESOURCE_BLOCKED")
     );
     assert.equal(requests, 1);
@@ -164,6 +182,8 @@ test("hosted skill install rejects cross-origin archives and symlinked native ro
       () => installHostedCatalogSkill({
         registryUrl: registry,
         resourceId,
+        version: "0.1.1",
+        expectedDigest: archiveDigest,
         client: "codex",
         projectDir: project,
         allowUnreviewed: true,
@@ -176,6 +196,8 @@ test("hosted skill install rejects cross-origin archives and symlinked native ro
       () => installHostedCatalogSkill({
         registryUrl: registry,
         resourceId,
+        version: "0.1.1",
+        expectedDigest: archiveDigest,
         client: "codex",
         projectDir: project,
         allowUnreviewed: true,
@@ -186,6 +208,217 @@ test("hosted skill install rejects cross-origin archives and symlinked native ro
   } finally {
     rmSync(project, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("exact public native harness install is anonymous, atomic and idempotent for Codex", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-native-harness-"));
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl = nativeFixtureFetch({}, requests);
+  try {
+    const installed = await installHostedCatalogSkill({
+      registryUrl: registry,
+      resourceId: nativeResourceId,
+      version: nativeVersion,
+      expectedDigest: nativeDigest,
+      client: "codex",
+      projectDir: project,
+      fetchImpl
+    });
+    assert.equal(installed.status, "installed");
+    assert.equal(installed.resourceType, "harness");
+    assert.equal(installed.target, ".agents/skills/deep-market-researcher");
+    assert.equal(installed.harnessRoot, ".superskill/harnesses/deep-market-researcher");
+    assert.equal(installed.archiveDigest, nativeDigest);
+    assert.deepEqual(resourceInstallEventCoordinates(installed), { owner: "harnesses", repo: "deep-market-researcher" });
+    assert.match(readFileSync(path.join(project, installed.target, "SKILL.md"), "utf8"), /not managed approval or Verified evidence/);
+    assert.equal(readFileSync(path.join(project, installed.harnessRoot!, "harness.yaml"), "utf8"), nativeManifestText);
+    assert.ok(requests.every(({ init }) => new Headers(init?.headers).get("authorization") === null));
+    assert.ok(requests.every(({ init }) => init?.redirect === "error"));
+
+    const repeated = await installHostedCatalogSkill({
+      registryUrl: registry,
+      resourceId: nativeResourceId,
+      version: nativeVersion,
+      expectedDigest: nativeDigest,
+      client: "codex",
+      projectDir: project,
+      fetchImpl
+    });
+    assert.equal(repeated.status, "unchanged");
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test("exact public native harness dry-run routes to Claude without writes", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-native-plan-"));
+  try {
+    const planned = await installHostedCatalogSkill({
+      registryUrl: registry,
+      resourceId: nativeResourceId,
+      version: nativeVersion,
+      expectedDigest: nativeDigest,
+      client: "claude-code",
+      projectDir: project,
+      dryRun: true,
+      fetchImpl: nativeFixtureFetch()
+    });
+    assert.equal(planned.status, "planned");
+    assert.equal(planned.target, ".claude/skills/deep-market-researcher");
+    assert.equal(readOptional(path.join(project, planned.target)), undefined);
+    assert.equal(readOptional(path.join(project, planned.harnessRoot!)), undefined);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+for (const [label, overrides] of [
+  ["resource identity", { resource: { upstreamId: "attacker/other" } }],
+  ["missing exact tuple", { resource: { nativeInstall: null } }],
+  ["scan failure", { detail: { security: { verdict: "fail", scanner: "static-v2" } } }],
+  ["scan digest drift", { detail: { nativeInstall: { scannedArtifactDigest: `sha256:${"0".repeat(64)}` } } }],
+  ["non snapshot", { archive: { snapshot: false } }],
+  ["truncated archive", { archive: { archiveTruncated: true } }],
+  ["digest mismatch", { archive: { artifactDigest: `sha256:${"0".repeat(64)}` } }],
+  ["traversal", { archive: { files: [{ path: "../escape", content: "bad", truncated: false }] } }]
+] as const) {
+  test(`native harness install rejects ${label} before final writes`, async () => {
+    const project = mkdtempSync(path.join(os.tmpdir(), "superskill-native-reject-"));
+    try {
+      await assert.rejects(
+        () => installHostedCatalogSkill({
+          registryUrl: registry,
+          resourceId: nativeResourceId,
+          version: nativeVersion,
+          expectedDigest: nativeDigest,
+          client: "codex",
+          projectDir: project,
+          fetchImpl: nativeFixtureFetch(overrides)
+        }),
+        (error: unknown) => error instanceof SuperSkillCliError && ["RESOURCE_NOT_INSTALLABLE", "RESOURCE_BLOCKED", "RESOURCE_ARCHIVE_INVALID"].includes(error.reasonCode)
+      );
+      assert.equal(readOptional(path.join(project, ".superskill/harnesses/deep-market-researcher")), undefined);
+      assert.equal(readOptional(path.join(project, ".agents/skills/deep-market-researcher")), undefined);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+}
+
+test("native harness install rejects redirected responses and target collisions", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-native-guards-"));
+  try {
+    await assert.rejects(
+      () => installHostedCatalogSkill({
+        registryUrl: registry,
+        resourceId: nativeResourceId,
+        version: nativeVersion,
+        expectedDigest: nativeDigest,
+        client: "codex",
+        projectDir: project,
+        fetchImpl: nativeFixtureFetch({ redirect: true })
+      }),
+      hasReason("RESOURCE_FETCH_FAILED")
+    );
+    const collision = path.join(project, ".agents/skills/deep-market-researcher");
+    await import("node:fs").then(({ mkdirSync, writeFileSync }) => {
+      mkdirSync(collision, { recursive: true });
+      writeFileSync(path.join(collision, "SKILL.md"), "different");
+    });
+    await assert.rejects(
+      () => installHostedCatalogSkill({
+        registryUrl: registry,
+        resourceId: nativeResourceId,
+        version: nativeVersion,
+        expectedDigest: nativeDigest,
+        client: "codex",
+        projectDir: project,
+        fetchImpl: nativeFixtureFetch()
+      }),
+      hasReason("TARGET_COLLISION")
+    );
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test("native harness install rejects archive manifest permission drift despite a matching tuple digest", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-native-manifest-drift-"));
+  try {
+    const altered = YAML.parse(nativeManifestText);
+    altered.permissions.network_allowlist = ["attacker.example"];
+    const alteredText = YAML.stringify(altered);
+    const alteredFiles = [nativeFiles[0]!, { path: "harness.yaml", content: alteredText, truncated: false }];
+    const alteredDigest = canonicalArtifactDigest({ files: alteredFiles, totalFileCount: alteredFiles.length, archiveTruncated: false });
+    await assert.rejects(
+      () => installHostedCatalogSkill({
+        registryUrl: registry,
+        resourceId: nativeResourceId,
+        version: nativeVersion,
+        expectedDigest: alteredDigest,
+        client: "codex",
+        projectDir: project,
+        fetchImpl: nativeFixtureFetch({ archiveManifestText: alteredText, tupleDigest: alteredDigest })
+      }),
+      hasReason("RESOURCE_ARCHIVE_INVALID")
+    );
+    assert.equal(readOptional(path.join(project, ".superskill/harnesses/deep-market-researcher")), undefined);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test("catalog install preserves a pre-existing lock owned by another process", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-resource-lock-"));
+  const lock = path.join(project, ".superskill-resource-install.lock");
+  try {
+    writeFileSync(lock, "other-owner", { mode: 0o600 });
+    await assert.rejects(
+      () => installHostedCatalogSkill({
+        registryUrl: registry,
+        resourceId: nativeResourceId,
+        version: nativeVersion,
+        expectedDigest: nativeDigest,
+        client: "codex",
+        projectDir: project,
+        fetchImpl: nativeFixtureFetch()
+      }),
+      hasReason("INSTALL_FAILED")
+    );
+    assert.equal(readFileSync(lock, "utf8"), "other-owner");
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test("native harness install rolls back the first target when the second rename fails", async () => {
+  const project = mkdtempSync(path.join(os.tmpdir(), "superskill-native-rollback-"));
+  let renames = 0;
+  try {
+    await assert.rejects(
+      () => installHostedCatalogSkill({
+        registryUrl: registry,
+        resourceId: nativeResourceId,
+        version: nativeVersion,
+        expectedDigest: nativeDigest,
+        client: "codex",
+        projectDir: project,
+        fetchImpl: nativeFixtureFetch(),
+        renameImpl: (source, destination) => {
+          renames += 1;
+          if (renames === 2) throw new Error("injected second rename failure");
+          renameSync(source, destination);
+        }
+      }),
+      hasReason("INSTALL_FAILED")
+    );
+    assert.equal(renames, 2);
+    assert.equal(readOptional(path.join(project, ".superskill/harnesses/deep-market-researcher")), undefined);
+    assert.equal(readOptional(path.join(project, ".agents/skills/deep-market-researcher")), undefined);
+    assert.equal(readOptional(path.join(project, ".superskill-resource-install.lock")), undefined);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
   }
 });
 
@@ -216,6 +449,82 @@ function fixtureFetch(actionUrl = archiveUrl, releaseOverride: Record<string, un
         "x-onlyharness-resource-version": "0.1.1",
         "x-superskill-artifact-sha256": createHash("sha256").update(archive).digest("hex")
       } });
+    }
+    return new Response("not found", { status: 404 });
+  }) as typeof fetch;
+}
+
+type NativeFixtureOverrides = {
+  resource?: Record<string, unknown>;
+  detail?: { security?: Record<string, unknown>; nativeInstall?: Record<string, unknown> | null };
+  archive?: Record<string, unknown>;
+  archiveManifestText?: string;
+  tupleDigest?: string;
+  redirect?: boolean;
+};
+
+function nativeFixtureFetch(overrides: NativeFixtureOverrides = {}, requests: Array<{ url: string; init?: RequestInit }> = []): typeof fetch {
+  const manifest = YAML.parse(nativeManifestText);
+  const archiveFiles = overrides.archiveManifestText
+    ? [nativeFiles[0]!, { path: "harness.yaml", content: overrides.archiveManifestText, truncated: false }]
+    : nativeFiles;
+  const tupleDigest = overrides.tupleDigest ?? canonicalArtifactDigest({ files: archiveFiles, totalFileCount: archiveFiles.length, archiveTruncated: false });
+  const nativeInstall = overrides.detail?.nativeInstall === null ? null : {
+    kind: "native_harness",
+    resourceId: nativeResourceId,
+    ref: "harnesses/deep-market-researcher",
+    version: nativeVersion,
+    artifactDigest: tupleDigest,
+    snapshot: true,
+    totalFileCount: archiveFiles.length,
+    archiveTruncated: false,
+    securityScan: "pass",
+    scanner: "static-v2",
+    scannedArtifactDigest: tupleDigest,
+    riskTier: "MEDIUM",
+    permissions: manifest.permissions,
+    license: manifest.license,
+    managedApproval: false,
+    ...overrides.detail?.nativeInstall
+  };
+  return (async (input, init) => {
+    const url = String(input);
+    requests.push({ url, init });
+    if (overrides.redirect) throw new TypeError("redirect blocked");
+    if (url === `${registry}/resources/${encodeURIComponent(nativeResourceId)}`) {
+      return new Response(JSON.stringify({
+        id: nativeResourceId,
+        resourceType: "harness",
+        installability: "installable",
+        upstreamId: "harnesses/deep-market-researcher",
+        upstreamOwner: "harnesses",
+        upstreamRepo: "deep-market-researcher",
+        trust: { securityScan: "pass", riskTier: "MEDIUM" },
+        actions: [{ id: "open_upstream", url: "https://superskill.sh/#/h/harnesses/deep-market-researcher" }],
+        nativeInstall,
+        ...overrides.resource
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url === `${registry}/repos/harnesses/deep-market-researcher/harness`) {
+      return new Response(JSON.stringify({
+        valid: true,
+        manifest,
+        security: { verdict: "pass", scanner: "static-v2", ...overrides.detail?.security },
+        nativeInstall
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url === `${registry}/repos/harnesses/deep-market-researcher/archive?version=0.2.1`) {
+      return new Response(JSON.stringify({
+        owner: "harnesses",
+        repo: "deep-market-researcher",
+        version: nativeVersion,
+        snapshot: true,
+        artifactDigest: tupleDigest,
+        totalFileCount: archiveFiles.length,
+        archiveTruncated: false,
+        files: archiveFiles,
+        ...overrides.archive
+      }), { status: 200, headers: { "content-type": "application/json" } });
     }
     return new Response("not found", { status: 404 });
   }) as typeof fetch;

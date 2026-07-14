@@ -15,8 +15,12 @@ import {
   writeFileSync
 } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { gunzipSync } from "node:zlib";
-import type { SuperSkillClient } from "./superskill-types.js";
+import YAML from "yaml";
+import { harnessManifestSchema, type HarnessManifest } from "@harnesshub/schema";
+import { validateManagedArchive } from "./artifact.js";
+import type { ManagedArchive, SuperSkillClient } from "./superskill-types.js";
 import { SuperSkillCliError } from "./superskill-types.js";
 
 const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024;
@@ -24,15 +28,21 @@ const MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
 const MAX_FILES = 120;
 const INSTALL_MARKER = ".superskill-resource.json";
 const PACKAGE_ID = /^onlyharness:packages\/([a-z0-9][a-z0-9-]{1,80})$/;
+const NATIVE_HARNESS_ID = /^onlyharness:([a-z0-9][a-z0-9._-]{1,63})\/([a-z0-9][a-z0-9-]{1,80})$/;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const DIGEST = /^sha256:[a-f0-9]{64}$/;
+const INSTALLER_VERSION = "0.3.1";
 
 type HostedSkillResource = {
   id: string;
   resourceType: string;
   installability: "open_only" | "importable" | "installable" | "verified";
+  upstreamId?: string;
+  upstreamOwner?: string;
   upstreamRepo?: string;
   trust?: { securityScan?: "pass" | "warn" | "fail" | "not_scanned"; riskTier?: string };
   actions?: Array<{ id?: string; url?: string }>;
+  nativeInstall?: Record<string, unknown> | null;
   release?: { version?: string; artifactDigest?: string; archiveSize?: number; trust?: string };
 };
 
@@ -43,6 +53,8 @@ export type HostedSkillInstallResult = {
   resourceId: string;
   version: string;
   target: string;
+  harnessRoot?: string;
+  resourceType: "skill" | "harness";
   client: SuperSkillClient;
   archiveDigest: string;
   trust: { securityScan: string; riskTier: string; managedApproval: false };
@@ -50,22 +62,46 @@ export type HostedSkillInstallResult = {
   warning: string | null;
 };
 
+export function resourceInstallEventCoordinates(result: Pick<HostedSkillInstallResult, "resourceId" | "resourceType">): { owner: string; repo: string } {
+  if (result.resourceType === "harness") {
+    const match = result.resourceId.match(NATIVE_HARNESS_ID);
+    if (match) return { owner: match[1]!, repo: match[2]! };
+  }
+  const hosted = result.resourceId.match(PACKAGE_ID);
+  return { owner: "onlyharness", repo: hosted?.[1] ?? result.resourceId };
+}
+
 export async function installHostedCatalogSkill(input: {
   registryUrl: string;
   resourceId: string;
   version?: string;
+  expectedDigest?: string;
   client: SuperSkillClient;
   projectDir?: string;
   allowUnreviewed?: boolean;
   dryRun?: boolean;
   fetchImpl?: typeof fetch;
+  renameImpl?: typeof renameSync;
 }): Promise<HostedSkillInstallResult> {
   const registry = safeRegistryBase(input.registryUrl);
   const packageMatch = input.resourceId.match(PACKAGE_ID);
-  if (!packageMatch) throw installError("Only SuperSkill-hosted public skill package IDs can be installed by this command.", "RESOURCE_NOT_INSTALLABLE", "Use the exact onlyharness:packages/<name> ID from resource_detail.");
+  const nativeHarnessMatch = input.resourceId.match(NATIVE_HARNESS_ID);
+  if (!packageMatch && !nativeHarnessMatch) throw installError("Only an exact SuperSkill-hosted skill or native public harness ID can be installed by this command.", "RESOURCE_NOT_INSTALLABLE", "Use the exact ID from resource_detail.");
+  if (!input.version || !SEMVER.test(input.version)) throw installError("Catalog install requires an exact semantic version.", "RESOURCE_NOT_INSTALLABLE", "Use --version with the exact value returned by resource_use_instructions.");
+  if (!input.expectedDigest || !DIGEST.test(input.expectedDigest)) throw installError("Catalog install requires an exact sha256 digest.", "RESOURCE_NOT_INSTALLABLE", "Use --digest with the exact value returned by resource_use_instructions.");
+  if (nativeHarnessMatch && !packageMatch) {
+    return installNativeCatalogHarness({
+      ...input,
+      registry,
+      owner: nativeHarnessMatch[1]!,
+      name: nativeHarnessMatch[2]!,
+      version: input.version,
+      expectedDigest: input.expectedDigest
+    });
+  }
+  if (!packageMatch) throw installError("Catalog resource identity is not installable.", "RESOURCE_NOT_INSTALLABLE", "Use the exact ID from resource_detail.");
   const name = packageMatch[1]!;
-  if (input.version && !SEMVER.test(input.version)) throw installError("Catalog skill version is invalid.", "RESOURCE_NOT_INSTALLABLE", "Use the exact semantic version from the shared release page.");
-  const versionPath = input.version ? `/releases/${encodeURIComponent(input.version)}` : "";
+  const versionPath = `/releases/${encodeURIComponent(input.version)}`;
   const detailUrl = new URL(`${registry.pathname.replace(/\/$/, "")}/resources/${encodeURIComponent(input.resourceId)}${versionPath}`, registry.origin);
   const detailResponse = await safeFetch(input.fetchImpl ?? fetch, detailUrl);
   if (detailResponse.status === 404) throw new SuperSkillCliError("Catalog skill was not found.", 4, "RESOURCE_NOT_FOUND", "Run resources search again and use its exact resource ID.");
@@ -83,7 +119,8 @@ export async function installHostedCatalogSkill(input: {
     || release.trust !== "unreviewed") {
     throw installError("Catalog detail has no valid immutable release tuple.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
   }
-  if (input.version && release.version !== input.version) throw installError("Catalog detail release does not match the requested version.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  if (release.version !== input.version) throw installError("Catalog detail release does not match the requested version.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  if (`sha256:${release.artifactDigest}` !== input.expectedDigest) throw installError("Catalog detail release does not match the consented digest.", "RESOURCE_ARCHIVE_INVALID", "Repeat detail and consent for the exact current release.");
   const scan = resource.trust?.securityScan ?? "not_scanned";
   if (scan === "fail") throw installError("Catalog skill has a failing security scan.", "RESOURCE_BLOCKED", "Do not install this release.");
   if (scan !== "pass" && !input.allowUnreviewed) {
@@ -138,9 +175,11 @@ export async function installHostedCatalogSkill(input: {
   assertSafeDescendant(projectRoot, parent);
   const stage = path.join(parent, `.superskill-resource.tmp-${randomBytes(8).toString("hex")}`);
   let lock: number | undefined;
+  let lockOwned = false;
   const lockPath = path.join(projectRoot, ".superskill-resource-install.lock");
   try {
     lock = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | noFollowFlag(), 0o600);
+    lockOwned = true;
     fsyncSync(lock);
     if (existsSync(target)) throw installError("Native skill target appeared during install.", "TARGET_COLLISION", "Inspect the target before retrying.");
     mkdirSync(stage, { mode: 0o700 });
@@ -150,14 +189,14 @@ export async function installHostedCatalogSkill(input: {
       writeFileSync(output, file.content, { mode: 0o644, flag: "wx" });
     }
     writeFileSync(path.join(stage, INSTALL_MARKER), marker, { mode: 0o644, flag: "wx" });
-    renameSync(stage, target);
+    (input.renameImpl ?? renameSync)(stage, target);
   } catch (error) {
     rmSync(stage, { recursive: true, force: true });
     if (error instanceof SuperSkillCliError) throw error;
     throw installError("Catalog skill could not be written atomically.", "INSTALL_FAILED", "Inspect the project permissions and retry.", 1);
   } finally {
     if (lock !== undefined) try { closeSync(lock); } catch { /* cleanup only */ }
-    try { rmSync(lockPath, { force: true }); } catch { /* cleanup only */ }
+    if (lockOwned) try { rmSync(lockPath, { force: true }); } catch { /* cleanup only */ }
   }
   return result("installed");
 
@@ -165,6 +204,7 @@ export async function installHostedCatalogSkill(input: {
     return {
       status,
       resourceId: input.resourceId,
+      resourceType: "skill",
       version: archive.version,
       target: relativeTarget,
       client: input.client,
@@ -178,6 +218,232 @@ export async function installHostedCatalogSkill(input: {
           : "Installed by explicit consent as an unreviewed hosted catalog skill; this is not managed approval or Verified evidence."
     };
   }
+}
+
+async function installNativeCatalogHarness(input: {
+  registry: URL;
+  registryUrl: string;
+  resourceId: string;
+  owner: string;
+  name: string;
+  version: string;
+  expectedDigest: string;
+  client: SuperSkillClient;
+  projectDir?: string;
+  allowUnreviewed?: boolean;
+  dryRun?: boolean;
+  fetchImpl?: typeof fetch;
+  renameImpl?: typeof renameSync;
+}): Promise<HostedSkillInstallResult> {
+  if (input.allowUnreviewed) throw installError("Native harness install requires a passing digest-bound static scan; --allow-unreviewed is not accepted.", "RESOURCE_BLOCKED", "Choose a passing public native harness release.");
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const basePath = input.registry.pathname.replace(/\/$/, "");
+  const resourceUrl = new URL(`${basePath}/resources/${encodeURIComponent(input.resourceId)}`, input.registry.origin);
+  const resourceResponse = await safeFetch(fetchImpl, resourceUrl);
+  if (!resourceResponse.ok) throw installError(`Catalog detail returned HTTP ${resourceResponse.status}.`, "RESOURCE_FETCH_FAILED", "Retry after SuperSkill is healthy.", resourceResponse.status === 404 ? 4 : 1);
+  assertResponseUrl(resourceResponse, resourceUrl);
+  const resource = await responseJson<HostedSkillResource>(resourceResponse, "Catalog detail");
+  const resourceNativeInstall = asRecord(resource.nativeInstall);
+  if (resource.id !== input.resourceId || resource.resourceType !== "harness" || resource.installability !== "installable"
+    || resource.upstreamOwner !== input.owner || resource.upstreamRepo !== input.name || resource.upstreamId !== `${input.owner}/${input.name}`) {
+    throw installError("Catalog resource is not the exact native public harness identity.", "RESOURCE_NOT_INSTALLABLE", "Repeat search and use the exact installable harness ID.");
+  }
+  if (resourceNativeInstall?.kind !== "native_harness" || resourceNativeInstall.resourceId !== input.resourceId
+    || resourceNativeInstall.ref !== `${input.owner}/${input.name}` || resourceNativeInstall.version !== input.version
+    || resourceNativeInstall.artifactDigest !== input.expectedDigest || resourceNativeInstall.scannedArtifactDigest !== input.expectedDigest
+    || resourceNativeInstall.snapshot !== true || resourceNativeInstall.archiveTruncated !== false
+    || resourceNativeInstall.securityScan !== "pass" || resourceNativeInstall.scanner !== "static-v2"
+    || resourceNativeInstall.managedApproval !== false) {
+    throw installError("Catalog resource has no exact scan-bound native install tuple.", "RESOURCE_NOT_INSTALLABLE", "Repeat detail and use only its exact current install command.");
+  }
+  if (resource.trust?.securityScan !== "pass") throw installError("Native harness is not backed by a passing current static scan.", "RESOURCE_BLOCKED", "Do not install this release.");
+
+  const detailUrl = new URL(`${basePath}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/harness`, input.registry.origin);
+  const detailResponse = await safeFetch(fetchImpl, detailUrl);
+  if (!detailResponse.ok) throw installError(`Harness detail returned HTTP ${detailResponse.status}.`, "RESOURCE_FETCH_FAILED", "Retry after SuperSkill is healthy.", detailResponse.status === 404 ? 4 : 1);
+  assertResponseUrl(detailResponse, detailUrl);
+  const detail = await responseJson<Record<string, unknown>>(detailResponse, "Harness detail");
+  const parsedManifest = harnessManifestSchema.safeParse(detail.manifest);
+  const security = asRecord(detail.security);
+  const nativeInstall = asRecord(detail.nativeInstall);
+  if (!parsedManifest.success || detail.valid !== true || security?.verdict !== "pass" || security.scanner !== "static-v2") {
+    throw installError("Native harness detail is not valid and scan-passing.", "RESOURCE_BLOCKED", "Do not install this release.");
+  }
+  const manifest = parsedManifest.data;
+  if (manifest.name !== input.name || manifest.version !== input.version || manifest.visibility !== "public" || manifest.pricing.model !== "free"
+    || manifest.content.type !== "harness" || manifest.license === "UNSPECIFIED") {
+    throw installError("Native harness manifest does not match the exact public free release.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  }
+  if (nativeInstall?.kind !== "native_harness" || nativeInstall.resourceId !== input.resourceId || nativeInstall.ref !== `${input.owner}/${input.name}`
+    || nativeInstall.version !== input.version || nativeInstall.artifactDigest !== input.expectedDigest || nativeInstall.scannedArtifactDigest !== input.expectedDigest
+    || nativeInstall.snapshot !== true || nativeInstall.archiveTruncated !== false || nativeInstall.securityScan !== "pass" || nativeInstall.scanner !== "static-v2"
+    || nativeInstall.managedApproval !== false || !isDeepStrictEqual(resourceNativeInstall, nativeInstall) || nativeInstall.license !== manifest.license
+    || !isDeepStrictEqual(nativeInstall.permissions, manifest.permissions)) {
+    throw installError("Native harness detail is not bound to the consented version, digest and scan.", "RESOURCE_ARCHIVE_INVALID", "Repeat detail and consent for the exact current release.");
+  }
+
+  const archiveUrl = new URL(`${basePath}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/archive`, input.registry.origin);
+  archiveUrl.searchParams.set("version", input.version);
+  const archiveResponse = await safeFetch(fetchImpl, archiveUrl);
+  if (!archiveResponse.ok) throw installError(`Harness archive returned HTTP ${archiveResponse.status}.`, "RESOURCE_ARCHIVE_FAILED", "Retry the same exact release after SuperSkill is healthy.", archiveResponse.status === 404 ? 4 : 1);
+  assertResponseUrl(archiveResponse, archiveUrl);
+  const archive = await responseJson<ManagedArchive>(archiveResponse, "Harness archive");
+  if (archive.owner !== input.owner || archive.repo !== input.name || archive.version !== input.version || archive.snapshot !== true) {
+    throw installError("Harness archive identity does not match the consented release.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  }
+  try {
+    validateManagedArchive(archive, { version: input.version, digest: input.expectedDigest });
+  } catch {
+    throw installError("Harness archive failed completeness or digest validation.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  }
+  const files = archive.files.map((file) => ({ path: file.path, content: Buffer.from(file.content, "utf8") }));
+  const manifestFile = archive.files.find((file) => file.path === "harness.yaml");
+  if (!manifestFile) throw installError("Harness archive has no root harness.yaml.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  let archiveManifest: ReturnType<typeof harnessManifestSchema.safeParse>;
+  try { archiveManifest = harnessManifestSchema.safeParse(YAML.parse(manifestFile.content)); } catch { archiveManifest = harnessManifestSchema.safeParse(undefined); }
+  if (!archiveManifest.success || !isDeepStrictEqual(archiveManifest.data, manifest)) {
+    throw installError("Harness archive manifest does not match the scanned detail.", "RESOURCE_ARCHIVE_INVALID", "Do not install this response.");
+  }
+
+  const projectRoot = safeProjectRoot(input.projectDir ?? ".");
+  const harnessRelative = `.superskill/harnesses/${input.name}`;
+  const adapterRelative = input.client === "codex" ? `.agents/skills/${input.name}` : `.claude/skills/${input.name}`;
+  const harnessTarget = path.join(projectRoot, harnessRelative);
+  const adapterTarget = path.join(projectRoot, adapterRelative);
+  assertSafeDescendant(projectRoot, harnessTarget);
+  assertSafeDescendant(projectRoot, adapterTarget);
+  const marker = `${JSON.stringify({
+    schemaVersion: "superskill.resource-install.v1",
+    resourceId: input.resourceId,
+    resourceType: "harness",
+    version: input.version,
+    archiveDigest: input.expectedDigest,
+    client: input.client,
+    managedApproval: false
+  }, null, 2)}\n`;
+  const adapter = nativeHarnessAdapter(input.client, manifest, harnessRelative, input.expectedDigest);
+  const harnessExists = existsSync(harnessTarget);
+  const adapterExists = existsSync(adapterTarget);
+  if (harnessExists || adapterExists) {
+    if (harnessExists && adapterExists && installedFilesMatch(harnessTarget, files, marker) && installedAdapterMatches(adapterTarget, adapter)) return result("unchanged");
+    throw installError("Native harness target already exists with different or incomplete content.", "TARGET_COLLISION", "Inspect the existing harness and client skill before retrying.");
+  }
+  if (input.dryRun) return result("planned");
+
+  const lockPath = path.join(projectRoot, ".superskill-resource-install.lock");
+  const stage = path.join(projectRoot, `.superskill-resource.tmp-${randomBytes(8).toString("hex")}`);
+  let lock: number | undefined;
+  let lockOwned = false;
+  let harnessCommitted = false;
+  let adapterCommitted = false;
+  try {
+    lock = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | noFollowFlag(), 0o600);
+    lockOwned = true;
+    fsyncSync(lock);
+    assertSafeDescendant(projectRoot, harnessTarget);
+    assertSafeDescendant(projectRoot, adapterTarget);
+    if (existsSync(harnessTarget) || existsSync(adapterTarget)) throw installError("Native harness target appeared during install.", "TARGET_COLLISION", "Inspect the target before retrying.");
+    const stageHarness = path.join(stage, "harness");
+    const stageAdapter = path.join(stage, "adapter");
+    mkdirSync(stageHarness, { recursive: true, mode: 0o700 });
+    mkdirSync(stageAdapter, { recursive: true, mode: 0o700 });
+    for (const file of files) {
+      const output = path.join(stageHarness, file.path);
+      mkdirSync(path.dirname(output), { recursive: true, mode: 0o700 });
+      writeFileSync(output, file.content, { mode: 0o644, flag: "wx" });
+    }
+    writeFileSync(path.join(stageHarness, INSTALL_MARKER), marker, { mode: 0o644, flag: "wx" });
+    writeFileSync(path.join(stageAdapter, "SKILL.md"), adapter, { mode: 0o644, flag: "wx" });
+    mkdirSync(path.dirname(harnessTarget), { recursive: true, mode: 0o700 });
+    mkdirSync(path.dirname(adapterTarget), { recursive: true, mode: 0o700 });
+    assertSafeDescendant(projectRoot, harnessTarget);
+    assertSafeDescendant(projectRoot, adapterTarget);
+    (input.renameImpl ?? renameSync)(stageHarness, harnessTarget);
+    harnessCommitted = true;
+    (input.renameImpl ?? renameSync)(stageAdapter, adapterTarget);
+    adapterCommitted = true;
+  } catch (error) {
+    if (adapterCommitted) rmSync(adapterTarget, { recursive: true, force: true });
+    if (harnessCommitted) rmSync(harnessTarget, { recursive: true, force: true });
+    rmSync(stage, { recursive: true, force: true });
+    if (error instanceof SuperSkillCliError) throw error;
+    throw installError("Native harness could not be written atomically.", "INSTALL_FAILED", "Inspect project permissions and retry.", 1);
+  } finally {
+    if (lock !== undefined) try { closeSync(lock); } catch { /* cleanup only */ }
+    if (lockOwned) try { rmSync(lockPath, { force: true }); } catch { /* cleanup only */ }
+    rmSync(stage, { recursive: true, force: true });
+  }
+  return result("installed");
+
+  function result(status: HostedSkillInstallResult["status"]): HostedSkillInstallResult {
+    return {
+      status,
+      resourceId: input.resourceId,
+      resourceType: "harness",
+      version: input.version,
+      target: adapterRelative,
+      harnessRoot: harnessRelative,
+      client: input.client,
+      archiveDigest: input.expectedDigest,
+      trust: { securityScan: "pass", riskTier: String(nativeInstall?.riskTier ?? "UNKNOWN"), managedApproval: false },
+      files: [...archive.files.map((file) => `${harnessRelative}/${file.path}`), `${adapterRelative}/SKILL.md`],
+      warning: status === "planned"
+        ? "Validated and planned as an exact public native harness; no files were installed and this is not managed approval or Verified evidence."
+        : status === "unchanged"
+          ? "The exact public native harness and client adapter are unchanged; this is not managed approval or Verified evidence."
+          : "Installed the exact public native harness and client adapter; this is not managed approval or Verified evidence."
+    };
+  }
+}
+
+function nativeHarnessAdapter(client: SuperSkillClient, manifest: HarnessManifest, harnessRelative: string, digest: string): string {
+  const description = manifest.summary.replace(/["\\]/g, "\\$&").replace(/\s+/g, " ").slice(0, 240);
+  const root = harnessRelative.replaceAll("\\", "/");
+  return [
+    "---",
+    `name: ${manifest.name}`,
+    `description: \"Use this exact SuperSkill native harness for ${description}\"`,
+    "---",
+    "",
+    `# ${manifest.title}`,
+    "",
+    manifest.summary,
+    "",
+    `Client: ${client}`,
+    `Harness root: \`${root}\``,
+    `Release: \`${manifest.version}\``,
+    `Archive digest: \`${digest}\``,
+    "",
+    "This is an explicitly installed public native harness, not managed approval or Verified evidence.",
+    "Keep runtime credentials injected at execution time and follow the manifest permissions.",
+    "",
+    "Before relying on the harness, inspect and gate the exact local package:",
+    "",
+    "```bash",
+    `npx --yes onlyharness@${INSTALLER_VERSION} inspect ${root} --json`,
+    `npx --yes onlyharness@${INSTALLER_VERSION} eval ${root} --json`,
+    `npx --yes onlyharness@${INSTALLER_VERSION} gate --dir ${root} --json`,
+    "```",
+    ""
+  ].join("\n");
+}
+
+function installedAdapterMatches(target: string, expected: string): boolean {
+  try {
+    return !lstatSync(target).isSymbolicLink() && lstatSync(target).isDirectory()
+      && listRegularFiles(target).length === 1
+      && readFileSync(path.join(target, "SKILL.md"), "utf8") === expected;
+  } catch {
+    return false;
+  }
+}
+
+async function responseJson<T>(response: Response, label: string): Promise<T> {
+  try { return await response.json() as T; } catch { throw installError(`${label} is not valid JSON.`, "RESOURCE_FETCH_FAILED", "Retry after SuperSkill is healthy.", 1); }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function safeRegistryBase(value: string): URL {

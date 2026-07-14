@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.1.0",
   info: {
     title: "SuperSkill API",
-    version: "0.3.0",
+    version: "0.3.1",
     description: "Find, verify and install reviewed AI-agent capabilities while preserving accounts, workspaces and exact release evidence."
   },
   servers: [
@@ -1952,8 +1952,8 @@ export const openapi = {
     "/mcp": {
       post: {
         summary: "MCP Streamable HTTP endpoint",
-        description: "SuperSkill MCP server v0.3.0. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
-        "x-mcp-server-version": "0.3.0",
+        description: "SuperSkill MCP server v0.3.1. Exact tool inventory: search_harnesses, harness_detail, search_resources, resource_detail, resource_use_instructions, pull_instructions, pull_harness, search_docs, publish_markdown_to_harness, publish_resource_package. Tool results include structuredContent with stable code/status fields; logical failures set isError=true while JSON-RPC transport failures use the JSON-RPC error envelope.",
+        "x-mcp-server-version": "0.3.1",
         "x-mcp-tools": ["search_harnesses", "harness_detail", "search_resources", "resource_detail", "resource_use_instructions", "pull_instructions", "pull_harness", "search_docs", "publish_markdown_to_harness", "publish_resource_package"],
         responses: {
           "200": { description: "MCP JSON-RPC response over JSON or text/event-stream. Tool-level failures remain protocol-successful JSON-RPC responses but carry result.isError=true and a stable result.structuredContent.code." }
@@ -2808,6 +2808,12 @@ export const openapi = {
             }
           },
           release: { $ref: "#/components/schemas/ResourceRelease" },
+          nativeInstall: {
+            oneOf: [
+              { $ref: "#/components/schemas/NativeHarnessInstall" },
+              { type: "null" }
+            ]
+          },
           workspaceApproval: {
             type: "object",
             properties: {
@@ -2837,6 +2843,34 @@ export const openapi = {
         },
         required: ["version", "artifactDigest", "archiveSize", "trust"]
       },
+      NativeHarnessInstall: {
+        type: "object",
+        description: "Exact anonymous native-harness install tuple. It is local catalog evidence, not managed approval or a Verified badge.",
+        properties: {
+          kind: { type: "string", const: "native_harness" },
+          resourceId: { type: "string" },
+          ref: { type: "string" },
+          version: { type: "string" },
+          artifactDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" },
+          snapshot: { type: "boolean", const: true },
+          totalFileCount: { type: "integer", minimum: 1 },
+          archiveTruncated: { type: "boolean", const: false },
+          securityScan: { type: "string", const: "pass" },
+          scanner: { type: "string", const: "static-v2" },
+          scannedArtifactDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" },
+          riskTier: { type: "string" },
+          permissions: { type: "object" },
+          license: { type: "string" },
+          managedApproval: { type: "boolean", const: false },
+          archiveUrl: { type: "string", format: "uri" },
+          commands: {
+            type: "object",
+            properties: { codex: { type: "string" }, claudeCode: { type: "string" } },
+            required: ["codex", "claudeCode"]
+          }
+        },
+        required: ["kind", "resourceId", "ref", "version", "artifactDigest", "snapshot", "totalFileCount", "archiveTruncated", "securityScan", "scanner", "scannedArtifactDigest", "riskTier", "permissions", "license", "managedApproval", "archiveUrl", "commands"]
+      },
       ResourceExactRelease: {
         allOf: [
           { $ref: "#/components/schemas/Resource" },
@@ -2861,6 +2895,12 @@ export const openapi = {
             properties: {
               lastVerifiedAt: { type: "string", format: "date-time" }
             }
+          },
+          nativeInstall: {
+            oneOf: [
+              { $ref: "#/components/schemas/NativeHarnessInstall" },
+              { type: "null" }
+            ]
           },
           example: { type: "object" },
           files: { type: "array", items: { type: "string" } },

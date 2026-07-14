@@ -6,7 +6,7 @@
     },
     "superskill_local": {
       "command": "npx",
-      "args": ["--yes", "onlyharness@0.3.0", "mcp", "superskill"]
+      "args": ["--yes", "onlyharness@0.3.1", "mcp", "superskill"]
     }
   }
 }

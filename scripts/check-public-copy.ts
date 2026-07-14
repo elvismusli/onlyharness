@@ -29,6 +29,7 @@ const allCopyFiles = [...publicCopyFiles, ...superskillCopyFiles];
 const docs = Object.fromEntries(
   allCopyFiles.map((file) => [file, readFileSync(path.join(root, file), "utf8")])
 );
+const runtime = JSON.parse(readFileSync(path.join(root, "plugins/superskill/runtime.json"), "utf8")) as { cliReleaseStatus?: string; cliVersion?: string };
 
 for (const [file, text] of Object.entries(docs)) {
   for (const phrase of [
@@ -83,7 +84,12 @@ check(docs["apps/registry-web/src/core/useSelectedShowroomCapabilities.ts"].incl
 check(docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("not an approval, trust badge, or managed activation claim"), "Selected skill cards must keep review-pending status explicit");
 check(!docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard.tsx"].includes("Client handoff"), "Selected skill cards must not expose managed client handoff");
 check(docs["README.md"].includes("selected_unreviewed") && docs["README.md"].includes("cannot be recommended or activated"), "README must separate selected discovery from approved managed use");
-check(docs["README.md"].includes("12 exact immutable **candidates**") && docs["README.md"].includes("published and verified through a clean `npx` install"), "README must keep current SuperSkill supply and published CLI state honest");
+check(docs["README.md"].includes("12 exact immutable **candidates**"), "README must keep current SuperSkill supply honest");
+if (runtime.cliReleaseStatus === "published") {
+  check(docs["README.md"].includes(`${runtime.cliVersion}\` is the current one-link transition hotfix, published and verified through a clean \`npx\` install`), "README must state clean verification for the published current CLI");
+} else {
+  check(docs["README.md"].includes(`${runtime.cliVersion}\` is the current one-link transition hotfix`) && docs["README.md"].includes("after publication"), "README must keep the unpublished CLI state honest");
+}
 for (const file of ["AGENTS.md", "apps/registry-web/public/AGENTS.md"] as const) {
   check(!docs[file].includes("The web app is OnlyHarness 98"), `${file} must not identify the SuperSkill human surface as OnlyHarness`);
   check(!docs[file].includes("plugins/onlyharness"), `${file} must not recommend the stale legacy plugin validation path`);

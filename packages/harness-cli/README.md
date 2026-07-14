@@ -45,18 +45,19 @@ Both clients share the same lifecycle. Claude pins under `.claude/skills`; Codex
 Universal bootstrap (available only after the exact CLI release and official npm integrity are published):
 
 ```bash
-npx --yes onlyharness@0.3.0 superskill install https://superskill.sh/api/superskill/install --auto
+npx --yes onlyharness@0.3.1 superskill install https://superskill.sh/api/superskill/install --auto
 ```
 
 Approved capability pages bind the same command to one immutable URL containing capability id, version and sha256. Exactly one detected client transactionally writes its project-native shared skill and merges both the public `superskill` browse MCP and exact-version `superskill_local` lifecycle MCP into `.codex/config.toml` or `.mcp.json`; an exact link also records a private pending handoff. Existing unrelated config is preserved, conflicting entries fail before writes, rollback restores byte-exact originals, and no token is stored. Both/none fail with `CLIENT_AMBIGUOUS`/`CLIENT_NOT_DETECTED`. Use `--target codex|claude-code`, explicit `--all`, or `--dry-run`. Nothing is activated and routing/activation consent remain separate.
 
-The public catalog is a separate explicit-consent path. Hosted resources with `resourceType: skill` can be installed into the native project skill root after reviewing provenance and scan state:
+The public catalog is a separate explicit-consent path. Exact hosted skills and public native harnesses can be installed after reviewing provenance, version, digest and scan state:
 
 ```bash
-npx --yes onlyharness@0.3.0 resources install onlyharness:packages/example-skill --version 0.1.0 --target codex --allow-unreviewed --json
+npx --yes onlyharness@0.3.1 resources install onlyharness:packages/example-skill --version 0.1.0 --digest sha256:<64-hex-digest> --target codex --allow-unreviewed --json
+npx --yes onlyharness@0.3.1 resources install onlyharness:harnesses/deep-market-researcher --version 0.2.1 --digest sha256:<64-hex-digest> --target claude-code --json
 ```
 
-Codex writes `.agents/skills/<name>` and Claude Code writes `.claude/skills/<name>`. The CLI downloads one exact release, verifies the server-pinned SHA-256 digest, validates safe package paths and root `SKILL.md`, writes an ownership marker atomically, and records the install event only after files exist. `--allow-unreviewed` is required for hosted skills without a passing scan; it is explicit acceptance of the shown risk, never a Verified or managed-approval claim. Open-only resources, failed scans, non-skill packages, symlinks, cross-origin archives and destination collisions fail closed.
+Codex writes `.agents/skills/<name>` and Claude Code writes `.claude/skills/<name>`. Native harnesses additionally write the exact package under `.superskill/harnesses/<name>`. The CLI downloads one exact release anonymously, verifies the consented SHA-256 digest and scan-bound immutable snapshot, validates safe package paths, and writes all targets atomically. `--allow-unreviewed` is accepted only for hosted skills without a passing scan; native harnesses require a passing digest-bound static scan. Open-only resources, redirects, failed scans, incomplete snapshots, identity drift, symlinks and destination collisions fail closed.
 
 After the one required post-install client restart, use `superskill_local`. On the first protected action it calls `auth_start`, waits through `auth_wait`, then retries the original tool once with the same idempotency key. `recommend` first discloses or explicitly dismisses a pending exact handoff; `activation_start` acknowledges it only after `ready`. Protected publishing and workspace tools use the same account broker. The CLI `superskill handoff` command is diagnostic compatibility only.
 

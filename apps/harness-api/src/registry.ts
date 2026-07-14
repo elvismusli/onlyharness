@@ -90,6 +90,7 @@ export type RegistryItem = {
     findings: number;
     scanner: StaticSecurityReport["scanner"];
   };
+  nativeInstallAvailable: boolean;
   contextCost: ContextCost;
   standard: "conformant" | "partial";
   forks: number;
@@ -176,6 +177,27 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     evalScore: evalResult?.score ?? 0,
     updatedAt
   });
+  const snapshot = contentType === "harness"
+    && validation.valid
+    && validation.manifest.visibility === "public"
+    && validation.manifest.pricing.model === "free"
+    && validation.manifest.license !== "UNSPECIFIED"
+    && validation.manifest.name === path.basename(repoPath)
+    && security.verdict === "pass"
+    && security.scanner === "static-v2"
+      ? buildArchiveForVersion(owner, validation.manifest.name, repoPath, validation.manifest.version)
+      : undefined;
+  const current = snapshot ? buildArchive(repoPath) : undefined;
+  const nativeInstallAvailable = Boolean(
+    snapshot?.snapshot
+    && !snapshot.archiveTruncated
+    && snapshot.totalFileCount === snapshot.files.length
+    && snapshot.artifactDigest
+    && current
+    && !current.archiveTruncated
+    && current.totalFileCount === current.files.length
+    && current.artifactDigest === snapshot.artifactDigest
+  );
   return {
     owner,
     ownerLabel: owner === "harnesses" ? "SuperSkill" : owner === "directories" ? "directory shelf" : owner.startsWith("@") ? owner : "local",
@@ -202,6 +224,7 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
       findings: security.findings.length,
       scanner: security.scanner
     },
+    nativeInstallAvailable,
     contextCost,
     standard: standardLevel(validation.valid, validation.manifest, security),
     forks: social.forks,
@@ -215,7 +238,9 @@ export function registryItemFromDir(owner: string, repoPath: string, counters: M
     heatDelta: social.heatDelta,
     freshness: social.freshness,
     badge: social.badge,
-    cliCommand: contentType === "directory" && directory?.url ? `open ${directory.url}` : `hh install ${owner}/${validation.manifest.name}`,
+    cliCommand: contentType === "directory" && directory?.url
+      ? `open ${directory.url}`
+      : `Use resource_detail, harness_detail, and pull_instructions for exact ${owner}/${validation.manifest.name} install evidence`,
     updatedAt
   };
 }
@@ -234,11 +259,11 @@ function compatibilityInfo(manifest: HarnessManifest, directory: RegistryItem["d
   }
   return {
     targets: [
-      { id: "claude-code", name: "Claude Code", status: "available", notes: "hh install --target claude-code" },
-      { id: "codex", name: "Codex", status: "available", notes: "hh install --target codex" },
-      { id: "cursor", name: "Cursor", status: "available", notes: "hh install --target cursor" },
+      { id: "claude-code", name: "Claude Code", status: "available", notes: "exact resource detail + pull_instructions tuple" },
+      { id: "codex", name: "Codex", status: "available", notes: "exact resource detail + pull_instructions tuple" },
+      { id: "cursor", name: "Cursor", status: "planned", notes: "not part of the current public native-install contract" },
       { id: "mcp", name: "MCP", status: "available", notes: "pull_instructions + pull_harness" },
-      { id: "cli", name: "CLI", status: "available", notes: "hh install/run/eval/gate" },
+      { id: "cli", name: "CLI", status: "available", notes: "resources detail + exact digest-bound resources install" },
       { id: "github", name: "GitHub", status: "available", notes: "publish-resource or verified git publish" }
     ]
   };
@@ -529,7 +554,7 @@ function collectFiles(root: string, dir: string, files: string[]) {
     if (entry.name === ".harnesshub" || entry.name === "node_modules") continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) collectFiles(root, full, files);
-    else files.push(path.relative(root, full));
+    else if (entry.isFile()) files.push(path.relative(root, full));
   }
 }
 

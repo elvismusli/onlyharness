@@ -28,7 +28,7 @@ import { CAPABILITY_ID_RE, DIGEST_RE, SUPERSKILL_RUNTIME, SuperSkillCliError } f
 
 export const SUPERSKILL_INSTALL_ORIGIN = "https://superskill.sh";
 export const SUPERSKILL_INSTALL_PATH = "/api/superskill/install";
-export const SUPERSKILL_PLUGIN_VERSION = "0.3.0";
+export const SUPERSKILL_PLUGIN_VERSION = "0.3.1";
 export const SUPERSKILL_PUBLIC_MCP_URL = "https://superskill.sh/mcp";
 
 export { UNIVERSAL_SUPERSKILL_FILES };

@@ -291,7 +291,7 @@ export async function runSuperSkillMcpServer(registry: string): Promise<void> {
   const resources = new Map<string, ResourceEntry>();
   const pendingInvocations = new Map<AgentAuthClient, PendingProtectedInvocation>();
   const server = new Server(
-    { name: "superskill-local", version: "0.3.0" },
+    { name: "superskill-local", version: "0.3.1" },
     {
       capabilities: { tools: {}, resources: {} },
       instructions: "Use explicit routing, activation, keep and remove consent. Read only returned superskill:// activation resources."

@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import YAML from "yaml";
 import { harnessManifestSchema } from "@harnesshub/schema";
-import { ArchiveSnapshotConflictError, buildArchiveForVersion, listArchiveVersions, registryItemFromDir, versionRoot, writeArchiveSnapshot } from "../src/registry.ts";
+import { ArchiveSnapshotConflictError, buildArchive, buildArchiveForVersion, listArchiveVersions, registryItemFromDir, versionRoot, writeArchiveSnapshot } from "../src/registry.ts";
 
 test("registryItemFromDir exposes link-only directory metadata", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "hh-directory-"));
@@ -38,7 +38,7 @@ test("registryItemFromDir exposes link-only directory metadata", () => {
   }
 });
 
-test("registryItemFromDir exposes install as the primary runnable harness command", () => {
+test("registryItemFromDir exposes exact-install discovery without a legacy unbound command", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "hh-runnable-"));
   try {
     writeHarnessFixture(root, {
@@ -49,13 +49,30 @@ test("registryItemFromDir exposes install as the primary runnable harness comman
     const item = registryItemFromDir("harnesses", root, new Map());
     assert.ok(item);
     assert.equal(item.contentType, "harness");
-    assert.equal(item.cliCommand, "hh install harnesses/agent-runner");
+    assert.match(item.cliCommand, /resource_detail.*pull_instructions.*exact harnesses\/agent-runner/);
+    assert.doesNotMatch(JSON.stringify(item), /hh install/);
     assert.equal(item.job, "Harness building");
     assert.equal(item.signalCount, 0);
     assert.equal(item.heatQualified, false);
     assert.equal(item.freshness, "collecting signals");
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("public archive construction ignores symlinks instead of following server files", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "hh-archive-symlink-"));
+  const outside = path.join(root, "..", `hh-secret-${process.pid}-${Date.now()}`);
+  try {
+    writeFileSync(path.join(root, "README.md"), "# Public\n");
+    writeFileSync(outside, "server-secret");
+    symlinkSync(outside, path.join(root, "secret-link"));
+    const archive = buildArchive(root);
+    assert.deepEqual(archive.files.map((file) => file.path), ["README.md"]);
+    assert.doesNotMatch(JSON.stringify(archive), /server-secret/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { force: true });
   }
 });
 

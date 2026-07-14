@@ -6,7 +6,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import { fetchCountersMap } from "./social.js";
 
-export const MCP_SERVER_VERSION = "0.3.0";
+export const MCP_SERVER_VERSION = "0.3.1";
 export const MCP_TOOL_NAMES = [
   "search_harnesses",
   "harness_detail",
@@ -228,6 +228,13 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
       const counters = await fetchCountersMap();
       const catalogResource = resources.resourceDetail(id, registry.scanRegistry(counters));
       if (!catalogResource) return { error: "Resource not found", status: 404, code: "RESOURCE_NOT_FOUND", id };
+      const native = nativeHarnessCoordinates(catalogResource);
+      if (native) {
+        const nativeInstructions = await options.pullInstructions(native);
+        const nativeInstall = isRecord(nativeInstructions) && isRecord(nativeInstructions.nativeInstall) ? nativeInstructions.nativeInstall : null;
+        if (version && nativeInstall?.version !== version) return { error: "Resource release not found", status: 404, code: "RESOURCE_NOT_FOUND", id, version };
+        return { ...catalogResource, actions: catalogResource.actions.filter((action) => action.id !== "install"), nativeInstall };
+      }
       const metadata = options.resourceReleaseMetadata(catalogResource.id, version);
       if (version && !metadata) return { error: "Resource release not found", status: 404, code: "RESOURCE_NOT_FOUND", id, version };
       if (!metadata) return catalogResource;
@@ -249,6 +256,24 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
       const counters = await fetchCountersMap();
       const catalogResource = resources.resourceDetail(id, registry.scanRegistry(counters));
       if (!catalogResource) return { error: "Resource not found", status: 404, code: "RESOURCE_NOT_FOUND", id };
+      const native = nativeHarnessCoordinates(catalogResource);
+      if (native) {
+        const nativeInstructions = await options.pullInstructions(native);
+        const nativeInstall = isRecord(nativeInstructions) && isRecord(nativeInstructions.nativeInstall) ? nativeInstructions.nativeInstall : null;
+        if (version && nativeInstall?.version !== version) return { error: "Resource release not found", status: 404, code: "RESOURCE_NOT_FOUND", id, version };
+        return {
+          id: catalogResource.id,
+          title: catalogResource.title,
+          resourceType: catalogResource.resourceType,
+          installability: catalogResource.installability,
+          licenseStatus: catalogResource.licenseStatus,
+          sourceCheckedAt: catalogResource.sourceCheckedAt,
+          verifiedInstall: catalogResource.trust.installVerifiedAt ?? null,
+          release: null,
+          nativeInstall,
+          instructions: resourceInstructions(catalogResource)
+        };
+      }
       const metadata = options.resourceReleaseMetadata(catalogResource.id, version);
       if (version && !metadata) return { error: "Resource release not found", status: 404, code: "RESOURCE_NOT_FOUND", id, version };
       const exact = metadata ? options.resourceRelease(catalogResource.id, metadata.version) : undefined;
@@ -375,7 +400,12 @@ export function resourceInstructions(resource: resources.Resource, release?: Res
   const mirror = resource.actions.find((action) => action.id === "open_mirror");
   const open = resource.actions.find((action) => action.id === "open_upstream");
   const mcp = resource.actions.find((action) => action.id === "copy_mcp_config");
-  if (install && "command" in install) {
+  const nativeHarness = resource.resourceType === "harness" && resource.installability === "installable" && resource.trust.securityScan === "pass"
+    && /^onlyharness:[a-z0-9@._-]+\/[a-z0-9][a-z0-9-]{1,80}$/.test(resource.id);
+  if (nativeHarness) {
+    lines.push("This is a native public harness install, not a hosted-skill package or managed approval.");
+    lines.push("Call harness_detail and pull_instructions for the exact owner/name; use only the returned digest-bound current-client command after confirming a valid public free manifest, passing static scan and exact semantic version.");
+  } else if (install && "command" in install) {
     lines.push(`Install with: ${install.command}`);
   } else if (mcp && "command" in mcp && mcp.command) {
     lines.push(`Copy MCP config or command: ${mcp.command}`);
@@ -396,14 +426,14 @@ export function resourceInstructions(resource: resources.Resource, release?: Res
     if (resource.resourceType === "skill" && /^onlyharness:packages\/[a-z0-9][a-z0-9-]{1,80}$/.test(resource.id)) {
       const actionVersion = hostedResourceArchiveVersion(resource.id, archive.url);
       const exactVersion = release?.version ?? actionVersion;
-      if (!exactVersion || (release && actionVersion !== release.version)) {
+      if (!exactVersion || !release || actionVersion !== release.version || !/^[a-f0-9]{64}$/.test(release.artifactDigest)) {
       lines.push("Installation is blocked because the hosted archive action is not bound to an exact semantic version.");
       } else {
         const consentFlag = resource.trust.securityScan === "pass" ? "" : " --allow-unreviewed";
         lines.push("This hosted skill is a browse-catalog install, not a managed approval or activation.");
         if (resource.trust.securityScan !== "pass") lines.push("Show the unreviewed/not-scanned trust state and ask explicit install consent before using --allow-unreviewed.");
-        lines.push(`Install for Codex after consent: npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resource.id} --version ${exactVersion} --target codex${consentFlag} --json`);
-        lines.push(`Install for Claude Code after consent: npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resource.id} --version ${exactVersion} --target claude-code${consentFlag} --json`);
+        lines.push(`Install for Codex after consent: npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resource.id} --version ${exactVersion} --digest sha256:${release.artifactDigest} --target codex${consentFlag} --json`);
+        lines.push(`Install for Claude Code after consent: npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resource.id} --version ${exactVersion} --digest sha256:${release.artifactDigest} --target claude-code${consentFlag} --json`);
       }
     }
   }
@@ -414,6 +444,16 @@ export function resourceInstructions(resource: resources.Resource, release?: Res
     lines.push("License is unknown; keep upstream attribution visible and do not sell, claim ownership, or present this as Verified install evidence.");
   }
   return lines;
+}
+
+function nativeHarnessCoordinates(resource: resources.Resource): { owner: string; name: string } | undefined {
+  if (resource.resourceType !== "harness" || resource.installability !== "installable") return undefined;
+  const match = resource.id.match(/^onlyharness:([a-z0-9][a-z0-9._-]{1,63})\/([a-z0-9][a-z0-9-]{1,80})$/);
+  if (!match) return undefined;
+  const owner = match[1]!;
+  const name = match[2]!;
+  if (resource.upstreamOwner !== owner || resource.upstreamRepo !== name || resource.upstreamId !== `${owner}/${name}`) return undefined;
+  return { owner, name };
 }
 
 function hostedResourceArchiveVersion(resourceId: string, value: string): string | undefined {

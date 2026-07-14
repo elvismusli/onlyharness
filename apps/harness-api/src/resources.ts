@@ -370,7 +370,7 @@ export function resourcesFromRegistryCatalog(items: RegistryItem[]): Resource[] 
       sourceCheckMethod: "manual_research",
       sourceCheckStatus: "active",
       lastSeenAt: sourceCheckedAt,
-      installability: isDirectory ? "open_only" : "installable",
+      installability: isDirectory ? "open_only" : item.nativeInstallAvailable ? "installable" : "importable",
       tags: item.tags,
       worksWith,
       upstreamPopularity: { sourceLabel: "SuperSkill registry" },
@@ -385,8 +385,7 @@ export function resourcesFromRegistryCatalog(items: RegistryItem[]): Resource[] 
           { id: "open_upstream", label: "Open directory", url: item.directory.url }
         ]
         : [
-          { id: "install", label: "Install", command: `hh install ${item.owner}/${item.name}`, target: "cli" },
-          { id: "open_upstream", label: "Open source", url: item.forgeUrl ?? `https://superskill.sh/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}` }
+          { id: "open_upstream", label: "Inspect source", url: item.forgeUrl ?? `https://superskill.sh/#/h/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.name)}` }
         ],
       source: {
         platform: "manual",

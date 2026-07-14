@@ -46,6 +46,15 @@ test("resource detail resolves URL-encoded resource ids", () => {
   assert.ok(!detail?.actions.some((action) => action.id === "download_archive"));
 });
 
+test("native harness catalog projection never exposes the legacy unbound install command", () => {
+  const detail = resourceDetail("onlyharness:harnesses/deep-market-researcher", registry.scanRegistry(new Map()));
+
+  assert.equal(detail?.installability, "installable");
+  assert.ok(detail?.actions.some((action) => action.id === "open_upstream"));
+  assert.ok(!detail?.actions.some((action) => action.id === "install"));
+  assert.doesNotMatch(JSON.stringify(detail), /hh install/);
+});
+
 function fixtureDirectoryItem(): RegistryItem {
   return {
     owner: "directories",
@@ -72,6 +81,7 @@ function fixtureDirectoryItem(): RegistryItem {
     evalStatus: "unknown",
     evalScore: 0,
     security: { verdict: "pass", findings: 0, scanner: "fixture" },
+    nativeInstallAvailable: false,
     contextCost: { approxTokens: 0, files: 0, bytes: 0, status: "estimated" },
     standard: "partial",
     forks: 0,

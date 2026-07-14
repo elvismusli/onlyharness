@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { recomputeCapabilityDiff, scanHarnessDir, scanHarnessFiles } from "../src/security-scan.ts";
@@ -14,6 +14,21 @@ test("scanHarnessDir passes clean text files", () => {
     assert.deepEqual(report.findings, []);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("scanHarnessDir ignores text symlinks instead of reading files outside the harness", () => {
+  const root = makeHarness();
+  const outside = path.join(root, "..", `hh-scan-secret-${process.pid}-${Date.now()}.txt`);
+  try {
+    writeFileSync(outside, `token = sk-${"a".repeat(24)}`);
+    symlinkSync(outside, path.join(root, "agents/secret.txt"));
+    const report = scanHarnessDir(root);
+    assert.equal(report.verdict, "pass");
+    assert.doesNotMatch(JSON.stringify(report), /literal-secret|secret\.txt/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { force: true });
   }
 });
 

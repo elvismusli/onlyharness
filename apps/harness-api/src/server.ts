@@ -9,7 +9,7 @@ import { diffHarnessDirs, semanticDiffMarkdown } from "@harnesshub/semantic-diff
 import { decodePaymentSignatureHeader, encodePaymentResponseHeader, HTTPFacilitatorClient } from "@x402/core/http";
 import type { PaymentPayload, PaymentRequirements, SettleResponse, VerifyResponse } from "@x402/core/types";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { buildMcpServer, MCP_TOOL_NAMES, mcpError, mcpToolCallPreflight, type McpErrorCode, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
+import { buildMcpServer, MCP_SERVER_VERSION, MCP_TOOL_NAMES, mcpError, mcpToolCallPreflight, type McpErrorCode, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, createWorkspaceJoinCode, verifyCommunityInviteCode, verifyWorkspaceJoinCode } from "./community.js";
 import { ManagedCatalog } from "./capabilities.js";
@@ -388,6 +388,9 @@ app.get("/resources/:id", async (request, reply) => {
   const registryItems = registry.scanRegistry(counters);
   const resource = resources.resourceDetail(id, registryItems);
   if (!resource) return reply.code(404).send({ error: "Resource not found" });
+  if (resource.resourceType === "harness") {
+    return { ...resource, nativeInstall: nativeHarnessInstallForResource(resource) ?? null };
+  }
   const release = resourceReleases.activeReleaseMetadata(resource.id);
   if (!release) return resource;
   const detail = resourceReleases.activeReleaseDetail(resource.id, release.version);
@@ -1156,6 +1159,9 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
   const item = registry.registryItemFromDir(owner, root, counters);
   const lastVerifiedAt = await fetchLastVerificationAt(owner, repo);
   const { rootDir, ...publicInspection } = inspection;
+  const nativeInstall = inspection.manifest
+    ? nativeHarnessInstallTuple(owner, repo, root, { valid: inspection.valid, manifest: inspection.manifest, risk: inspection.risk, security })
+    : undefined;
   void rootDir;
   return {
     owner,
@@ -1172,6 +1178,7 @@ app.get("/repos/:owner/:repo/harness", async (request, reply) => {
     contextCost,
     standard,
     verification: { lastVerifiedAt },
+    nativeInstall: nativeInstall ?? null,
     readme: registry.readMaybe(path.join(root, "README.md")),
     prReview: samplePrReview(root, owner, repo)
   };
@@ -2363,14 +2370,18 @@ const pullInstructionsFromMcp = async ({ owner, name }: { owner: string; name: s
       next: ["Open the upstream directory", "Review source state and licensing before importing entries"]
     };
   }
-  const version = detail.manifest?.version ?? "current";
-  const command = `npx onlyharness install ${owner}/${name}`;
-  const localCommand = `node packages/harness-cli/dist/hh.mjs install ${owner}/${name}`;
+  const root = registry.resolveHarnessPath(owner, name);
+  const nativeInstall = root && detail.manifest
+    ? nativeHarnessInstallTuple(owner, name, root, { valid: detail.valid, manifest: detail.manifest, risk: detail.risk, security: detail.security })
+    : undefined;
   return {
-    command,
-    localCommand,
+    command: null,
+    commands: nativeInstall?.commands ?? null,
     npmStatus: "published",
-    archiveUrl: `https://superskill.sh/api/repos/${owner}/${name}/archive?version=${encodeURIComponent(version)}`,
+    version: nativeInstall?.version ?? detail.manifest?.version ?? null,
+    archiveUrl: nativeInstall?.archiveUrl ?? null,
+    security: detail.security,
+    nativeInstall: nativeInstall ?? null,
     contextCost: detail.contextCost,
     access: detail.access,
     payment: detail.access.payment,
@@ -2390,6 +2401,7 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
   const item = registry.registryItemFromDir(owner, root, counters);
   const lastVerifiedAt = await fetchLastVerificationAt(owner, repo);
   const access = await mcpAccessSummary(owner, repo, manifest, manifest.version, authorization);
+  const nativeInstall = nativeHarnessInstallTuple(owner, repo, root, { valid: inspection.valid, manifest, risk: inspection.risk, security });
   return {
     owner,
     name: repo,
@@ -2403,10 +2415,71 @@ async function harnessDetailPayload(owner: string, repo: string, authorization: 
     standard,
     evalResult,
     verification: { lastVerifiedAt },
+    nativeInstall: nativeInstall ?? null,
     access,
     example: registry.readExample(root),
     files: registry.listHarnessFiles(root)
   };
+}
+
+function nativeHarnessInstallTuple(
+  owner: string,
+  repo: string,
+  root: string,
+  detail: {
+    valid: boolean;
+    manifest: HarnessManifest;
+    risk: RiskReport;
+    security: { verdict: string; scanner?: string };
+  }
+) {
+  const { manifest, security } = detail;
+  if (!detail.valid || manifest.name !== repo || manifest.visibility !== "public" || manifest.pricing.model !== "free" || manifest.content.type !== "harness") return undefined;
+  if (manifest.license === "UNSPECIFIED" || security.verdict !== "pass" || security.scanner !== "static-v2") return undefined;
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(manifest.version)) return undefined;
+  const snapshot = registry.buildArchiveForVersion(owner, repo, root, manifest.version);
+  const current = registry.buildArchive(root);
+  if (!snapshot?.snapshot || snapshot.archiveTruncated || snapshot.totalFileCount !== snapshot.files.length || !snapshot.artifactDigest) return undefined;
+  if (current.archiveTruncated || current.totalFileCount !== current.files.length || current.artifactDigest !== snapshot.artifactDigest) return undefined;
+  const resourceId = `onlyharness:${owner}/${repo}`;
+  const base = `npx --yes onlyharness@${MCP_SERVER_VERSION} resources install ${resourceId} --version ${manifest.version} --digest ${snapshot.artifactDigest}`;
+  return {
+    kind: "native_harness" as const,
+    resourceId,
+    ref: `${owner}/${repo}`,
+    version: manifest.version,
+    artifactDigest: snapshot.artifactDigest,
+    snapshot: true as const,
+    totalFileCount: snapshot.totalFileCount,
+    archiveTruncated: false as const,
+    securityScan: "pass" as const,
+    scanner: "static-v2" as const,
+    scannedArtifactDigest: snapshot.artifactDigest,
+    riskTier: detail.risk.tier,
+    permissions: manifest.permissions,
+    license: manifest.license,
+    managedApproval: false as const,
+    archiveUrl: `https://superskill.sh/api/repos/${owner}/${repo}/archive?version=${encodeURIComponent(manifest.version)}`,
+    commands: {
+      codex: `${base} --target codex --json`,
+      claudeCode: `${base} --target claude-code --json`
+    }
+  };
+}
+
+function nativeHarnessInstallForResource(resource: resources.Resource) {
+  if (resource.resourceType !== "harness" || resource.installability !== "installable") return undefined;
+  const match = resource.id.match(/^onlyharness:([a-z0-9][a-z0-9._-]{1,63})\/([a-z0-9][a-z0-9-]{1,80})$/);
+  if (!match) return undefined;
+  const owner = match[1]!;
+  const repo = match[2]!;
+  if (resource.upstreamOwner !== owner || resource.upstreamRepo !== repo || resource.upstreamId !== `${owner}/${repo}`) return undefined;
+  const root = registry.resolveHarnessPath(owner, repo);
+  if (!root) return undefined;
+  const { inspection, security } = registry.registryDetailBasics(root);
+  return inspection.manifest
+    ? nativeHarnessInstallTuple(owner, repo, root, { valid: inspection.valid, manifest: inspection.manifest, risk: inspection.risk, security })
+    : undefined;
 }
 
 async function mcpAccessSummary(owner: string, repo: string, manifest: HarnessManifest, version: string, authorization: string | undefined) {

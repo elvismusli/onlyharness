@@ -1,6 +1,6 @@
 ---
 name: superskill
-description: "Use when the user explicitly asks SuperSkill to find a reviewed capability, search the public skill catalog, or install an explicitly selected SuperSkill-hosted skill; also use when a substantial task maps to a curated job category and no selected local skill covers it."
+description: "Use when the user explicitly asks SuperSkill to find a reviewed capability, search the public agent-resource catalog, or install an explicitly selected SuperSkill-hosted skill or native public harness; also use when a substantial task maps to a curated job category and no selected local skill covers it."
 ---
 
 # SuperSkill
@@ -9,7 +9,7 @@ Use the same managed flow in Claude Code and Codex. The project-local `superskil
 
 ## Runtime preflight
 
-This plugin is bound to `onlyharness@0.3.0` and activation contract `superskill.activation.v1`.
+This plugin is bound to `onlyharness@0.3.1` and activation contract `superskill.activation.v1`.
 
 Before managed work, require the project-local `superskill_local` MCP with the lifecycle, browser-auth, publishing and workspace tools listed below. One fresh client session and normal MCP trust approval may be required after one-link install. If it is absent, stop with `LOCAL_MCP_UNAVAILABLE`; do not replace it with shell commands, a global CLI, `latest`, or the public MCP.
 
@@ -50,14 +50,14 @@ Do not use SuperSkill for trivial edits, translation or formatting; when the use
 
 ## Explicit public catalog install
 
-Keep this separate from managed recommendation. Use it only when the user explicitly asks to search/install a public catalog skill or chooses one exact hosted skill after `no_safe_match`.
+Keep this separate from managed recommendation. Use it only when the user explicitly asks to search/install a public catalog resource or chooses one exact installable resource after `no_safe_match`.
 
-1. Use the public `superskill` MCP `search_resources`, `resource_detail`, and `resource_use_instructions`. For an exact shared URL `/resources/{id}/releases/{version}`, parse and preserve both `id` and `version`, and pass that unchanged `version` to both `resource_detail` and `resource_use_instructions`; never downgrade an exact link to an id-only/latest call. Require both returned release tuples and both install commands to match the shared version and one artifact digest, otherwise fail closed. Do not send repository context, prompts, credentials or personal data as the query.
-2. Install only a `skill` with an exact `onlyharness:packages/<name>` ID and a SuperSkill-hosted immutable archive. Refuse `open_only`, missing-archive, redirecting, failing-scan or non-skill resources.
+1. Use the public `superskill` MCP `search_resources`, `resource_detail`, and `resource_use_instructions` without forcing `type=skill`. Do not send repository context, prompts, credentials or personal data as the query. If the public MCP tools are not attached but a local shell is available, the only allowed fallback is the same pinned read-only CLI surface: `npx --yes onlyharness@0.3.1 resources search ... --json` and `resources detail ... --json`; never use `latest` or an unpinned package.
+2. There are exactly two installable public modes. A hosted skill must have resource type `skill`, exact ID `onlyharness:packages/<name>`, an immutable SuperSkill archive, and matching version/digest/size/trust tuples from `resource_detail` and `resource_use_instructions`. For an exact shared URL `/resources/{id}/releases/{version}`, preserve the version unchanged in both calls; never downgrade an exact link to an id-only/latest call. A native harness must have resource type `harness`, exact ID `onlyharness:<owner>/<name>`, `installability=installable`, and an exact `nativeInstall` tuple; a raw `install` action or legacy `hh install` command is forbidden. For a native harness also call `harness_detail` and `pull_instructions`; require a valid public free manifest, `content.type=harness`, a semantic version, passing `static-v2` security, and byte-identical native tuples and client commands across all four detail/instruction responses. Refuse paid, entitlement-gated, private, directory, `open_only`, missing-archive, redirecting, failing-scan, or every other resource type as a native install.
 3. Show title, exact resource ID, current version, security-scan/risk/license state, and that browse-catalog install is neither managed approval nor Verified evidence.
 4. Ask explicit install consent. This consent is not routing, activation or pin consent. `not_scanned`/`warn` requires a direct acknowledgement before `--allow-unreviewed`; never infer it from a generic request.
-5. After consent, use the exact current-client command returned by `resource_use_instructions`. It must be pinned to `onlyharness@0.3.0`, pass the explicit `--target`, and use `--allow-unreviewed` only for the disclosed release.
-6. Report the returned native target, exact version and archive digest. A new client task may be required before the newly installed skill triggers.
+5. After consent, use the exact current-client command returned by `resource_use_instructions` for a hosted skill or `pull_instructions.commands` for a native harness. It must be pinned to `onlyharness@0.3.1`, preserve the exact version, pass the explicit `--target`, and use `--allow-unreviewed` only for the disclosed hosted-skill release. Never add `--pay`, `--force`, a token, or an environment credential.
+6. Report the returned native target, exact version and archive digest. A new client task may be required before the newly installed skill or harness adapter triggers.
 
 Never call managed lifecycle tools for a browse-catalog install or describe the installed files as activated, reviewed, approved, pinned or kept.
 

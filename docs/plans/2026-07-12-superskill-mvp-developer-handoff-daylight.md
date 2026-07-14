@@ -549,3 +549,46 @@ docs/evidence/superskill-ui/<date>/
 - All checks/build/smokes pass twice where required by the MVP rollout spec.
 - Final handoff includes changed files, commands, runtime evidence and remaining rollout
   risks; “code complete” is not enough without browser and client proof.
+
+## 16. Agent-first browser auth rollout addendum — 2026-07-14
+
+This section is the current implementation truth for the transition release series.
+
+### Implemented
+
+- `superskill_local` owns interactive authorization, protected publish/workspace calls and
+  exact same-task retry. Public search/detail/archive remain anonymous.
+- Durable service-only agent requests, 30-day sessions, opaque ten-minute access tokens,
+  rotating refresh tokens, consent, replay/reuse detection and immediate revocation are
+  defined by `20260714170000_agent_first_auth.sql`.
+- `/auth/agent/start`, `browser-bind`, `context`, `decision`, `token`, `refresh` and `revoke`
+  use independent proofs. Browser proof is bound from the URL fragment, scrubbed with
+  `history.replaceState`, then represented only by an HttpOnly cookie.
+- The local CLI uses the OS keychain for refresh credentials, memory-only access tokens and
+  an explicit `session_only` fallback without plaintext credential files.
+- The Daylight Connect page supports Google, GitHub and email/password, preserves pending
+  connect through confirmation and always requires explicit Continue approval.
+- A unified principal resolves browser JWT, agent access token, transition device token and
+  existing workspace/org automation credentials without substituting client identity for a
+  real user id.
+- Protected mutations preserve one `Idempotency-Key` across authorization and retry. Exact
+  replay returns the original receipt; payload drift returns 409; an indeterminate crash
+  window remains fail-closed and never re-executes the mutation automatically.
+- `onlyharness@0.3.1` is the transition hotfix candidate. It keeps the `0.3.0` auth broker and
+  adds anonymous, redirect-blocked native-harness installation bound to exact version,
+  digest, complete immutable snapshot, current passing `static-v2` scan and full manifest
+  equivalence. Public projections no longer expose the unbound legacy `hh install` command.
+
+### Rollout state
+
+- Supabase migration is applied and service-only RPC access was verified.
+- Production is dark-deployed with `SUPERSKILL_AGENT_AUTH_ENABLED=false`; public reads and
+  the universal installer remain available.
+- `/.well-known/oauth-authorization-server` remains 404. Native `/mcp/account` OAuth is a
+  later stage and must not be advertised before clean Codex and Claude compatibility proof.
+- Public enablement is **NO-GO** until production Google and GitHub Supabase providers are
+  configured by the account owner, both browser flows pass, and two consecutive clean-user
+  Codex and Claude journeys pass. Email is enabled but is not sufficient for GO.
+- The hidden legacy device flow remains transition-only. It must not appear in the website,
+  universal skill or public docs, and is removed in `0.4.0` only after the observation gates
+  in the agent-first auth rollout are satisfied.

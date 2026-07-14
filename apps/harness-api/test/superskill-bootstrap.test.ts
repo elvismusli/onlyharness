@@ -40,10 +40,18 @@ test("public bootstrap exposes one pinned no-script install contract with secure
   await app.close();
 });
 
-test("checked-in API bootstrap contract is accepted by the exact pinned CLI adapter contract", () => {
-  const manifest = buildSuperSkillBootstrapManifest(loadSuperSkillBootstrapContract());
-  const validated = validateBootstrapManifest(manifest as never, new URL(manifest.canonicalUrl));
-  assert.equal(validated.manifestDigest, manifest.manifestDigest);
+test("checked-in API bootstrap contract matches the pinned CLI release state", () => {
+  const checkedIn = loadSuperSkillBootstrapContract();
+  const manifest = buildSuperSkillBootstrapManifest(checkedIn);
+  if (checkedIn.installer.releaseStatus === "unpublished") {
+    assert.throws(
+      () => validateBootstrapManifest(manifest as never, new URL(manifest.canonicalUrl)),
+      (error: unknown) => error instanceof Error && "reasonCode" in error && error.reasonCode === "BOOTSTRAP_INTEGRITY_FAILED"
+    );
+  } else {
+    const validated = validateBootstrapManifest(manifest as never, new URL(manifest.canonicalUrl));
+    assert.equal(validated.manifestDigest, manifest.manifestDigest);
+  }
   assert.equal(JSON.stringify(manifest.clientAdapters).includes("HH_TOKEN"), false);
   assert.equal(JSON.stringify(manifest.clientAdapters).includes("HH_SUPERSKILL_TOKEN"), false);
 });

@@ -91,11 +91,11 @@ test("hosted skill instructions route explicit consent to the native client root
       { id: "download_archive", label: "Download archive", url: "https://superskill.sh/api/resources/onlyharness%3Apackages%2Fclean-user-skill/releases/0.1.1/archive" }
     ]
   } as Resource;
-  const instructions = resourceInstructions(resource).join("\n");
+  const instructions = resourceInstructions(resource, { version: "0.1.1", artifactDigest: "a".repeat(64), archiveSize: 123, trust: "unreviewed" }).join("\n");
   assert.match(instructions, /not a managed approval/);
   assert.match(instructions, /explicit install consent/);
-  assert.match(instructions, /onlyharness@0\.3\.0 resources install .* --target codex --allow-unreviewed --json/);
-  assert.match(instructions, /onlyharness@0\.3\.0 resources install .* --target claude-code --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.3\.1 resources install .* --version 0\.1\.1 --digest sha256:a{64} --target codex --allow-unreviewed --json/);
+  assert.match(instructions, /onlyharness@0\.3\.1 resources install .* --version 0\.1\.1 --digest sha256:a{64} --target claude-code --allow-unreviewed --json/);
 });
 
 test("failed hosted skill scan exposes no download or install instruction", () => {
@@ -110,4 +110,22 @@ test("failed hosted skill scan exposes no download or install instruction", () =
   const instructions = resourceInstructions(resource, { version: "0.1.0", artifactDigest: "a".repeat(64), archiveSize: 123, trust: "unreviewed" }).join("\n");
   assert.match(instructions, /Download and installation are blocked/);
   assert.doesNotMatch(instructions, /resources install|Download hosted resource archive/);
+});
+
+test("native public harness instructions require exact detail and pinned client install guidance", () => {
+  const resource = {
+    id: "onlyharness:harnesses/deep-market-researcher",
+    resourceType: "harness",
+    installability: "installable",
+    trust: { sourceChecked: true, securityScan: "pass", riskTier: "MEDIUM" },
+    licenseStatus: "known",
+    actions: [{ id: "open_upstream", label: "Inspect source", url: "https://superskill.sh/#/h/harnesses/deep-market-researcher" }]
+  } as Resource;
+  const instructions = resourceInstructions(resource).join("\n");
+  assert.match(instructions, /native public harness install/);
+  assert.match(instructions, /harness_detail and pull_instructions/);
+  assert.match(instructions, /valid public free manifest/);
+  assert.match(instructions, /passing static scan/);
+  assert.match(instructions, /exact semantic version/);
+  assert.doesNotMatch(instructions, /hh install|Install with:/);
 });

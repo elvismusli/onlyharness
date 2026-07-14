@@ -230,6 +230,7 @@ test("exact resource detail carries version and digest into install and workspac
   expect(await screen.findByText(digest)).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/resources/onlyharness%3Apackages%2Fmy-agent-skill/releases/0.1.0"), expect.any(Object));
   expect((screen.getByLabelText("Install exact 0.1.0 in Codex after inspection") as HTMLTextAreaElement).value).toContain('--version "0.1.0"');
+  expect((screen.getByLabelText("Install exact 0.1.0 in Codex after inspection") as HTMLTextAreaElement).value).toContain(`--digest "sha256:${digest}"`);
   expect(screen.getByRole("link", { name: "Add exact release to @research-team" })).toHaveAttribute(
     "href",
     `#/superskill/workspaces?workspace=research-team&resource=onlyharness%3Apackages%2Fmy-agent-skill&version=0.1.0&digest=${digest}&approve=1`

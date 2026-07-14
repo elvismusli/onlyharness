@@ -59,7 +59,7 @@ try {
     capabilities: {},
     clientInfo: { name: "superskill-smoke", version: "0" }
   });
-  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.3.0") {
+  if (initialize.result?.serverInfo?.name !== "superskill" || initialize.result?.serverInfo?.version !== "0.3.1") {
     throw new Error(`MCP initialize failed: ${JSON.stringify(initialize)}`);
   }
 
@@ -99,7 +99,8 @@ try {
   if (!searchText.includes("deep-market-researcher")) {
     throw new Error(`MCP search_harnesses returned wrong content: ${JSON.stringify(search)}`);
   }
-  if (!searchText.includes("\"contextCost\"")) {
+  const registryHttp = await fetch(`${apiUrl}/registry?q=deep-market-researcher`).then((response) => response.json()) as Record<string, unknown>;
+  if (!searchText.includes("\"contextCost\"") || searchText.includes("hh install") || JSON.stringify(registryHttp).includes("hh install")) {
     throw new Error(`MCP search_harnesses did not include context cost: ${JSON.stringify(search)}`);
   }
 
@@ -137,26 +138,67 @@ try {
   });
   assertToolError(missingResource, "RESOURCE_NOT_FOUND", 404);
 
+  const nativeResourceDetail = await rpc(322, "tools/call", {
+    name: "resource_detail",
+    arguments: { id: "onlyharness:harnesses/deep-market-researcher", version: "0.2.1" }
+  });
+  const nativeResourceUse = await rpc(323, "tools/call", {
+    name: "resource_use_instructions",
+    arguments: { id: "onlyharness:harnesses/deep-market-researcher", version: "0.2.1" }
+  });
+  const nativeDetailPayload = JSON.parse(nativeResourceDetail.result?.content?.[0]?.text ?? "{}");
+  const nativeUsePayload = JSON.parse(nativeResourceUse.result?.content?.[0]?.text ?? "{}");
+  const nativeHttpDetail = await fetch(`${apiUrl}/resources/${encodeURIComponent("onlyharness:harnesses/deep-market-researcher")}`).then((response) => response.json()) as Record<string, unknown>;
+  const nativeHttpSearch = await fetch(`${apiUrl}/resources?q=deep-market-researcher&limit=10`).then((response) => response.json()) as Record<string, unknown>;
+  if (
+    JSON.stringify(nativeDetailPayload.nativeInstall) !== JSON.stringify(nativeUsePayload.nativeInstall)
+    || nativeDetailPayload.nativeInstall?.kind !== "native_harness"
+    || nativeDetailPayload.nativeInstall?.version !== "0.2.1"
+    || !String(nativeDetailPayload.nativeInstall?.artifactDigest).startsWith("sha256:")
+    || !String(nativeDetailPayload.nativeInstall?.commands?.codex).includes("onlyharness@0.3.1 resources install")
+    || !String(nativeDetailPayload.nativeInstall?.commands?.claudeCode).includes("--target claude-code --json")
+    || JSON.stringify(nativeDetailPayload.actions).includes("hh install")
+    || JSON.stringify(nativeUsePayload.instructions).includes("hh install")
+    || JSON.stringify(nativeHttpDetail).includes("hh install")
+    || JSON.stringify(nativeHttpSearch).includes("hh install")
+    || JSON.stringify(nativeHttpDetail.nativeInstall) !== JSON.stringify(nativeDetailPayload.nativeInstall)
+  ) {
+    throw new Error(`Native harness public projection drifted: ${JSON.stringify({ nativeResourceDetail, nativeResourceUse, nativeHttpDetail, nativeHttpSearch })}`);
+  }
+
   const detail = await rpc(4, "tools/call", {
     name: "harness_detail",
     arguments: { owner: "harnesses", name: "deep-market-researcher" }
   });
   const detailText = detail.result?.content?.[0]?.text ?? "";
-  if (!detailText.includes("\"contextCost\"") || !detailText.includes("\"estimated\"")) {
+  if (!detailText.includes("\"contextCost\"") || !detailText.includes("\"estimated\"") || detailText.includes("hh install")) {
     throw new Error(`MCP harness_detail did not include context cost: ${JSON.stringify(detail)}`);
   }
+  const nativeHarnessPayload = JSON.parse(detailText || "{}");
 
   const instructions = await rpc(41, "tools/call", {
     name: "pull_instructions",
     arguments: { owner: "harnesses", name: "deep-market-researcher" }
   });
   const instructionsText = instructions.result?.content?.[0]?.text ?? "";
+  const nativeInstructionsPayload = JSON.parse(instructionsText || "{}");
   if (
-    !instructionsText.includes("\"command\": \"npx onlyharness install harnesses/deep-market-researcher\"")
-    || !instructionsText.includes("\"localCommand\": \"node packages/harness-cli/dist/hh.mjs install harnesses/deep-market-researcher\"")
+    !instructionsText.includes("\"kind\": \"native_harness\"")
+    || !instructionsText.includes("\"resourceId\": \"onlyharness:harnesses/deep-market-researcher\"")
+    || !instructionsText.includes("\"version\": \"0.2.1\"")
+    || !instructionsText.includes("\"artifactDigest\": \"sha256:")
+    || !instructionsText.includes("onlyharness@0.3.1 resources install onlyharness:harnesses/deep-market-researcher --version 0.2.1 --digest sha256:")
+    || !instructionsText.includes("--target codex --json")
+    || !instructionsText.includes("--target claude-code --json")
+    || !instructionsText.includes("\"verdict\": \"pass\"")
     || !instructionsText.includes("\"npmStatus\": \"published\"")
+    || instructionsText.includes("onlyharness@0.3.1 install harnesses/deep-market-researcher")
   ) {
     throw new Error(`MCP pull_instructions returned stale CLI guidance: ${JSON.stringify(instructions)}`);
+  }
+  if (JSON.stringify(nativeDetailPayload.nativeInstall) !== JSON.stringify(nativeHarnessPayload.nativeInstall)
+    || JSON.stringify(nativeDetailPayload.nativeInstall) !== JSON.stringify(nativeInstructionsPayload.nativeInstall)) {
+    throw new Error(`MCP native tuple parity failed: ${JSON.stringify({ nativeDetailPayload, nativeUsePayload, nativeHarnessPayload, nativeInstructionsPayload })}`);
   }
 
   const pull = await rpc(5, "tools/call", {
@@ -662,7 +704,7 @@ async function smokeDurableResourcePublish() {
     }, {}, baseUrl);
     const exactMcpInstructionsText = exactMcpInstructions.result?.content?.[0]?.text ?? "";
     if (!exactMcpInstructionsText.includes(`"artifactDigest": "${second.body.artifactDigest}"`)
-      || !exactMcpInstructionsText.includes("resources install onlyharness:packages/durable-resource-proof --version 0.2.0 --target codex")) {
+      || !exactMcpInstructionsText.includes(`resources install onlyharness:packages/durable-resource-proof --version 0.2.0 --digest sha256:${second.body.artifactDigest} --target codex`)) {
       throw new Error(`MCP resource_use_instructions was not exact-version pinned: ${JSON.stringify(exactMcpInstructions)}`);
     }
     const historicalMcpDetail = await rpc(915, "tools/call", {
@@ -681,8 +723,8 @@ async function smokeDurableResourcePublish() {
     }, {}, baseUrl);
     const historicalMcpInstructionsText = historicalMcpInstructions.result?.content?.[0]?.text ?? "";
     if (!historicalMcpInstructionsText.includes(`"artifactDigest": "${first.body.artifactDigest}"`)
-      || !historicalMcpInstructionsText.includes("resources install onlyharness:packages/durable-resource-proof --version 0.1.0 --target codex")
-      || historicalMcpInstructionsText.includes("--version 0.2.0 --target codex")) {
+      || !historicalMcpInstructionsText.includes(`resources install onlyharness:packages/durable-resource-proof --version 0.1.0 --digest sha256:${first.body.artifactDigest} --target codex`)
+      || historicalMcpInstructionsText.includes("--version 0.2.0")) {
       throw new Error(`MCP exact historical resource_use_instructions drifted to latest: ${JSON.stringify(historicalMcpInstructions)}`);
     }
     const catalog = await fetch(`${baseUrl}/resources?q=durable-resource-proof&limit=10`).then((response) => response.json()) as { resources?: Array<{ id?: string; actions?: Array<{ id?: string; url?: string }> }> };

@@ -40,7 +40,7 @@ export function ResourcePage({ resourceId, version }: { resourceId: string; vers
   const destinationWorkspace = h.workspaceCatalog?.workspace.slug ?? storedWorkspaceSlug();
   const shareUrl = resourceShareUrl(resource.id, resource.release?.version);
   const nativeSkillInstall = archive && resource.release && scan !== "fail" && resource.resourceType === "skill" && resource.id.startsWith("onlyharness:packages/")
-    ? `npx --yes ${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion} resources install ${JSON.stringify(resource.id)} --version ${JSON.stringify(resource.release.version)} --target codex --allow-unreviewed --json`
+    ? `npx --yes ${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion} resources install ${JSON.stringify(resource.id)} --version ${JSON.stringify(resource.release.version)} --digest ${JSON.stringify(`sha256:${resource.release.artifactDigest}`)} --target codex${scan === "pass" ? "" : " --allow-unreviewed"} --json`
     : undefined;
   return (
     <main className="ss-content ss-page ss-resource-page">

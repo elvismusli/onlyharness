@@ -1,7 +1,7 @@
 {
   "name": "superskill",
   "description": "Install once from a pinned link, then find and consent to an exact reviewed capability.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": {
     "name": "SuperSkill",
     "url": "https://superskill.sh"
