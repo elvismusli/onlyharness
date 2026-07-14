@@ -523,6 +523,11 @@ export async function readWorkspaceInvitePreview(inviteIdValue: string | undefin
   if (!inviteId) return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
 
   if (supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // Production invite ids are PostgreSQL UUIDs. Rejecting local-style ids here
+    // prevents PostgREST's UUID cast error from being mislabeled as an outage.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inviteId)) {
+      return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
+    }
     const inviteRows = await supabaseRows<SupabaseInviteRow>("workspace_invites", {
       select: "id,workspace_id,email,code_hash,role,max_uses,uses_count,expires_at,created_by,created_at,revoked_at",
       id: `eq.${inviteId}`,

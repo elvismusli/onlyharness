@@ -14,6 +14,7 @@ import {
   type SharePreviewModel,
   type SharePreviewResolvers
 } from "../src/share-preview.js";
+import { readWorkspaceInvitePreview } from "../src/workspaces.js";
 
 const skill: SharePreviewModel = {
   kind: "resource",
@@ -146,4 +147,23 @@ test("unknown workspace preview is noindex and shares one cached failure image",
   assert.equal(secondImage.statusCode, 404);
   assert.deepEqual(firstImage.rawPayload, secondImage.rawPayload);
   await app.close();
+});
+
+test("production workspace preview rejects non-UUID handles without querying PostgREST", async () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  try {
+    assert.deepEqual(await readWorkspaceInvitePreview("invite_missingPreviewSmoke"), {
+      ok: false,
+      status: 404,
+      code: "INVITE_NOT_FOUND"
+    });
+  } finally {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
 });
