@@ -2,6 +2,8 @@ import type { PermissionDelta as PermissionDeltaData } from "../../../core/super
 
 type Risk = "low" | "elevated" | "critical";
 
+const RISK_RANK: Record<Risk, number> = { critical: 0, elevated: 1, low: 2 };
+
 const HUMAN: Record<string, { consequence: string; risk: Risk }> = {
   shell: { consequence: "Can run shell commands on your machine", risk: "critical" },
   moneyMovement: { consequence: "Can initiate money movement", risk: "critical" },
@@ -20,7 +22,7 @@ export function PermissionDelta({ delta }: { delta: PermissionDeltaData }) {
   return (
     <section className="ss-delta" aria-labelledby="ss-delta-title">
       <h3 id="ss-delta-title">Permission delta</h3>
-      {delta.added.length ? <PowerList title="New powers" powers={delta.added} /> : <p>No candidate powers were reported.</p>}
+      {delta.added.length ? <PowerList title="New powers" powers={byRiskDescending(delta.added)} /> : <p>No candidate powers were reported.</p>}
       {delta.unchanged.length ? <PowerList title="Already known" powers={delta.unchanged} dim /> : null}
       {delta.status !== "known" ? (
         <div className="ss-delta-unknown">
@@ -44,6 +46,16 @@ function PowerList({ title, powers, dim = false }: { title: string; powers: stri
       </ul>
     </div>
   );
+}
+
+function riskOf(power: string): Risk {
+  return HUMAN[power]?.risk ?? "low";
+}
+
+// Sort a copy so the highest-risk powers (critical, then elevated, then low)
+// surface first. Array.prototype.sort is stable, so same-risk order is preserved.
+function byRiskDescending(powers: string[]): string[] {
+  return [...powers].sort((a, b) => RISK_RANK[riskOf(a)] - RISK_RANK[riskOf(b)]);
 }
 
 function humanize(value: string) {

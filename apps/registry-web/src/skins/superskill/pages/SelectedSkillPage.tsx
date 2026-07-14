@@ -3,6 +3,7 @@ import { capabilityShareUrl } from "../../../core/share-url";
 import { useSelectedShowroomCapabilities } from "../../../core/useSelectedShowroomCapabilities";
 import { StatePanel } from "../components/StatePanel";
 import { CopyField } from "../components/CopyField";
+import { resourceTypeLabel } from "../components/SkillCard";
 import { ShellLink } from "../primitives";
 
 export function SelectedSkillPage({ owner, skill }: { owner: string; skill: string }) {
@@ -34,7 +35,7 @@ function SelectedSkillDetail({ item }: { item: SelectedShowroomCapability }) {
       <ShellLink className="ss-detail-back" href="#/superskill">← Back to showroom</ShellLink>
       <header className="ss-selected-detail-head">
         <div className="ss-card-top">
-          <span className="ss-type-chip">instruction harness</span>
+          <span className="ss-type-chip">{resourceTypeLabel(capability.type)}</span>
           <span className="ss-selected-status">Selected · review pending</span>
         </div>
         <h1>{capability.title}</h1>
@@ -53,6 +54,7 @@ function SelectedSkillDetail({ item }: { item: SelectedShowroomCapability }) {
             <div><dt>Artifact</dt><dd>{shortDigest(capability.release.artifactDigest)}</dd></div>
             <div><dt>Delivery</dt><dd>{capability.release.delivery.replaceAll("_", " ")}</dd></div>
           </dl>
+          <CopyField label="Candidate artifact digest" value={capability.release.artifactDigest} />
         </section>
         <section>
           <div className="ss-evidence-label">Current managed state</div>

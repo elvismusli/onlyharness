@@ -1,24 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
     <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(972 80) rotate(132) scale(455 390)" gradientUnits="userSpaceOnUse"><stop stop-color="#cce9e6"/><stop offset="1" stop-color="#f6f4ef" stop-opacity="0"/></radialGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#0f736e" flood-opacity=".12"/></filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#2f45ff" flood-opacity=".12"/></filter>
   </defs>
   <rect width="1200" height="630" fill="#f6f4ef"/>
   <rect width="1200" height="630" fill="url(#glow)"/>
   <path d="M873 62c118 18 211 95 258 208-80-33-161-35-241 6-80 40-132 111-162 219-51-72-64-150-40-234 31-108 91-174 185-199Z" fill="#fff" stroke="#e7e3db" stroke-width="2" filter="url(#shadow)"/>
-  <path d="M788 426c91-80 187-118 292-114" fill="none" stroke="#0f736e" stroke-width="3" stroke-linecap="round" stroke-dasharray="9 14" opacity=".38"/>
-  <circle cx="792" cy="424" r="9" fill="#0f736e"/><circle cx="1081" cy="312" r="9" fill="#0f736e"/>
-  <g transform="translate(64 54)"><rect width="56" height="56" rx="12" fill="#0f736e"/><path d="M14 17h17c7 0 11 4 11 10s-4 10-11 10h-6c-7 0-11 4-11 10s4 10 11 10h17" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -8)"/></g>
+  <path d="M788 426c91-80 187-118 292-114" fill="none" stroke="#2f45ff" stroke-width="3" stroke-linecap="round" stroke-dasharray="9 14" opacity=".38"/>
+  <circle cx="792" cy="424" r="9" fill="#2f45ff"/><circle cx="1081" cy="312" r="9" fill="#2f45ff"/>
+  <g transform="translate(64 54)"><rect width="56" height="56" rx="12" fill="#2f45ff"/><path d="M14 17h17c7 0 11 4 11 10s-4 10-11 10h-6c-7 0-11 4-11 10s4 10 11 10h17" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -8)"/></g>
   <text x="136" y="91" fill="#1a1917" font-family="Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="-1">SuperSkill</text>
   <text x="1136" y="89" text-anchor="end" fill="#6b6862" font-family="monospace" font-size="18" font-weight="700">superskill.sh</text>
-  <text x="64" y="177" fill="#0f736e" font-family="monospace" font-size="16" font-weight="700" letter-spacing="1.4">ONE LINK · EVERY AGENT SKILL</text>
+  <text x="64" y="177" fill="#2f45ff" font-family="monospace" font-size="16" font-weight="700" letter-spacing="1.4">ONE LINK · EVERY AGENT SKILL</text>
   <text x="64" y="248" fill="#1a1917" font-family="Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="-2">Paste one link.</text>
   <text x="64" y="320" fill="#1a1917" font-family="Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="-2">Give your agent every skill.</text>
   <text x="64" y="383" fill="#6b6862" font-family="Arial, sans-serif" font-size="24">Install SuperSkill once, then search and use exact skills</text>
   <text x="64" y="416" fill="#6b6862" font-family="Arial, sans-serif" font-size="24">from Codex or Claude Code.</text>
   <g transform="translate(64 539)">
-    <rect width="174" height="38" rx="19" fill="#e6f0ef" stroke="#0f736e"/>
-    <text x="17" y="25" fill="#0b5a56" font-family="monospace" font-size="14" font-weight="700">UNIVERSAL INSTALL</text>
+    <rect width="174" height="38" rx="19" fill="#e9ebff" stroke="#2f45ff"/>
+    <text x="17" y="25" fill="#1e30d8" font-family="monospace" font-size="14" font-weight="700">UNIVERSAL INSTALL</text>
     <text x="270" y="25" fill="#6b6862" font-family="monospace" font-size="14" font-weight="700">CODEX</text>
     <text x="390" y="25" fill="#6b6862" font-family="monospace" font-size="14" font-weight="700">CLAUDE CODE</text>
   </g>

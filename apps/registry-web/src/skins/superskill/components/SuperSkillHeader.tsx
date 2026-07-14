@@ -41,6 +41,18 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
     menuButtonRef.current?.focus();
   };
 
+  // Task-first primary nav (UX handoff §7): only the two discovery destinations plus the single
+  // "Get SuperSkill" CTA live in the primary landmark. Publishing/account destinations are demoted
+  // to a secondary account grouping — still keyboard reachable, routes intact — so the primary nav
+  // stays scannable for the core task.
+  const accountLinks: Array<{ label: string; href: string; active: boolean }> = [
+    { label: "Docs", href: DOCS_ROUTE, active: route.name === "docs" },
+    { label: "Agent guide", href: AGENT_GUIDE_ROUTE, active: route.name === "agent-guide" },
+    { label: "Publish", href: PUBLISH_ROUTE, active: route.name === "publish" },
+    { label: "Workspaces", href: WORKSPACES_ROUTE, active: route.name === "workspaces" },
+    { label: "Account", href: ACCOUNT_ROUTE, active: route.name === "account" }
+  ];
+
   return (
     <header className="ss-nav">
       <div className="ss-nav-inner">
@@ -58,13 +70,21 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
         <nav id="ss-primary-navigation" aria-label="SuperSkill" data-open={menuOpen ? "true" : "false"}>
           <a href={SHOWROOM_ROUTE} aria-current={route.name === "landing" ? "page" : undefined} onClick={closeMenu}>Showroom</a>
           <a href={SEARCH_ROUTE} aria-current={route.name === "search" ? "page" : undefined} onClick={closeMenu}>Search</a>
-          <a href={DOCS_ROUTE} aria-current={route.name === "docs" ? "page" : undefined} onClick={closeMenu}>Docs</a>
-          <a href={AGENT_GUIDE_ROUTE} aria-current={route.name === "agent-guide" ? "page" : undefined} onClick={closeMenu}>Agent guide</a>
-          <a href={PUBLISH_ROUTE} aria-current={route.name === "publish" ? "page" : undefined} onClick={closeMenu}>Publish</a>
-          <a href={WORKSPACES_ROUTE} aria-current={route.name === "workspaces" ? "page" : undefined} onClick={closeMenu}>Workspaces</a>
-          <a href={ACCOUNT_ROUTE} aria-current={route.name === "account" ? "page" : undefined} onClick={closeMenu}>Account</a>
           <a className="ss-link ss-link--primary ss-nav-install-link" href={INSTALL_ROUTE} aria-current={route.name === "install" ? "page" : undefined} onClick={closeMenu}>Get SuperSkill</a>
         </nav>
+        <div className="ss-nav-account" role="navigation" aria-label="Account and publishing">
+          {accountLinks.map((link) => (
+            <a
+              key={link.href}
+              className="ss-nav-account-link"
+              href={link.href}
+              aria-current={link.active ? "page" : undefined}
+              onClick={closeMenu}
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
       </div>
     </header>
   );

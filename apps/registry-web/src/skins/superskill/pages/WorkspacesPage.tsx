@@ -115,11 +115,11 @@ export function WorkspacesPage() {
         <section className="ss-workspace-catalog" aria-labelledby="ss-workspace-name">
           <header>
             <div>
-              <span className="ss-evidence-label">Membership verified</span>
+              <span className="ss-evidence-label">Membership confirmed</span>
               <h2 id="ss-workspace-name">{catalog.workspace.name}</h2>
               <p>@{catalog.workspace.slug} · {catalog.workspace.type} · {catalog.workspace.visibility}</p>
             </div>
-            <span className="ss-account-state ss-account-state--confirmed">{catalog.workspace.plan}</span>
+            <span className="ss-account-state">{catalog.workspace.plan}</span>
           </header>
           <div className="ss-workspace-tabs" role="tablist" aria-label="Workspace sections">
             {(["resources", "members", "collections", "setup"] as const).map((entry) => (
@@ -147,6 +147,7 @@ export function WorkspacesPage() {
             <div className="ss-workspace-section">
               <div className="ss-workspace-section-head"><h3>Members</h3><SSButton variant="secondary" type="button" disabled={h.workspaceBusy} onClick={() => void h.loadWorkspaceMembers()}>Refresh</SSButton></div>
               {h.workspaceMembers.length ? <ul className="ss-workspace-list">{h.workspaceMembers.map((member) => <li key={member.id ?? member.user_id}><div><strong>{memberLabel(member.user_id)}</strong><span>{member.source}</span></div><span>{member.role} · {member.status}</span></li>)}</ul> : <p className="ss-muted">No members are visible with your current role.</p>}
+              <p className="ss-muted">Membership and invites are reversible. A workspace admin can remove a member and their access ends immediately; any invite you create can be capped or left to expire.</p>
               <div className="ss-workspace-invite">
                 <h3>Share workspace</h3>
                 <p>Create a bounded invite. Its SuperSkill preview shows only the workspace name. The raw code stays after <code>#</code>, so it is never sent to the preview server.</p>
@@ -254,7 +255,7 @@ function ResourceList({ catalog, selectedResource }: { catalog: WorkspaceCatalog
       {catalog.resources.length ? <ul className="ss-workspace-list">{catalog.resources.map((resource) => {
         const pin = exactWorkspaceResourcePin(catalog, resource);
         return <li key={resource.id} aria-current={resourceMatchesSelection(resource.id, selectedResource) ? "true" : undefined}>
-          <div><strong>{resource.title}</strong><span>{resource.summary}</span>{pin ? <ShellLink href={buildSuperSkillRoute({ name: "resource", resourceId: pin.sourceResourceId, version: pin.version })}>Open exact {pin.version}</ShellLink> : resource.workspaceApproval ? <span>Exact release pin missing — latest is not used.</span> : <span>Private package access stays workspace-token only.</span>}</div>
+          <div><strong>{resource.title}</strong><span>{resource.summary}</span>{pin ? <ShellLink href={buildSuperSkillRoute({ name: "resource", resourceId: pin.sourceResourceId, version: pin.version })}>Open exact {pin.version}</ShellLink> : resource.workspaceApproval ? <span>Exact release pin missing — latest is not used.</span> : <span>Private resource access stays workspace-token only.</span>}</div>
           <span>{resource.resourceType} · {resource.installability}{pin ? ` · sha256:${pin.digest.slice(0, 12)}…` : ""}</span>
         </li>;
       })}</ul> : <p className="ss-muted">No workspace resources are indexed yet.</p>}

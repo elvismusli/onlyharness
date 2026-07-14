@@ -8,10 +8,35 @@ import { ExampleSkillCard } from "../components/ExampleSkillCard";
 import { SelectedSkillCard } from "../components/SelectedSkillCard";
 import { SkillCard } from "../components/SkillCard";
 import { StatePanel } from "../components/StatePanel";
-import { CopyField } from "../components/CopyField";
 import { TaskPrompt } from "../components/TaskPrompt";
 import { SectionHeading } from "../primitives";
 import { InstallInstructions } from "./InstallHandoff";
+
+// Display a short link (host/…/last segment) but always copy the full pinned URL.
+function shortInstallLink(url: string): string {
+  const noProtocol = url.replace(/^https?:\/\//, "");
+  const match = noProtocol.match(/^([^/]+)\/.*\/([^/]+)$/);
+  return match ? `${match[1]}/…/${match[2]}` : noProtocol;
+}
+
+function OneLinkInstall({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <div className="ss-one-link-card" data-copied={copied ? "true" : undefined}>
+      <code className="ss-one-link-url" title={url}>{shortInstallLink(url)}</code>
+      <button type="button" className="ss-one-link-copy" onClick={copy} aria-label="Copy the full install link">{copied ? "✓ Copied" : "Copy"}</button>
+      <span className="ss-sr-live" aria-live="polite">{copied ? "Full install link copied" : ""}</span>
+    </div>
+  );
+}
 
 export function Landing() {
   const showroom = useShowroomCapabilities({ limit: 6 });
@@ -26,13 +51,7 @@ export function Landing() {
       <section className="ss-hero">
         <div className="ss-aurora" aria-hidden />
         <div className="ss-hero-copy"><div className="ss-eyebrow">SuperSkill · one link for Codex and Claude Code</div><h1>Paste one link.<br /><em>Give your agent every skill.</em></h1><p>Copy the universal SuperSkill link into your coding agent. It installs the plugin, connects the catalog, and keeps every later skill choice explicit.</p></div>
-        {installer.status === "available" ? (
-          <div className="ss-one-link-card">
-            <div className="ss-one-link-head"><span>01</span><div><strong>Universal SuperSkill link</strong><small>Paste into Codex or Claude Code</small></div></div>
-            <CopyField label="One link — paste it into your agent" value={installer.installUrl} />
-            <div className="ss-one-link-foot"><span>Pinned installer · integrity verified</span><a href="#/superskill/install">See manual install and safety details →</a></div>
-          </div>
-        ) : <StatePanel kind="blocked" title="Universal link temporarily unavailable" reason={installer.reason} next="Wait for the pinned public runtime; no unverified fallback is shown." />}
+        {installer.status === "available" ? <OneLinkInstall url={installer.installUrl} /> : <StatePanel kind="blocked" title="Universal link temporarily unavailable" reason={installer.reason} next="Wait for the pinned public runtime; no unverified fallback is shown." />}
         <div className="ss-task-start"><span>or start with the outcome</span><TaskPrompt onContinue={(task, client) => setHandoff({ task, client })} /></div>
       </section>
 

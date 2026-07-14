@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { useSuperSkillRoute } from "../../core/superskill-route";
+import { buildSuperSkillRoute, useSuperSkillRoute } from "../../core/superskill-route";
 import { StatePanel } from "./components/StatePanel";
 import { SuperSkillHeader } from "./components/SuperSkillHeader";
 import { ShellLink } from "./primitives";
@@ -22,7 +22,7 @@ import "./tokens.css";
 import "./motion.css";
 
 const FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500&display=swap";
+  "https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&family=Spectral:ital,wght@0,400;0,500;1,400;1,500&display=swap";
 
 export function SuperskillSkin() {
   const route = useSuperSkillRoute();
@@ -35,7 +35,15 @@ export function SuperskillSkin() {
     <div className="skin-superskill" data-skin="superskill">
       <SuperSkillHeader route={route} />
       {renderRoute(route)}
-      <footer className="ss-footer"><div className="ss-content"><strong>SuperSkill</strong><span>Evidence over badges · exact release trust · explicit consent</span></div></footer>
+      <footer className="ss-footer"><div className="ss-content">
+        <strong>SuperSkill</strong>
+        <span>Evidence over badges · exact release trust · explicit consent</span>
+        <nav className="ss-footer-links" aria-label="Footer">
+          <a href={buildSuperSkillRoute({ name: "search" })}>Creators</a>
+          <a href={buildSuperSkillRoute({ name: "docs" })}>Docs</a>
+          <a href={`${buildSuperSkillRoute({ name: "docs" })}#ss-doc-trust`}>Security policy</a>
+        </nav>
+      </div></footer>
     </div>
   );
 }
@@ -70,8 +78,8 @@ function useSuperskillEnvironment() {
     }
     const { body, documentElement } = document;
     const previous = { body: body.style.background, html: documentElement.style.background };
-    body.style.background = "#f6f4ef";
-    documentElement.style.background = "#f6f4ef";
+    body.style.background = "#f7f6f1";
+    documentElement.style.background = "#f7f6f1";
     return () => {
       body.style.background = previous.body;
       documentElement.style.background = previous.html;

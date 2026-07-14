@@ -5,6 +5,7 @@ import { resourceShareUrl } from "../../../core/share-url";
 import { buildSuperSkillRoute, navigateSuperSkill, type SuperSkillSearchResourceType } from "../../../core/superskill-route";
 import type { ResourceItem } from "../../../core/types";
 import { StatePanel } from "../components/StatePanel";
+import { VerdictChip } from "../components/VerdictChip";
 import { PageHeading, ShellLink, SSButton } from "../primitives";
 
 type SearchFilter = SuperSkillSearchResourceType | "all";
@@ -128,7 +129,7 @@ function ResourceSearchCard({ resource }: { resource: ResourceItem }) {
     <article className={`ss-search-card ss-search-card--${scan}`}>
       <div className="ss-card-top">
         <span className="ss-type-chip">{resource.resourceType.replaceAll("_", " ")}</span>
-        <span className={`ss-verdict ss-verdict--${scan}`}>{scan.replaceAll("_", " ")}</span>
+        <VerdictChip verdict={scan} />
       </div>
       <div>
         <h2>{resource.title}</h2>

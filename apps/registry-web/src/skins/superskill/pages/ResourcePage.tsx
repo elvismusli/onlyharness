@@ -5,6 +5,7 @@ import { resourceShareUrl } from "../../../core/share-url";
 import type { ResourceItem } from "../../../core/types";
 import { StatePanel } from "../components/StatePanel";
 import { CopyField } from "../components/CopyField";
+import { VerdictChip } from "../components/VerdictChip";
 import { PageHeading, ShellLink } from "../primitives";
 import { superskillRuntime } from "../../../generated/superskill-runtime";
 import { useHarness } from "../../../core/store";
@@ -48,9 +49,10 @@ export function ResourcePage({ resourceId, version }: { resourceId: string; vers
       <PageHeading eyebrow={resource.resourceType.replaceAll("_", " ")}>{resource.title}</PageHeading>
       <p className="ss-page-lede">{resource.summary}</p>
       <section className="ss-resource-card">
-        <span className={`ss-account-state ss-account-state--${scanStateClass(scan)}`}>{scan.replaceAll("_", " ")}</span>
+        <VerdictChip verdict={scan} label={scanChipLabel(scan)} />
         <p>{scanStateCopy(scan)}</p>
-        <dl className="ss-facts"><div><dt>Resource ID</dt><dd>{resource.id}</dd></div>{resource.release ? <><div><dt>Exact version</dt><dd>{resource.release.version}</dd></div><div><dt>Artifact SHA-256</dt><dd><code>{resource.release.artifactDigest}</code></dd></div></> : null}<div><dt>Installability</dt><dd>{resource.installability}</dd></div><div><dt>Risk</dt><dd>{resource.trust.riskTier ?? "UNKNOWN"}</dd></div><div><dt>Works with</dt><dd>{resource.worksWith.join(", ") || "not declared"}</dd></div></dl>
+        <dl className="ss-facts"><div><dt>Resource ID</dt><dd>{resource.id}</dd></div>{resource.release ? <div><dt>Release</dt><dd>{resource.release.version}</dd></div> : null}<div><dt>Installability</dt><dd>{resource.installability}</dd></div><div><dt>Risk</dt><dd>{resource.trust.riskTier ?? "UNKNOWN"}</dd></div><div><dt>Works with</dt><dd>{resource.worksWith.join(", ") || "not declared"}</dd></div></dl>
+        {resource.release ? <CopyField label="Artifact digest" value={resource.release.artifactDigest} /> : null}
         <CopyField label="Share this resource" value={shareUrl} />
         {destinationWorkspace && resource.release && scan !== "fail" ? <ShellLink href={workspaceApprovalHref(destinationWorkspace, resource.id, resource.release.version, resource.release.artifactDigest)}>Add exact release to @{destinationWorkspace}</ShellLink> : null}
         {archive && "url" in archive ? (
@@ -72,10 +74,11 @@ export function ResourcePage({ resourceId, version }: { resourceId: string; vers
   );
 }
 
-function scanStateClass(scan: NonNullable<ResourceItem["trust"]["securityScan"]>): "confirmed" | "pending" | "blocked" {
-  if (scan === "pass") return "confirmed";
-  if (scan === "fail") return "blocked";
-  return "pending";
+function scanChipLabel(scan: NonNullable<ResourceItem["trust"]["securityScan"]>): string {
+  if (scan === "pass") return "Static scan: passed";
+  if (scan === "warn") return "Static scan: warnings";
+  if (scan === "fail") return "Static scan: failed";
+  return "Static scan: not scanned";
 }
 
 function scanStateCopy(scan: NonNullable<ResourceItem["trust"]["securityScan"]>): string {

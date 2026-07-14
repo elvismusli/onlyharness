@@ -57,9 +57,18 @@ check(docs["apps/registry-web/src/skins/win98/windows.tsx"].includes("Manual che
 check(docs["apps/registry-web/src/skins/win98/windows.tsx"].includes("This page does not unlock files"), "Checkout UI must not imply entitlement was granted");
 
 const superskillCopy = superskillCopyFiles.map((file) => docs[file]).join("\n");
-const superskillTextCopy = superskillCopyFiles.filter((file) => /\.tsx?$/.test(file)).map((file) => docs[file]).join("\n");
-for (const forbidden of ["2,140", "12.8k", "240 verified", "0 unchecked", "Outcome verified", "superskill.sh/get", "38s", "9/9", "100%", "guaranteed"]) {
+// Shipped UI copy only — test files are not public copy and may reference sample values.
+const shippedSuperskillTsx = superskillCopyFiles.filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file));
+const superskillTextCopy = shippedSuperskillTsx.map((file) => docs[file]).join("\n");
+for (const forbidden of ["2,140", "12.8k", "240 verified", "0 unchecked", "superskill.sh/get", "38s", "9/9", "100%", "guaranteed"]) {
   check(!superskillTextCopy.includes(forbidden), `SuperSkill UI must not contain unsupported claim: ${forbidden}`);
+}
+// "Outcome verified" is the honest §5.5 lifecycle STATE label. Only LifecycleChain may render it —
+// and it completes that step solely with real outcome evidence — so it must never appear as a
+// standalone claim on any other SuperSkill surface.
+for (const file of shippedSuperskillTsx) {
+  if (file.endsWith("components/LifecycleChain.tsx")) continue;
+  check(!docs[file].includes("Outcome verified"), `SuperSkill UI must not claim "Outcome verified" outside the honest LifecycleChain state (${file})`);
 }
 check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser source must not reference the internal CLI token");
 check(!superskillCopy.includes("https://onlyharness.com"), "SuperSkill browser source must use the canonical superskill.sh origin");

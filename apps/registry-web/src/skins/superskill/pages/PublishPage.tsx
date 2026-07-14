@@ -3,6 +3,7 @@ import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "rea
 import { apiUrl } from "../../../core/constants";
 import { buildSuperSkillRoute } from "../../../core/superskill-route";
 import { useHarness } from "../../../core/store";
+import { CopyField } from "../components/CopyField";
 import { PageHeading, ShellLink, SSButton } from "../primitives";
 
 type PublishResult = {
@@ -106,11 +107,11 @@ export function PublishPage() {
   return (
     <main className="ss-content ss-page ss-publish-page">
       <PageHeading eyebrow="Publish">Publish an agent resource</PageHeading>
-      <p className="ss-page-lede">Upload a repository folder or author a skill here. Each public version is immutable. Publishing never grants a reviewed or verified badge; catalog review is separate.</p>
+      <p className="ss-page-lede">Upload a repository folder or author a skill here. Each public release is immutable. Publishing never grants a reviewed or verified badge; catalog review is separate.</p>
       {!confirmed ? <p className="ss-auth-notice">Confirm your email before publishing. Then sign in again to refresh the session.</p> : null}
       <form className="ss-publish-card ss-publish-form" onSubmit={submit}>
         <div className="ss-publish-grid">
-          <label>Package name<input required pattern="[a-z0-9][a-z0-9-]{1,62}" value={name} onChange={(event) => setName(event.target.value)} /></label>
+          <label>Resource name<input required pattern="[a-z0-9][a-z0-9-]{1,62}" value={name} onChange={(event) => setName(event.target.value)} /></label>
           <label>Version<input required pattern="(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-([0-9A-Za-z.]|-)+)?" value={version} onChange={(event) => setVersion(event.target.value)} /></label>
         </div>
         <label>Resource type<select value={resourceType} onChange={(event) => setResourceType(event.target.value as PublishResourceType)}><option value="skill">Skill — native Codex/Claude install</option><option value="workflow">Workflow — archive and catalog</option><option value="harness">Harness — archive and catalog</option></select></label>
@@ -124,7 +125,7 @@ export function PublishPage() {
           {uploadedFiles.length ? <><ul className="ss-publish-file-list">{uploadedFiles.slice(0, 12).map((file) => <li key={file.path}><code>{file.path}</code></li>)}</ul>{uploadedFiles.length > 12 ? <p>+ {uploadedFiles.length - 12} more files</p> : null}<SSButton variant="secondary" type="button" onClick={() => { setUploadedFiles([]); setUploadStatus(""); }}>Use editor instead</SSButton></> : null}
         </fieldset>
         {!uploadedFiles.length ? <label>{resourceType === "skill" ? "SKILL.md instructions" : "Entry instructions"}<textarea required rows={14} value={instructions} onChange={(event) => setInstructions(event.target.value)} /></label> : null}
-        {resourceType !== "skill" ? <p className="ss-auth-notice">Workflow and harness packages can be shared and downloaded. Native plugin installation requires a skill package with a root <code>SKILL.md</code>.</p> : null}
+        {resourceType !== "skill" ? <p className="ss-auth-notice">Workflow and harness resources can be shared and downloaded. Native plugin installation requires a skill resource with a root <code>SKILL.md</code>.</p> : null}
         <div className="ss-publish-actions"><span>Trust after publish: <strong>unreviewed</strong></span><SSButton type="submit" disabled={!canPublish}>{busy ? "Publishing…" : "Publish release"}</SSButton></div>
         {status ? <p className="ss-publish-status" role="status">{status}</p> : null}
       </form>
@@ -132,7 +133,7 @@ export function PublishPage() {
         <section className="ss-publish-result" aria-labelledby="ss-published-release">
           <span className="ss-account-state ss-account-state--pending">Unreviewed</span>
           <h2 id="ss-published-release">{published.resourceId}@{published.version}</h2>
-          <p><code>{published.artifactDigest}</code></p>
+          <CopyField label="Artifact digest" value={published.artifactDigest} />
           <div className="ss-publish-result-actions"><ShellLink href={buildSuperSkillRoute({ name: "resource", resourceId: published.resourceId, version: published.version })}>View exact published release</ShellLink><a className="ss-link" href={published.archiveUrl}>Download this exact release</a>{destinationWorkspace ? <ShellLink href={workspaceApprovalHref(destinationWorkspace, published.resourceId, published.version, published.artifactDigest)}>Add to @{destinationWorkspace}</ShellLink> : null}</div>
           <p>To publish an update, change the version and content, then publish again. Reusing a version with different bytes fails closed.</p>
         </section>

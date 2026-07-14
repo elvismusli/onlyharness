@@ -13,10 +13,13 @@ export function InstallHandoff({ capabilityId, initialClient = "claude-code", ta
   if (detail.state.status === "not_found") return <StatePanel headingLevel={1} kind="not-found" title="Resource not found" reason={detail.state.reason} next="Return to the showroom and choose a current resource."><ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink>{capabilityId ? <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId })}>Open trust report</ShellLink> : null}</StatePanel>;
   if (detail.state.status === "error") return <StatePanel headingLevel={1} kind="error" title="Install handoff unavailable" reason={detail.state.reason} next={detail.state.next} onRetry={detail.refresh}><ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink>{capabilityId ? <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId })}>Open trust report</ShellLink> : null}</StatePanel>;
   const item = detail.state.status === "success" ? detail.state.data : undefined;
-  return <InstallInstructions client={initialClient} setClient={() => undefined} item={item} task={task} pageHeading />;
+  return <InstallInstructions client={initialClient} item={item} task={task} pageHeading />;
 }
 
-export function InstallInstructions({ client, setClient, item, task, pageHeading = false }: { client: SuperSkillClient; setClient: (client: SuperSkillClient) => void; item?: ShowroomCapability; task?: string; pageHeading?: boolean }) {
+// `client`/`setClient` remain accepted for backward compatibility, but client
+// detection is automatic (`--auto`): the install command is identical for every
+// client, so neither prop drives the rendered command.
+export function InstallInstructions({ item, task, pageHeading = false }: { client?: SuperSkillClient; setClient?: (client: SuperSkillClient) => void; item?: ShowroomCapability; task?: string; pageHeading?: boolean }) {
   const capability = item?.capability;
   if (capability && !installAllowed(capability, item?.clientHandoff)) {
     const reason = item?.clientHandoff.reason === "stale_or_ineligible_evidence" ? "stale evidence" : capability.trust.status;
@@ -29,8 +32,11 @@ export function InstallInstructions({ client, setClient, item, task, pageHeading
       kind="blocked"
       title="Universal installer not available yet"
       reason={handoff.reason}
-      next="Wait for the exact CLI release and official npm integrity to be published. No install command is safe to copy yet."
-    />;
+      next="Wait for the exact CLI release and official npm integrity to be published. No install command is available yet."
+    >
+      <ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink>
+      {capability ? <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId: capability.id })}>Open trust report</ShellLink> : null}
+    </StatePanel>;
   }
   return (
     <section className="ss-install" aria-labelledby="ss-install-title">
@@ -38,10 +44,14 @@ export function InstallInstructions({ client, setClient, item, task, pageHeading
       {capability ? <p>Resource: <strong>{capability.title}</strong> · release {capability.release.version}. Installation and recommendation happen in the terminal client, not this page.</p> : <p>Install the shared SuperSkill plugin, start a fresh client session, then paste the task. The showroom does not claim activation.</p>}
       <div className="ss-install-steps">
         <div><span>1</span><h3>Run one pinned install command</h3><CopyField label="Universal SuperSkill install command" value={handoff.installCommand} /><p>The embedded <a href={handoff.installUrl}>exact install link</a> contains no token or task text. The local installer verifies its manifest integrity, then detects Codex or Claude Code without guessing.</p></div>
-        <div><span>2</span><h3>Resolve the client safely</h3><p>Exactly one detected client gets its native skill root plus a merged project-local <code>superskill_local</code> MCP config. An exact link also records one private pending handoff. Existing unrelated config is preserved, collisions and rollback faults fail closed, and no token is written. If both or neither clients are detected, choose <code>--target codex</code>, <code>--target claude-code</code>, or explicit <code>--all</code>.</p></div>
+        <div><span>2</span><h3>Let the installer detect your client</h3><p>SuperSkill detects your client automatically; the command is identical for every client and never guesses. Exactly one detected client gets its native skill root plus a merged project-local <code>superskill_local</code> MCP config. An exact link also records one private pending handoff. Existing unrelated config is preserved, collisions and rollback faults fail closed, and no token is written. If both or neither client is detected, choose <code>--target codex</code>, <code>--target claude-code</code>, or explicit <code>--all</code>.</p></div>
         <div><span>3</span><h3>Start a new task</h3>{task ? <CopyField label="Original task — paste as plain text" value={task} /> : <p>Start a fresh client task. The universal skill will recheck the exact release and request separate explicit consent before any managed activation.</p>}</div>
       </div>
-      <aside className="ss-manual-fallback"><strong>Safety boundary</strong><ol><li>The command uses the pinned integrity-verified public runtime; it never downloads or pipes a remote script.</li><li>Use <code>--dry-run</code> to verify the link, skill target, MCP merge and pending-handoff plan without writing.</li><li>Installation never activates a capability. The new session uses the local MCP lifecycle; routing and activation consent remain separate.</li></ol></aside>
+      <details className="ss-manual-fallback">
+        <summary>My client isn't Codex or Claude Code</summary>
+        <p>SuperSkill installs natively into Codex and Claude Code only. For any other client, open the <a href={handoff.installUrl}>exact install link</a>, review the pinned manifest, and add the project-local <code>superskill_local</code> MCP entry by hand from that manifest. Do not use <code>@latest</code> or an unofficial substitute.</p>
+      </details>
+      <aside className="ss-manual-fallback"><strong>What this does and doesn't do</strong><ol><li>The command uses the integrity-pinned public runtime; it never downloads or pipes a remote script.</li><li>Use <code>--dry-run</code> to verify the link, skill target, MCP merge and pending-handoff plan without writing.</li><li>Installation never activates a capability. The new session uses the local MCP lifecycle; routing and activation consent remain separate.</li></ol></aside>
       <div className="ss-honest-state" aria-live="polite">Copying a command only copies text. It does not mean Installed, Detected, Loaded, or Invoked.</div>
     </section>
   );

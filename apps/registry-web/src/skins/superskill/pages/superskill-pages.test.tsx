@@ -92,7 +92,7 @@ test("landing renders a real public DTO and does not send task content", async (
   expect(await screen.findAllByText("Market research")).toHaveLength(2);
   expect(await screen.findByText("Selected · review pending")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Task"), { target: { value: "prepare a market map" } });
-  fireEvent.click(screen.getByRole("button", { name: "Continue in client" }));
+  fireEvent.click(screen.getByRole("button", { name: "Find skill" }));
   expect(await screen.findAllByDisplayValue("prepare a market map")).toHaveLength(runtimePublished ? 2 : 1);
   expect(screen.getByRole("heading", { name: runtimePublished ? "Continue in your existing agent" : "Universal installer not available yet" })).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledTimes(2);

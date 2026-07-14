@@ -1,3 +1,5 @@
+import type { ManagedCapability } from "./superskill-types";
+
 const CANONICAL_ORIGIN = "https://superskill.sh";
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -6,8 +8,14 @@ export function resourceShareUrl(resourceId: string, version?: string): string {
   return `${CANONICAL_ORIGIN}/r/${key}${version ? `/${encodeURIComponent(version)}` : ""}`;
 }
 
-export function capabilityShareUrl(capabilityId: string): string {
-  return `${CANONICAL_ORIGIN}/c/${encodeURIComponent(capabilityId)}`;
+// Accepts a full capability (release-pinned) or a bare id (unpinned, legacy callers).
+export function capabilityShareUrl(capability: ManagedCapability | string): string {
+  if (typeof capability === "string") {
+    return `${CANONICAL_ORIGIN}/c/${encodeURIComponent(capability)}`;
+  }
+  const version = capability.release?.version;
+  const pin = version ? `/${encodeURIComponent(version)}` : "";
+  return `${CANONICAL_ORIGIN}/c/${encodeURIComponent(capability.id)}${pin}`;
 }
 
 export function encodeBase64Url(value: string): string {

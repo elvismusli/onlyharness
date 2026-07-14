@@ -1,7 +1,8 @@
 import { buildSuperSkillRoute } from "../../../core/superskill-route";
-import { capabilityShareUrl } from "../../../core/share-url";
 import type { SelectedShowroomCapability } from "../../../core/superskill-types";
 import { ShellLink } from "../primitives";
+import { CopyField } from "./CopyField";
+import { resourceTypeLabel } from "./SkillCard";
 
 export function SelectedSkillCard({ item }: { item: SelectedShowroomCapability }) {
   const { capability } = item;
@@ -10,7 +11,7 @@ export function SelectedSkillCard({ item }: { item: SelectedShowroomCapability }
   return (
     <article className="ss-skill-card ss-selected-card">
       <div className="ss-card-top">
-        <span className="ss-type-chip">instruction harness</span>
+        <span className="ss-type-chip">{resourceTypeLabel(capability.type)}</span>
         <span className="ss-selected-status">Selected · review pending</span>
       </div>
       <h3>{capability.title}</h3>
@@ -22,10 +23,10 @@ export function SelectedSkillCard({ item }: { item: SelectedShowroomCapability }
         <span>candidate release</span>
         <span>{capability.release.version}</span>
       </div>
+      <CopyField label="Artifact digest" value={capability.release.artifactDigest} />
       <div className="ss-pending-copy">Selected for exact review. This is not an approval, trust badge, or managed activation claim.</div>
       <div className="ss-card-actions">
         <ShellLink href={detailHref}>View selected skill</ShellLink>
-        <ShellLink href={capabilityShareUrl(capability.id)}>Share preview</ShellLink>
         <span className="ss-disabled-action" aria-disabled="true">Managed install pending review</span>
       </div>
     </article>

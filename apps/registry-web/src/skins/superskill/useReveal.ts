@@ -28,7 +28,7 @@ const REVEAL_SELECTORS = [
 ].join(",");
 
 function reveal(el: HTMLElement, index: number): void {
-  el.style.transitionDelay = `${Math.min(Math.max(index, 0), 6) * 90}ms`;
+  el.style.transitionDelay = `${Math.min(Math.max(index, 0), 6) * 120}ms`;
   el.classList.add("is-revealed");
 }
 

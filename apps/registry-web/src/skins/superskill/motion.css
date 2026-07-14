@@ -4,6 +4,11 @@
 @keyframes ssFloat { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(50px, 26px) scale(1.12); } }
 @keyframes ssBlink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
 
+/* Trust border: the ring shape stays fixed; only the conic start angle sweeps, so the
+   accent colour travels around a static border (per DS §04) instead of spinning the frame. */
+@property --ss-ring-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes ssRingSpin { to { --ss-ring-angle: 360deg; } }
+
 .skin-superskill .ss-aurora { animation: ssFloat 15s ease-in-out infinite; }
 .skin-superskill .ss-state--loading .ss-state-glyph { animation: ssSpin 7s linear infinite; }
 
@@ -26,7 +31,7 @@
   height: 44%;
   background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--ss-action) 16%, transparent), transparent);
   transform: translateY(-130%);
-  animation: ssScan 4.4s ease-in-out infinite;
+  animation: ssScan 3.2s ease-in-out infinite;
   pointer-events: none;
 }
 .skin-superskill .ss-preview > * { position: relative; z-index: 1; }

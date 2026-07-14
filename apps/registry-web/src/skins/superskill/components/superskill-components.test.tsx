@@ -48,15 +48,18 @@ test("page-level state uses h1 and keeps retry separate from navigation", () => 
   expect(screen.getByRole("link", { name: "Open showroom" })).toHaveAttribute("href", "#/superskill");
 });
 
-test("temporary lifecycle never fabricates Installed and labels outcome evidence honestly", () => {
+test("temporary lifecycle renders the five honest states and labels outcome evidence honestly", () => {
   render(<LifecycleChain mode="temporary" executionState="outcome_success" outcomeEvidence="agent_reported" />);
-  expect(screen.queryByText("Installed")).toBeNull();
-  expect(screen.getByText(/Outcome agent-reported/)).toBeTruthy();
+  expect(screen.getAllByRole("listitem").map((li) => li.getAttribute("aria-label"))).toEqual([
+    "Installed", "Detected", "Loaded", "Invoked", "Outcome verified"
+  ]);
+  expect(screen.queryByText("Ready")).toBeNull();
+  expect(screen.getByText("Outcome reported by the agent.")).toBeTruthy();
 });
 
 test.each(["quarantined", "revoked"] as const)("%s resource disables client handoff", (status) => {
   render(<SkillCard item={showroomFixture({ trust: { ...showroomFixture().capability.trust, status } })} />);
-  expect(screen.getByText("Install blocked")).toBeTruthy();
+  expect(screen.queryByText("Install blocked")).toBeNull();
   expect(screen.queryByText("Client handoff")).toBeNull();
 });
 
@@ -84,7 +87,7 @@ test("task prompt keeps task in React state and does not mutate URL or localStor
   window.history.replaceState(null, "", "/?skin=superskill#/superskill");
   render(<TaskPrompt onContinue={onContinue} />);
   fireEvent.change(screen.getByLabelText("Task"), { target: { value: "map the private market" } });
-  fireEvent.click(screen.getByRole("button", { name: "Continue in client" }));
+  fireEvent.click(screen.getByRole("button", { name: "Find skill" }));
   expect(onContinue).toHaveBeenCalledWith("map the private market", "claude-code");
   expect(window.location.href).not.toContain("map");
   expect([...Array(window.localStorage.length)].map((_, index) => window.localStorage.key(index))).not.toContain("task");

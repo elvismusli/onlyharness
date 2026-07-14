@@ -16,12 +16,22 @@ export function TrustPage({ capabilityId }: { capabilityId: string }) {
   const capability = item.capability;
   const verdict = capabilityVerdict(capability);
   const allowed = installAllowed(capability, item.clientHandoff);
+  const shareUrl = capabilityShareUrl(capability);
+  const releasePinned = shareUrl.includes(capability.release.version);
+  const jobId = capability.jobs[0]?.id;
+  const alternativeHref = jobId && /^[a-z0-9][a-z0-9-]{0,62}$/.test(jobId) ? buildSuperSkillRoute({ name: "category", job: jobId }) : undefined;
+  const blockedExits = (
+    <>
+      <ShellLink href={buildSuperSkillRoute({ name: "landing" })}>Open showroom</ShellLink>
+      {alternativeHref ? <ShellLink href={alternativeHref}>See other resources for this task</ShellLink> : null}
+    </>
+  );
   return (
     <main className="ss-content ss-page ss-trust-page">
-      {(verdict === "revoked" || verdict === "quarantined") ? <StatePanel kind="blocked" title={`Release ${verdict}`} reason="The exact public release remains visible for an honest shared link, but client handoff is disabled." next="Review limitations and use a current approved alternative." /> : null}
-      {item.clientHandoff.reason === "stale_or_ineligible_evidence" ? <StatePanel kind="blocked" title="Client handoff blocked — evidence is stale" reason="This exact release remains visible, but its review or compatibility evidence is no longer current." next="Use a currently approved release or wait for re-review." /> : null}
+      {(verdict === "revoked" || verdict === "quarantined") ? <StatePanel kind="blocked" headingLevel={1} title={`Release ${verdict}`} reason="The exact public release remains visible for an honest shared link, but client handoff is disabled." next="Review limitations and use a current approved alternative.">{blockedExits}</StatePanel> : null}
+      {item.clientHandoff.reason === "stale_or_ineligible_evidence" ? <StatePanel kind="blocked" headingLevel={1} title="Client handoff blocked — evidence is stale" reason="This exact release remains visible, but its review or compatibility evidence is no longer current." next="Use a currently approved release or wait for re-review.">{blockedExits}</StatePanel> : null}
       <TrustReport capability={capability} />
-      <div className="ss-share-field"><CopyField label="Share this exact trust preview" value={capabilityShareUrl(capability.id)} /></div>
+      <div className="ss-share-field"><CopyField label={releasePinned ? "Share this exact trust preview" : "Share this trust preview"} value={shareUrl} /></div>
       <div className="ss-sticky-install">{allowed ? <ShellLink className="ss-link--primary" href={buildSuperSkillRoute({ name: "install", capabilityId })}>Continue in client</ShellLink> : <span className="ss-disabled-action" aria-disabled="true">Install handoff blocked</span>}</div>
     </main>
   );
