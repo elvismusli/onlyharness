@@ -10,6 +10,7 @@ export type SuperskillOAuthProviders = Record<SuperskillOAuthProvider, boolean>;
 
 const NO_OAUTH_PROVIDERS: SuperskillOAuthProviders = { google: false, github: false };
 export const RESEND_CONFIRMATION_REQUESTED_MESSAGE = "Confirmation email requested. For privacy, this does not prove that an account exists or that delivery succeeded. If nothing arrives, create the account again or try later.";
+export const SIGNUP_CONFIRMATION_CONTINUATION_MESSAGE = "Account created. Check your email; the confirmation link returns you to SuperSkill to continue.";
 
 export function authFailureMessage(error: unknown, action: AuthAction): string {
   const candidate = error && typeof error === "object" ? error as { message?: unknown } : undefined;
@@ -186,7 +187,7 @@ export function useAuth(opts?: { onFlash?: (msg: string) => void }): UseAuthResu
         setLogon({ open: false, note: "" });
         opts?.onFlash?.(`Welcome to the frontier, ${name || email}`);
       } else {
-        setAuthStatus("Account created. Check your email to confirm, then log on.");
+        setAuthStatus(SIGNUP_CONFIRMATION_CONTINUATION_MESSAGE);
       }
     } catch (error) {
       setAuthStatus(authFailureMessage(error, "sign-up"));

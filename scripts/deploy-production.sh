@@ -44,20 +44,26 @@ if [[ "$configured_agent_auth_flag" != "false" && "$configured_agent_auth_flag" 
   echo "SUPERSKILL_AGENT_AUTH_ENABLED must be true or false; refusing deploy." >&2
   exit 1
 fi
+configured_agent_token_pepper="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_TOKEN_PEPPER[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+configured_agent_access_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_ACCESS_TTL_SECONDS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+configured_agent_access_ttl="${configured_agent_access_ttl:-600}"
+configured_agent_session_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_SESSION_TTL_SECONDS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+configured_agent_session_ttl="${configured_agent_session_ttl:-2592000}"
+configured_device_auth_flag="$(sed -n 's/^[[:space:]]*SUPERSKILL_DEVICE_AUTH_ENABLED[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+configured_device_auth_flag="${configured_device_auth_flag:-true}"
+if [[ "$configured_device_auth_flag" != "false" && "$configured_device_auth_flag" != "true" ]]; then
+  echo "SUPERSKILL_DEVICE_AUTH_ENABLED must be true or false; refusing deploy." >&2
+  exit 1
+fi
 if [[ "$configured_agent_auth_flag" == "true" ]]; then
-  configured_agent_token_pepper="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_TOKEN_PEPPER[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
   if [[ ${#configured_agent_token_pepper} -lt 32 ]]; then
     echo "SUPERSKILL_AGENT_TOKEN_PEPPER must contain at least 32 non-whitespace characters when agent auth is enabled." >&2
     exit 1
   fi
-  configured_agent_access_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_ACCESS_TTL_SECONDS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
-  configured_agent_access_ttl="${configured_agent_access_ttl:-600}"
   if [[ "$configured_agent_access_ttl" != "600" ]]; then
     echo "SUPERSKILL_AGENT_ACCESS_TTL_SECONDS must be 600 for the agent-first release." >&2
     exit 1
   fi
-  configured_agent_session_ttl="$(sed -n 's/^[[:space:]]*SUPERSKILL_AGENT_SESSION_TTL_SECONDS[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
-  configured_agent_session_ttl="${configured_agent_session_ttl:-2592000}"
   if [[ "$configured_agent_session_ttl" != "2592000" ]]; then
     echo "SUPERSKILL_AGENT_SESSION_TTL_SECONDS must be 2592000 for the agent-first release." >&2
     exit 1
@@ -67,6 +73,7 @@ if [[ "$configured_agent_auth_flag" == "true" ]]; then
     exit 1
   fi
 fi
+configured_agent_token_pepper_digest="$(printf '%s' "$configured_agent_token_pepper" | shasum -a 256 | awk '{print $1}')"
 configured_import_archive_dir="$(sed -n 's/^[[:space:]]*RESOURCE_IMPORT_ARCHIVE_DIR[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
 RESOURCE_IMPORT_ARCHIVE_DIR="${configured_import_archive_dir:-$RESOURCE_IMPORT_ARCHIVE_DIR}"
 if [[ ! "$RESOURCE_IMPORT_ARCHIVE_DIR" =~ ^/[A-Za-z0-9._/-]+$ || "$RESOURCE_IMPORT_ARCHIVE_DIR" == *".."* ]]; then
@@ -194,7 +201,33 @@ chmod 0600 "$temporary_env"
 mv "$temporary_env" "$env_file"
 REMOTE_SUBJECT_SALT
 
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES config | grep -q 'HOSTED_RESOURCE_PUBLISH_ENABLED: \"$configured_publish_flag\"'"
+ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' COMPOSE_FILES='$COMPOSE_FILES' configured_publish_flag='$configured_publish_flag' configured_agent_auth_flag='$configured_agent_auth_flag' configured_agent_access_ttl='$configured_agent_access_ttl' configured_agent_session_ttl='$configured_agent_session_ttl' configured_device_auth_flag='$configured_device_auth_flag' configured_agent_token_pepper_digest='$configured_agent_token_pepper_digest' bash -s" <<'REMOTE_COMPOSE_CONTRACT'
+set -euo pipefail
+cd "$SERVER_PATH"
+env -u SUPERSKILL_AGENT_AUTH_ENABLED \
+  -u SUPERSKILL_AGENT_TOKEN_PEPPER \
+  -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS \
+  -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS \
+  -u SUPERSKILL_DEVICE_AUTH_ENABLED \
+  HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" \
+  docker compose --env-file infra/production.env $COMPOSE_FILES config --format json |
+  node --input-type=module -e '
+    import { createHash } from "node:crypto";
+    let input = "";
+    for await (const chunk of process.stdin) input += chunk;
+    const environment = JSON.parse(input)?.services?.api?.environment ?? {};
+    const [publish, enabled, accessTtl, sessionTtl, deviceEnabled, pepperDigest] = process.argv.slice(1);
+    const actualPepperDigest = createHash("sha256").update(String(environment.SUPERSKILL_AGENT_TOKEN_PEPPER ?? ""), "utf8").digest("hex");
+    const matches = environment.HOSTED_RESOURCE_PUBLISH_ENABLED === publish
+      && environment.SUPERSKILL_AGENT_AUTH_ENABLED === enabled
+      && environment.SUPERSKILL_AGENT_ACCESS_TTL_SECONDS === accessTtl
+      && environment.SUPERSKILL_AGENT_SESSION_TTL_SECONDS === sessionTtl
+      && environment.SUPERSKILL_DEVICE_AUTH_ENABLED === deviceEnabled
+      && actualPepperDigest === pepperDigest;
+    if (!matches) throw new Error("Rendered compose auth/publish contract does not match the approved env file");
+    console.log(JSON.stringify({ ok: true, code: "COMPOSE_AUTH_CONTRACT_READY" }));
+  ' "$configured_publish_flag" "$configured_agent_auth_flag" "$configured_agent_access_ttl" "$configured_agent_session_ttl" "$configured_device_auth_flag" "$configured_agent_token_pepper_digest"
+REMOTE_COMPOSE_CONTRACT
 
 ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' RESOURCE_ARCHIVE_DIR='$RESOURCE_ARCHIVE_DIR' bash -s" <<'REMOTE_ARCHIVES'
 set -euo pipefail
@@ -204,16 +237,16 @@ if [ -d "$SERVER_PATH/data/resources/archives" ]; then
 fi
 REMOTE_ARCHIVES
 
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES build"
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES run --rm --no-deps api node --input-type=module -e 'const storage = await import(\"./apps/harness-api/dist/resource-releases.js\"); const probe = storage.probeResourceImportArchiveStorage(); if (!probe.ok) { console.error(JSON.stringify(probe)); process.exit(1); } const reconciliation = await storage.reconcileResourceReleases({pendingMaxAgeMs:0}); if (reconciliation.store === \"unavailable\") { console.error(JSON.stringify({ok:false,code:\"RELEASE_STORE_UNAVAILABLE\"})); process.exit(1); } const inventory = storage.verifyResourceReleaseInventory(); if (!inventory.ok) { console.error(JSON.stringify({ok:false,code:\"ARCHIVE_PARITY_FAILED\",failures:inventory.failures})); process.exit(1); } console.log(JSON.stringify({ok:true,code:\"RESOURCE_IMPORT_STORAGE_READY\",reconciliation,inventory}));'"
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES up -d --no-build"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES build"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES run --rm --no-deps api node --input-type=module -e 'const storage = await import(\"./apps/harness-api/dist/resource-releases.js\"); const probe = storage.probeResourceImportArchiveStorage(); if (!probe.ok) { console.error(JSON.stringify(probe)); process.exit(1); } const reconciliation = await storage.reconcileResourceReleases({pendingMaxAgeMs:0}); if (reconciliation.store === \"unavailable\") { console.error(JSON.stringify({ok:false,code:\"RELEASE_STORE_UNAVAILABLE\"})); process.exit(1); } const inventory = storage.verifyResourceReleaseInventory(); if (!inventory.ok) { console.error(JSON.stringify({ok:false,code:\"ARCHIVE_PARITY_FAILED\",failures:inventory.failures})); process.exit(1); } console.log(JSON.stringify({ok:true,code:\"RESOURCE_IMPORT_STORAGE_READY\",reconciliation,inventory}));'"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES up -d --no-build"
 
 # The api data volume shadows the image's /app/data: seed committed catalog
 # data into the volume so directory/resource shelves survive on prod.
 for seed_dir in directories resources harness-versions superskill; do
-  ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
+  ssh "$SSH_TARGET" "cd '$SERVER_PATH' && if [ -d data/$seed_dir ]; then env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES cp data/$seed_dir api:/app/data/; fi"
 done
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES restart api"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES restart api"
 
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
@@ -276,14 +309,14 @@ systemctl reload caddy
 REMOTE_CADDY
 fi
 
-ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES ps"
+ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED='$configured_publish_flag' docker compose --env-file infra/production.env $COMPOSE_FILES ps"
 ssh "$SSH_TARGET" "SERVER_PATH='$SERVER_PATH' COMPOSE_FILES='$COMPOSE_FILES' configured_publish_flag='$configured_publish_flag' bash -s" <<'REMOTE_HEALTH'
 set -euo pipefail
 cd "$SERVER_PATH"
 for _ in $(seq 1 45); do
-  if env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch("http://127.0.0.1:8787/healthz").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' 2>/dev/null; then
-    env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node scripts/check-share-fonts.mjs
-    env HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node scripts/check-share-unicode-render.mjs
+  if env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node -e 'fetch("http://127.0.0.1:8787/healthz").then(async (r) => { if (!r.ok) throw new Error(await r.text()); console.log(await r.text()); })' 2>/dev/null; then
+    env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node scripts/check-share-fonts.mjs
+    env -u SUPERSKILL_AGENT_AUTH_ENABLED -u SUPERSKILL_AGENT_TOKEN_PEPPER -u SUPERSKILL_AGENT_ACCESS_TTL_SECONDS -u SUPERSKILL_AGENT_SESSION_TTL_SECONDS -u SUPERSKILL_DEVICE_AUTH_ENABLED HOSTED_RESOURCE_PUBLISH_ENABLED="$configured_publish_flag" docker compose --env-file infra/production.env $COMPOSE_FILES exec -T api node scripts/check-share-unicode-render.mjs
     exit 0
   fi
   sleep 1
@@ -304,6 +337,31 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   curl -fsSI "$PUBLIC_BASE_URL/favicon.ico" | tr -d '\r' | grep -qi '^content-type: image/vnd.microsoft.icon\|^content-type: image/x-icon'
   curl -fsSI "$PUBLIC_BASE_URL/manifest.webmanifest" | tr -d '\r' | grep -qi '^content-type: application/manifest+json\|^content-type: application/json'
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
+  agent_auth_response="$(mktemp)"
+  agent_auth_status="$(curl -sS -o "$agent_auth_response" -w '%{http_code}' -X POST "$PUBLIC_BASE_URL/api/auth/agent/start" \
+    -H 'Content-Type: application/json' \
+    --data '{"client":"cli","scopes":["workspaces:read"]}')"
+  if [[ "$configured_agent_auth_flag" == "true" ]]; then
+    test "$agent_auth_status" = "201"
+    node --input-type=module -e '
+      import { readFileSync } from "node:fs";
+      const body = JSON.parse(readFileSync(process.argv[1], "utf8"));
+      const ok = /^ohrq_[A-Za-z0-9_-]{43}$/.test(body.request_id ?? "")
+        && /^ohdp_[A-Za-z0-9_-]{43}$/.test(body.device_proof ?? "")
+        && typeof body.browser_url === "string"
+        && body.browser_url.startsWith("https://superskill.sh/#/superskill/connect?")
+        && body.browser_url.includes(`request=${body.request_id}`)
+        && body.browser_url.includes("&proof=ohbp_")
+        && body.expires_in > 0
+        && body.interval > 0;
+      if (!ok) throw new Error("Agent auth start contract is not ready");
+      console.log(JSON.stringify({ ok: true, code: "AGENT_AUTH_START_READY" }));
+    ' "$agent_auth_response"
+  else
+    test "$agent_auth_status" = "503"
+    grep -q '"code":"AGENT_AUTH_UNAVAILABLE"' "$agent_auth_response"
+  fi
+  rm -f "$agent_auth_response"
   curl -fsS "$PUBLIC_BASE_URL/api/superskill/install" | grep -q '"action":"install_superskill"'
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node scripts/check-superskill-showroom-response.mjs approved
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/selected?limit=12" | node scripts/check-superskill-showroom-response.mjs selected

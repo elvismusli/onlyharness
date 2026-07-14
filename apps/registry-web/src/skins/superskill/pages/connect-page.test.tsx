@@ -53,6 +53,8 @@ test("binds a fragment proof once, scrubs it immediately, and renders the saniti
   ]);
   expect(fetchMock.mock.calls[1][0]).toBe(`http://127.0.0.1:8787/auth/agent/context?request_id=${requestId}`);
   expect(screen.getByText("Publish and update resources")).toBeTruthy();
+  expect(screen.getByText("Return domain")).toBeTruthy();
+  expect(screen.getByText("127.0.0.1")).toBeTruthy();
   expect(document.body.textContent).not.toContain(browserProof);
   expect(localStorage.length).toBe(0);
   expect(sessionStorage.length).toBe(0);

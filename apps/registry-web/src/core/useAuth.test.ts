@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import { authFailureMessage, oauthProvidersFromSettings, oauthRedirectUrl, RESEND_CONFIRMATION_REQUESTED_MESSAGE, safeSuperskillAuthContinuation, safeSuperskillExternalAuthContinuation, useAuth, workspaceInviteFromContinuation } from "./useAuth";
+import { authFailureMessage, oauthProvidersFromSettings, oauthRedirectUrl, RESEND_CONFIRMATION_REQUESTED_MESSAGE, safeSuperskillAuthContinuation, safeSuperskillExternalAuthContinuation, SIGNUP_CONFIRMATION_CONTINUATION_MESSAGE, useAuth, workspaceInviteFromContinuation } from "./useAuth";
 
 // These assert pure hook state transitions that hold regardless of whether
 // Supabase is configured: `session` is null on the first synchronous render
@@ -73,6 +73,11 @@ test("agent connect continuations keep the request but strip the one-time browse
   expect(oauthRedirectUrl({ origin: "https://superskill.sh", hash } as Location)).toBe(`https://superskill.sh/#/superskill/connect?request=${requestId}`);
   expect(localStorage.length).toBe(0);
   expect(sessionStorage.length).toBe(0);
+});
+
+test("email signup copy promises automatic SuperSkill continuation instead of a second login", () => {
+  expect(SIGNUP_CONFIRMATION_CONTINUATION_MESSAGE).toContain("confirmation link returns you to SuperSkill");
+  expect(SIGNUP_CONFIRMATION_CONTINUATION_MESSAGE).not.toMatch(/log on|sign in/i);
 });
 
 test("approval continuation fails closed when its exact release tuple is missing or invalid", () => {

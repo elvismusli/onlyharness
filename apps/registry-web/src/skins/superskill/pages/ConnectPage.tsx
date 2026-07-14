@@ -229,7 +229,15 @@ function ConnectSignIn({ titleId, onDeny }: { titleId: string; onDeny: () => voi
 }
 
 function ClientSummary({ context }: { context: AgentConnectContext }) {
-  return <dl className="ss-connect-summary"><div><dt>Client</dt><dd>{context.client}</dd></div><div><dt>Return to</dt><dd>{context.clientName}</dd></div></dl>;
+  return <dl className="ss-connect-summary"><div><dt>Client</dt><dd>{context.client}</dd></div><div><dt>Return to</dt><dd>{context.clientName}</dd></div><div><dt>Return domain</dt><dd>{connectReturnDomain()}</dd></div></dl>;
+}
+
+function connectReturnDomain(): string {
+  try {
+    return new URL(apiUrl).hostname;
+  } catch {
+    return "superskill.sh";
+  }
 }
 
 function scrubBrowserProof(requestId: string) {
