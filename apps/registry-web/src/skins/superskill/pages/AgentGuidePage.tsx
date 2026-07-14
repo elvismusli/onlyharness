@@ -1,5 +1,4 @@
 import { superskillInstallHandoff } from "../../../core/superskill-install";
-import { superskillRuntime } from "../../../generated/superskill-runtime";
 import { CopyField } from "../components/CopyField";
 import { StatePanel } from "../components/StatePanel";
 import { PageHeading, ShellLink } from "../primitives";
@@ -13,7 +12,7 @@ export function AgentGuidePage() {
 
       <section className="ss-doc-section" aria-labelledby="ss-agent-bootstrap">
         <h2 id="ss-agent-bootstrap">Bootstrap the shared skill</h2>
-        {handoff.status === "available" ? <><CopyField label={`Install with ${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion}`} value={handoff.installCommand} /><p>The exact URL is public and immutable for a capability tuple. It contains no task, repository path, credential, or user identity. The installer binds the universal skill and project-local MCP adapter to the same manifest digest; no token is stored.</p></> : <StatePanel kind="blocked" title="Bootstrap unavailable" reason={handoff.reason} next="Do not invent a command, use @latest, or bypass the missing official integrity pin." />}
+        {handoff.status === "available" ? <><CopyField label="Universal SuperSkill install command" value={handoff.installCommand} /><p>The exact URL is public and immutable for a capability tuple. It contains no task, repository path, credential, or user identity. The installer binds the universal skill and project-local MCP adapter to the same manifest digest; no token is stored.</p></> : <StatePanel kind="blocked" title="Bootstrap unavailable" reason={handoff.reason} next="Do not invent a command, use @latest, or bypass the missing official integrity pin." />}
       </section>
 
       <section className="ss-doc-section" aria-labelledby="ss-agent-loop">

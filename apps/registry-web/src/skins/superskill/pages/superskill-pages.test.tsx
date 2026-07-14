@@ -14,6 +14,12 @@ import { TrustPage } from "./TrustPage";
 
 const runtimePublished = String(superskillRuntime.cliReleaseStatus) === "published" && Boolean(superskillRuntime.cliIntegrity);
 
+function humanFacingProse(container: HTMLElement): string {
+  const copy = container.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll("textarea").forEach((field) => field.remove());
+  return copy.textContent ?? "";
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
@@ -41,7 +47,7 @@ test("generic install direct reload reflects the exact release gate", async () =
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   window.history.replaceState(null, "", "/?skin=superskill#/superskill/install");
-  render(<SuperskillSkin />);
+  const { container } = render(<SuperskillSkin />);
   expect(await screen.findByRole("heading", { level: 1, name: runtimePublished ? "Continue in your existing agent" : "Universal installer not available yet" })).toBeTruthy();
   if (runtimePublished) {
     expect(screen.getByDisplayValue(new RegExp(`npx --yes onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")} superskill install https://superskill\\.sh/api/superskill/install --auto`))).toBeTruthy();
@@ -49,26 +55,29 @@ test("generic install direct reload reflects the exact release gate", async () =
   } else {
     expect(screen.queryByDisplayValue(/superskill install/)).toBeNull();
   }
+  expect(humanFacingProse(container)).not.toMatch(/onlyharness/i);
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("browser docs stay HTML-first while preserving raw machine-readable links", () => {
-  render(<DocsPage />);
+  const { container } = render(<DocsPage />);
   expect(screen.getByRole("heading", { level: 1, name: "Install and use SuperSkill" })).toBeTruthy();
   if (runtimePublished) expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")} superskill install`))).toBeTruthy();
   else expect(screen.getByRole("heading", { name: "Install command not published" })).toBeTruthy();
   expect(screen.getByRole("link", { name: "Raw llms.txt" })).toHaveAttribute("href", "/llms.txt");
   expect(screen.getByRole("link", { name: "Raw AGENTS.md" })).toHaveAttribute("href", "/AGENTS.md");
+  expect(humanFacingProse(container)).not.toMatch(/onlyharness/i);
 });
 
 test("agent guide keeps selected candidates separate from approved exact releases", () => {
-  render(<AgentGuidePage />);
+  const { container } = render(<AgentGuidePage />);
   expect(screen.getByRole("heading", { level: 1, name: "Use SuperSkill from an agent" })).toBeTruthy();
   expect(screen.getByText("selected_unreviewed")).toBeTruthy();
   if (runtimePublished) expect(screen.getByDisplayValue(new RegExp(`onlyharness@${superskillRuntime.cliVersion.replaceAll(".", "\\.")} superskill install`))).toBeTruthy();
   else expect(screen.getByRole("heading", { name: "Bootstrap unavailable" })).toBeTruthy();
   expect(screen.getByText(/cannot support a trust claim, managed recommendation, or activation/i)).toBeTruthy();
   expect(screen.getByRole("link", { name: "Raw AGENTS.md" })).toHaveAttribute("href", "/AGENTS.md");
+  expect(humanFacingProse(container)).not.toMatch(/onlyharness/i);
 });
 
 test("landing renders a real public DTO and does not send task content", async () => {
