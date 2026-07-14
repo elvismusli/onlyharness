@@ -133,7 +133,7 @@ export function WorkspacesPage() {
                 <h3>Add a public resource</h3>
                 <p>Add a scanned public release to this workspace's collection. This records local curation and a trust snapshot; it never grants a SuperSkill reviewed badge.</p>
                 <form className="ss-workspace-form" onSubmit={approve}>
-                  <label>Public resource ID<input required value={h.workspaceApprovalResourceId} onChange={(event) => h.setWorkspaceApprovalResourceId(event.target.value)} placeholder="onlyharness:packages/my-agent-skill" /></label>
+                  <label>Public resource ID<input required value={h.workspaceApprovalResourceId} onChange={(event) => h.setWorkspaceApprovalResourceId(event.target.value)} placeholder="github:acme/my-agent-skill" /></label>
                   {h.workspaceApprovalVersion && h.workspaceApprovalArtifactDigest ? <div className="ss-auth-notice"><strong>Exact release:</strong> {h.workspaceApprovalVersion}<br /><code>{h.workspaceApprovalArtifactDigest}</code></div> : null}
                   <label>Collection slug<input required pattern="[a-z0-9][a-z0-9._-]{0,80}" value={h.workspaceCollectionSlug} onChange={(event) => h.setWorkspaceCollectionSlug(event.target.value)} placeholder="approved" /></label>
                   <label>Approval note<textarea rows={3} maxLength={500} value={h.workspaceApprovalNote} onChange={(event) => h.setWorkspaceApprovalNote(event.target.value)} placeholder="Why this exact release belongs in the workspace" /></label>

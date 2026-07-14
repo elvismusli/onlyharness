@@ -30,7 +30,7 @@ export function Landing() {
           <div className="ss-one-link-card">
             <div className="ss-one-link-head"><span>01</span><div><strong>Universal SuperSkill link</strong><small>Paste into Codex or Claude Code</small></div></div>
             <CopyField label="One link — paste it into your agent" value={installer.installUrl} />
-            <div className="ss-one-link-foot"><span>Exact runtime: {installer.runtime}</span><a href="#/superskill/install">See manual install and safety details →</a></div>
+            <div className="ss-one-link-foot"><span>Pinned installer · integrity verified</span><a href="#/superskill/install">See manual install and safety details →</a></div>
           </div>
         ) : <StatePanel kind="blocked" title="Universal link temporarily unavailable" reason={installer.reason} next="Wait for the pinned public runtime; no unverified fallback is shown." />}
         <div className="ss-task-start"><span>or start with the outcome</span><TaskPrompt onContinue={(task, client) => setHandoff({ task, client })} /></div>

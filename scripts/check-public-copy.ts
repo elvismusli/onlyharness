@@ -62,6 +62,8 @@ for (const forbidden of ["2,140", "12.8k", "240 verified", "0 unchecked", "Outco
 }
 check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser source must not reference the internal CLI token");
 check(!superskillCopy.includes("https://onlyharness.com"), "SuperSkill browser source must use the canonical superskill.sh origin");
+check(!docs["apps/registry-web/src/skins/superskill/pages/Landing.tsx"].includes("Exact runtime:"), "SuperSkill homepage must not expose the legacy package coordinate as branding");
+check(!docs["apps/registry-web/src/skins/superskill/pages/WorkspacesPage.tsx"].includes('placeholder="onlyharness:'), "SuperSkill workspace UI must not teach legacy resource coordinates in visible placeholders");
 for (const file of ["apps/registry-web/index.html", "apps/registry-web/public/favicon.svg", "apps/registry-web/public/og-card.svg", "apps/registry-web/public/og-card.html", "apps/registry-web/public/manifest.webmanifest"] as const) {
   check(!/OnlyHarness|onlyharness/.test(docs[file]), `${file} must not contain legacy human-facing branding`);
 }
