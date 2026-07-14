@@ -94,7 +94,7 @@ npx onlyharness@latest mcp-config deep-market-researcher --target claude-desktop
 npm i -g onlyharness   # installs the `hh` command
 ```
 
-Resource catalog, immutable `publish-resource`, workspace approval/setup/gates, membership expiry, the manual/provider-agnostic workspace subscription lifecycle, universal install, and SuperSkill managed commands are available in published `onlyharness@0.2.19`; `0.2.18` is a known-bad one-link release because its published universal-skill digest is stale. Server catalog flows are also available through MCP/HTTP.
+Resource catalog, immutable `publish-resource`, workspace approval/setup/gates, membership expiry, the manual/provider-agnostic workspace subscription lifecycle, universal install, agent-first browser auth, and SuperSkill managed commands are available in published `onlyharness@0.3.0`; `0.2.18` is a known-bad one-link release because its published universal-skill digest is stale. Server catalog flows are also available through MCP/HTTP.
 
 For local development, build the workspace bundle and run it directly:
 
@@ -126,7 +126,7 @@ SuperSkill is the task-first managed capability layer built on OnlyHarness. The 
 - Public, read-only: `GET /api/showroom/capabilities` and `GET /api/showroom/capabilities/{id}`. These routes never recommend, download, or activate files.
 - Selected shelf: `GET /api/showroom/selected` exposes the current reviewed-intake candidates as `selected_unreviewed` cards. They can fill the Daylight catalog, but cannot be recommended or activated until exact-release approval evidence exists.
 - Agent-first authorization: the project-local `superskill_local` MCP opens browser consent on the first protected action, keeps access credentials in process memory, stores only the rotating refresh credential in the OS keychain, and automatically retries the exact idempotent action. Public search, detail and public archive reads remain anonymous.
-- Managed CLI release: `onlyharness@0.2.19` is the current one-link release, published and verified through a clean `npx` install, and pinned to official npm integrity in `plugins/superskill/runtime.json`. It binds hosted skill detail, archive headers and archive bytes to one immutable version/digest/size/trust tuple. `0.2.14` and `0.2.18` are known-bad one-link releases; never substitute `latest` for the exact runtime pin.
+- Managed CLI release: `onlyharness@0.3.0` is the current one-link transition release, published and pinned to official npm integrity in `plugins/superskill/runtime.json`. It adds the local browser-auth broker and binds hosted skill detail, archive headers and archive bytes to one immutable version/digest/size/trust tuple. `0.2.14` and `0.2.18` are known-bad one-link releases; never substitute `latest` for the exact runtime pin.
 - Web: the SuperSkill product surface is hostname-locked on `superskill.sh`; legacy query or stored skin state cannot switch it.
 
 ```bash
