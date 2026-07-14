@@ -3,7 +3,7 @@
   "cliPackage": "onlyharness",
   "cliVersion": "0.3.1",
   "pluginVersion": "0.3.1",
-  "cliIntegrity": null,
-  "cliReleaseStatus": "unpublished",
+  "cliIntegrity": "sha512-rnLBv4+08mvHphUAnbxxz7lkQhm0sJFfZL77yDIMy9EcG5HFWIRy05UM2DIgvvK+JOlF3wnJTT1L67wY0AHtgA==",
+  "cliReleaseStatus": "published",
   "activationContractVersion": "superskill.activation.v1"
 }

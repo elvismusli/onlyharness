@@ -574,7 +574,7 @@ This section is the current implementation truth for the transition release seri
 - Protected mutations preserve one `Idempotency-Key` across authorization and retry. Exact
   replay returns the original receipt; payload drift returns 409; an indeterminate crash
   window remains fail-closed and never re-executes the mutation automatically.
-- `onlyharness@0.3.1` is the transition hotfix candidate. It keeps the `0.3.0` auth broker and
+- `onlyharness@0.3.1` is the published transition hotfix, pinned to official npm integrity. It keeps the `0.3.0` auth broker and
   adds anonymous, redirect-blocked native-harness installation bound to exact version,
   digest, complete immutable snapshot, current passing `static-v2` scan and full manifest
   equivalence. Public projections no longer expose the unbound legacy `hh install` command.

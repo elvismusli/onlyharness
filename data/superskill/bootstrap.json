@@ -3,8 +3,8 @@
   "installer": {
     "package": "onlyharness",
     "version": "0.3.1",
-    "integrity": null,
-    "releaseStatus": "unpublished"
+    "integrity": "sha512-rnLBv4+08mvHphUAnbxxz7lkQhm0sJFfZL77yDIMy9EcG5HFWIRy05UM2DIgvvK+JOlF3wnJTT1L67wY0AHtgA==",
+    "releaseStatus": "published"
   },
   "universalSkill": {
     "name": "superskill",

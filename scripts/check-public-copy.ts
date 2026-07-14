@@ -86,7 +86,7 @@ check(!docs["apps/registry-web/src/skins/superskill/components/SelectedSkillCard
 check(docs["README.md"].includes("selected_unreviewed") && docs["README.md"].includes("cannot be recommended or activated"), "README must separate selected discovery from approved managed use");
 check(docs["README.md"].includes("12 exact immutable **candidates**"), "README must keep current SuperSkill supply honest");
 if (runtime.cliReleaseStatus === "published") {
-  check(docs["README.md"].includes(`${runtime.cliVersion}\` is the current one-link transition hotfix, published and verified through a clean \`npx\` install`), "README must state clean verification for the published current CLI");
+  check(docs["README.md"].includes(`${runtime.cliVersion}\` is the current one-link transition hotfix, published and pinned to official npm integrity`), "README must state the published current CLI and official integrity pin");
 } else {
   check(docs["README.md"].includes(`${runtime.cliVersion}\` is the current one-link transition hotfix`) && docs["README.md"].includes("after publication"), "README must keep the unpublished CLI state honest");
 }
