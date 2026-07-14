@@ -17,6 +17,12 @@ export type SuperSkillBootstrapContract = {
 export type SuperSkillBootstrapManifest = {
   schemaVersion: "superskill.bootstrap.v1";
   canonicalUrl: string;
+  agent: {
+    action: "install_superskill";
+    command: string;
+    supportedClients: ["codex", "claude-code"];
+    note: string;
+  };
   installer: SuperSkillBootstrapContract["installer"];
   universalSkill: SuperSkillBootstrapContract["universalSkill"];
   clientAdapters: SuperSkillBootstrapContract["clientAdapters"];
@@ -58,6 +64,12 @@ export function buildSuperSkillBootstrapManifest(contract: SuperSkillBootstrapCo
   const body = {
     schemaVersion: "superskill.bootstrap.v1" as const,
     canonicalUrl,
+    agent: {
+      action: "install_superskill" as const,
+      command: `npx --yes onlyharness@${contract.installer.version} superskill install ${canonicalUrl} --auto`,
+      supportedClients: ["codex", "claude-code"] as ["codex", "claude-code"],
+      note: "Run this exact pinned command locally. It installs the SuperSkill plugin and universal skill for the detected client; capability activation still requires explicit consent."
+    },
     installer: contract.installer,
     universalSkill: contract.universalSkill,
     clientAdapters: contract.clientAdapters,

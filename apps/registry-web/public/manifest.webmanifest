@@ -1,0 +1,13 @@
+{
+  "name": "SuperSkill",
+  "short_name": "SuperSkill",
+  "description": "One universal link for exact agent skills, workflows, workspaces and safe client routing.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#0f736e",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

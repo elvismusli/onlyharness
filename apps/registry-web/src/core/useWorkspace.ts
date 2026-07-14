@@ -28,6 +28,7 @@ export type UseWorkspaceResult = {
   workspaceInviteMaxUses: string;
   setWorkspaceInviteMaxUses: (value: string) => void;
   workspaceInviteCode: string;
+  workspaceInviteShareUrl: string;
   workspaceInviteStatus: string;
   workspaceJoinCode: string;
   setWorkspaceJoinCode: (value: string) => void;
@@ -89,6 +90,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
   const [workspaceInviteRole, setWorkspaceInviteRoleState] = useState<WorkspaceMember["role"]>("member");
   const [workspaceInviteMaxUses, setWorkspaceInviteMaxUses] = useState("1");
   const [workspaceInviteCode, setWorkspaceInviteCode] = useState("");
+  const [workspaceInviteShareUrl, setWorkspaceInviteShareUrl] = useState("");
   const [workspaceInviteStatus, setWorkspaceInviteStatus] = useState("");
   const [workspaceJoinCode, setWorkspaceJoinCode] = useState("");
   const [workspaceJoinStatus, setWorkspaceJoinStatus] = useState("");
@@ -132,6 +134,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     setWorkspaceMembers([]);
     setWorkspaceJoinPolicies([]);
     setWorkspaceInviteCode("");
+    setWorkspaceInviteShareUrl("");
     setWorkspaceJoinCode("");
     setWorkspaceGateCode("");
     setWorkspaceSubscriptions([]);
@@ -279,6 +282,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     const guard = currentGuard();
     setWorkspaceBusy(true);
     setWorkspaceInviteCode("");
+    setWorkspaceInviteShareUrl("");
     setWorkspaceInviteStatus("");
     try {
       const response = await fetch(`${apiUrl}/workspaces/${encodeURIComponent(slug)}/invites`, {
@@ -290,13 +294,15 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
           expiresInSeconds: 60 * 60 * 24 * 7
         })
       });
-      const data = await response.json().catch(() => ({})) as { error?: string; code?: string; invite?: WorkspaceInvite };
+      const data = await response.json().catch(() => ({})) as { error?: string; code?: string; shareUrl?: string; invite?: WorkspaceInvite };
       if (!isCurrentGuard(guard)) return;
       if (!response.ok) throw new Error(data.error ?? `Invite failed (${response.status})`);
       if (!data.code) throw new Error("Invite created without a code.");
+      if (!data.shareUrl || !/^https:\/\/superskill\.sh\/w\/[A-Za-z0-9_-]{8,100}#invite=ohwi_[A-Za-z0-9_-]{20,80}$/.test(data.shareUrl)) throw new Error("Invite created without a safe share preview URL.");
       setWorkspaceInviteCode(data.code);
+      setWorkspaceInviteShareUrl(data.shareUrl);
       setWorkspacePrincipal(guard.principal);
-      setWorkspaceInviteStatus(`Invite created for ${data.invite?.role ?? workspaceInviteRole}. Show this code once.`);
+      setWorkspaceInviteStatus(`Invite created for ${data.invite?.role ?? workspaceInviteRole}. The workspace name is visible in its preview; the raw code stays after #.`);
       opts.onFlash?.("Workspace invite created");
     } catch (error) {
       if (isCurrentGuard(guard)) setWorkspaceInviteStatus(error instanceof Error ? error.message : "Invite failed");
@@ -618,6 +624,7 @@ export function useWorkspace(opts: UseWorkspaceOptions = {}): UseWorkspaceResult
     workspaceInviteMaxUses,
     setWorkspaceInviteMaxUses,
     workspaceInviteCode: privateStateVisible ? workspaceInviteCode : "",
+    workspaceInviteShareUrl: privateStateVisible ? workspaceInviteShareUrl : "",
     workspaceInviteStatus,
     workspaceJoinCode,
     setWorkspaceJoinCode,

@@ -635,7 +635,7 @@ program
 program.enablePositionalOptions();
 
 program.command("search")
-  .description("search the OnlyHarness registry")
+  .description("search the SuperSkill registry")
   .argument("<query...>", "search terms")
   .option("--json", "print JSON", false)
   .option("--limit <n>", "max results", "10")
@@ -789,7 +789,7 @@ resourcesCommand.command("approve")
     const collectionSlug = result.collection?.slug ?? collection;
     writeStdout([
       `Approved ${id} into @${workspace}/${collectionSlug} as ${resourceId} (${state}).`,
-      result.next ?? "Workspace approval is not an OnlyHarness Verified badge.",
+      result.next ?? "Workspace approval is not a SuperSkill Verified badge.",
       ""
     ].join("\n"));
   });
@@ -826,7 +826,7 @@ resourcesCommand.command("unapprove")
   });
 
 resourcesCommand.command("import")
-  .description("classify a GitHub resource before adding it to an OnlyHarness listing")
+  .description("classify a GitHub resource before adding it to a SuperSkill listing")
   .argument("<github-url>", "GitHub repository URL")
   .option("--path <path>", "optional path inside the repository")
   .option("--json", "print JSON", false)
@@ -848,7 +848,7 @@ resourcesCommand.command("convert")
   .option("--json", "print JSON", false)
   .action((id: string, options) => {
     fail(
-      `OnlyHarness does not convert ${id} into harness format by default.`,
+      `SuperSkill does not convert ${id} into harness format by default.`,
       EXIT.VALIDATION,
       "Use hh resources open/detail/import. Package as a harness only when you explicitly need harness-format files.",
       options.json
@@ -1049,7 +1049,7 @@ program.command("setup")
   });
 
 const workspaceCommand = program.command("workspace")
-  .description("manage OnlyHarness workspaces");
+  .description("manage SuperSkill workspaces");
 
 workspaceCommand.command("setup")
   .description("install a workspace setup bundle into a local directory")
@@ -1335,7 +1335,7 @@ program.command("doctor")
       process.exit(payload.harness && !payload.harness.valid ? EXIT.VALIDATION : EXIT.OK);
     }
     const lines = [
-      "OnlyHarness doctor",
+      "SuperSkill doctor",
       `  registry .......... ${registryUrl} ${registryOk ? "[OK]" : "[UNREACHABLE]"}`,
       `  harnesses indexed . ${indexed}`,
       `  node .............. ${process.version}`,
@@ -1635,7 +1635,7 @@ program.command("annotate-pr")
   });
 
 program.command("extract")
-  .description("extract a local Claude skill into a reviewable OnlyHarness harness scaffold")
+  .description("extract a local Claude skill into a reviewable SuperSkill harness scaffold")
   .argument("<skill>", "skill name, skill directory, or SKILL.md")
   .option("--out <dir>", "output directory (default ./<slug>)")
   .option("--name <name>", "harness slug")
@@ -1722,11 +1722,11 @@ program.parseAsync(process.argv).catch((error) => {
 
 function resourceLine(resource: ResourceItem): string {
   const githubStars = resource.upstreamPopularity?.githubStarsCurrent ?? resource.upstreamPopularity?.githubStarsSnapshot;
-  const stars = githubStars !== undefined ? `GitHub ★ ${compactNumber(githubStars)}` : `OnlyHarness ★ ${resource.onlyHarnessSignals?.stars ?? 0}`;
+  const stars = githubStars !== undefined ? `GitHub ★ ${compactNumber(githubStars)}` : `SuperSkill ★ ${resource.onlyHarnessSignals?.stars ?? 0}`;
   const worksWith = resource.worksWith.length ? ` · works with ${resource.worksWith.join(", ")}` : "";
   const command = resource.actions?.find((action) => action.id === "install" && "command" in action)?.command;
   const open = preferredResourceUrl(resource);
-  const useLine = command ?? `use in OnlyHarness ${open}`;
+  const useLine = command ?? `use in SuperSkill ${open}`;
   return [
     `${resource.id} — ${resource.title}`,
     `  ${resource.summary}`,
@@ -1738,9 +1738,9 @@ function resourceLine(resource: ResourceItem): string {
 
 function resourceDetailText(resource: ResourceItem): string {
   const actions = (resource.actions ?? []).map((action) => {
-    if (action.id === "open_onlyharness" && "url" in action) return `- ${action.label || "Use in OnlyHarness"}: ${action.url}`;
-    if (action.id === "download_archive" && "url" in action) return `- ${action.label || "Download from OnlyHarness"}: ${action.url}`;
-    if (action.id === "open_mirror" && "url" in action) return `- ${action.label || "Use via OnlyHarness"}: ${action.url}`;
+    if (action.id === "open_onlyharness" && "url" in action) return `- ${action.label || "Use in SuperSkill"}: ${action.url}`;
+    if (action.id === "download_archive" && "url" in action) return `- ${action.label || "Download from SuperSkill"}: ${action.url}`;
+    if (action.id === "open_mirror" && "url" in action) return `- ${action.label || "Use via SuperSkill"}: ${action.url}`;
     if (action.id === "open_upstream" && "url" in action) return `- ${action.label || "Use upstream"}: ${action.url}`;
     if (action.id === "install" && "command" in action) return `- Install: ${action.command}`;
     if (action.id === "copy_mcp_config" && "command" in action && action.command) return `- Copy MCP config: ${action.command}`;
@@ -1764,7 +1764,7 @@ function resourceDetailText(resource: ResourceItem): string {
 }
 
 function availabilityLabel(resource: ResourceItem): string {
-  if (resource.actions?.some((action) => action.id === "open_onlyharness")) return "OnlyHarness listing";
+  if (resource.actions?.some((action) => action.id === "open_onlyharness")) return "SuperSkill listing";
   if (resource.installability === "verified") return "verified install";
   if (resource.installability === "installable") return resource.resourceType === "harness" ? "native install" : "installable";
   if (resource.installability === "importable") return "ready to add";
@@ -3809,7 +3809,7 @@ function setupRecommendations(skills: SetupSkillAudit[], conflicts: SetupConflic
 
 function setupShareCard(summary: SetupAudit["summary"], recommendations: string[]): string {
   return [
-    "OnlyHarness setup audit",
+    "SuperSkill setup audit",
     `Skills ${summary.skills} · context ~${summary.approxTokens} tokens · conflicts ${summary.conflicts} · stale ${summary.staleSkills}`,
     `Next: ${recommendations[0] ?? "Run hh audit-setup again after your next skill change."}`
   ].join("\n");
@@ -3817,7 +3817,7 @@ function setupShareCard(summary: SetupAudit["summary"], recommendations: string[
 
 function setupAuditText(audit: SetupAudit): string {
   const lines = [
-    "OnlyHarness setup audit",
+    "SuperSkill setup audit",
     `Roots: ${audit.summary.existingRoots}/${audit.summary.roots} found`,
     `Skills: ${audit.summary.skills}`,
     `Context: ~${audit.summary.approxTokens} tokens across ${audit.summary.markdownFiles} markdown files`,
@@ -3981,7 +3981,7 @@ function benchmarkSummaryRow(row: BenchmarkRow): Pick<BenchmarkRow, "name" | "la
 
 function benchmarkText(result: BenchmarkResult): string {
   const lines = [
-    `OnlyHarness benchmark: ${result.title}`,
+    `SuperSkill benchmark: ${result.title}`,
     `Category: ${result.category}`,
     `Status: ${result.status}`,
     `Runner: ${result.runner} (${result.verificationStatus})`,
@@ -4212,7 +4212,7 @@ function claudeSkillAdapter(manifest: HarnessManifest, root: string): string {
   return [
     "---",
     `name: ${manifest.name}`,
-    `description: "Use this local OnlyHarness harness for ${escapeFrontmatter(manifest.summary)}"`,
+    `description: "Use this local SuperSkill harness for ${escapeFrontmatter(manifest.summary)}"`,
     "---",
     "",
     `# ${manifest.title}`,
@@ -4239,12 +4239,12 @@ function codexAdapter(manifest: HarnessManifest, root: string): string {
   return [
     "---",
     `name: ${manifest.name}`,
-    `description: "Use this local OnlyHarness harness for ${escapeFrontmatter(manifest.summary)}"`,
+    `description: "Use this local SuperSkill harness for ${escapeFrontmatter(manifest.summary)}"`,
     "---",
     "",
     `# ${manifest.title}`,
     "",
-    "This directory is a local OnlyHarness skill adapter for Codex. New Codex adapters belong under `.agents/skills`; legacy `.codex/harnesses` adapters are unmanaged and are not migrated automatically.",
+    "This directory is a local SuperSkill adapter for Codex. New Codex adapters belong under `.agents/skills`; legacy `.codex/harnesses` adapters are unmanaged and are not migrated automatically.",
     "",
     `Harness root: \`${displayPath(root)}\``,
     `Summary: ${manifest.summary}`,
@@ -4266,7 +4266,7 @@ function codexAdapter(manifest: HarnessManifest, root: string): string {
 function cursorAdapter(manifest: HarnessManifest, root: string): string {
   return [
     "---",
-    `description: ${JSON.stringify(`Use ${manifest.title} OnlyHarness workflow`)}`,
+    `description: ${JSON.stringify(`Use ${manifest.title} SuperSkill workflow`)}`,
     "alwaysApply: false",
     "---",
     "",
@@ -4475,7 +4475,7 @@ function createHarnessFromMarkdown(text: string, out: string, name: string, sour
     examples: [{ title: "Imported workflow smoke", input: "examples/input.md", output: "examples/expected.md" }]
   }));
   writeFileSync(path.join(out, "README.md"), `# ${title}\n\nImported from \`${sourcePath}\`.\n\nTrust status: unverified import. This scaffold has no measured eval score yet; \`.harnesshub/results.json\` intentionally records score \`0\` until a real eval run supplies evidence.\n\nBefore publishing:\n\n1. Review \`runbooks/source-import.md\` against the original source.\n2. Replace unresolved workflow notes.\n3. Add measured eval scores to \`evals/cases/*.yaml\` or wire a real evaluator.\n4. Run \`hh validate --strict && hh eval && hh gate\`.\n`);
-  writeFileSync(path.join(out, "AGENTS.md"), `# ${title} - agent guide\n\nThis directory is an OnlyHarness harness.\n\n- Validate: hh validate . --strict\n- Run the bundled example (no LLM calls): hh run .\n- Score eval cases: hh eval . && hh gate --dir .\n- Manifest (runtime, permissions, gates): harness.yaml\n- Do not enable external_send or money_movement without human approval (see permissions).\n`);
+  writeFileSync(path.join(out, "AGENTS.md"), `# ${title} - agent guide\n\nThis directory is a SuperSkill harness.\n\n- Validate: hh validate . --strict\n- Run the bundled example (no LLM calls): hh run .\n- Score eval cases: hh eval . && hh gate --dir .\n- Manifest (runtime, permissions, gates): harness.yaml\n- Do not enable external_send or money_movement without human approval (see permissions).\n`);
   writeFileSync(path.join(out, "agents/operator.md"), `You run the imported workflow exactly as specified.\n\nTrust status: unverified import. Treat source gaps as unresolved until a human verifies them.\n\nRules:\n- Preserve the source intent.\n- Mark missing data as needs_resolution.\n- Do not invent tools, permissions, eval scores or external sends.\n`);
   writeFileSync(path.join(out, "evals/promptfooconfig.yaml"), "description: Imported harness smoke eval (unverified scaffold; add measured assertions before gating)\nprompts:\n  - agents/operator.md\nproviders:\n  - echo\n");
   writeFileSync(path.join(out, "evals/cases/smoke.yaml"), "title: Imported workflow smoke\nverification_status: unverified_import\nnote: Generated scaffold only; add a measured score after a real eval run.\n");
@@ -4532,7 +4532,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: OnlyHarness checks
+      - name: SuperSkill checks
         run: |
           npm install -g onlyharness
           hh validate --strict --json
@@ -4766,7 +4766,7 @@ function writeExtractedSkillHarness(input: {
     compatibility: {
       targets: [
         { id: "claude-code", name: "Claude Code skill", status: "available", notes: "Extracted from a Claude skill directory" },
-        { id: "onlyharness", name: "OnlyHarness harness", status: "available", notes: "Generated scaffold validates locally" }
+        { id: "onlyharness", name: "SuperSkill harness", status: "available", notes: "Generated scaffold validates locally" }
       ]
     },
     depends_on: input.dependencies,
@@ -4802,7 +4802,7 @@ function writeExtractedSkillHarness(input: {
     examples: [{ title: "Extracted skill smoke", input: "examples/input.md", output: "examples/expected.md" }]
   }));
   writeFileSync(path.join(input.out, "README.md"), `# ${input.title}\n\nExtracted from local skill \`${input.source.displayPath}\`.\n\nTrust status: unverified extraction. The scaffold copies markdown instructions only, redacts obvious token-shaped secrets, and records candidate dependencies in \`depends_on\` for human review.\n\nSource trigger:\n\n> ${sourceSummary.replace(/\n/g, " ").slice(0, 500)}\n\nBefore publishing:\n\n1. Review \`runbooks/source/\` for private context.\n2. Confirm every \`depends_on\` entry in \`harness.yaml\`.\n3. Add measured eval scores to \`evals/cases/*.yaml\`.\n4. Run \`hh validate --strict && hh eval && hh gate\`.\n`);
-  writeFileSync(path.join(input.out, "AGENTS.md"), `# ${input.title} - agent guide\n\nThis directory is an extracted OnlyHarness harness.\n\n- Validate: hh validate . --strict\n- Inspect risk/context: hh inspect . --json\n- Source markdown lives under runbooks/source/\n- Do not publish until private context and depends_on entries are reviewed.\n`);
+  writeFileSync(path.join(input.out, "AGENTS.md"), `# ${input.title} - agent guide\n\nThis directory is an extracted SuperSkill harness.\n\n- Validate: hh validate . --strict\n- Inspect risk/context: hh inspect . --json\n- Source markdown lives under runbooks/source/\n- Do not publish until private context and depends_on entries are reviewed.\n`);
   writeFileSync(path.join(input.out, "agents/operator.md"), `Use the extracted skill instructions in runbooks/source/SKILL.md to satisfy the request.\n\nRules:\n- Treat the extraction as unverified until evals are measured.\n- Preserve dependency notes from harness.yaml depends_on.\n- Do not reveal private paths, credentials or local-only context.\n- Ask for human review before external sends, payments or account-changing actions.\n`);
   for (const file of input.markdownFiles) {
     const sourceFile = path.join(input.source.skillDir, file);

@@ -1,6 +1,8 @@
 import type { SelectedShowroomCapability } from "../../../core/superskill-types";
+import { capabilityShareUrl } from "../../../core/share-url";
 import { useSelectedShowroomCapabilities } from "../../../core/useSelectedShowroomCapabilities";
 import { StatePanel } from "../components/StatePanel";
+import { CopyField } from "../components/CopyField";
 import { ShellLink } from "../primitives";
 
 export function SelectedSkillPage({ owner, skill }: { owner: string; skill: string }) {
@@ -72,6 +74,8 @@ function SelectedSkillDetail({ item }: { item: SelectedShowroomCapability }) {
           </article>
         ))}
       </section>
+
+      <CopyField label="Share this selected-skill preview" value={capabilityShareUrl(capability.id)} />
 
       <div className="ss-selected-detail-actions">
         <ShellLink href="#/superskill">Browse selected skills</ShellLink>

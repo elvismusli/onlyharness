@@ -42,7 +42,7 @@
 .ss-nav { position: sticky; z-index: 20; top: 0; border-bottom: 1px solid var(--ss-border); background: color-mix(in srgb, var(--ss-paper) 92%, transparent); backdrop-filter: blur(14px); }
 .ss-nav-inner { width: min(calc(100% - 40px), var(--ss-content)); min-height: 72px; margin: auto; display: flex; align-items: center; gap: 32px; }
 .ss-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
-.ss-brand > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 7px; background: var(--ss-action); color: white; font-weight: 800; }
+.ss-brand > img { display: block; width: 30px; height: 30px; }
 .ss-nav nav { flex: 1; display: flex; align-items: center; gap: 24px; color: var(--ss-muted); font-size: 14px; }
 .ss-nav nav a { text-decoration: none; }
 .ss-nav nav a[aria-current="page"] { color: var(--ss-ink); font-weight: 700; }
@@ -59,7 +59,7 @@
 .ss-button--danger { background: var(--ss-fail); color: white; }
 .ss-button:disabled { cursor: not-allowed; opacity: .5; }
 
-.ss-hero { position: relative; min-height: 760px; padding: 100px 20px 80px; display: grid; align-content: center; justify-items: center; gap: 42px; overflow: hidden; border-bottom: 1px solid var(--ss-border); }
+.ss-hero { position: relative; min-height: 860px; padding: 92px 20px 84px; display: grid; align-content: center; justify-items: center; gap: 34px; overflow: hidden; border-bottom: 1px solid var(--ss-border); }
 .ss-aurora { position: absolute; z-index: 0; inset: -120px auto auto 12%; width: 600px; height: 480px; background: radial-gradient(ellipse, rgba(15, 115, 110, .14), transparent 65%); filter: blur(40px); pointer-events: none; }
 .ss-hero-copy, .ss-task-prompt { position: relative; z-index: 1; width: min(100%, 840px); }
 .ss-hero-copy { text-align: center; }
@@ -67,6 +67,18 @@
 .ss-hero h1 { margin: 0; font-size: clamp(42px, 6vw, 82px); font-weight: 800; letter-spacing: -.035em; line-height: .98; }
 .ss-hero h1 em { font-weight: 500; font-style: italic; letter-spacing: -.02em; }
 .ss-hero-copy > p { max-width: 690px; margin: 24px auto 0; color: var(--ss-muted); font-size: 20px; }
+.ss-one-link-card { position: relative; z-index: 1; width: min(100%, 840px); border: 1px solid color-mix(in srgb, var(--ss-action) 28%, var(--ss-border)); border-radius: var(--ss-r-hero); padding: 20px; background: var(--ss-surface); box-shadow: 0 24px 58px rgba(15, 115, 110, .13); }
+.ss-one-link-card .ss-copy-field textarea { min-height: 54px; border-color: color-mix(in srgb, var(--ss-action) 32%, var(--ss-border)); background: var(--ss-action-soft); color: var(--ss-action-ink); font-size: 13px; font-weight: 700; }
+.ss-one-link-card .ss-button { min-height: 54px; border-color: var(--ss-action); background: var(--ss-action); color: white; }
+.ss-one-link-head { margin-bottom: 15px; display: flex; align-items: center; gap: 12px; }
+.ss-one-link-head > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--ss-action); color: white; font: 700 11px "IBM Plex Mono", monospace; }
+.ss-one-link-head > div { display: grid; }
+.ss-one-link-head strong { font-size: 16px; }
+.ss-one-link-head small { color: var(--ss-muted); font: 500 11px "IBM Plex Mono", monospace; }
+.ss-one-link-foot { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--ss-faint); font: 500 10px "IBM Plex Mono", monospace; }
+.ss-one-link-foot a { color: var(--ss-action); font-weight: 700; }
+.ss-task-start { position: relative; z-index: 1; width: min(100%, 840px); display: grid; gap: 10px; }
+.ss-task-start > span { color: var(--ss-faint); font: 700 10px "IBM Plex Mono", monospace; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
 .ss-task-prompt { border: 1px solid var(--ss-border); border-radius: var(--ss-r-hero); padding: 20px; background: var(--ss-surface); box-shadow: 0 20px 50px rgba(26, 25, 23, .07); }
 .ss-task-prompt > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .ss-task-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; }
@@ -196,6 +208,7 @@
 .ss-trust-head { padding: 26px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--ss-border-soft); }
 .ss-trust-head h1 { margin: 12px 0 4px; font-size: 34px; line-height: 1; }
 .ss-trust-report > .ss-copy-field { padding: 20px 26px; border-bottom: 1px solid var(--ss-border-soft); }
+.ss-share-field { margin-top: 18px; border: 1px solid var(--ss-border); border-radius: var(--ss-r-card); padding: 18px; background: var(--ss-surface); }
 .ss-trust-section, .ss-limitations { padding: 24px 26px; border-bottom: 1px solid var(--ss-border-soft); }
 .ss-trust-section h2, .ss-limitations h2 { margin-top: 0; font-size: 21px; }
 .ss-check-row { display: grid; grid-template-columns: 1.35fr .75fr 1fr .6fr; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--ss-border-soft); font-size: 13px; }
@@ -350,7 +363,8 @@
   .ss-nav nav a:hover, .ss-nav nav a[aria-current="page"] { background: var(--ss-action-soft); }
   .ss-nav .ss-nav-install-link { margin: 6px 0 0; display: inline-flex; justify-content: center; background: var(--ss-action); color: white; font-weight: 800; }
   .ss-nav .ss-nav-install-link:hover, .ss-nav .ss-nav-install-link[aria-current="page"] { background: var(--ss-action-ink); color: white; }
-  .ss-hero { min-height: auto; padding: 72px 14px 58px; gap: 28px; }.ss-hero-copy > p { font-size: 17px; }.ss-task-prompt { padding: 14px; }
+  .ss-hero { min-height: auto; padding: 72px 14px 58px; gap: 28px; }.ss-hero-copy > p { font-size: 17px; }.ss-task-prompt, .ss-one-link-card { padding: 14px; }
+  .ss-one-link-foot { align-items: flex-start; flex-direction: column; }
   .ss-task-row { grid-template-columns: auto minmax(0, 1fr); }.ss-task-row .ss-button { grid-column: 1 / -1; }.ss-task-prompt fieldset { flex-wrap: wrap; }
   .ss-featured-section, .ss-catalog { padding-block: 58px; }.ss-card-grid, .ss-install-steps, .ss-explainer-grid, .ss-doc-command-grid { grid-template-columns: 1fr; }
   .ss-selected-detail-grid { grid-template-columns: 1fr; }

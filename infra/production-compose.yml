@@ -41,6 +41,7 @@ services:
       RESOURCE_ARCHIVE_DIR: ${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}
       RESOURCE_IMPORT_ARCHIVE_DIR: ${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}
       RESOURCE_IMPORT_READ_ENABLED: ${RESOURCE_IMPORT_READ_ENABLED:-true}
+      RESOURCE_RELEASES_USE_LOCAL_STORE: ${RESOURCE_RELEASES_USE_LOCAL_STORE:-false}
     volumes:
       - onlyharness_data:/app/data
       - ${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:ro

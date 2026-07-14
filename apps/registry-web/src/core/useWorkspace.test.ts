@@ -156,7 +156,7 @@ for (const kind of ["invite", "gate"] as const) {
     });
     await act(async () => { rerender({ accessToken: "member-b", principalKey: "user-b" }); });
     resolveResponse(responseJson(kind === "invite"
-      ? { code: "ohwi_principal_a", invite: { role: "member", usesCount: 0, createdAt: "2026-07-14T00:00:00.000Z" } }
+      ? { code: "ohwi_principal_a_secret_123456", shareUrl: "https://superskill.sh/w/invite_principal_a#invite=ohwi_principal_a_secret_123456", invite: { role: "member", usesCount: 0, createdAt: "2026-07-14T00:00:00.000Z" } }
       : { code: "ohwj_principal_a", source: "telegram" }));
     await act(async () => { await request; });
 
@@ -171,7 +171,8 @@ test("createWorkspaceInvite returns the raw code once and stores it in memory", 
     expect(JSON.parse(String(init?.body))).toMatchObject({ role: "viewer", maxUses: 3 });
     return responseJson({
       invite: { role: "viewer", usesCount: 0, createdAt: "2026-07-08T00:00:00.000Z" },
-      code: "ohwi_secret"
+      code: "ohwi_secret_12345678901234567890",
+      shareUrl: "https://superskill.sh/w/invite_share_handle#invite=ohwi_secret_12345678901234567890"
     });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -187,8 +188,9 @@ test("createWorkspaceInvite returns the raw code once and stores it in memory", 
     await result.current.createWorkspaceInvite();
   });
 
-  expect(result.current.workspaceInviteCode).toBe("ohwi_secret");
-  expect(result.current.workspaceInviteStatus).toContain("Show this code once");
+  expect(result.current.workspaceInviteCode).toBe("ohwi_secret_12345678901234567890");
+  expect(result.current.workspaceInviteShareUrl).toBe("https://superskill.sh/w/invite_share_handle#invite=ohwi_secret_12345678901234567890");
+  expect(result.current.workspaceInviteStatus).toContain("workspace name is visible");
 });
 
 test("joinWorkspace uses the signed-in user session, not the automation token", async () => {

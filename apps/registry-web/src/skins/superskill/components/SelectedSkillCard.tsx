@@ -1,4 +1,5 @@
 import { buildSuperSkillRoute } from "../../../core/superskill-route";
+import { capabilityShareUrl } from "../../../core/share-url";
 import type { SelectedShowroomCapability } from "../../../core/superskill-types";
 import { ShellLink } from "../primitives";
 
@@ -24,6 +25,7 @@ export function SelectedSkillCard({ item }: { item: SelectedShowroomCapability }
       <div className="ss-pending-copy">Selected for exact review. This is not an approval, trust badge, or managed activation claim.</div>
       <div className="ss-card-actions">
         <ShellLink href={detailHref}>View selected skill</ShellLink>
+        <ShellLink href={capabilityShareUrl(capability.id)}>Share preview</ShellLink>
         <span className="ss-disabled-action" aria-disabled="true">Managed install pending review</span>
       </div>
     </article>

@@ -1,4 +1,9 @@
 services:
+  api:
+    environment:
+      # Keep the hermetic compose smoke independent from production Supabase
+      # release rows whose archive volume is intentionally not mounted here.
+      RESOURCE_RELEASES_USE_LOCAL_STORE: "true"
   web:
     ports: !override
       - "127.0.0.1:8088:80"

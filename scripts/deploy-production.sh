@@ -265,11 +265,34 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
   grep -Eq '^HTTP/[0-9.]+ 30[18]([[:space:]]|$)' <<<"$superskill_redirect_headers"
   grep -Fqi "location: $SUPERSKILL_APEX_URL/deploy-canonical-smoke?source=deploy" <<<"$superskill_redirect_headers"
   grep -qi '^strict-transport-security:' <<<"$superskill_redirect_headers"
-  curl -fsS "$SUPERSKILL_APEX_URL/" | grep -q 'SuperSkill'
+  production_index="$(curl -fsS "$SUPERSKILL_APEX_URL/")"
+  grep -q 'SuperSkill' <<<"$production_index"
+  grep -q 'one link for every agent skill' <<<"$production_index"
+  grep -q 'rel="canonical" href="https://superskill.sh/"' <<<"$production_index"
+  curl -fsSI "$PUBLIC_BASE_URL/favicon.ico" | tr -d '\r' | grep -qi '^content-type: image/vnd.microsoft.icon\|^content-type: image/x-icon'
+  curl -fsSI "$PUBLIC_BASE_URL/manifest.webmanifest" | tr -d '\r' | grep -qi '^content-type: application/manifest+json\|^content-type: application/json'
   curl -fsS "$PUBLIC_BASE_URL/api/healthz" | grep -q '"ok":true'
+  curl -fsS "$PUBLIC_BASE_URL/api/superskill/install" | grep -q '"action":"install_superskill"'
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/capabilities?limit=12" | node scripts/check-superskill-showroom-response.mjs approved
   curl -fsS "$PUBLIC_BASE_URL/api/showroom/selected?limit=12" | node scripts/check-superskill-showroom-response.mjs selected
   curl -fsS "$PUBLIC_BASE_URL/api/resources?q=superpowers&limit=1" | grep -q '"id":"github:obra/superpowers"'
+  share_key="Z2l0aHViOm9icmEvc3VwZXJwb3dlcnM"
+  share_html="$(curl -fsS -A 'TelegramBot (like TwitterBot)' "$PUBLIC_BASE_URL/r/$share_key")"
+  grep -q 'property="og:title"' <<<"$share_html"
+  grep -qi 'superpowers' <<<"$share_html"
+  grep -q "https://superskill.sh/og/r/$share_key" <<<"$share_html"
+  share_png="$(mktemp)"
+  curl -fsS "$PUBLIC_BASE_URL/og/r/$share_key" -o "$share_png"
+  node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$share_png"
+  rm -f "$share_png"
+  capability_html="$(curl -fsS -A 'TelegramBot (like TwitterBot)' "$PUBLIC_BASE_URL/c/deep-market-researcher")"
+  grep -q 'property="og:title"' <<<"$capability_html"
+  grep -qi 'deep market researcher' <<<"$capability_html"
+  grep -q 'https://superskill.sh/og/c/deep-market-researcher' <<<"$capability_html"
+  capability_png="$(mktemp)"
+  curl -fsS "$PUBLIC_BASE_URL/og/c/deep-market-researcher" -o "$capability_png"
+  node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$capability_png"
+  rm -f "$capability_png"
   legacy_archive_response="$(mktemp)"
   test "$(curl -sS -o "$legacy_archive_response" -w '%{http_code}' "$PUBLIC_BASE_URL/api/resources/github%3Aobra%2Fsuperpowers/archive")" = "409"
   grep -q '"code":"RESOURCE_ARCHIVE_NOT_HOSTED"' "$legacy_archive_response"
@@ -309,5 +332,6 @@ if [[ "$RUN_DEPLOY_SMOKE" == "1" ]]; then
     -H 'Accept: application/json, text/event-stream' \
     --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_resources","arguments":{"query":"superpowers","limit":1}}}' \
     | grep -q 'github:obra/superpowers'
+  SMOKE_API_URL="$PUBLIC_BASE_URL/api" DEPLOY_SMOKE_ACCESS_TOKEN="$DEPLOY_SMOKE_ACCESS_TOKEN" node scripts/smoke-workspace-preview.mjs
   echo "Deploy public smoke passed at $PUBLIC_BASE_URL"
 fi

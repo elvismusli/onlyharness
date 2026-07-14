@@ -1,35 +1,33 @@
 <!doctype html>
-<!-- Source for /og.png. Render at 1200x630 with a 2x device scale. -->
+<!-- Human-readable source companion for /og-card.svg and /og.png. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <title>SuperSkill social preview</title>
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
-    body { background: #f4f0e8; color: #141414; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    main { height: 100%; padding: 62px 70px 54px; display: flex; flex-direction: column; border: 18px solid #111; }
+    body { background: #f6f4ef; color: #1a1917; font-family: "Schibsted Grotesk", Arial, sans-serif; }
+    main { position: relative; height: 100%; padding: 54px 64px; background: radial-gradient(circle at 81% 13%, #cce9e6 0, transparent 38%); }
     header { display: flex; align-items: center; justify-content: space-between; }
-    .brand { display: flex; align-items: center; gap: 18px; font-size: 34px; font-weight: 800; letter-spacing: -.04em; }
-    .mark { width: 54px; height: 54px; display: grid; place-items: center; background: #f0ff47; border: 3px solid #111; box-shadow: 6px 6px 0 #111; font-size: 28px; }
-    .domain { font: 700 20px ui-monospace, SFMono-Regular, Menlo, monospace; border-bottom: 4px solid #f0ff47; }
-    h1 { max-width: 920px; margin: 82px 0 0; font-size: 76px; line-height: .98; letter-spacing: -.065em; }
-    .accent { background: #f0ff47; padding: 0 .08em; }
-    footer { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; }
-    p { margin: 0; max-width: 760px; font-size: 27px; line-height: 1.25; font-weight: 550; }
-    .link { flex: none; padding: 15px 18px; background: #111; color: #fff; font: 700 18px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 800; letter-spacing: -.04em; }
+    .mark { width: 56px; height: 56px; border-radius: 12px; background: #0f736e url('/brand/superskill-mark.svg') center/cover; }
+    .domain, .eyebrow, footer { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 700; }
+    .domain { color: #6b6862; font-size: 18px; }
+    .eyebrow { margin-top: 64px; color: #0f736e; font-size: 16px; letter-spacing: .08em; }
+    h1 { margin: 28px 0 0; max-width: 980px; font-size: 64px; line-height: 1.12; letter-spacing: -.045em; }
+    p { margin: 36px 0 0; color: #6b6862; font-size: 24px; line-height: 1.4; }
+    footer { position: absolute; left: 64px; bottom: 53px; display: flex; align-items: center; gap: 48px; color: #6b6862; font-size: 14px; }
+    .badge { border: 1px solid #0f736e; border-radius: 999px; padding: 10px 18px; background: #e6f0ef; color: #0b5a56; }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <div class="brand"><span class="mark">S</span><span>SuperSkill</span></div>
-      <div class="domain">superskill.sh</div>
-    </header>
-    <h1>One link. The <span class="accent">right skill</span> for your agent.</h1>
-    <footer>
-      <p>Reviewed capabilities, exact releases, safe client routing, and explicit activation consent.</p>
-      <div class="link">/api/superskill/install</div>
-    </footer>
+    <header><div class="brand"><span class="mark"></span><span>SuperSkill</span></div><span class="domain">superskill.sh</span></header>
+    <div class="eyebrow">ONE LINK · EVERY AGENT SKILL</div>
+    <h1>Paste one link.<br>Give your agent every skill.</h1>
+    <p>Install SuperSkill once, then search and use exact skills<br>from Codex or Claude Code.</p>
+    <footer><span class="badge">UNIVERSAL INSTALL</span><span>CODEX</span><span>CLAUDE CODE</span></footer>
   </main>
 </body>
 </html>

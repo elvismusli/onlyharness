@@ -6,10 +6,12 @@
   "exports": {
     "./browser": {
       "types": "./src/browser.ts",
+      "runtime-built": "./dist/browser.js",
       "default": "./src/browser.ts"
     },
     "./node": {
       "types": "./src/node.ts",
+      "runtime-built": "./dist/node.js",
       "default": "./src/node.ts"
     }
   },

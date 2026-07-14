@@ -149,14 +149,14 @@ export function WorkspacesPage() {
               {h.workspaceMembers.length ? <ul className="ss-workspace-list">{h.workspaceMembers.map((member) => <li key={member.id ?? member.user_id}><div><strong>{memberLabel(member.user_id)}</strong><span>{member.source}</span></div><span>{member.role} · {member.status}</span></li>)}</ul> : <p className="ss-muted">No members are visible with your current role.</p>}
               <div className="ss-workspace-invite">
                 <h3>Share workspace</h3>
-                <p>Create a bounded invite. The raw code is returned once and placed after <code>#</code>, so it is not sent in HTTP requests.</p>
+                <p>Create a bounded invite. Its SuperSkill preview shows only the workspace name. The raw code stays after <code>#</code>, so it is never sent to the preview server.</p>
                 <div className="ss-publish-grid">
                   <label>Invite role<select value={h.workspaceInviteRole} onChange={(event) => h.setWorkspaceInviteRole(event.target.value as typeof h.workspaceInviteRole)}><option value="member">Member</option><option value="viewer">Viewer</option></select></label>
                   <label>Maximum uses<input type="number" inputMode="numeric" min="1" max="10000" step="1" required value={h.workspaceInviteMaxUses} onChange={(event) => h.setWorkspaceInviteMaxUses(event.target.value)} /></label>
                 </div>
                 <SSButton variant="secondary" type="button" disabled={h.workspaceBusy} onClick={() => void h.createWorkspaceInvite()}>Create invite link</SSButton>
                 {h.workspaceInviteStatus ? <p className="ss-workspace-status" role="status">{h.workspaceInviteStatus}</p> : null}
-                {h.workspaceInviteCode ? <CopyField label="One-time workspace link" value={workspaceShareUrl(catalog.workspace.slug, h.workspaceInviteCode)} /> : null}
+                {h.workspaceInviteShareUrl ? <CopyField label="Shareable workspace invite" value={h.workspaceInviteShareUrl} /> : null}
               </div>
             </div>
           ) : null}
@@ -217,10 +217,6 @@ function workspaceShareFromHash(): { workspace?: string; invite?: string; resour
     ...(approve ? { approve: true } : {}),
     ...(approveRequested && !approve ? { invalidApproval: true } : {})
   };
-}
-
-function workspaceShareUrl(workspace: string, invite: string): string {
-  return `${window.location.origin}/#/superskill/workspaces?workspace=${encodeURIComponent(workspace)}&invite=${encodeURIComponent(invite)}`;
 }
 
 function scrubWorkspaceInviteFromHash() {

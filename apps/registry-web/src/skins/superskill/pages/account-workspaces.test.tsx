@@ -42,6 +42,7 @@ beforeEach(() => {
     workspaceInviteMaxUses: "1",
     setWorkspaceInviteMaxUses: vi.fn(),
     workspaceInviteCode: "",
+    workspaceInviteShareUrl: "",
     workspaceInviteStatus: "",
     workspaceCollectionSlug: "approved",
     setWorkspaceCollectionSlug: vi.fn(),

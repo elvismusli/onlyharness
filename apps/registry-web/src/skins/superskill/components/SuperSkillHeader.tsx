@@ -44,7 +44,7 @@ export function SuperSkillHeader({ route }: { route: SuperSkillRoute }) {
   return (
     <header className="ss-nav">
       <div className="ss-nav-inner">
-        <ShellLink className="ss-brand" href={SHOWROOM_ROUTE}><span aria-hidden>S</span><strong>SuperSkill</strong></ShellLink>
+        <ShellLink className="ss-brand" href={SHOWROOM_ROUTE}><img src="/brand/superskill-mark.svg" alt="" width="30" height="30" /><strong>SuperSkill</strong></ShellLink>
         <button
           ref={menuButtonRef}
           className="ss-menu-toggle"

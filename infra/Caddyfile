@@ -48,6 +48,11 @@ superskill.sh {
 	encode zstd gzip
 	import superskill_machine_routes
 
+	@share_preview path /r/* /c/* /w/* /og/*
+	handle @share_preview {
+		reverse_proxy api:8787
+	}
+
 	handle {
 		root * /srv/web
 		try_files {path} /index.html

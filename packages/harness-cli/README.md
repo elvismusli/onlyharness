@@ -1,6 +1,6 @@
-# OnlyHarness CLI
+# SuperSkill CLI
 
-`onlyharness` installs the `hh` command for agent harness discovery, local sample runs, evals and quality gates.
+The compatibility package coordinate `onlyharness` installs the `hh` command for SuperSkill resource discovery, local sample runs, evals and quality gates.
 
 ```bash
 npm run build -w onlyharness

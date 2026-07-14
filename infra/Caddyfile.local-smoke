@@ -14,6 +14,11 @@
 		reverse_proxy api:8787
 	}
 
+	@share_preview path /r/* /c/* /w/* /og/*
+	handle @share_preview {
+		reverse_proxy api:8787
+	}
+
 	handle /.well-known/oauth-protected-resource {
 		root * /srv/web
 		header Content-Type application/json

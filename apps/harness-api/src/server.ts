@@ -12,6 +12,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { buildMcpServer, MCP_TOOL_NAMES, mcpError, mcpToolCallPreflight, type McpErrorCode, type PublishMarkdownHandler, type PublishResourcePackageHandler, type PullHarnessHandler } from "./mcp.js";
 import { acceptBounty, claimBounty, createBounty, deliverBounty, listBounties } from "./bounties.js";
 import { createCommunityInviteCode, createWorkspaceJoinCode, verifyCommunityInviteCode, verifyWorkspaceJoinCode } from "./community.js";
+import { ManagedCatalog } from "./capabilities.js";
 import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { classifyGitHubResource, GitHubImportError, type GitHubResourceImportRequest } from "./github-import.js";
@@ -24,6 +25,7 @@ import * as registry from "./registry.js";
 import * as resources from "./resources.js";
 import * as resourceReleases from "./resource-releases.js";
 import { scanHarnessFiles } from "./security-scan.js";
+import { encodeResourceShareKey, registerSharePreviewRoutes, type SharePreviewResult } from "./share-preview.js";
 import * as workspaceSubscriptions from "./workspace-subscriptions.js";
 import * as workspaces from "./workspaces.js";
 import { registerSuperskillRoutes, resolveManagedAccess } from "./routes/superskill.js";
@@ -332,6 +334,7 @@ type DirectoryLinkOnlyBody = {
 
 const app = Fastify({ logger: true });
 const superskillAccessResolver = createSupabaseSuperskillAccessResolver();
+const shareCapabilityCatalog = new ManagedCatalog();
 await app.register(cors, {
   origin: (origin, callback) => {
     if (!origin || isAllowedOrigin(origin)) return callback(null, true);
@@ -340,6 +343,11 @@ await app.register(cors, {
 });
 await registerSuperskillDeviceAuthRoutes(app);
 await registerSuperskillRoutes(app, { accessResolver: superskillAccessResolver });
+await registerSharePreviewRoutes(app, {
+  resource: resolveResourceSharePreview,
+  capability: resolveCapabilitySharePreview,
+  workspace: resolveWorkspaceSharePreview
+});
 
 app.get("/healthz", async () => ({ ok: true }));
 
@@ -405,6 +413,110 @@ app.get("/resources/:id/releases/:version/archive", async (request, reply) => {
   if (!exact) return reply.code(503).send({ error: "Hosted resource archive storage unavailable", code: "ARCHIVE_STORAGE_UNAVAILABLE", id, version, next: "Retry later; the archive will not be served without verified bytes." });
   return sendPublicResourceArchive(exact.resource, version, reply);
 });
+
+async function resolveResourceSharePreview(id: string, version?: string): Promise<SharePreviewResult> {
+  const counters = await fetchCountersMap();
+  const registryItems = registry.scanRegistry(counters);
+  let resource = resources.resourceDetail(id, registryItems);
+  let release: ReturnType<typeof resourceReleases.activeReleaseMetadata>;
+  if (version) {
+    release = resourceReleases.activeReleaseMetadata(id, version);
+    if (!release) return { ok: false, status: 404, code: "SHARE_NOT_FOUND" };
+    const exact = resourceReleases.activeReleaseDetail(id, version);
+    if (!exact) return { ok: false, status: 503, code: "SHARE_UNAVAILABLE" };
+    resource = exact.resource;
+  } else if (resource) {
+    release = resourceReleases.activeReleaseMetadata(resource.id);
+    if (release) {
+      const active = resourceReleases.activeReleaseDetail(resource.id, release.version);
+      if (!active) return { ok: false, status: 503, code: "SHARE_UNAVAILABLE" };
+      resource = active.resource;
+    }
+  }
+  if (!resource) return { ok: false, status: 404, code: "SHARE_NOT_FOUND" };
+
+  const key = encodeResourceShareKey(resource.id);
+  const exactPath = version ? `/${encodeURIComponent(version)}` : "";
+  const scan = resource.trust.securityScan ?? "not_scanned";
+  const facts = [
+    ...(release ? [`v${release.version}`] : []),
+    `scan ${scan.replaceAll("_", " ")}`,
+    ...(release ? [shortShareDigest(release.artifactDigest)] : resource.worksWith.length ? [`for ${resource.worksWith.slice(0, 2).join(" + ")}`] : [])
+  ];
+  return {
+    ok: true,
+    value: {
+      kind: "resource",
+      title: resource.title,
+      summary: resource.summary,
+      eyebrow: `${resource.resourceType.replaceAll("_", " ")} · ${version ? "exact release" : "public catalog"}`,
+      badge: resource.resourceType.replaceAll("_", " "),
+      facts,
+      canonicalPath: `/r/${key}${exactPath}`,
+      imagePath: `/og/r/${key}${version ? `?version=${encodeURIComponent(version)}` : ""}`,
+      redirectHash: `#/superskill/resources/${encodeURIComponent(resource.id)}${version ? `/releases/${encodeURIComponent(version)}` : ""}`,
+      immutable: Boolean(version && release)
+    }
+  };
+}
+
+async function resolveCapabilitySharePreview(id: string): Promise<SharePreviewResult> {
+  try {
+    const capability = shareCapabilityCatalog.detail(id);
+    if (!capability) return { ok: false, status: 404, code: "SHARE_NOT_FOUND" };
+    const candidate = capability.trust.status === "candidate";
+    const [owner, ...skillParts] = capability.release.ref.split("/");
+    const selectedHash = owner && skillParts.length
+      ? `#/superskill/selected/${encodeURIComponent(owner)}/${encodeURIComponent(skillParts.join("/"))}`
+      : `#/superskill/c/${encodeURIComponent(capability.id)}`;
+    return {
+      ok: true,
+      value: {
+        kind: "capability",
+        title: capability.title,
+        summary: capability.summary,
+        eyebrow: `managed skill · ${candidate ? "selected for review" : "exact trust report"}`,
+        badge: candidate ? "selected · unreviewed" : capability.trust.status,
+        facts: [`v${capability.release.version}`, shortShareDigest(capability.release.artifactDigest), `${capability.trust.checks.length} named checks`],
+        canonicalPath: `/c/${encodeURIComponent(capability.id)}`,
+        imagePath: `/og/c/${encodeURIComponent(capability.id)}`,
+        redirectHash: candidate ? selectedHash : `#/superskill/c/${encodeURIComponent(capability.id)}`
+      }
+    };
+  } catch {
+    return { ok: false, status: 503, code: "SHARE_UNAVAILABLE" };
+  }
+}
+
+async function resolveWorkspaceSharePreview(inviteId: string): Promise<SharePreviewResult> {
+  const result = await workspaces.readWorkspaceInvitePreview(inviteId);
+  if (!result.ok) {
+    if (result.status === 410) return { ok: false, status: 410, code: "SHARE_EXPIRED" };
+    if (result.status === 503) return { ok: false, status: 503, code: "SHARE_UNAVAILABLE" };
+    return { ok: false, status: 404, code: "SHARE_NOT_FOUND" };
+  }
+  return {
+    ok: true,
+    value: {
+      kind: "workspace",
+      title: result.workspace.name,
+      summary: `Join @${result.workspace.slug} on SuperSkill. Sign in to verify this private workspace invitation.`,
+      eyebrow: "private workspace · invitation",
+      badge: "invite only",
+      facts: ["private catalog", "membership checked on open"],
+      canonicalPath: `/w/${encodeURIComponent(result.invite.id ?? inviteId)}`,
+      imagePath: `/og/w/${encodeURIComponent(result.invite.id ?? inviteId)}`,
+      redirectHash: `#/superskill/workspaces?workspace=${encodeURIComponent(result.workspace.slug)}`,
+      noIndex: true,
+      workspaceSlug: result.workspace.slug
+    }
+  };
+}
+
+function shortShareDigest(digest: string): string {
+  const clean = digest.replace(/^sha256:/, "");
+  return `sha256 ${clean.slice(0, 8)}…${clean.slice(-6)}`;
+}
 
 async function sendPublicResourceArchive(resource: resources.Resource, version: string | undefined, reply: FastifyReply) {
   if (resource.trust.securityScan === "fail") {
@@ -596,7 +708,16 @@ app.post("/workspaces/:slug/invites", async (request, reply) => {
   const result = await workspaces.createWorkspaceInvite(auth.workspace.slug, { ...body, createdBy: auth.userId });
   if (!result.ok) return reply.code(result.status).send({ error: result.error, code: result.code });
   await workspaces.appendWorkspaceAudit({ slug: auth.workspace.slug, action: "invite_created", tokenName: auth.tokenName, subject: workspaceAuthSubject(auth), target: result.invite.id, via: auth.via });
-  return reply.code(201).send({ workspace: publicWorkspace(auth.workspace), invite: publicWorkspaceInvite(result.invite), code: result.code, next: "Show this invite code once. Only a hash is stored by SuperSkill." });
+  const shareUrl = result.invite.id
+    ? `https://superskill.sh/w/${encodeURIComponent(result.invite.id)}#invite=${encodeURIComponent(result.code)}`
+    : undefined;
+  return reply.code(201).send({
+    workspace: publicWorkspace(auth.workspace),
+    invite: publicWorkspaceInvite(result.invite),
+    code: result.code,
+    ...(shareUrl ? { shareUrl } : {}),
+    next: "Show this invite once. The raw code stays after # and is never sent to the preview server. The workspace name is visible to recipients and may be cached by their messenger."
+  });
 });
 
 app.get("/workspaces/:slug/join-policies", async (request, reply) => {

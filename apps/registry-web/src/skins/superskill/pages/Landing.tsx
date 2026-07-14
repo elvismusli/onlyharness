@@ -1,12 +1,14 @@
 import { useState } from "react";
 
 import type { SuperSkillClient } from "../../../core/superskill-types";
+import { superskillInstallHandoff } from "../../../core/superskill-install";
 import { useSelectedShowroomCapabilities } from "../../../core/useSelectedShowroomCapabilities";
 import { useShowroomCapabilities } from "../../../core/useShowroomCapabilities";
 import { ExampleSkillCard } from "../components/ExampleSkillCard";
 import { SelectedSkillCard } from "../components/SelectedSkillCard";
 import { SkillCard } from "../components/SkillCard";
 import { StatePanel } from "../components/StatePanel";
+import { CopyField } from "../components/CopyField";
 import { TaskPrompt } from "../components/TaskPrompt";
 import { SectionHeading } from "../primitives";
 import { InstallInstructions } from "./InstallHandoff";
@@ -18,12 +20,20 @@ export function Landing() {
   const items = showroom.state.status === "success" || showroom.state.status === "empty" ? showroom.state.data.items : [];
   const selectedTotal = selected.state.status === "success" || selected.state.status === "empty" ? selected.state.data.total : undefined;
   const featured = items[0];
+  const installer = superskillInstallHandoff();
   return (
     <main>
       <section className="ss-hero">
         <div className="ss-aurora" aria-hidden />
-        <div className="ss-hero-copy"><div className="ss-eyebrow">SuperSkill · client-first capability routing</div><h1>Describe the task.<br /><em>Continue with exact evidence.</em></h1><p>Choose a terminal client, then carry the task into Claude Code or Codex. The client performs recommendation and asks for explicit activation consent.</p></div>
-        <TaskPrompt onContinue={(task, client) => setHandoff({ task, client })} />
+        <div className="ss-hero-copy"><div className="ss-eyebrow">SuperSkill · one link for Codex and Claude Code</div><h1>Paste one link.<br /><em>Give your agent every skill.</em></h1><p>Copy the universal SuperSkill link into your coding agent. It installs the plugin, connects the catalog, and keeps every later skill choice explicit.</p></div>
+        {installer.status === "available" ? (
+          <div className="ss-one-link-card">
+            <div className="ss-one-link-head"><span>01</span><div><strong>Universal SuperSkill link</strong><small>Paste into Codex or Claude Code</small></div></div>
+            <CopyField label="One link — paste it into your agent" value={installer.installUrl} />
+            <div className="ss-one-link-foot"><span>Exact runtime: {installer.runtime}</span><a href="#/superskill/install">See manual install and safety details →</a></div>
+          </div>
+        ) : <StatePanel kind="blocked" title="Universal link temporarily unavailable" reason={installer.reason} next="Wait for the pinned public runtime; no unverified fallback is shown." />}
+        <div className="ss-task-start"><span>or start with the outcome</span><TaskPrompt onContinue={(task, client) => setHandoff({ task, client })} /></div>
       </section>
 
       {handoff ? <div className="ss-content ss-handoff-inline"><InstallInstructions client={handoff.client} setClient={(client) => setHandoff({ ...handoff, client })} task={handoff.task} /></div> : null}

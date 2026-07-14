@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 
 import { apiUrl } from "../../../core/constants";
+import { resourceShareUrl } from "../../../core/share-url";
 import { buildSuperSkillRoute, navigateSuperSkill, type SuperSkillSearchResourceType } from "../../../core/superskill-route";
 import type { ResourceItem } from "../../../core/types";
 import { StatePanel } from "../components/StatePanel";
@@ -141,6 +142,7 @@ function ResourceSearchCard({ resource }: { resource: ResourceItem }) {
       <p className="ss-search-caution">{securityCaution(scan)}</p>
       <div className="ss-card-actions">
         <ShellLink href={buildSuperSkillRoute({ name: "resource", resourceId: resource.id })}>View source and actions</ShellLink>
+        <ShellLink href={resourceShareUrl(resource.id)}>Share preview</ShellLink>
       </div>
     </article>
   );

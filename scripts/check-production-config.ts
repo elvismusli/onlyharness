@@ -8,7 +8,11 @@ const gitignore = readFileSync(path.join(root, ".gitignore"), "utf8");
 const smokeCompose = readFileSync(path.join(root, "scripts/smoke-production-compose.sh"), "utf8");
 const deployProduction = readFileSync(path.join(root, "scripts/deploy-production.sh"), "utf8");
 const caddyfile = readFileSync(path.join(root, "infra/Caddyfile"), "utf8");
+const apiDockerfile = readFileSync(path.join(root, "infra/api.Dockerfile"), "utf8");
+const workspacePreviewSmoke = readFileSync(path.join(root, "scripts/smoke-workspace-preview.mjs"), "utf8");
 const standaloneSuperSkillRedirect = sectionBetween(caddyfile, "www.superskill.sh {", "superskill.sh {", "standalone SuperSkill redirect site");
+const standaloneMachineRoutes = sectionBetween(caddyfile, "(superskill_machine_routes) {", "www.superskill.sh {", "standalone machine routes");
+const standaloneSuperSkillSite = sectionBetween(caddyfile, "superskill.sh {", "onlyharness.com, www.onlyharness.com {", "standalone SuperSkill site");
 const systemSuperSkillRedirect = sectionBetween(deployProduction, "www.superskill.sh {", "superskill.sh {", "system SuperSkill redirect site");
 
 const apiRuntimeEnv = [
@@ -42,7 +46,8 @@ const apiRuntimeEnv = [
   "HOSTED_RESOURCE_PUBLISH_ENABLED",
   "RESOURCE_ARCHIVE_DIR",
   "RESOURCE_IMPORT_ARCHIVE_DIR",
-  "RESOURCE_IMPORT_READ_ENABLED"
+  "RESOURCE_IMPORT_READ_ENABLED",
+  "RESOURCE_RELEASES_USE_LOCAL_STORE"
 ] as const;
 
 const exampleEnv = [
@@ -81,6 +86,7 @@ const exampleEnv = [
   "RESOURCE_ARCHIVE_DIR",
   "RESOURCE_IMPORT_ARCHIVE_DIR",
   "RESOURCE_IMPORT_READ_ENABLED",
+  "RESOURCE_RELEASES_USE_LOCAL_STORE",
   "ONLYHARNESS_WEB_PORT"
 ] as const;
 
@@ -99,8 +105,13 @@ check(compose.includes("HOSTED_RESOURCE_PUBLISH_ENABLED: ${HOSTED_RESOURCE_PUBLI
 check(compose.includes("${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:ro"), "the existing resource archive mirror must stay read-only during containment");
 check(compose.includes("${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:rw"), "public resource imports must use a separate writable persistent archive mount");
 check(compose.includes("RESOURCE_IMPORT_READ_ENABLED: ${RESOURCE_IMPORT_READ_ENABLED:-true}"), "import archive read routing must have an explicit rollback switch");
+check(compose.includes("RESOURCE_RELEASES_USE_LOCAL_STORE: ${RESOURCE_RELEASES_USE_LOCAL_STORE:-false}"), "production resource releases must default to the Supabase durable store");
+check(envExample.includes("RESOURCE_RELEASES_USE_LOCAL_STORE=false"), "production.env.example must keep the local release-store fallback off");
+check(readFileSync(path.join(root, "infra/production-smoke.override.yml"), "utf8").includes('RESOURCE_RELEASES_USE_LOCAL_STORE: "true"'), "production compose smoke must isolate resource releases from production Supabase rows");
 check(!compose.includes("${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:${RESOURCE_ARCHIVE_DIR:-/var/lib/onlyharness/resource-archives}:rw"), "legacy resource archive mirror must never become a write target");
 check(compose.includes("VITE_DEFAULT_SKIN: ${VITE_DEFAULT_SKIN:-superskill}"), "production web must default to the SuperSkill product surface");
+check(apiDockerfile.includes("npm run build -w @harnesshub/capability-schema -w @harnesshub/api"), "API image must build the shared capability runtime before its consumers");
+check(apiDockerfile.includes("ENV NODE_OPTIONS=--conditions=runtime-built"), "API runtime must resolve built shared package exports instead of TypeScript source files");
 check(compose.includes("VITE_ENABLE_SKIN_SWITCHER: ${VITE_ENABLE_SKIN_SWITCHER:-false}"), "production skin switcher must default off");
 check(compose.includes("https://superskill.sh,https://www.superskill.sh"), "production API CORS must allow both SuperSkill hostnames");
 check(compose.includes("HARNESS_PUBLIC_API_URL: ${HARNESS_PUBLIC_API_URL:-https://superskill.sh/api}"), "HARNESS_PUBLIC_API_URL must default to the canonical SuperSkill API");
@@ -125,12 +136,17 @@ check(smokeCompose.includes('$BASE_URL/api/showroom/selected?limit=12'), "produc
 check(smokeCompose.includes('SMOKE_AUTH_RATE_LIMIT_OK="${SMOKE_AUTH_RATE_LIMIT_OK:-1}"'), "production compose smoke must soft-skip external Supabase auth rate limits by default");
 check(smokeCompose.includes('$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "production compose smoke must verify checkout deep links fall back to the SPA");
 check(smokeCompose.includes('[[ "$index_html" == *"SuperSkill"* ]]'), "production compose smoke must verify the SuperSkill product identity");
+check(smokeCompose.includes('$BASE_URL/r/$share_key') && smokeCompose.includes('$BASE_URL/og/r/$share_key'), "production compose smoke must verify crawler HTML and PNG share previews");
+check(smokeCompose.includes('$BASE_URL/c/deep-market-researcher') && smokeCompose.includes('$BASE_URL/og/c/deep-market-researcher'), "production compose smoke must verify managed capability share previews");
+check(smokeCompose.includes('$BASE_URL/manifest.webmanifest') && smokeCompose.includes('$BASE_URL/favicon.ico'), "production compose smoke must verify real brand assets");
 check(smokeCompose.includes('[[ "$checkout_html" == *"SuperSkill"* ]]'), "production compose smoke must verify SuperSkill checkout identity");
 check(!smokeCompose.includes('[[ "$checkout_html" == *"OnlyHarness"* ]]'), "production compose smoke must reject the legacy checkout identity");
 check(smokeCompose.includes("oauth-authorization-server") && smokeCompose.includes("= \"404\""), "production compose smoke must prove vanity OAuth AS discovery fails closed");
 check(standaloneSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "standalone Caddy must permanently redirect www.superskill.sh to the apex while preserving the URI");
 check(standaloneSuperSkillRedirect.includes("Strict-Transport-Security"), "standalone SuperSkill redirect must preserve HSTS");
 check(caddyfile.includes("superskill.sh {"), "standalone Caddy must serve the SuperSkill apex");
+check(standaloneSuperSkillSite.includes("@share_preview path /r/* /c/* /w/* /og/*"), "standalone Caddy must route crawler-visible previews only on the SuperSkill site");
+check(!standaloneMachineRoutes.includes("@share_preview"), "standalone Caddy must not expose human share previews through the legacy machine-route import");
 check(caddyfile.includes("onlyharness.com, www.onlyharness.com {"), "standalone Caddy must retain legacy machine compatibility hosts");
 check(caddyfile.includes("redir https://superskill.sh{uri} permanent"), "standalone Caddy must redirect legacy human pages to SuperSkill");
 check(!caddyfile.includes("onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {"), "standalone Caddy must not serve www.superskill.sh as an HTML origin");
@@ -155,6 +171,11 @@ check(deployProduction.indexOf("probeResourceImportArchiveStorage") < deployProd
 check(deployProduction.indexOf('DEPLOY_SMOKE_ACCESS_TOKEN is required for authenticated containment proof') < deployProduction.indexOf('ssh -o BatchMode=yes'), "deploy-production.sh must require the authenticated smoke token before the first production mutation");
 check(deployProduction.includes('"code":"PUBLISH_DISABLED"') && deployProduction.includes('"code":"VALIDATION_FAILED"'), "deploy-production.sh must prove the authenticated publish route matches the selected rollout mode without creating a release");
 check(deployProduction.includes('$PUBLIC_BASE_URL/api/showroom/selected?limit=12'), "deploy-production.sh must smoke selected SuperSkill intake cards after deploy");
+check(deployProduction.includes('$PUBLIC_BASE_URL/r/$share_key') && deployProduction.includes('$PUBLIC_BASE_URL/og/r/$share_key'), "deploy-production.sh must smoke crawler HTML and PNG share previews after deploy");
+check(deployProduction.includes('$PUBLIC_BASE_URL/c/deep-market-researcher') && deployProduction.includes('$PUBLIC_BASE_URL/og/c/deep-market-researcher'), "deploy-production.sh must smoke managed capability share previews after deploy");
+check(deployProduction.includes("scripts/smoke-workspace-preview.mjs"), "deploy-production.sh must smoke a bounded authenticated workspace preview after deploy");
+check(workspacePreviewSmoke.includes('name="robots" content="noindex,nofollow,noarchive"') && workspacePreviewSmoke.includes("ohwi_") && workspacePreviewSmoke.includes("private/no-store"), "workspace preview smoke must prove noindex, no-store and raw invite containment");
+check(deployProduction.includes('$PUBLIC_BASE_URL/manifest.webmanifest') && deployProduction.includes('$PUBLIC_BASE_URL/favicon.ico'), "deploy-production.sh must smoke the new brand assets after deploy");
 check(deployProduction.includes('$PUBLIC_BASE_URL/mcp'), "deploy-production.sh must smoke the public MCP endpoint");
 check(systemSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "deploy-production.sh must permanently redirect www.superskill.sh to the apex while preserving the URI");
 check(systemSuperSkillRedirect.includes("Strict-Transport-Security"), "system SuperSkill redirect must preserve HSTS");
@@ -165,8 +186,8 @@ check(deployProduction.includes('SUPERSKILL_APEX_URL="${SUPERSKILL_APEX_URL:-htt
 check(deployProduction.includes('SUPERSKILL_WWW_URL="${SUPERSKILL_WWW_URL:-https://www.superskill.sh}"'), "deploy-production.sh must default the SuperSkill redirect smoke URL");
 check(deployProduction.includes('$SUPERSKILL_WWW_URL/deploy-canonical-smoke?source=deploy'), "deploy-production.sh must smoke the www SuperSkill redirect with path and query");
 check(deployProduction.includes('location: $SUPERSKILL_APEX_URL/deploy-canonical-smoke?source=deploy'), "deploy-production.sh must verify the canonical SuperSkill redirect target");
-check(deployProduction.includes('curl -fsS "$SUPERSKILL_APEX_URL/"'), "deploy-production.sh must smoke the SuperSkill apex HTML origin");
-check(deployProduction.includes('curl -fsS "$SUPERSKILL_APEX_URL/" | grep -q \'SuperSkill\''), "deploy-production.sh must verify the SuperSkill apex identity");
+check(deployProduction.includes('production_index="$(curl -fsS "$SUPERSKILL_APEX_URL/")"'), "deploy-production.sh must smoke the SuperSkill apex HTML origin");
+check(deployProduction.includes('grep -q \'SuperSkill\' <<<"$production_index"'), "deploy-production.sh must verify the SuperSkill apex identity");
 check(deployProduction.includes('"name":"search_resources"'), "deploy-production.sh must smoke the MCP resource search tool");
 check(deployProduction.includes('$PUBLIC_BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher'), "deploy-production.sh must smoke checkout deep links after deploy");
 check(deployProduction.includes('provider_ref=manual_deploy_smoke" | grep -q "SuperSkill"'), "deploy-production.sh must verify SuperSkill checkout identity");

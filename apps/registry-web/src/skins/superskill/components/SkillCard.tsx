@@ -1,6 +1,7 @@
 import type { ShowroomCapability } from "../../../core/superskill-types";
 import { capabilityVerdict, installAllowed } from "../../../core/superskill-types";
 import { buildSuperSkillRoute } from "../../../core/superskill-route";
+import { capabilityShareUrl } from "../../../core/share-url";
 import { ShellLink } from "../primitives";
 import { VerdictChip } from "./VerdictChip";
 
@@ -26,6 +27,7 @@ export function SkillCard({ item, variant = "compact", label }: { item: Showroom
       {!allowed ? <div className="ss-block-copy">Install handoff blocked: {item.clientHandoff.reason === "stale_or_ineligible_evidence" ? "evidence is stale or no longer eligible" : `release is ${capability.trust.status}`}.</div> : null}
       <div className="ss-card-actions">
         <ShellLink href={buildSuperSkillRoute({ name: "capability", capabilityId: capability.id })}>Trust report</ShellLink>
+        <ShellLink href={capabilityShareUrl(capability.id)}>Share preview</ShellLink>
         {allowed ? <ShellLink className="ss-link--primary" href={buildSuperSkillRoute({ name: "install", capabilityId: capability.id })}>Client handoff</ShellLink> : <span className="ss-disabled-action" aria-disabled="true">Install blocked</span>}
       </div>
       <div className="ss-digest" title={capability.release.artifactDigest}>{capability.release.artifactDigest}</div>

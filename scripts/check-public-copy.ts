@@ -6,6 +6,11 @@ const root = path.resolve(import.meta.dirname, "..");
 const publicCopyFiles = [
   "README.md",
   "apps/registry-web/public/llms.txt",
+  "apps/registry-web/index.html",
+  "apps/registry-web/public/favicon.svg",
+  "apps/registry-web/public/og-card.svg",
+  "apps/registry-web/public/og-card.html",
+  "apps/registry-web/public/manifest.webmanifest",
   "AGENTS.md",
   "apps/registry-web/public/AGENTS.md",
   "apps/registry-web/src/core/superskill-route.ts",
@@ -14,6 +19,7 @@ const publicCopyFiles = [
   "apps/registry-web/src/core/useSocial.ts",
   "apps/registry-web/src/core/store.tsx",
   "apps/registry-web/src/core/useSelectedShowroomCapabilities.ts",
+  "apps/registry-web/src/core/share-url.ts",
   "apps/registry-web/src/skins/win98/windows.tsx"
 ] as const;
 
@@ -56,6 +62,14 @@ for (const forbidden of ["2,140", "12.8k", "240 verified", "0 unchecked", "Outco
 }
 check(!superskillCopy.includes("HH_SUPERSKILL_TOKEN"), "SuperSkill browser source must not reference the internal CLI token");
 check(!superskillCopy.includes("https://onlyharness.com"), "SuperSkill browser source must use the canonical superskill.sh origin");
+for (const file of ["apps/registry-web/index.html", "apps/registry-web/public/favicon.svg", "apps/registry-web/public/og-card.svg", "apps/registry-web/public/og-card.html", "apps/registry-web/public/manifest.webmanifest"] as const) {
+  check(!/OnlyHarness|onlyharness/.test(docs[file]), `${file} must not contain legacy human-facing branding`);
+}
+check(docs["apps/registry-web/index.html"].includes('rel="canonical" href="https://superskill.sh/"'), "SuperSkill index must expose the canonical website URL");
+check(docs["apps/registry-web/index.html"].includes('href="/manifest.webmanifest"'), "SuperSkill index must expose the real web manifest");
+check(!docs["apps/registry-web/index.html"].includes("Pixelify Sans") && !docs["apps/registry-web/index.html"].includes("VT323"), "SuperSkill index must not load legacy skin fonts globally");
+check(docs["apps/registry-web/src/skins/superskill/pages/Landing.tsx"].includes("installer.installUrl"), "SuperSkill landing must show the universal URL itself");
+check(docs["apps/registry-web/src/core/share-url.ts"].includes("/r/") && docs["apps/registry-web/src/core/share-url.ts"].includes("/c/"), "SuperSkill share helpers must use crawler-visible paths");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("localStorage"), "Task prompt must not persist task text");
 check(!docs["apps/registry-web/src/skins/superskill/components/TaskPrompt.tsx"].includes("fetch("), "Task prompt must hand off locally instead of calling recommendation transport");
 check(docs["apps/registry-web/src/skins/superskill/pages/InstallHandoff.tsx"].includes("Copying a command only copies text"), "Install handoff must not turn copy into lifecycle state");

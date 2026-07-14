@@ -16,6 +16,10 @@ MCP Registry metadata: https://superskill.sh/server.json
 
 OAuth protected-resource metadata: https://superskill.sh/.well-known/oauth-protected-resource
 
+Universal install link to paste into Codex or Claude Code: https://superskill.sh/api/superskill/install
+
+Crawler-visible share links use website paths instead of hash routes: `/r/{base64url-resource-id}` for the current public resource, `/r/{base64url-resource-id}/{version}` for an exact release, `/c/{capability-id}` for a managed skill, and `/w/{invite-id}#invite={raw-code}` for a private workspace invitation. Matching PNG cards are under `/og/r/*`, `/og/c/*`, and `/og/w/*`. Workspace invite secrets always remain after `#` and are never sent to preview endpoints.
+
 SuperSkill does not advertise a vanity OAuth authorization server. Managed headless flows use a separate one-time device authorization: run `eval "$(hh auth login --shell --client codex)"` (use `claude-code` for Claude Code), approve the user code from the confirmed signed-in Account page, and start the client from that terminal. The maximum 30-minute HMAC bearer remains only in `HH_TOKEN`, is sent only in the Authorization header, and is live-checked against the user and `superskill:managed` grant. This flow is not advertised as OAuth; `/.well-known/oauth-authorization-server` intentionally returns 404 until one issuer owns a complete standards-valid authorization flow.
 
 ## SuperSkill internal alpha
@@ -38,11 +42,11 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
   Multi-word queries AND-match against name, title, summary, job and tags. `outcome` remains a legacy alias for the job filter.
   Response: { items: [{ owner, name, title, summary, tags, job, outcome, runtime, stars, forks, threads, runs, installConfirms, signalCount, heatQualified, heat, evalScore, evalStatus, riskScore, riskTier, contextCost, badge, cliCommand, updatedAt }] }
 - Search mixed resources: GET /resources?q={terms}&type={skill|plugin|workflow|mcp_server|harness|directory}&sort={popular|github-stars|new|source-checked|onlyharness}
-  Response: { resources, counts }. Resources include source provenance, optional OnlyHarness hosted archive/mirror metadata, GitHub stars snapshot/current fields, sourceCheckedAt, sourceCheckStatus, raw installability/availability state, licenseStatus and actions. Source checked is not Verified install.
+  Response: { resources, counts }. Resources include source provenance, optional SuperSkill-hosted archive/mirror metadata, GitHub stars snapshot/current fields, sourceCheckedAt, sourceCheckStatus, raw installability/availability state, licenseStatus and actions. Source checked is not Verified install.
 - Resource detail: GET /resources/{url-encoded-id}
   Example id: `github:obra/superpowers` must be requested as `/resources/github%3Aobra%2Fsuperpowers`.
 - Resource archive: GET /resources/{url-encoded-id}/archive
-  Returns a tar.gz hosted by OnlyHarness when the resource has been materialized into OnlyHarness storage. It must not redirect clients to GitHub.
+  Returns a tar.gz hosted by SuperSkill when the resource has been materialized into SuperSkill storage. It must not redirect clients to GitHub.
 - Harness detail: GET /repos/{owner}/{name}/harness
   Returns the manifest (agents, workflow stages, tools, permissions, quality_gates), README, example input/output, eval results, risk report, contextCost, file list, versions[] archive history and prReview. Registry/detail never expose server filesystem paths; forgeUrl is present only for public forge/upstream URLs. prReview.source=local-demo means generated preview, not an open forge PR.
 - Download files: GET /repos/{owner}/{name}/archive?version={optional semver}
@@ -100,7 +104,7 @@ Agent-facing browser guide: https://superskill.sh/#/superskill/agent-guide
 - Workspace join gates: GET/PUT /workspaces/{slug}/join-policies, POST /workspaces/{slug}/join-code, POST /workspaces/{slug}/join-code/verify, POST /workspaces/{slug}/join-grants
   Join policies cover invite, email domain, Telegram, Discord, entitlement and disabled future paid-subscription gates. A signed-in user mints a short-lived `ohwj_` code with `/join-code`. Bots verify it read-only with `gate:verify`; only `/join-grants` creates membership after the external Telegram/Discord/entitlement check passes. Active `paid_subscription` policies fail closed until subscription lifecycle is implemented.
 - Workspace resources: GET /workspaces/{slug}/resources, GET /workspaces/{slug}/resources/{id}, GET /workspaces/{slug}/resources/{id}/archive
-  Search, inspect, and download workspace-hosted resource packages. Resource refs are `@workspace/name`; archives are served from OnlyHarness workspace archive storage and never redirect to upstream GitHub.
+  Search, inspect, and download workspace-hosted resource packages. Resource refs are `@workspace/name`; archives are served from SuperSkill workspace archive storage and never redirect to upstream GitHub.
 - Workspace resource package publish: POST /workspaces/{slug}/imports/resource-package
   Requires WORKSPACES_ENABLED=true and a workspace token with publish scope. Use `HH_WORKSPACE_TOKEN=... hh publish-resource <dir-or-git-url> --workspace slug --name my-agent-tool --type command_pack`. This is the full-package path for private skills/plugins/workflows/MCP servers/commands/scripts/docs/source bundles; it is not the markdown scaffold path and does not grant a Verified harness badge.
 - Org publish: POST /orgs/{slug}/imports/markdown-to-harness
@@ -194,7 +198,7 @@ For local development from the repo:
 - hh resources detail github:obra/superpowers --json
 - hh resources open github:obra/superpowers
 - hh resources install onlyharness:packages/{name} --version <semver> --target codex|claude-code --allow-unreviewed --json   install an exact immutable hosted skill after explicit review and consent
-  Opens the OnlyHarness resource page first; upstream GitHub stays attribution/source, not the primary use path.
+  Opens the SuperSkill resource page first; upstream GitHub stays attribution/source, not the primary use path.
 - hh resources import https://github.com/acme/agent-skills --json   classify before adding/listing a GitHub resource
 - hh suggest {terms}        return ranked candidates with trust fields plus selected detail trust summary; use --pick {rank}; --apply installs through the pull archive path
 - hh suggest {terms} --apply --target cli|claude-code|codex|cursor    run the target adapter install path before recording applied

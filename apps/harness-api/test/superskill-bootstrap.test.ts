@@ -30,6 +30,9 @@ test("public bootstrap exposes one pinned no-script install contract with secure
   assert.equal(response.headers["cache-control"], "public, max-age=60, stale-while-revalidate=300");
   assert.deepEqual(response.json(), buildSuperSkillBootstrapManifest(contract));
   assert.equal(JSON.stringify(response.json()).includes("script"), false);
+  assert.equal(response.json().agent.action, "install_superskill");
+  assert.equal(response.json().agent.command, "npx --yes onlyharness@0.2.17 superskill install https://superskill.sh/api/superskill/install --auto");
+  assert.doesNotMatch(response.json().agent.command, /curl|wget|\|\s*(?:sh|bash)/);
   const head = await app.inject({ method: "HEAD", url: "/superskill/install" });
   assert.equal(head.statusCode, 200);
   assert.equal(head.body, "");

@@ -11,12 +11,13 @@ COPY templates ./templates
 COPY data ./data
 
 RUN npm ci
-RUN npm run build -w @harnesshub/api -w @harnesshub/schema -w @harnesshub/semantic-diff -w onlyharness
+RUN npm run build -w @harnesshub/capability-schema -w @harnesshub/api -w @harnesshub/schema -w @harnesshub/semantic-diff -w onlyharness
 
 FROM node:24-alpine AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--conditions=runtime-built
 ENV HARNESS_API_HOST=0.0.0.0
 ENV HARNESS_API_PORT=8787
 ENV HARNESS_WORKSPACE_ROOT=/app

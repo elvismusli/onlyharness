@@ -1191,6 +1191,7 @@ function fromSupabaseRow(row: SupabaseReleaseRow): ResourceRelease | undefined {
 }
 
 function hasSupabaseStore(): boolean {
+  if (process.env.RESOURCE_RELEASES_USE_LOCAL_STORE === "true") return false;
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 

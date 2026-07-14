@@ -88,6 +88,30 @@ curl -fsSI "$BASE_URL/.well-known/oauth-protected-resource" | tr -d '\r' | grep 
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/.well-known/oauth-authorization-server")" = "404"
 index_html="$(curl -fsS "$BASE_URL/")"
 [[ "$index_html" == *"SuperSkill"* ]]
+[[ "$index_html" == *"one link for every agent skill"* ]]
+[[ "$index_html" == *'rel="canonical" href="https://superskill.sh/"'* ]]
+curl -fsSI "$BASE_URL/favicon.ico" | tr -d '\r' | grep -qi '^content-type: image/vnd.microsoft.icon\|^content-type: image/x-icon'
+curl -fsSI "$BASE_URL/manifest.webmanifest" | tr -d '\r' | grep -qi '^content-type: application/manifest+json\|^content-type: application/json'
+bootstrap_json="$(curl -fsS "$BASE_URL/api/superskill/install")"
+[[ "$bootstrap_json" == *'"action":"install_superskill"'* ]]
+[[ "$bootstrap_json" == *'superskill install https://superskill.sh/api/superskill/install --auto'* ]]
+share_key="Z2l0aHViOm9icmEvc3VwZXJwb3dlcnM"
+share_html="$(curl -fsS -A 'TelegramBot (like TwitterBot)' "$BASE_URL/r/$share_key")"
+[[ "$share_html" == *'property="og:title"'* ]]
+grep -qi 'superpowers' <<<"$share_html"
+[[ "$share_html" == *"https://superskill.sh/og/r/$share_key"* ]]
+share_png="$(mktemp)"
+curl -fsS "$BASE_URL/og/r/$share_key" -o "$share_png"
+node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$share_png"
+rm -f "$share_png"
+capability_html="$(curl -fsS -A 'TelegramBot (like TwitterBot)' "$BASE_URL/c/deep-market-researcher")"
+[[ "$capability_html" == *'property="og:title"'* ]]
+grep -qi 'deep market researcher' <<<"$capability_html"
+[[ "$capability_html" == *'https://superskill.sh/og/c/deep-market-researcher'* ]]
+capability_png="$(mktemp)"
+curl -fsS "$BASE_URL/og/c/deep-market-researcher" -o "$capability_png"
+node -e 'const fs=require("node:fs");const b=fs.readFileSync(process.argv[1]);if(b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||b.readUInt32BE(16)!==1200||b.readUInt32BE(20)!==630)process.exit(1)' "$capability_png"
+rm -f "$capability_png"
 checkout_html="$(curl -fsS "$BASE_URL/checkout?owner=harnesses&repo=deep-market-researcher&version=0.2.0&provider_ref=manual_smoke")"
 [[ "$checkout_html" == *"SuperSkill"* ]]
 web_asset="$(node -e 'const html = process.argv[1] ?? ""; const match = html.match(/src="(\/assets\/[^"]+\.js)"/); if (!match) process.exit(1); console.log(match[1]);' "$index_html")"

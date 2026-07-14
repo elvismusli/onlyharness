@@ -1774,7 +1774,7 @@ test("audit-setup reports local skill conflicts, stale skills and a share card w
     assert.ok((body.summary?.approxTokens ?? 0) > 0);
     assert.equal(body.conflicts?.length, 1);
     assert.equal(body.stale?.length, 1);
-    assert.match(body.shareCard ?? "", /OnlyHarness setup audit/);
+    assert.match(body.shareCard ?? "", /SuperSkill setup audit/);
     assert.doesNotMatch(body.shareCard ?? "", new RegExp(home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.ok(body.recommendations?.some((item) => /overlapping/i.test(item)));
   } finally {

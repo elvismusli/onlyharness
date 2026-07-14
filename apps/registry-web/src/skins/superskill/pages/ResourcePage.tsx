@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { apiUrl } from "../../../core/constants";
-import { buildSuperSkillRoute } from "../../../core/superskill-route";
+import { resourceShareUrl } from "../../../core/share-url";
 import type { ResourceItem } from "../../../core/types";
 import { StatePanel } from "../components/StatePanel";
 import { CopyField } from "../components/CopyField";
@@ -38,9 +38,7 @@ export function ResourcePage({ resourceId, version }: { resourceId: string; vers
   const archive = resource.actions.find((action) => action.id === "download_archive");
   const upstream = resource.actions.find((action) => action.id === "open_upstream");
   const destinationWorkspace = h.workspaceCatalog?.workspace.slug ?? storedWorkspaceSlug();
-  const shareUrl = resource.release
-    ? `${window.location.origin}/${buildSuperSkillRoute({ name: "resource", resourceId: resource.id, version: resource.release.version })}`
-    : resource.canonicalUrl.startsWith("https://superskill.sh/") ? resource.canonicalUrl : `${window.location.origin}${window.location.pathname}${window.location.hash}`;
+  const shareUrl = resourceShareUrl(resource.id, resource.release?.version);
   const nativeSkillInstall = archive && resource.release && scan !== "fail" && resource.resourceType === "skill" && resource.id.startsWith("onlyharness:packages/")
     ? `npx --yes ${superskillRuntime.cliPackage}@${superskillRuntime.cliVersion} resources install ${JSON.stringify(resource.id)} --version ${JSON.stringify(resource.release.version)} --target codex --allow-unreviewed --json`
     : undefined;

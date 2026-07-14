@@ -281,6 +281,10 @@ export type WorkspaceInviteResult =
   | { ok: true; workspace: WorkspaceRecord; invite: WorkspaceInvite; code: string }
   | { ok: false; status: number; error: string; code: string };
 
+export type WorkspaceInvitePreviewResult =
+  | { ok: true; workspace: WorkspaceRecord; invite: WorkspaceInvite }
+  | { ok: false; status: 404 | 410 | 503; code: "INVITE_NOT_FOUND" | "INVITE_UNAVAILABLE" | "WORKSPACE_UNAVAILABLE" };
+
 export type WorkspaceJoinResult =
   | { ok: true; workspace: WorkspaceRecord; invite?: WorkspaceInvite; policy?: WorkspaceJoinPolicy; member: WorkspaceMember }
   | { ok: false; status: number; error: string; code: string };
@@ -512,6 +516,41 @@ export async function createWorkspaceInvite(slugValue: string | undefined, input
     return { ok: false, status: 503, error: "Workspace invite storage unavailable", code: "WORKSPACE_UNAVAILABLE" };
   }
   return { ok: true, workspace: workspace.value, invite: remote ?? upsertLocalWorkspaceInvite(workspace.value, invite), code };
+}
+
+export async function readWorkspaceInvitePreview(inviteIdValue: string | undefined): Promise<WorkspaceInvitePreviewResult> {
+  const inviteId = typeof inviteIdValue === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(inviteIdValue) ? inviteIdValue : undefined;
+  if (!inviteId) return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
+
+  if (supabaseUrl() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const inviteRows = await supabaseRows<SupabaseInviteRow>("workspace_invites", {
+      select: "id,workspace_id,email,code_hash,role,max_uses,uses_count,expires_at,created_by,created_at,revoked_at",
+      id: `eq.${inviteId}`,
+      limit: "1"
+    });
+    if (!inviteRows) return { ok: false, status: 503, code: "WORKSPACE_UNAVAILABLE" };
+    const rawInvite = inviteRows[0];
+    if (!rawInvite?.workspace_id) return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
+    const workspaceRows = await supabaseRows<SupabaseWorkspaceRow>("workspaces", {
+      select: "id,slug,name,type,visibility,plan,description,avatar_url",
+      id: `eq.${rawInvite.workspace_id}`,
+      archived_at: "is.null",
+      limit: "1"
+    });
+    if (!workspaceRows) return { ok: false, status: 503, code: "WORKSPACE_UNAVAILABLE" };
+    const workspace = normalizeSupabaseWorkspace(workspaceRows[0]);
+    const invite = normalizeSupabaseInvite(rawInvite, workspace?.slug)[0];
+    if (!workspace || !invite) return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
+    return workspaceInvitePreviewState(workspace, invite);
+  }
+
+  if (!localWorkspaceFallbackAllowed()) return { ok: false, status: 503, code: "WORKSPACE_UNAVAILABLE" };
+  const store = readWorkspaceStore();
+  const invite = (store.invites ?? []).find((row) => row.id === inviteId);
+  if (!invite) return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
+  const workspace = (store.workspaces ?? []).find((row) => (invite.workspace_id && row.id === invite.workspace_id) || row.slug === invite.workspace_slug);
+  if (!workspace) return { ok: false, status: 404, code: "INVITE_NOT_FOUND" };
+  return workspaceInvitePreviewState(workspace, invite);
 }
 
 export async function listWorkspaceJoinPolicies(slugValue: string | undefined): Promise<WorkspaceJoinPoliciesResult> {
@@ -1645,6 +1684,14 @@ function normalizeSupabaseWorkspace(row: SupabaseWorkspaceRow | undefined): Work
   };
 }
 
+function workspaceInvitePreviewState(workspace: WorkspaceRecord, invite: WorkspaceInvite): WorkspaceInvitePreviewResult {
+  const expiry = invite.expires_at ? Date.parse(invite.expires_at) : undefined;
+  const expired = expiry !== undefined && (!Number.isFinite(expiry) || expiry <= Date.now());
+  const exhausted = invite.max_uses !== null && invite.max_uses !== undefined && invite.uses_count >= invite.max_uses;
+  if (invite.revoked_at || expired || exhausted) return { ok: false, status: 410, code: "INVITE_UNAVAILABLE" };
+  return { ok: true, workspace, invite };
+}
+
 function normalizeLocalWorkspace(row: WorkspaceRecord | undefined): WorkspaceRecord | undefined {
   const slug = cleanWorkspaceSlug(row?.slug);
   const input = row;
@@ -2146,7 +2193,7 @@ function withDefaultCollection(collections: WorkspaceCollection[]): WorkspaceCol
   return [{
     slug: "approved",
     title: "Approved resources",
-    summary: "Workspace-approved public and private resources. Approval is not OnlyHarness verification.",
+    summary: "Workspace-approved public and private resources. Workspace approval is not SuperSkill verification.",
     visibility: "workspace",
     createdAt: now,
     updatedAt: now,
@@ -2237,13 +2284,13 @@ function defaultWorkspaceReadmeConfig(workspace: WorkspaceRecord, bundleResource
   const hosted = bundleResources.filter((resource) => resource.hostedArchive);
   const approved = bundleResources.filter((resource) => resource.source === "workspace_approved");
   const lines = [
-    `# ${workspace.name} OnlyHarness Setup`,
+    `# ${workspace.name} SuperSkill Setup`,
     "",
     `Workspace: @${workspace.slug}`,
     `Target: ${target}`,
     "",
-    "This setup was generated by OnlyHarness from workspace-private packages and workspace-approved public resources.",
-    "Workspace approval is not an OnlyHarness Verified badge.",
+    "This setup was generated by SuperSkill from workspace-private packages and workspace-approved public resources.",
+    "Workspace approval is not a SuperSkill Verified badge.",
     "",
     "## Hosted Workspace Packages",
     hosted.length ? hosted.map((resource) => `- ${resource.id} (${resource.resourceType})`).join("\n") : "- None",
@@ -2345,9 +2392,9 @@ function workspaceResourceNameForApproval(resource: resources.Resource, requeste
 function approvedResourceActions(resource: resources.Resource, workspaceUrl: string, workspaceName: string): resources.ResourceAction[] {
   const actions: resources.ResourceAction[] = [{ id: "open_onlyharness", label: `Use via ${workspaceName}`, url: workspaceUrl }];
   const publicListing = resource.actions.find((action) => action.id === "open_onlyharness" && "url" in action);
-  if (publicListing && "url" in publicListing) actions.push({ id: "open_mirror", label: "Open public OnlyHarness listing", url: publicListing.url });
+  if (publicListing && "url" in publicListing) actions.push({ id: "open_mirror", label: "Open public SuperSkill listing", url: publicListing.url });
   for (const action of resource.actions) {
-    if (action.id === "download_archive" && "url" in action) actions.push({ ...action, label: "Download public OnlyHarness archive" });
+    if (action.id === "download_archive" && "url" in action) actions.push({ ...action, label: "Download public SuperSkill archive" });
     if (action.id === "install" || action.id === "copy_mcp_config") actions.push(action);
     if (action.id === "open_upstream" && "url" in action) actions.push(action);
   }

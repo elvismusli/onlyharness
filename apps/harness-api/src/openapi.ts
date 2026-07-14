@@ -1093,7 +1093,7 @@ export const openapi = {
         responses: {
           "201": {
             description: "Workspace invite code",
-            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, invite: { $ref: "#/components/schemas/WorkspaceInvite" }, code: { type: "string" }, next: { type: "string" } } } } }
+            content: { "application/json": { schema: { type: "object", properties: { workspace: { $ref: "#/components/schemas/Workspace" }, invite: { $ref: "#/components/schemas/WorkspaceInvite" }, code: { type: "string" }, shareUrl: { type: "string", format: "uri", description: "Crawler-visible workspace preview URL. The raw invite code is present only in the URL fragment." }, next: { type: "string" } } } } }
           },
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
@@ -2367,6 +2367,17 @@ export const openapi = {
         properties: {
           schemaVersion: { type: "string", const: "superskill.bootstrap.v1" },
           canonicalUrl: { type: "string", format: "uri", pattern: "^https://superskill\\.sh/api/superskill/install" },
+          agent: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              action: { type: "string", const: "install_superskill" },
+              command: { type: "string", description: "Exact pinned local install command for an agent that was given the universal URL." },
+              supportedClients: { type: "array", prefixItems: [{ const: "codex" }, { const: "claude-code" }], minItems: 2, maxItems: 2 },
+              note: { type: "string" }
+            },
+            required: ["action", "command", "supportedClients", "note"]
+          },
           installer: {
             type: "object",
             additionalProperties: false,
@@ -2426,7 +2437,7 @@ export const openapi = {
           },
           manifestDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" }
         },
-        required: ["schemaVersion", "canonicalUrl", "installer", "universalSkill", "clientAdapters", "capability", "activation", "manifestDigest"]
+        required: ["schemaVersion", "canonicalUrl", "agent", "installer", "universalSkill", "clientAdapters", "capability", "activation", "manifestDigest"]
       },
       Workspace: {
         type: "object",
