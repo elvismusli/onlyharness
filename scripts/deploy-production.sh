@@ -251,6 +251,10 @@ ssh "$SSH_TARGET" "cd '$SERVER_PATH' && env -u SUPERSKILL_AGENT_AUTH_ENABLED -u 
 if [[ "$DEPLOY_MODE" == "system-caddy" ]]; then
   ssh "$SSH_TARGET" "ONLYHARNESS_WEB_PORT='$ONLYHARNESS_WEB_PORT' bash -s" <<'REMOTE_CADDY'
 set -euo pipefail
+install -d -o caddy -g caddy -m 0750 /var/log/caddy
+touch /var/log/caddy/superskill-access.log
+chown caddy:caddy /var/log/caddy/superskill-access.log
+chmod 0640 /var/log/caddy/superskill-access.log
 cat > /etc/caddy/sites/onlyharness.caddy <<CADDY
 www.superskill.sh {
 	redir https://superskill.sh{uri} permanent
@@ -265,6 +269,24 @@ www.superskill.sh {
 
 superskill.sh {
 	encode zstd gzip
+	log superskill_access {
+		output file /var/log/caddy/superskill-access.log {
+			mode 0640
+			roll_size 20MiB
+			roll_keep 5
+			roll_keep_for 168h
+		}
+		format filter {
+			request>remote_ip ip_mask 16 32
+			request>client_ip ip_mask 16 32
+			request>headers>X-Forwarded-For ip_mask 16 32
+			request>uri regexp "\\?.*$" ""
+			wrap json {
+				time_format rfc3339_nano
+				duration_format ms
+			}
+		}
+	}
 
 	@unsupported_oauth_as path /.well-known/oauth-authorization-server
 	respond @unsupported_oauth_as 404
@@ -272,6 +294,7 @@ superskill.sh {
 	reverse_proxy 127.0.0.1:${ONLYHARNESS_WEB_PORT} {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto https
 	}
 

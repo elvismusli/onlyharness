@@ -1,5 +1,9 @@
 {
 	email admin@superskill.sh
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
 }
 
 (superskill_machine_routes) {
@@ -46,6 +50,19 @@ www.superskill.sh {
 
 superskill.sh {
 	encode zstd gzip
+	log {
+		output stdout
+		format filter {
+			request>remote_ip ip_mask 16 32
+			request>client_ip ip_mask 16 32
+			request>headers>X-Forwarded-For ip_mask 16 32
+			request>uri regexp "\\?.*$" ""
+			wrap json {
+				time_format rfc3339_nano
+				duration_format ms
+			}
+		}
+	}
 	import superskill_machine_routes
 
 	@share_preview path /r/* /c/* /w/* /og/*

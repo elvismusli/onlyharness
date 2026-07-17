@@ -7,6 +7,7 @@ services:
     environment:
       HARNESS_API_HOST: 0.0.0.0
       HARNESS_API_PORT: 8787
+      HARNESS_LOG_LEVEL: ${HARNESS_LOG_LEVEL:-info}
       HARNESS_WORKSPACE_ROOT: /app
       HARNESS_CORS_ORIGINS: https://onlyharness.com,https://www.onlyharness.com,https://superskill.sh,https://www.superskill.sh
       GITEA_BASE_URL: ${GITEA_BASE_URL:-https://git.onlyharness.com}
@@ -53,6 +54,11 @@ services:
       - ${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:${RESOURCE_IMPORT_ARCHIVE_DIR:-/var/lib/onlyharness/resource-import-archives}:rw
     expose:
       - "8787"
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   web:
     build:
@@ -73,6 +79,11 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 volumes:
   caddy_data:

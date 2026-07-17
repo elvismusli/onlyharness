@@ -293,11 +293,18 @@ export async function registerAgentAuthRoutes(app: FastifyInstance, service: Age
     const body = strictBody(request.body, ["client", "scopes"]);
     const client = body && validClient(body.client) ? body.client : undefined;
     const scopes = body ? normalizeScopes(body.scopes) : undefined;
-    if (!client || !scopes) return reply.code(400).send({ error: "Invalid agent authorization request", code: "AGENT_AUTH_REQUEST_INVALID" });
+    if (!client || !scopes) {
+      logAgentAuthEvent(request, "agent_auth_start_failed", "failed", "AGENT_AUTH_REQUEST_INVALID");
+      return reply.code(400).send({ error: "Invalid agent authorization request", code: "AGENT_AUTH_REQUEST_INVALID" });
+    }
     if (!takeRouteRate(rates, request, subjectSalt, "start", 20, 60_000, reply)) return;
-    if (!takeGlobalRate(rates, subjectSalt, "start", 1_000, 60_000, reply)) return;
+    if (!takeGlobalRate(rates, request, subjectSalt, "start", 1_000, 60_000, reply)) return;
     const result = await service.start({ client, scopes });
-    if (!result.ok) return reply.code(503).send({ error: "Agent authorization is unavailable", code: "AGENT_AUTH_UNAVAILABLE" });
+    if (!result.ok) {
+      logAgentAuthEvent(request, "agent_auth_start_failed", "failed", "AGENT_AUTH_UNAVAILABLE", { client, scopes });
+      return reply.code(503).send({ error: "Agent authorization is unavailable", code: "AGENT_AUTH_UNAVAILABLE" });
+    }
+    logAgentAuthEvent(request, "agent_auth_started", "success", undefined, { client, scopes });
     return reply.code(201).send({
       request_id: result.requestId,
       device_proof: result.deviceProof,
@@ -311,9 +318,15 @@ export async function registerAgentAuthRoutes(app: FastifyInstance, service: Age
   app.post("/auth/agent/browser-bind", async (request, reply) => {
     secure(reply);
     const body = strictBody(request.body, ["request_id", "browser_proof"]);
-    if (!body || typeof body.request_id !== "string" || typeof body.browser_proof !== "string") return authFailure(reply, "invalid");
+    if (!body || typeof body.request_id !== "string" || typeof body.browser_proof !== "string") {
+      logAgentAuthEvent(request, "agent_auth_bind_failed", "failed", "AGENT_AUTH_INVALID");
+      return authFailure(reply, "invalid");
+    }
     const result = await service.bindBrowser({ requestId: body.request_id, browserProof: body.browser_proof });
-    if (!result.ok) return authFailure(reply, result.kind);
+    if (!result.ok) {
+      logAgentAuthEvent(request, "agent_auth_bind_failed", "failed", authKindCode(result.kind));
+      return authFailure(reply, result.kind);
+    }
     reply.header("Set-Cookie", `${service.cookieName}=${result.binding}; Path=/; HttpOnly;${service.cookieSecure ? " Secure;" : ""} SameSite=Lax; Max-Age=${service.requestTtlSeconds}`);
     return { bound: true, request_id: body.request_id };
   });
@@ -339,25 +352,41 @@ export async function registerAgentAuthRoutes(app: FastifyInstance, service: Age
   app.post("/auth/agent/decision", async (request, reply) => {
     secure(reply);
     const body = strictBody(request.body, ["request_id", "decision"]);
-    if (!body || typeof body.request_id !== "string" || (body.decision !== "approve" && body.decision !== "deny")) return authFailure(reply, "invalid");
+    if (!body || typeof body.request_id !== "string" || (body.decision !== "approve" && body.decision !== "deny")) {
+      logAgentAuthEvent(request, "agent_auth_decision_failed", "failed", "AGENT_AUTH_INVALID");
+      return authFailure(reply, "invalid");
+    }
     const identity = body.decision === "approve"
       ? await identityResolver({ authorization: header(request.headers.authorization), now: new Date() })
       : undefined;
-    if (identity && !identity.ok) return reply.code(identity.status).send({ error: "Confirmed browser session required", code: identity.code });
+    if (identity && !identity.ok) {
+      logAgentAuthEvent(request, "agent_auth_decision_failed", "failed", identity.code);
+      return reply.code(identity.status).send({ error: "Confirmed browser session required", code: identity.code });
+    }
     if (body.decision === "approve") {
-      if (!identity?.ok) return reply.code(401).send({ error: "Confirmed browser session required", code: "DEVICE_AUTH_REQUIRED" });
+      if (!identity?.ok) {
+        logAgentAuthEvent(request, "agent_auth_decision_failed", "failed", "DEVICE_AUTH_REQUIRED");
+        return reply.code(401).send({ error: "Confirmed browser session required", code: "DEVICE_AUTH_REQUIRED" });
+      }
       const context = await service.context({ requestId: body.request_id, binding: cookie(request, service.cookieName) });
-      if (!context.ok) return authFailure(reply, context.kind);
+      if (!context.ok) {
+        logAgentAuthEvent(request, "agent_auth_decision_failed", "failed", authKindCode(context.kind));
+        return authFailure(reply, context.kind);
+      }
       if (context.request.scopes.includes("superskill:managed")) {
         const grant = await grantResolver({
           userId: identity.user.id,
           subject: superskillUserSubject(identity.user.id, subjectSalt),
           expiresAt: new Date(Date.now() + service.sessionTtlSeconds * 1_000)
         });
-        if (!grant.ok) return reply.code(grant.kind === "denied" ? 403 : 503).send({
-          error: grant.kind === "denied" ? "Managed access is denied" : "Agent authorization is unavailable",
-          code: grant.kind === "denied" ? "AGENT_ACCESS_DENIED" : "AGENT_AUTH_UNAVAILABLE"
-        });
+        if (!grant.ok) {
+          const code = grant.kind === "denied" ? "AGENT_ACCESS_DENIED" : "AGENT_AUTH_UNAVAILABLE";
+          logAgentAuthEvent(request, "agent_auth_decision_failed", "failed", code, { client: context.request.client, scopes: context.request.scopes });
+          return reply.code(grant.kind === "denied" ? 403 : 503).send({
+            error: grant.kind === "denied" ? "Managed access is denied" : "Agent authorization is unavailable",
+            code
+          });
+        }
       }
     }
     const result = await service.decide({
@@ -366,7 +395,16 @@ export async function registerAgentAuthRoutes(app: FastifyInstance, service: Age
       decision: body.decision,
       userId: identity?.ok ? identity.user.id : undefined
     });
-    if (!result.ok) return authFailure(reply, result.kind);
+    if (!result.ok) {
+      logAgentAuthEvent(request, "agent_auth_decision_failed", "failed", authKindCode(result.kind));
+      return authFailure(reply, result.kind);
+    }
+    logAgentAuthEvent(
+      request,
+      body.decision === "approve" ? "agent_auth_approved" : "agent_auth_denied",
+      body.decision === "approve" ? "success" : "denied",
+      body.decision === "approve" ? undefined : "AGENT_AUTH_DENIED"
+    );
     reply.header("Set-Cookie", `${service.cookieName}=; Path=/; HttpOnly;${service.cookieSecure ? " Secure;" : ""} SameSite=Lax; Max-Age=0`);
     return body.decision === "approve" ? { approved: true } : { denied: true };
   });
@@ -374,32 +412,58 @@ export async function registerAgentAuthRoutes(app: FastifyInstance, service: Age
   app.post("/auth/agent/token", async (request, reply) => {
     secure(reply);
     const body = strictBody(request.body, ["request_id", "device_proof"]);
-    if (!body || typeof body.request_id !== "string" || typeof body.device_proof !== "string") return authFailure(reply, "invalid");
+    if (!body || typeof body.request_id !== "string" || typeof body.device_proof !== "string") {
+      logAgentAuthEvent(request, "agent_auth_exchange_failed", "failed", "AGENT_AUTH_INVALID");
+      return authFailure(reply, "invalid");
+    }
     if (!takeRouteRate(rates, request, subjectSalt, "token", 120, 60_000, reply, body.request_id)) return;
     const result = await service.token({ requestId: body.request_id, deviceProof: body.device_proof });
-    if (!result.ok) return tokenFailure(reply, result.kind, service.pollIntervalSeconds);
+    if (!result.ok) {
+      if (result.kind !== "pending") logAgentAuthEvent(request, "agent_auth_exchange_failed", "failed", authKindCode(result.kind));
+      return tokenFailure(reply, result.kind, service.pollIntervalSeconds);
+    }
+    logAgentAuthEvent(request, "agent_auth_exchanged", "success", undefined, { scopes: result.scopes });
     return sendTokens(result);
   });
 
   app.post("/auth/agent/refresh", async (request, reply) => {
     secure(reply);
     const body = strictBody(request.body, ["refresh_token"]);
-    if (!body || typeof body.refresh_token !== "string") return authFailure(reply, "invalid");
+    if (!body || typeof body.refresh_token !== "string") {
+      logAgentAuthEvent(request, "agent_auth_refresh_failed", "failed", "AGENT_REFRESH_INVALID");
+      return authFailure(reply, "invalid");
+    }
     if (!takeRouteRate(rates, request, subjectSalt, "refresh", 60, 60_000, reply, body.refresh_token)) return;
     const result = await service.refresh(body.refresh_token);
-    if (!result.ok) return refreshFailure(reply, result.kind);
+    if (!result.ok) {
+      logAgentAuthEvent(
+        request,
+        result.kind === "reused" ? "agent_auth_refresh_reused" : "agent_auth_refresh_failed",
+        "failed",
+        result.kind === "reused" ? "AGENT_REFRESH_REUSED" : result.kind === "unavailable" ? "AGENT_AUTH_UNAVAILABLE" : "AGENT_REFRESH_INVALID"
+      );
+      return refreshFailure(reply, result.kind);
+    }
+    logAgentAuthEvent(request, "agent_auth_refreshed", "success", undefined, { scopes: result.scopes });
     return sendTokens(result);
   });
 
   app.post("/auth/agent/revoke", async (request, reply) => {
     secure(reply);
     const body = strictBody(request.body, ["refresh_token"]);
-    if (!body) return authFailure(reply, "invalid");
+    if (!body) {
+      logAgentAuthEvent(request, "agent_auth_revoke_failed", "failed", "AGENT_AUTH_INVALID");
+      return authFailure(reply, "invalid");
+    }
     const result = await service.revoke({
       accessToken: bearer(header(request.headers.authorization)),
       refreshToken: typeof body.refresh_token === "string" ? body.refresh_token : undefined
     });
-    if (result === "unavailable") return authFailure(reply, "unavailable");
+    if (result === "unavailable") {
+      logAgentAuthEvent(request, "agent_auth_revoke_failed", "failed", "AGENT_AUTH_UNAVAILABLE");
+      return authFailure(reply, "unavailable");
+    }
+    logAgentAuthEvent(request, "agent_auth_revoked", "success");
     return { revoked: true };
   });
 }
@@ -766,10 +830,7 @@ function takeRouteRate(
   reply: FastifyReply,
   discriminator = ""
 ) {
-  const forwarded = request.ip === "127.0.0.1" || request.ip === "::1"
-    ? header(request.headers["x-forwarded-for"])?.split(",")[0]?.trim()
-    : undefined;
-  const client = forwarded && /^[0-9a-f:.]{3,64}$/i.test(forwarded) ? forwarded : request.ip;
+  const client = request.ip;
   const key = hashSecret(secretValue, `rate-${bucket}`, `${client}|${discriminator}`);
   const now = Date.now();
   const current = rates.get(key);
@@ -781,12 +842,44 @@ function takeRouteRate(
   if (current.count < limit) { current.count += 1; return true; }
   const retryAfter = Math.max(1, Math.ceil((current.startedAt + windowMs - now) / 1_000));
   reply.header("Retry-After", String(retryAfter));
+  logAgentAuthEvent(request, "agent_auth_rate_limited", "failed", "AGENT_AUTH_RATE_LIMITED", { bucket });
   reply.code(429).send({ error: "Agent authorization rate limit exceeded", code: "AGENT_AUTH_RATE_LIMITED", retry_after: retryAfter });
   return false;
 }
 
+function logAgentAuthEvent(
+  request: FastifyRequest,
+  event: string,
+  outcome: "success" | "denied" | "failed",
+  reasonCode?: string,
+  details: { client?: AgentAuthClient; scopes?: AgentAuthScope[]; bucket?: string } = {}
+) {
+  const fields = {
+    event,
+    security: {
+      area: "agent_auth",
+      outcome,
+      ...(reasonCode ? { reason_code: reasonCode } : {}),
+      ...(details.client ? { client: details.client } : {}),
+      ...(details.scopes ? { scopes: details.scopes } : {}),
+      ...(details.bucket ? { bucket: details.bucket } : {})
+    }
+  };
+  if (outcome === "success") request.log.info(fields, event);
+  else request.log.warn(fields, event);
+}
+
+function authKindCode(kind: string): string {
+  if (kind === "expired") return "AGENT_AUTH_EXPIRED";
+  if (kind === "used") return "AGENT_AUTH_USED";
+  if (kind === "denied") return "AGENT_AUTH_DENIED";
+  if (kind === "unavailable") return "AGENT_AUTH_UNAVAILABLE";
+  return "AGENT_AUTH_INVALID";
+}
+
 function takeGlobalRate(
   rates: Map<string, { startedAt: number; count: number }>,
+  request: FastifyRequest,
   secretValue: string,
   bucket: string,
   limit: number,
@@ -803,6 +896,7 @@ function takeGlobalRate(
   if (current.count < limit) { current.count += 1; return true; }
   const retryAfter = Math.max(1, Math.ceil((current.startedAt + windowMs - now) / 1_000));
   reply.header("Retry-After", String(retryAfter));
+  logAgentAuthEvent(request, "agent_auth_capacity_limited", "failed", "AGENT_AUTH_RATE_LIMITED", { bucket });
   reply.code(429).send({ error: "Agent authorization capacity limit exceeded", code: "AGENT_AUTH_RATE_LIMITED", retry_after: retryAfter });
   return false;
 }

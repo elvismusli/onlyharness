@@ -17,6 +17,7 @@ import { openapi } from "./openapi.js";
 import { fetchLastVerificationAt, recordEvent, sanitizeEvent } from "./events.js";
 import { classifyGitHubResource, GitHubImportError, type GitHubResourceImportRequest } from "./github-import.js";
 import { appendOrgAudit, authorizeAnyOrgToken, authorizeOrgToken, readOrgAudit, readOrgBundle } from "./orgs.js";
+import { apiServerOptions, registerApiObservability } from "./observability.js";
 import { checkEntitlement, createCheckoutSession, hostedExecutionUnavailableBody, readPurchaseReceipt, requireArchivePaymentAccess, settleEscrowReceipt, settlePaymentWebhook, settleX402Purchase, timeoutEscrowPurchase, x402PaymentRequiredHeader, type EntitlementSubject, type PaymentRequiredBody, type X402PaymentRequirements } from "./payments.js";
 import { verifyGateReceipt } from "./receipts.js";
 import { fetchCountersMap, HEAT_SIGNAL_THRESHOLD } from "./social.js";
@@ -344,7 +345,8 @@ type DirectoryLinkOnlyBody = {
   next: string;
 };
 
-const app = Fastify({ logger: true });
+const app = Fastify(apiServerOptions({ release: MCP_SERVER_VERSION }));
+registerApiObservability(app);
 const agentAuthService = createAgentAuthService();
 const agentMutationService = createAgentMutationService();
 const superskillAccessResolver = createSupabaseSuperskillAccessResolver({ agentTokenResolver: agentAuthService.resolveAccessToken });
@@ -1801,7 +1803,7 @@ app.post("/mcp", { bodyLimit: resourcePackageRouteBodyLimit }, async (request, r
     await server.connect(transport);
     await transport.handleRequest(request.raw, reply.raw, mcpBody);
   } catch (error) {
-    request.log.error({ error }, "MCP request failed");
+    request.log.error({ err: error, event: "mcp_request_failed", error_code: "MCP_REQUEST_FAILED" }, "MCP request failed");
     if (!reply.raw.headersSent) {
       reply.raw.writeHead(500, { "content-type": "application/json" });
       reply.raw.end(JSON.stringify({
@@ -1923,7 +1925,7 @@ app.post("/imports/github-resource", async (request, reply) => {
     if (error instanceof GitHubImportError) {
       return reply.code(error.status).send({ error: error.message, code: error.code });
     }
-    request.log.error({ error }, "GitHub resource classify failed");
+    request.log.error({ err: error, event: "github_resource_classify_failed", error_code: "GITHUB_RESOURCE_CLASSIFY_FAILED" }, "GitHub resource classify failed");
     return reply.code(500).send({ error: "GitHub resource classify failed" });
   }
 });
@@ -2651,13 +2653,11 @@ async function settleX402ArchivePayment(input: {
     amount: settle.amount
   });
   if (!persisted.ok) {
-    console.warn("x402 entitlement persistence failed", {
-      owner: input.owner,
-      repo: input.repo,
-      version: input.version,
-      payer,
-      error: persisted.error
-    });
+    app.log.error({
+      event: "x402_entitlement_persistence_failed",
+      error_code: "X402_ENTITLEMENT_PERSISTENCE_FAILED",
+      payment: { owner: input.owner, repo: input.repo, version: input.version }
+    }, "x402 entitlement persistence failed");
     return { ok: false };
   }
   return {

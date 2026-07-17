@@ -17,6 +17,7 @@ import {
 import type { DeviceAuthGrantResolver, DeviceAuthIdentityResolver } from "../src/superskill/device-auth.js";
 import { createSupabaseSuperskillAccessResolver, superskillUserSubject } from "../src/superskill/access.js";
 import { createAgentMutationService, createInMemoryAgentMutationStore } from "../src/superskill/agent-idempotency.js";
+import { TRUSTED_PROXY_RANGES } from "../src/observability.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const subjectSalt = "fixture-agent-auth-subject-salt-at-least-32-bytes";
@@ -232,6 +233,47 @@ test("agent auth start is bounded per IP even when user-agent rotates", async (t
   assert.equal(response?.statusCode, 429);
   assert.equal(response?.json().code, "AGENT_AUTH_RATE_LIMITED");
   assert.ok(Number(response?.headers["retry-after"]) >= 1);
+});
+
+test("agent auth rate limits validated clients separately behind the production proxy", async (t) => {
+  const service = createAgentAuthService({ enabled: true, subjectSalt, tokenPepper, random: deterministicRandom(), store: createInMemoryAgentAuthStore() });
+  const app = Fastify({ logger: false, trustProxy: [...TRUSTED_PROXY_RANGES] });
+  await registerAgentAuthRoutes(app, service, {
+    subjectSalt,
+    identityResolver: async () => ({ ok: false, status: 401, code: "DEVICE_AUTH_INVALID" }),
+    grantResolver: async () => ({ ok: true })
+  });
+  t.after(() => app.close());
+
+  let limited;
+  for (let index = 0; index < 21; index += 1) {
+    limited = await app.inject({
+      method: "POST",
+      url: "/auth/agent/start",
+      remoteAddress: "172.20.0.3",
+      headers: { "x-forwarded-for": "198.51.100.20, 127.0.0.1" },
+      payload: { client: "cli", scopes: ["superskill:managed"] }
+    });
+  }
+  assert.equal(limited?.statusCode, 429);
+
+  const secondClient = await app.inject({
+    method: "POST",
+    url: "/auth/agent/start",
+    remoteAddress: "172.20.0.3",
+    headers: { "x-forwarded-for": "203.0.113.40, 127.0.0.1" },
+    payload: { client: "cli", scopes: ["superskill:managed"] }
+  });
+  assert.equal(secondClient.statusCode, 201);
+
+  const directSpoof = await app.inject({
+    method: "POST",
+    url: "/auth/agent/start",
+    remoteAddress: "203.0.113.50",
+    headers: { "x-forwarded-for": "198.51.100.20" },
+    payload: { client: "cli", scopes: ["superskill:managed"] }
+  });
+  assert.equal(directSpoof.statusCode, 201);
 });
 
 test("managed routes live-check agent user confirmation, ban state, and active grant", async () => {

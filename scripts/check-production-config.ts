@@ -24,6 +24,7 @@ const apiRuntimeEnv = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "HARNESS_PUBLIC_API_URL",
   "HARNESS_CHECKOUT_BASE_URL",
+  "HARNESS_LOG_LEVEL",
   "PAYMENTS_ENABLED",
   "PAYMENT_PROVIDER",
   "X402_ENABLED",
@@ -67,6 +68,7 @@ const exampleEnv = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "HARNESS_PUBLIC_API_URL",
   "HARNESS_CHECKOUT_BASE_URL",
+  "HARNESS_LOG_LEVEL",
   "PAYMENTS_ENABLED",
   "PAYMENT_PROVIDER",
   "X402_ENABLED",
@@ -112,6 +114,9 @@ for (const name of exampleEnv) {
 }
 
 check(compose.includes("PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-manual}"), "PAYMENT_PROVIDER must default to manual");
+check(compose.includes("HARNESS_LOG_LEVEL: ${HARNESS_LOG_LEVEL:-info}"), "production API logging must default to info");
+check((compose.match(/driver: local/g) ?? []).length === 2, "production API and web logs must use the bounded Docker local driver");
+check((compose.match(/max-size: \"20m\"/g) ?? []).length === 2 && (compose.match(/max-file: \"5\"/g) ?? []).length === 2, "production container logs must keep five bounded 20 MB files");
 check(compose.includes("X402_ENABLED: ${X402_ENABLED:-false}"), "X402_ENABLED must default off");
 check(compose.includes("SUPERSKILL_ENABLED: ${SUPERSKILL_ENABLED:-false}"), "SUPERSKILL_ENABLED must default off");
 check(compose.includes("SUPERSKILL_AGENT_AUTH_ENABLED: ${SUPERSKILL_AGENT_AUTH_ENABLED:-false}"), "agent auth must default off until its durable store and secrets are ready");
@@ -135,6 +140,7 @@ check(compose.includes("HARNESS_PUBLIC_API_URL: ${HARNESS_PUBLIC_API_URL:-https:
 check(compose.includes("HARNESS_CHECKOUT_BASE_URL: ${HARNESS_CHECKOUT_BASE_URL:-https://superskill.sh/checkout}"), "HARNESS_CHECKOUT_BASE_URL must default to the canonical SuperSkill checkout route");
 check(envExample.includes("X402_ENABLED=false"), "production.env.example must keep x402 off by default");
 check(envExample.includes("PAYMENTS_ENABLED=false"), "production.env.example must keep payments off by default");
+check(envExample.includes("HARNESS_LOG_LEVEL=info"), "production.env.example must document the production API log level");
 check(envExample.includes("ORGS_ENABLED=false"), "production.env.example must keep orgs off by default");
 check(envExample.includes("WORKSPACES_ENABLED=false"), "production.env.example must keep workspaces off by default");
 check(envExample.includes("SUPERSKILL_ENABLED=false"), "production.env.example must keep SuperSkill managed routes off by default");
@@ -170,6 +176,8 @@ check(smokeCompose.includes("oauth-authorization-server") && smokeCompose.includ
 check(standaloneSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "standalone Caddy must permanently redirect www.superskill.sh to the apex while preserving the URI");
 check(standaloneSuperSkillRedirect.includes("Strict-Transport-Security"), "standalone SuperSkill redirect must preserve HSTS");
 check(caddyfile.includes("superskill.sh {"), "standalone Caddy must serve the SuperSkill apex");
+check(caddyfile.includes("trusted_proxies static private_ranges") && caddyfile.includes("trusted_proxies_strict"), "standalone Caddy must validate the private reverse-proxy chain");
+check(standaloneSuperSkillSite.includes("request>uri regexp") && standaloneSuperSkillSite.includes("request>remote_ip ip_mask"), "standalone SuperSkill access logs must strip query values and mask client IPs");
 check(standaloneSuperSkillSite.includes("@share_preview path /r/* /c/* /w/* /og/*"), "standalone Caddy must route crawler-visible previews only on the SuperSkill site");
 check(!standaloneMachineRoutes.includes("@share_preview"), "standalone Caddy must not expose human share previews through the legacy machine-route import");
 check(caddyfile.includes("onlyharness.com, www.onlyharness.com {"), "standalone Caddy must retain legacy machine compatibility hosts");
@@ -215,6 +223,10 @@ check(deployProduction.includes('$PUBLIC_BASE_URL/mcp'), "deploy-production.sh m
 check(systemSuperSkillRedirect.includes("\tredir https://superskill.sh{uri} permanent"), "deploy-production.sh must permanently redirect www.superskill.sh to the apex while preserving the URI");
 check(systemSuperSkillRedirect.includes("Strict-Transport-Security"), "system SuperSkill redirect must preserve HSTS");
 check(deployProduction.includes("superskill.sh {"), "deploy-production.sh must serve the SuperSkill apex");
+check(deployProduction.includes("superskill-access.log") && deployProduction.includes("roll_size 20MiB") && deployProduction.includes("roll_keep 5"), "system Caddy must write bounded SuperSkill access logs");
+check(deployProduction.includes("chown caddy:caddy /var/log/caddy/superskill-access.log"), "system Caddy access log must stay writable by the service user after validation");
+check(deployProduction.includes('header_up X-Forwarded-For {remote_host}'), "system Caddy must overwrite the external client forwarding header");
+check(deployProduction.includes('request>uri regexp "\\\\?.*$" ""'), "system Caddy access logs must strip all query values");
 check(deployProduction.includes("onlyharness.com, www.onlyharness.com {"), "deploy-production.sh must retain legacy machine compatibility hosts");
 check(!deployProduction.includes("onlyharness.com, www.onlyharness.com, superskill.sh, www.superskill.sh {"), "deploy-production.sh must not serve www.superskill.sh as an HTML origin");
 check(deployProduction.includes('SUPERSKILL_APEX_URL="${SUPERSKILL_APEX_URL:-https://superskill.sh}"'), "deploy-production.sh must default the canonical SuperSkill apex smoke URL");
